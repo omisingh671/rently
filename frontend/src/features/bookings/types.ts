@@ -14,12 +14,29 @@ export type PaymentStatus =
   | "CANCELLED"
   | "REFUNDED";
 
+export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+
+export interface BookingItem {
+  id: string;
+  targetType: "ROOM" | "UNIT";
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  pricePerNight: number;
+  totalAmount: number;
+}
+
 export interface Booking {
   id: string;
   bookingRef: string;
   userId: string;
   spaceId: string;
   propertyId: string;
+  bookingType: BookingType;
+  guestCount: number;
   title: string;
   spaceName: string;
   status: BookingStatus;
@@ -30,6 +47,7 @@ export interface Booking {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  items: BookingItem[];
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;

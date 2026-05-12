@@ -1,6 +1,7 @@
 import {
   BookingStatus,
   BookingTargetType,
+  BookingType,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -22,6 +23,7 @@ import type {
 
 const now = () => new Date();
 const maxBookingTransactionAttempts = 3;
+const multiRoomTitle = "Multi-room stay";
 
 const normalizeHost = (host?: string) => host?.split(":")[0]?.toLowerCase();
 
@@ -122,6 +124,9 @@ const getSpaceTarget = (space: repo.PublicSpaceRecord): PublicSpaceTarget => {
   );
 };
 
+const getSpaceCapacity = (space: repo.PublicSpaceRecord) =>
+  space.room?.maxOccupancy ?? space.product.occupancy;
+
 const getSpaceTitle = (space: repo.PublicSpaceRecord) => {
   const targetName = space.room
     ? `${space.room.name} ${space.room.number}`
@@ -142,7 +147,7 @@ const mapSpace = (space: repo.PublicSpaceRecord): PublicSpaceDTO => {
     title: getSpaceTitle(space),
     description: `${space.product.category.toLowerCase()} stay at ${space.property.name}`,
     pricePerNight: Number(space.price),
-    capacity: space.product.occupancy,
+    capacity: getSpaceCapacity(space),
     hasAC: space.room?.hasAC ?? space.product.hasAC,
     location: getSpaceLocation(space),
     targetType: target.targetType,
@@ -151,50 +156,49 @@ const mapSpace = (space: repo.PublicSpaceRecord): PublicSpaceDTO => {
   };
 };
 
-const mapBooking = (booking: {
-  id: string;
-  bookingRef: string;
-  userId: string;
-  propertyId: string;
-  productId: string | null;
-  targetType: BookingTargetType;
-  unitId: string | null;
-  roomId: string | null;
-  targetLabel: string;
-  productName: string;
-  pricePerNight: { toString(): string };
-  checkIn: Date;
-  checkOut: Date;
-  status: PublicBookingDTO["status"];
-  totalAmount: { toString(): string };
-  guestNameSnapshot: string;
-  guestEmailSnapshot: string;
-  guestContactSnapshot: string | null;
-  internalNotes: string | null;
-  cancellationReason: string | null;
-  cancelledAt: Date | null;
-  createdAt: Date;
-}): PublicBookingDTO => ({
-  id: booking.id,
-  bookingRef: booking.bookingRef,
-  userId: booking.userId,
-  spaceId: booking.roomId ?? booking.unitId ?? booking.productId ?? booking.id,
-  propertyId: booking.propertyId,
-  title: `${booking.productName} - ${booking.targetLabel}`,
-  spaceName: booking.targetLabel,
-  status: booking.status,
-  guestName: booking.guestNameSnapshot,
-  guestEmail: booking.guestEmailSnapshot,
-  guestContactNumber: booking.guestContactSnapshot ?? null,
-  from: booking.checkIn.toISOString(),
-  to: booking.checkOut.toISOString(),
-  pricePerNight: Number(booking.pricePerNight),
-  totalPrice: Number(booking.totalAmount),
-  internalNotes: booking.internalNotes ?? null,
-  cancellationReason: booking.cancellationReason ?? null,
-  cancelledAt: booking.cancelledAt?.toISOString() ?? null,
-  createdAt: booking.createdAt.toISOString(),
-});
+const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
+  const items = booking.items.map((item) => ({
+    id: item.id,
+    targetType: item.targetType,
+    unitId: item.unitId ?? null,
+    roomId: item.roomId ?? null,
+    productId: item.productId ?? null,
+    targetLabel: item.targetLabel,
+    productName: item.productName,
+    capacity: item.capacity,
+    pricePerNight: Number(item.pricePerNight),
+    totalAmount: Number(item.totalAmount),
+  }));
+  const title =
+    booking.bookingType === BookingType.MULTI_ROOM
+      ? `${multiRoomTitle} (${items.length} rooms)`
+      : `${booking.productName} - ${booking.targetLabel}`;
+
+  return {
+    id: booking.id,
+    bookingRef: booking.bookingRef,
+    userId: booking.userId,
+    spaceId: booking.roomId ?? booking.unitId ?? booking.productId ?? booking.id,
+    propertyId: booking.propertyId,
+    bookingType: booking.bookingType,
+    guestCount: booking.guestCount,
+    title,
+    spaceName: booking.targetLabel,
+    status: booking.status,
+    guestName: booking.guestNameSnapshot,
+    guestEmail: booking.guestEmailSnapshot,
+    guestContactNumber: booking.guestContactSnapshot ?? null,
+    from: booking.checkIn.toISOString(),
+    to: booking.checkOut.toISOString(),
+    pricePerNight: Number(booking.pricePerNight),
+    totalPrice: Number(booking.totalAmount),
+    items,
+    internalNotes: booking.internalNotes ?? null,
+    cancellationReason: booking.cancellationReason ?? null,
+    cancelledAt: booking.cancelledAt?.toISOString() ?? null,
+    createdAt: booking.createdAt.toISOString(),
+  };
+};
 
 const mapEnquiry = (enquiry: {
   id: string;
@@ -245,6 +249,26 @@ const ensureSpaceAvailable = async (
   return target;
 };
 
+const mapAvailableSpace = (
+  space: repo.PublicSpaceRecord,
+  nights: number,
+) => {
+  const target = getSpaceTarget(space);
+  const pricePerNight = Number(space.price);
+
+  return {
+    spaceId: space.id,
+    title: getSpaceTitle(space),
+    location: getSpaceLocation(space),
+    capacity: getSpaceCapacity(space),
+    pricePerNight,
+    priceTotal: pricePerNight * nights,
+    targetType: target.targetType,
+    unitId: target.unitId,
+    roomId: target.roomId,
+  };
+};
+
 const isRetryableBookingTransactionError = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
   (error.code === "P2034" || error.code === "P2002");
@@ -253,17 +277,22 @@ const spaceMatchesAvailabilityInput = (
   space: repo.PublicSpaceRecord,
   input: CheckAvailabilityInput,
 ) => {
-  const capacity = space.room?.maxOccupancy ?? space.product.occupancy;
+  const target = getSpaceTarget(space);
+  const capacity = getSpaceCapacity(space);
 
   if (input.guests > capacity) {
     return false;
   }
 
   if (input.occupancyType === "single") {
-    return capacity === 1;
+    return target.targetType === BookingTargetType.ROOM && capacity === 1;
   }
 
-  return capacity >= 2;
+  if (input.occupancyType === "double") {
+    return target.targetType === BookingTargetType.ROOM && capacity >= 2;
+  }
+
+  return target.targetType === BookingTargetType.UNIT;
 };
 
 export const listSpaces = async (
@@ -293,7 +322,10 @@ export const checkAvailability = async (
 ): Promise<PublicAvailabilityDTO> => {
   const tenant = await resolveTenant(tenantInput);
   const nights = getNights(input.checkIn, input.checkOut);
-  const minOccupancy = input.occupancyType === "double" ? 2 : input.guests;
+  const minOccupancy =
+    input.occupancyType === "double" || input.occupancyType === "multi_room"
+      ? 1
+      : input.guests;
   const spaces = await repo.listActiveSpaces(
     now(),
     minOccupancy,
@@ -306,12 +338,9 @@ export const checkAvailability = async (
     },
   );
   const availableSpaces = [];
+  const groupCandidates = [];
 
   for (const space of spaces) {
-    if (!spaceMatchesAvailabilityInput(space, input)) {
-      continue;
-    }
-
     const target = getSpaceTarget(space);
     const [hasBooking, hasMaintenance] = await Promise.all([
       repo.hasOverlappingBooking(target, input.checkIn, input.checkOut),
@@ -323,20 +352,63 @@ export const checkAvailability = async (
       ),
     ]);
 
-    if (!hasBooking && !hasMaintenance) {
-      availableSpaces.push({
-        spaceId: space.id,
-        title: getSpaceTitle(space),
-        location: getSpaceLocation(space),
-        priceTotal: Number(space.price) * nights,
-      });
+    if (hasBooking || hasMaintenance) {
+      continue;
+    }
+
+    const availableSpace = mapAvailableSpace(space, nights);
+
+    if (
+      input.occupancyType === "multi_room" &&
+      target.targetType === BookingTargetType.ROOM
+    ) {
+      groupCandidates.push(availableSpace);
+    }
+
+    if (spaceMatchesAvailabilityInput(space, input)) {
+      availableSpaces.push(availableSpace);
     }
   }
 
   return {
-    available: availableSpaces.length > 0,
+    available:
+      availableSpaces.length > 0 ||
+      groupCandidates.reduce((total, space) => total + space.capacity, 0) >=
+        input.guests,
     spaces: availableSpaces,
+    groupCandidates,
   };
+};
+
+const buildBookingItemCreateInput = (
+  space: repo.PublicSpaceRecord,
+  target: PublicSpaceTarget,
+  nights: number,
+): Prisma.BookingItemCreateWithoutBookingInput => {
+  const pricePerNight = Number(space.price);
+
+  return {
+    productId: space.productId,
+    targetType: target.targetType,
+    unitId: target.unitId,
+    roomId: target.roomId,
+    targetLabel: target.roomId
+      ? `${space.room?.name ?? "Room"} ${space.room?.number ?? ""}`.trim()
+      : `Unit ${space.unit?.unitNumber ?? ""}`.trim(),
+    productName: space.product.name,
+    capacity: getSpaceCapacity(space),
+    pricePerNight,
+    totalAmount: pricePerNight * nights,
+  };
+};
+
+const getArrayItem = <T>(items: T[], index: number, message: string): T => {
+  const item = items[index];
+  if (item === undefined) {
+    throw new HttpError(500, "BOOKING_INVARIANT_FAILED", message);
+  }
+
+  return item;
 };
 
 export const createBooking = async (
@@ -350,29 +422,6 @@ export const createBooking = async (
   for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
     try {
       const booking = await repo.runSerializableTransaction(async (tx) => {
-        const space = await repo.findActiveSpaceById(
-          input.spaceId,
-          now(),
-          tenant.id,
-          tx,
-          {
-            checkIn: input.from,
-            checkOut: input.to,
-            nights,
-          },
-        );
-
-        if (!space) {
-          throw new HttpError(404, "SPACE_NOT_FOUND", "Space not found");
-        }
-
-        const target = await ensureSpaceAvailable(
-          space,
-          input.from,
-          input.to,
-          tx,
-        );
-        const pricePerNight = Number(space.price);
         const createdAt = now();
         const bookingRef = await generateBookingRef(createdAt, tx);
         const guestSnapshot = await repo.findUserSnapshotById(userId, tx);
@@ -381,32 +430,155 @@ export const createBooking = async (
           throw new HttpError(404, "USER_NOT_FOUND", "User not found");
         }
 
+        const spaces =
+          input.bookingType === "MULTI_ROOM"
+            ? await Promise.all(
+                (input.spaceIds ?? []).map((spaceId) =>
+                  repo.findActiveSpaceById(spaceId, now(), tenant.id, tx, {
+                    checkIn: input.from,
+                    checkOut: input.to,
+                    nights,
+                  }),
+                ),
+              )
+            : [
+                await repo.findActiveSpaceById(
+                  input.spaceId ?? "",
+                  now(),
+                  tenant.id,
+                  tx,
+                  {
+                    checkIn: input.from,
+                    checkOut: input.to,
+                    nights,
+                  },
+                ),
+              ];
+
+        if (spaces.some((space) => !space)) {
+          throw new HttpError(404, "SPACE_NOT_FOUND", "Space not found");
+        }
+
+        const resolvedSpaces = spaces.filter(
+          (space): space is repo.PublicSpaceRecord => space !== null,
+        );
+        const uniqueSpaceIds = new Set(resolvedSpaces.map((space) => space.id));
+
+        if (uniqueSpaceIds.size !== resolvedSpaces.length) {
+          throw new HttpError(
+            422,
+            "DUPLICATE_BOOKING_SPACE",
+            "Each selected space can only be booked once",
+          );
+        }
+
+        const propertyIds = new Set(
+          resolvedSpaces.map((space) => space.propertyId),
+        );
+
+        if (propertyIds.size !== 1) {
+          throw new HttpError(
+            422,
+            "MULTI_ROOM_PROPERTY_MISMATCH",
+            "Multi-room bookings must stay within one property",
+          );
+        }
+
+        const targets = await Promise.all(
+          resolvedSpaces.map((space) =>
+            ensureSpaceAvailable(space, input.from, input.to, tx),
+          ),
+        );
+
+        if (
+          input.bookingType === "MULTI_ROOM" &&
+          targets.some((target) => target.targetType !== BookingTargetType.ROOM)
+        ) {
+          throw new HttpError(
+            422,
+            "MULTI_ROOM_REQUIRES_ROOMS",
+            "Multi-room bookings can only combine rooms",
+          );
+        }
+
+        const selectedCapacity = resolvedSpaces.reduce(
+          (total, space) => total + getSpaceCapacity(space),
+          0,
+        );
+
+        if (input.guests > selectedCapacity) {
+          throw new HttpError(
+            422,
+            "INSUFFICIENT_CAPACITY",
+            "Selected spaces do not cover the requested guest count",
+          );
+        }
+
+        const itemInputs = resolvedSpaces.map((space, index) =>
+          buildBookingItemCreateInput(
+            space,
+            getArrayItem(targets, index, "Missing booking target"),
+            nights,
+          ),
+        );
+        const totalAmount = itemInputs.reduce(
+          (total, item) => total + Number(item.totalAmount),
+          0,
+        );
+        const pricePerNight = itemInputs.reduce(
+          (total, item) => total + Number(item.pricePerNight),
+          0,
+        );
+        const firstSpace = getArrayItem(
+          resolvedSpaces,
+          0,
+          "Missing booking space",
+        );
+        const firstTarget = getArrayItem(
+          targets,
+          0,
+          "Missing booking target",
+        );
+        const firstItemInput = getArrayItem(
+          itemInputs,
+          0,
+          "Missing booking item",
+        );
+        const isMultiRoom = input.bookingType === "MULTI_ROOM";
+
         const booking = await repo.createBooking(
           {
             bookingRef,
-            property: { connect: { id: space.propertyId } },
+            property: { connect: { id: firstSpace.propertyId } },
             user: { connect: { id: userId } },
-            productId: space.productId,
-            targetType: target.targetType,
-            unitId: target.unitId,
-            roomId: target.roomId,
+            ...(isMultiRoom ? {} : { productId: firstSpace.productId }),
+            bookingType: isMultiRoom
+              ? BookingType.MULTI_ROOM
+              : BookingType.SINGLE_TARGET,
+            targetType: isMultiRoom
+              ? BookingTargetType.ROOM
+              : firstTarget.targetType,
+            unitId: isMultiRoom ? null : firstTarget.unitId,
+            roomId: isMultiRoom ? null : firstTarget.roomId,
+            guestCount: input.guests,
             guestNameSnapshot: guestSnapshot.fullName,
             guestEmailSnapshot: guestSnapshot.email,
             ...(guestSnapshot.contactNumber !== null && {
               guestContactSnapshot: guestSnapshot.contactNumber,
             }),
-            targetLabel: target.roomId
-              ? `${space.room?.name ?? "Room"} ${
-                  space.room?.number ?? ""
-                }`.trim()
-              : `Unit ${space.unit?.unitNumber ?? ""}`.trim(),
-            productName: space.product.name,
+            targetLabel: isMultiRoom
+              ? `${multiRoomTitle} (${resolvedSpaces.length} rooms)`
+              : firstItemInput.targetLabel,
+            productName: isMultiRoom ? multiRoomTitle : firstSpace.product.name,
             pricePerNight,
             checkIn: input.from,
             checkOut: input.to,
             status: BookingStatus.PENDING,
-            totalAmount: pricePerNight * nights,
+            totalAmount,
             createdAt,
+            items: {
+              create: itemInputs,
+            },
           },
           tx,
         );

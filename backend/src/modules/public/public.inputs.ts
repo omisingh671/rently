@@ -1,16 +1,22 @@
 import type { BookingTargetType } from "@/generated/prisma/client.js";
 
+export type PublicOccupancyType = "single" | "double" | "unit" | "multi_room";
+export type PublicBookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+
 export interface CheckAvailabilityInput {
   checkIn: Date;
   checkOut: Date;
   guests: number;
-  occupancyType: "single" | "double";
+  occupancyType: PublicOccupancyType;
 }
 
 export interface CreatePublicBookingInput {
-  spaceId: string;
+  bookingType: PublicBookingType;
+  spaceId?: string;
+  spaceIds?: string[];
   from: Date;
   to: Date;
+  guests: number;
 }
 
 export interface CreatePublicEnquiryInput {

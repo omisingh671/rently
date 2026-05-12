@@ -287,13 +287,29 @@ export default function OperationsPage({ module }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div>{booking.targetLabel}</div>
+                      <div>
+                        {booking.bookingType === "MULTI_ROOM"
+                          ? `Multi-room stay (${booking.items.length} rooms)`
+                          : booking.targetLabel}
+                      </div>
                       <div className="text-xs text-slate-500">
                         {formatDate(booking.checkIn)} -{" "}
                         {formatDate(booking.checkOut)}
                       </div>
+                      <div className="text-xs text-slate-500">
+                        Guests: {booking.guestCount}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">{booking.productName}</td>
+                    <td className="px-4 py-3">
+                      <div>{booking.productName}</div>
+                      {booking.items.length > 1 && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          {booking.items
+                            .map((item) => item.targetLabel)
+                            .join(", ")}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{booking.totalAmount}</td>
                     <td className="px-4 py-3">
                       <StatusSelect

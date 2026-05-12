@@ -1,4 +1,5 @@
 import type {
+  BookingType,
   BookingStatus,
   BookingTargetType,
 } from "@/generated/prisma/client.js";
@@ -35,12 +36,31 @@ export interface PublicAvailabilitySpaceDTO {
   spaceId: string;
   title: string;
   location: string;
+  capacity: number;
+  pricePerNight: number;
   priceTotal: number;
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
 }
 
 export interface PublicAvailabilityDTO {
   available: boolean;
   spaces: PublicAvailabilitySpaceDTO[];
+  groupCandidates: PublicAvailabilitySpaceDTO[];
+}
+
+export interface PublicBookingItemDTO {
+  id: string;
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  pricePerNight: number;
+  totalAmount: number;
 }
 
 export interface PublicBookingDTO {
@@ -49,6 +69,8 @@ export interface PublicBookingDTO {
   userId: string;
   spaceId: string;
   propertyId: string;
+  bookingType: BookingType;
+  guestCount: number;
   title: string;
   spaceName: string;
   status: BookingStatus;
@@ -59,6 +81,7 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  items: PublicBookingItemDTO[];
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;

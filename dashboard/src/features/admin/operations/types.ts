@@ -9,6 +9,7 @@ export type BookingStatus =
 
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
+export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
 
 export type AdminBooking = {
   id: string;
@@ -21,6 +22,8 @@ export type AdminBooking = {
   guestNameSnapshot: string;
   guestEmailSnapshot: string;
   guestContactSnapshot: string | null;
+  bookingType: BookingType;
+  guestCount: number;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -33,6 +36,18 @@ export type AdminBooking = {
   status: BookingStatus;
   totalAmount: string;
   internalNotes: string | null;
+  items: Array<{
+    id: string;
+    targetType: BookingTargetType;
+    unitId: string | null;
+    roomId: string | null;
+    productId: string | null;
+    targetLabel: string;
+    productName: string;
+    capacity: number;
+    pricePerNight: string;
+    totalAmount: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;

@@ -75,6 +75,11 @@ enum BookingTargetType {
   UNIT
 }
 
+enum BookingType {
+  SINGLE_TARGET
+  MULTI_ROOM
+}
+
 enum BookingStatus {
   PENDING
   CONFIRMED
@@ -383,9 +388,11 @@ model Booking {
   propertyId String
   userId     String
   productId  String?
+  bookingType BookingType      @default(SINGLE_TARGET)
   targetType BookingTargetType
   unitId     String?
   roomId     String?
+  guestCount Int               @default(1)
 
   guestNameSnapshot    String
   guestEmailSnapshot   String
@@ -406,6 +413,7 @@ model Booking {
 
   property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  items         BookingItem[]
   payments      Payment[]
   statusHistory BookingStatusHistory[]
 
@@ -416,6 +424,30 @@ model Booking {
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
   @@map("bookings")
+}
+
+model BookingItem {
+  id         String            @id @default(uuid())
+  bookingId  String
+  productId  String?
+  targetType BookingTargetType
+  unitId     String?
+  roomId     String?
+
+  targetLabel   String
+  productName   String
+  capacity      Int
+  pricePerNight Decimal
+  totalAmount   Decimal
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([roomId])
+  @@index([unitId])
+  @@map("booking_items")
 }
 
 model BookingStatusHistory {

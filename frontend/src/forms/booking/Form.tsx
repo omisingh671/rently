@@ -125,7 +125,11 @@ export default function BookingForm({
         }}
       >
         <div className="rounded-[calc(1rem-1px)] bg-[#1a1461] p-[43px] sm:p-[51px]">
-
+          {formTitleIntro && (
+            <p className="mb-5 text-sm leading-6 text-indigo-100/80">
+              {formTitleIntro}
+            </p>
+          )}
 
           {/* ── Form ── */}
           <FormProvider {...methods}>

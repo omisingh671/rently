@@ -24,8 +24,20 @@ export const publicSpaceInclude = {
   },
 } satisfies Prisma.RoomPricingInclude;
 
+export const publicBookingInclude = {
+  items: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+} satisfies Prisma.BookingInclude;
+
 export type PublicSpaceRecord = Prisma.RoomPricingGetPayload<{
   include: typeof publicSpaceInclude;
+}>;
+
+export type PublicBookingRecord = Prisma.BookingGetPayload<{
+  include: typeof publicBookingInclude;
 }>;
 
 interface StayPricingScope {
@@ -162,12 +174,22 @@ const targetOverlapWhere = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
     ? {
         OR: [
-          { roomId: target.roomId },
-          ...(target.unitId !== null ? [{ unitId: target.unitId }] : []),
+          { targetType: BookingTargetType.ROOM, roomId: target.roomId },
+          ...(target.unitId !== null
+            ? [
+                {
+                  targetType: BookingTargetType.UNIT,
+                  unitId: target.unitId,
+                },
+              ]
+            : []),
         ],
       }
     : {
-        unitId: target.unitId,
+        OR: [
+          { targetType: BookingTargetType.UNIT, unitId: target.unitId },
+          { targetType: BookingTargetType.ROOM, unitId: target.unitId },
+        ],
       };
 
 export const hasOverlappingBooking = (
@@ -176,13 +198,15 @@ export const hasOverlappingBooking = (
   checkOut: Date,
   tx?: Prisma.TransactionClient,
 ) =>
-  client(tx).booking
+  client(tx).bookingItem
     .count({
       where: {
         ...targetOverlapWhere(target),
-        status: { not: BookingStatus.CANCELLED },
-        checkIn: { lt: checkOut },
-        checkOut: { gt: checkIn },
+        booking: {
+          status: { not: BookingStatus.CANCELLED },
+          checkIn: { lt: checkOut },
+          checkOut: { gt: checkIn },
+        },
       },
     })
     .then((count) => count > 0);
@@ -219,6 +243,7 @@ export const createBooking = (
 ) =>
   client(tx).booking.create({
     data,
+    include: publicBookingInclude,
   });
 
 export const createBookingStatusHistory = (
@@ -272,6 +297,7 @@ export const listBookingsByUser = (userId: string) =>
   prisma.booking.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
+    include: publicBookingInclude,
   });
 
 export const findBookingByUser = (id: string, userId: string) =>
@@ -280,6 +306,7 @@ export const findBookingByUser = (id: string, userId: string) =>
       id,
       userId,
     },
+    include: publicBookingInclude,
   });
 
 export const updateBookingCancellationById = (
@@ -299,6 +326,7 @@ export const updateBookingCancellationById = (
 
     return tx.booking.findUniqueOrThrow({
       where: { id },
+      include: publicBookingInclude,
     });
   });
 

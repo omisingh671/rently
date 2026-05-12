@@ -85,9 +85,11 @@ export default function AvailabilityResultPage() {
                   return;
                 }
                 const booking = await bookingMutation.mutateAsync({
+                  bookingType: "SINGLE_TARGET",
                   spaceId: space.spaceId,
                   from: new Date(criteria.checkIn).toISOString(),
                   to: new Date(criteria.checkOut).toISOString(),
+                  guests: criteria.guests,
                 });
                 navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
               }}

@@ -1,4 +1,5 @@
 import type {
+  BookingType,
   BookingStatus,
   BookingTargetType,
   DiscountType,
@@ -226,6 +227,8 @@ export interface DashboardBookingDTO {
   guestNameSnapshot: string;
   guestEmailSnapshot: string;
   guestContactSnapshot: string | null;
+  bookingType: BookingType;
+  guestCount: number;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -238,6 +241,18 @@ export interface DashboardBookingDTO {
   status: BookingStatus;
   totalAmount: string;
   internalNotes: string | null;
+  items: Array<{
+    id: string;
+    targetType: BookingTargetType;
+    unitId: string | null;
+    roomId: string | null;
+    productId: string | null;
+    targetLabel: string;
+    productName: string;
+    capacity: number;
+    pricePerNight: string;
+    totalAmount: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;

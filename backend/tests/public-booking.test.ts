@@ -26,6 +26,8 @@ type TestState = {
   tenantSlug: string;
   propertyId: string;
   pricingId: string;
+  pricingTwoId: string;
+  unitPricingId: string;
 };
 
 let state: TestState;
@@ -98,42 +100,95 @@ before(async () => {
     },
   });
 
-  const room = await prisma.room.create({
-    data: {
-      unitId: unit.id,
-      name: "Booking Test Room",
-      number: "101",
-      rent: 2500,
-      hasAC: true,
-      maxOccupancy: 2,
-      status: RoomStatus.AVAILABLE,
-    },
-  });
+  const [room, roomTwo] = await Promise.all([
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Booking Test Room",
+        number: "101",
+        rent: 2500,
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Booking Test Room",
+        number: "102",
+        rent: 2500,
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+  ]);
 
-  const product = await prisma.roomProduct.create({
-    data: {
-      propertyId: property.id,
-      name: `${testId} Double Room`,
-      occupancy: 2,
-      hasAC: true,
-      category: RoomProductCategory.NIGHTLY,
-    },
-  });
+  const [product, unitProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Double Room`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Full Unit`,
+        occupancy: 4,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
 
-  const pricing = await prisma.roomPricing.create({
-    data: {
-      propertyId: property.id,
-      roomId: room.id,
-      unitId: unit.id,
-      productId: product.id,
-      rateType: RateType.NIGHTLY,
-      pricingTier: PricingTier.STANDARD,
-      minNights: 1,
-      taxInclusive: false,
-      price: 2500,
-      validFrom: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  });
+  const [pricing, pricingTwo, unitPricing] = await Promise.all([
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: room.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomTwo.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2400,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        unitId: unit.id,
+        productId: unitProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 4500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
 
   state = {
     superAdminId: superAdmin.id,
@@ -143,6 +198,8 @@ before(async () => {
     tenantSlug: tenant.slug,
     propertyId: property.id,
     pricingId: pricing.id,
+    pricingTwoId: pricingTwo.id,
+    unitPricingId: unitPricing.id,
   };
 });
 
@@ -172,9 +229,11 @@ test("public booking creation rejects overlapping dates", async () => {
   const firstBooking = await publicService.createBooking(
     state.guestOneId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-01-10T00:00:00.000Z"),
       to: new Date("2027-01-12T00:00:00.000Z"),
+      guests: 2,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -197,9 +256,11 @@ test("public booking creation rejects overlapping dates", async () => {
       publicService.createBooking(
         state.guestTwoId,
         {
+          bookingType: "SINGLE_TARGET",
           spaceId: state.pricingId,
           from: new Date("2027-01-11T00:00:00.000Z"),
           to: new Date("2027-01-13T00:00:00.000Z"),
+          guests: 2,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -208,9 +269,11 @@ test("public booking creation rejects overlapping dates", async () => {
 });
 
 test("public availability respects pricing stay limits and validity windows", async () => {
-  await prisma.roomPricing.update({
+  await prisma.roomPricing.updateMany({
     where: {
-      id: state.pricingId,
+      id: {
+        in: [state.pricingId, state.pricingTwoId],
+      },
     },
     data: {
       minNights: 3,
@@ -230,9 +293,11 @@ test("public availability respects pricing stay limits and validity windows", as
 
   assert.equal(shortStay.available, false);
 
-  await prisma.roomPricing.update({
+  await prisma.roomPricing.updateMany({
     where: {
-      id: state.pricingId,
+      id: {
+        in: [state.pricingId, state.pricingTwoId],
+      },
     },
     data: {
       minNights: 1,
@@ -252,15 +317,161 @@ test("public availability respects pricing stay limits and validity windows", as
 
   assert.equal(outsideValidity.available, false);
 
-  await prisma.roomPricing.update({
+  await prisma.roomPricing.updateMany({
     where: {
-      id: state.pricingId,
+      id: {
+        in: [state.pricingId, state.pricingTwoId],
+      },
     },
     data: {
       minNights: 1,
       validTo: null,
     },
   });
+});
+
+test("public booking rejects single room when guest count exceeds capacity", async () => {
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestOneId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.pricingId,
+          from: new Date("2027-08-10T00:00:00.000Z"),
+          to: new Date("2027-08-12T00:00:00.000Z"),
+          guests: 3,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "INSUFFICIENT_CAPACITY");
+      return true;
+    },
+  );
+});
+
+test("public multi-room booking combines available rooms for larger groups", async () => {
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "MULTI_ROOM",
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-09-10T00:00:00.000Z"),
+      to: new Date("2027-09-12T00:00:00.000Z"),
+      guests: 3,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(booking.bookingType, "MULTI_ROOM");
+  assert.equal(booking.guestCount, 3);
+  assert.equal(booking.items.length, 2);
+  assert.equal(booking.totalPrice, 9800);
+});
+
+test("public multi-room booking rejects duplicate or insufficient selections", async () => {
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestOneId,
+        {
+          bookingType: "MULTI_ROOM",
+          spaceIds: [state.pricingId, state.pricingId],
+          from: new Date("2027-10-10T00:00:00.000Z"),
+          to: new Date("2027-10-12T00:00:00.000Z"),
+          guests: 3,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "DUPLICATE_BOOKING_SPACE");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestOneId,
+        {
+          bookingType: "MULTI_ROOM",
+          spaceIds: [state.pricingId, state.pricingTwoId],
+          from: new Date("2027-10-20T00:00:00.000Z"),
+          to: new Date("2027-10-22T00:00:00.000Z"),
+          guests: 5,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "INSUFFICIENT_CAPACITY");
+      return true;
+    },
+  );
+});
+
+test("full-unit bookings block child rooms and selected rooms block full unit", async () => {
+  await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.unitPricingId,
+      from: new Date("2027-11-10T00:00:00.000Z"),
+      to: new Date("2027-11-12T00:00:00.000Z"),
+      guests: 4,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestTwoId,
+        {
+          bookingType: "MULTI_ROOM",
+          spaceIds: [state.pricingId, state.pricingTwoId],
+          from: new Date("2027-11-11T00:00:00.000Z"),
+          to: new Date("2027-11-13T00:00:00.000Z"),
+          guests: 3,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
+
+  await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-12-10T00:00:00.000Z"),
+      to: new Date("2027-12-12T00:00:00.000Z"),
+      guests: 2,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestTwoId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.unitPricingId,
+          from: new Date("2027-12-11T00:00:00.000Z"),
+          to: new Date("2027-12-13T00:00:00.000Z"),
+          guests: 4,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
 });
 
 test("concurrent public booking attempts create only one booking", async () => {
@@ -270,12 +481,24 @@ test("concurrent public booking attempts create only one booking", async () => {
   const results = await Promise.allSettled([
     publicService.createBooking(
       state.guestOneId,
-      { spaceId: state.pricingId, from: checkIn, to: checkOut },
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: checkIn,
+        to: checkOut,
+        guests: 2,
+      },
       { tenantSlug: state.tenantSlug },
     ),
     publicService.createBooking(
       state.guestTwoId,
-      { spaceId: state.pricingId, from: checkIn, to: checkOut },
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: checkIn,
+        to: checkOut,
+        guests: 2,
+      },
       { tenantSlug: state.tenantSlug },
     ),
   ]);
@@ -304,9 +527,11 @@ test("guest can cancel a pending future booking with audit history", async () =>
   const booking = await publicService.createBooking(
     state.guestOneId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2028-01-10T00:00:00.000Z"),
       to: new Date("2028-01-12T00:00:00.000Z"),
+      guests: 2,
     },
     { tenantSlug: state.tenantSlug },
   );

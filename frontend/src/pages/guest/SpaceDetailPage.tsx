@@ -42,6 +42,9 @@ export default function SpaceDetailPage() {
 
   const [from, setFrom] = useState<string>(searchParams.get("from") ?? "");
   const [to, setTo] = useState<string>(searchParams.get("to") ?? "");
+  const guestsParam = Number(searchParams.get("guests"));
+  const guests =
+    Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 1;
   const [formError, setFormError] = useState<string | null>(null);
   const space = spaceQuery.data;
   const backToSpacesHref = searchParams.toString()
@@ -82,9 +85,11 @@ export default function SpaceDetailPage() {
     try {
       setFormError(null);
       const booking = await createBookingMutation.mutateAsync({
+        bookingType: "SINGLE_TARGET",
         spaceId: id,
         from: fromIso,
         to: toIso,
+        guests,
       });
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
@@ -183,7 +188,7 @@ export default function SpaceDetailPage() {
                   Capacity
                 </div>
                 <div className="mt-2 text-xl font-semibold text-slate-900">
-                  {space.capacity}
+                  {space.capacity} / requested {guests}
                 </div>
               </div>
 

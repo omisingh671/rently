@@ -11,7 +11,7 @@ export const checkAvailabilitySchema = z
     checkIn: isoDateSchema,
     checkOut: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
-    occupancyType: z.enum(["single", "double"]),
+    occupancyType: z.enum(["single", "double", "unit", "multi_room"]),
   })
   .refine((data) => data.checkOut > data.checkIn, {
     message: "Check-out must be after check-in",
@@ -20,13 +20,36 @@ export const checkAvailabilitySchema = z
 
 export const createBookingSchema = z
   .object({
-    spaceId: z.string().uuid(),
+    bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+    spaceId: z.string().uuid().optional(),
+    spaceIds: z.array(z.string().uuid()).optional(),
     from: isoDateSchema,
     to: isoDateSchema,
+    guests: z.coerce.number().int().min(1).max(20),
   })
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",
     path: ["to"],
+  })
+  .superRefine((data, ctx) => {
+    if (data.bookingType === "MULTI_ROOM") {
+      if (!data.spaceIds || data.spaceIds.length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          message: "At least two spaces are required for a multi-room booking",
+          path: ["spaceIds"],
+        });
+      }
+      return;
+    }
+
+    if (!data.spaceId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "spaceId is required",
+        path: ["spaceId"],
+      });
+    }
   });
 
 export const cancelBookingSchema = z.object({

@@ -72,9 +72,12 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
   const data = await service.createBooking(
     getUserId(req),
     {
-      spaceId: body.spaceId,
+      bookingType: body.bookingType,
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,
       to: body.to,
+      guests: body.guests,
     },
     resolveTenantInput(req),
   );
