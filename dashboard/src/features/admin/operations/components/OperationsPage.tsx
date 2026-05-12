@@ -37,6 +37,16 @@ const bookingStatuses: BookingStatus[] = [
 
 const leadStatuses: LeadStatus[] = ["NEW", "IN_PROGRESS", "CLOSED"];
 
+const enquirySources = [
+  { value: "PUBLIC_WEBSITE", label: "Website" },
+  { value: "PUBLIC_QUOTE_REQUEST", label: "Quote requests" },
+] as const;
+
+const formatEnquirySource = (source: string | null) =>
+  enquirySources.find((item) => item.value === source)?.label ??
+  source ??
+  "Website";
+
 const bookingStatusTransitions: Record<BookingStatus, BookingStatus[]> = {
   PENDING: ["CONFIRMED", "CANCELLED"],
   CONFIRMED: ["CHECKED_IN", "CANCELLED"],
@@ -68,6 +78,7 @@ export default function OperationsPage({ module }: Props) {
   const [filters, setFilters] = useState({
     search: "",
     status: "",
+    source: "",
   });
   const [activeBookingWorkflow, setActiveBookingWorkflow] =
     useState<ActiveBookingWorkflow | null>(null);
@@ -198,6 +209,23 @@ export default function OperationsPage({ module }: Props) {
               </option>
             ))}
           </select>
+
+          {module === "enquiries" && (
+            <select
+              value={filters.source}
+              onChange={(event) =>
+                setFilters((prev) => ({ ...prev, source: event.target.value }))
+              }
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              <option value="">All sources</option>
+              {enquirySources.map((source) => (
+                <option key={source.value} value={source.value}>
+                  {source.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 
@@ -304,7 +332,9 @@ export default function OperationsPage({ module }: Props) {
                       </div>
                     </td>
                     <td className="max-w-sm px-4 py-3">{enquiry.message}</td>
-                    <td className="px-4 py-3">{enquiry.source ?? "Website"}</td>
+                    <td className="px-4 py-3">
+                      {formatEnquirySource(enquiry.source)}
+                    </td>
                     <td className="px-4 py-3">{formatDate(enquiry.createdAt)}</td>
                     <td className="px-4 py-3">
                       <StatusSelect

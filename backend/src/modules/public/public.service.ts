@@ -143,6 +143,7 @@ const mapSpace = (space: repo.PublicSpaceRecord): PublicSpaceDTO => {
     description: `${space.product.category.toLowerCase()} stay at ${space.property.name}`,
     pricePerNight: Number(space.price),
     capacity: space.product.occupancy,
+    hasAC: space.room?.hasAC ?? space.product.hasAC,
     location: getSpaceLocation(space),
     targetType: target.targetType,
     unitId: target.unitId,
@@ -202,6 +203,7 @@ const mapEnquiry = (enquiry: {
   email: string;
   contactNumber: string;
   message: string;
+  source: string | null;
   createdAt: Date;
 }): PublicEnquiryDTO => ({
   id: enquiry.id,
@@ -210,6 +212,7 @@ const mapEnquiry = (enquiry: {
   email: enquiry.email,
   contactNumber: enquiry.contactNumber,
   message: enquiry.message,
+  source: enquiry.source ?? null,
   createdAt: enquiry.createdAt.toISOString(),
 });
 
@@ -554,7 +557,7 @@ export const createEnquiry = async (
     email: input.email,
     contactNumber: input.contactNumber,
     message: input.message,
-    source: "PUBLIC_WEBSITE",
+    source: input.source ?? "PUBLIC_WEBSITE",
   });
 
   return mapEnquiry(enquiry);

@@ -24,6 +24,7 @@ export interface PublicSpaceDTO {
   description: string;
   pricePerNight: number;
   capacity: number;
+  hasAC: boolean;
   location: string;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -71,5 +72,6 @@ export interface PublicEnquiryDTO {
   email: string;
   contactNumber: string;
   message: string;
+  source: string | null;
   createdAt: string;
 }

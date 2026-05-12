@@ -35,7 +35,7 @@ export default function Tariffs() {
       ],
 
       ctaLabel: "Check Availability",
-      ctaTo: ROUTES.SPACES + "/single",
+      ctaTo: `${ROUTES.SPACES}?occupancy=single`,
     },
 
     {
@@ -68,7 +68,7 @@ export default function Tariffs() {
       ],
 
       ctaLabel: "Check Availability",
-      ctaTo: ROUTES.SPACES + "/double",
+      ctaTo: `${ROUTES.SPACES}?occupancy=double`,
     },
 
     {
@@ -89,7 +89,7 @@ export default function Tariffs() {
         "Ideal for teams & relocations",
       ],
       ctaLabel: "Request Quote",
-      ctaTo: ROUTES.CONTACT,
+      ctaTo: `${ROUTES.CONTACT}?intent=quote`,
     },
   ];
 

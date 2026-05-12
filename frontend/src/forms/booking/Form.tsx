@@ -11,12 +11,8 @@ import BookingFormSchema, {
 
 import {
   InputField,
-  InputControl,
   RadioGroupField,
-  CompositeField,
   ErrorSummary,
-  FormMetaFields,
-  CountryDialCodeInput,
 } from "@/components/inputs";
 
 import Button from "@/components/ui/Button";
@@ -41,10 +37,6 @@ export default function BookingForm({
     mode: "onBlur",
     reValidateMode: "onChange",
     defaultValues: {
-      name: "",
-      email: "",
-      countryCode: "+91",
-      contactNumber: "",
       checkIn: "",
       checkOut: "",
       guests: 1,
@@ -52,7 +44,7 @@ export default function BookingForm({
     },
   });
 
-  const { handleSubmit, setError, reset, control } = methods;
+  const { handleSubmit, setError, reset } = methods;
 
   useEffect(() => {
     if (!serverError) return;
@@ -76,56 +68,33 @@ export default function BookingForm({
 
   return (
     <div className={className}>
-      <div className="p-4 sm:p-6">
-        {formTitleIntro && (
-          <p className="mb-4 text-sm text-slate-700">{formTitleIntro}</p>
-        )}
+      <div className="rounded-2xl border border-indigo-300/20 bg-[#20196a] p-5 shadow-xl shadow-black/20 sm:p-6">
+        <div className="mb-5 flex items-start justify-between gap-4 border-b border-indigo-300/20 pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">
+              Check availability
+            </p>
+            {formTitleIntro && (
+              <p className="mt-1 text-sm leading-6 text-indigo-100/80">
+                {formTitleIntro}
+              </p>
+            )}
+          </div>
+
+          <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-400/20 text-indigo-100 sm:inline-flex">
+            <LuSearch className="h-5 w-5" />
+          </span>
+        </div>
 
         <FormProvider {...methods}>
-          <form onSubmit={handleSubmit(submit)} noValidate>
+          <form
+            onSubmit={handleSubmit(submit)}
+            className="[&_.form-control_input]:border-indigo-200/20 [&_.form-control_input]:bg-white/95 [&_.form-control_input]:focus-visible:border-indigo-300 [&_.form-control_input]:focus-visible:ring-indigo-300 [&_.form-group]:mb-0 [&_.form-label]:text-indigo-100"
+            noValidate
+          >
             <ErrorSummary />
 
-            {/* <input type="hidden" {...register("source")} /> */}
-            <FormMetaFields source="homepage-hero" campaign="spring-sale" />
-
-            <InputField
-              name="name"
-              label="Name"
-              placeholder="Your full name"
-              required
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <InputField
-                name="email"
-                label="Email"
-                type="email"
-                placeholder="you@example.com"
-                required
-              />
-
-              <CompositeField name="contactNumber" label="Contact number">
-                <div className="input-group">
-                  <div className="pre-input">
-                    <CountryDialCodeInput
-                      name="countryCode"
-                      control={control}
-                    />
-                  </div>
-
-                  <div className="main-input">
-                    <InputControl
-                      name="contactNumber"
-                      type="tel"
-                      placeholder="1234567890"
-                      inputMode="tel"
-                    />
-                  </div>
-                </div>
-              </CompositeField>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-4">
               <InputField
                 name="checkIn"
                 label="Check-in"
@@ -138,9 +107,7 @@ export default function BookingForm({
                 type="date"
                 required
               />
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <InputField
                 name="guests"
                 label="Guests"
@@ -161,12 +128,14 @@ export default function BookingForm({
               />
             </div>
 
-            <div className="mt-4 flex gap-3">
+            <div className="mt-6 flex flex-col gap-3 border-t border-indigo-300/20 pt-5 sm:flex-row">
               <Button
                 type="submit"
                 variant="primary"
                 size="md"
+                fullWidth
                 disabled={isSubmitting}
+                className="h-11"
               >
                 {isSubmitting ? (
                   <span className="inline-flex items-center gap-2">
@@ -185,7 +154,11 @@ export default function BookingForm({
                 type="button"
                 variant="dark"
                 size="md"
+                fullWidth
+                outline
                 onClick={() => reset()}
+                onDark
+                className="h-11 sm:max-w-32"
               >
                 <LuRotateCcw className="h-4 w-4" /> Reset
               </Button>

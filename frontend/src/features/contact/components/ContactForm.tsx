@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { RiPhoneLine, RiMailLine, RiWhatsappLine } from "react-icons/ri";
 
 import FeatureCard from "@/components/ui/FeatureCard/FeatureCard";
@@ -34,8 +35,10 @@ const OPTIONS = [
 ];
 
 export default function ContactForm() {
+  const [searchParams] = useSearchParams();
   const whatsappNumber = SUPPORT_PHONE?.replace(/\D/g, "");
   const createEnquiry = useCreateEnquiry();
+  const isQuoteIntent = searchParams.get("intent") === "quote";
 
   const handleEnquiry = useCallback(
     async (data: EnquirySubmitPayload) => {
@@ -44,11 +47,12 @@ export default function ContactForm() {
         email: data.email,
         contactNumber: data.fullContactNumber,
         message: data.message,
+        source: isQuoteIntent ? "PUBLIC_QUOTE_REQUEST" : "PUBLIC_WEBSITE",
       };
 
       await createEnquiry.mutateAsync(payload);
     },
-    [createEnquiry],
+    [createEnquiry, isQuoteIntent],
   );
 
   /**
@@ -125,8 +129,12 @@ export default function ContactForm() {
             <EnquiryForm
               variant="light"
               className="bg-transparent"
-              title="Send an Enquiry"
-              description="Our team usually responds within a few hours."
+              title={isQuoteIntent ? "Request a Quote" : "Send an Enquiry"}
+              description={
+                isQuoteIntent
+                  ? "Share your long-stay or corporate requirement and our team will respond with a custom quote."
+                  : "Our team usually responds within a few hours."
+              }
               onSubmit={handleEnquiry}
               disabled={createEnquiry.isPending}
               resetOnSuccess={createEnquiry.isSuccess}
