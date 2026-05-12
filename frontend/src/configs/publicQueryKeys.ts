@@ -13,5 +13,20 @@ export const PUBLIC_QUERY_KEYS = {
   },
   availability: {
     check: [...tenantScope, "availability", "check"] as const,
+    byCriteria: (criteria: {
+      checkIn: string;
+      checkOut: string;
+      guests: number;
+      occupancy: string;
+    }) =>
+      [
+        ...tenantScope,
+        "availability",
+        "check",
+        criteria.checkIn,
+        criteria.checkOut,
+        criteria.guests,
+        criteria.occupancy,
+      ] as const,
   },
 } as const;

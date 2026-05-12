@@ -114,6 +114,7 @@ export const createEnquiry = async (req: AuthRequest, res: Response) => {
     email: body.email,
     contactNumber: body.contactNumber,
     message: body.message,
+    ...(body.source !== undefined && { source: body.source }),
   });
 
   res.status(201).json({ success: true, data });

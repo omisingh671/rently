@@ -5,6 +5,7 @@ import { MdCleaningServices, MdWavingHand } from "react-icons/md";
 
 import Button from "@/components/ui/Button";
 import Chip from "@/components/ui/Chip";
+import { ROUTES } from "@/configs/routePaths";
 
 const heroImg = "/assets/images/sucasa-homes/hero.jpg";
 
@@ -70,7 +71,7 @@ export default function HomeHero() {
 
               <Button
                 className="w-full sm:w-max sm:inline-flex"
-                to="/check-availability"
+                to={ROUTES.SPACES}
                 variant="primary"
                 size="lg"
                 icon={<FiCalendar />}

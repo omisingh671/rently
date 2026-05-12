@@ -5,11 +5,9 @@ import VerticalStepsJourney, {
 } from "@/components/ui/VerticalStepsJourney";
 import { FiCalendar, FiUsers, FiCheckCircle } from "react-icons/fi";
 
-import { useCheckAvailability } from "@/features/availability/hooks";
-import type { CheckAvailabilityPayload } from "@/features/availability/types";
-
 import BookingForm from "@/forms/booking/Form";
 import type { BookingFormParsedValues } from "@/forms/booking/formSchema";
+import { ROUTES } from "@/configs/routePaths";
 
 const steps: RawStep[] = [
   {
@@ -52,36 +50,23 @@ const darkIndigoPalette = {
 
 export default function BookingJourney() {
   const navigate = useNavigate();
-  const checkAvailability = useCheckAvailability();
 
-  const handleBookingSubmit = async (values: BookingFormParsedValues) => {
-    const payload: CheckAvailabilityPayload = {
-      ...values,
-      fullContactNumber: `${values.countryCode}-${values.contactNumber}`,
-    };
+  const handleBookingSubmit = (values: BookingFormParsedValues) => {
+    const searchParams = new URLSearchParams({
+      from: values.checkIn,
+      to: values.checkOut,
+      guests: String(values.guests),
+      occupancy: values.occupancyType,
+    });
 
-    console.log(payload);
-    const result = await checkAvailability.mutateAsync(payload);
-
-    if (result.available) {
-      navigate("/availability-result", {
-        state: {
-          criteria: {
-            checkIn: values.checkIn,
-            checkOut: values.checkOut,
-            guests: values.guests,
-            occupancyType: values.occupancyType,
-          },
-          availability: result,
-        },
-      });
-    }
+    navigate(`${ROUTES.SPACES}?${searchParams.toString()}`);
+    return Promise.resolve();
   };
 
   return (
     <section className="section bg-[#120b49]">
       <div className="container">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           <div>
             <h2 className="heading heading-lg text-white mb-8">
               Booking Process
@@ -96,11 +81,9 @@ export default function BookingJourney() {
 
           <aside className="w-full">
             <BookingForm
-              className="bg-indigo-100 rounded-xl"
+              className="rounded-2xl"
               formTitleIntro="Quickly check available rooms and prices."
               onSubmit={handleBookingSubmit}
-              isSubmitting={checkAvailability.isPending}
-              serverError={checkAvailability.error}
             />
           </aside>
         </div>

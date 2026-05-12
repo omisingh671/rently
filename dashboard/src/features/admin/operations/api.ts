@@ -62,7 +62,7 @@ export const checkOutBookingApi = async (
 
 export const listEnquiriesApi = async (
   propertyId: string,
-  params: PageParams & { status?: LeadStatus },
+  params: PageParams & { status?: LeadStatus; source?: string },
 ): Promise<EnquiryListResponse> => {
   const { data } = await axiosInstance.get<
     ApiSuccessResponse<EnquiryListResponse>

@@ -133,6 +133,7 @@ export const listBookingsQuerySchema = basePaginationQuerySchema.extend({
 export const listLeadsQuerySchema = basePaginationQuerySchema.extend({
   search: z.string().trim().min(1).optional(),
   status: z.nativeEnum(LeadStatus).optional(),
+  source: z.string().trim().min(1).max(80).optional(),
 });
 
 export const createPropertySchema = z.object({

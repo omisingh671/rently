@@ -5,6 +5,7 @@ import {
   FiChevronRight,
   FiKey,
   FiTag,
+  FiWind,
 } from "react-icons/fi";
 
 import Button from "@/components/ui/Button";
@@ -45,7 +46,11 @@ export default function Card({
   roomImgMobile,
   ctaTo,
   onCtaClick,
+  acAvailable,
+  nonAcAvailable,
 }: RoomType) {
+  const showClimateBadges = acAvailable || nonAcAvailable;
+
   return (
     <article className="bg-white rounded-2xl overflow-hidden border border-surface-3 transition-transform transform hover:-translate-y-2 hover:shadow-2xl duration-200 ease-in-out lg:flex lg:items-stretch">
       <div className="relative lg:w-1/2 lg:shrink-0">
@@ -99,6 +104,23 @@ export default function Card({
         </div>
 
         <h3 className="heading heading-lg text-slate-700">{title}</h3>
+
+        {showClimateBadges && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {acAvailable && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                <FiWind />
+                AC
+              </span>
+            )}
+            {nonAcAvailable && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                <FiWind />
+                Non-AC
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="space-y-1 my-4">
           <div className="text-2xl text-slate-700 font-semibold">

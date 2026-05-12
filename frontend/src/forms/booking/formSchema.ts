@@ -2,17 +2,6 @@ import { z } from "zod";
 
 export const BookingFormSchema = z
   .object({
-    name: z.string().min(1, { message: "Name is required" }),
-    email: z
-      .string()
-      .min(1, { message: "Email is required" })
-      .email({ message: "Enter a valid email address" }),
-    countryCode: z.string().min(1, { message: "Country is required" }),
-    contactNumber: z
-      .string()
-      .min(6, { message: "Too short" })
-      .max(15, { message: "Too long" })
-      .regex(/^[0-9]+$/, { message: "Only digits allowed" }),
     checkIn: z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
       message: "Invalid check-in date",
     }),
@@ -26,8 +15,6 @@ export const BookingFormSchema = z
     occupancyType: z.enum(["single", "double"], {
       message: "Select occupancy type",
     }),
-    source: z.string().optional(),
-    campaign: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     const inTs = Date.parse(data.checkIn);

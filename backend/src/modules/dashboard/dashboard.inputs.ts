@@ -112,6 +112,7 @@ export interface DashboardLeadListInput extends DashboardPaginationInput {
   propertyId: string;
   search?: string;
   status?: LeadStatus;
+  source?: string;
 }
 
 export interface CreateDashboardPropertyInput {

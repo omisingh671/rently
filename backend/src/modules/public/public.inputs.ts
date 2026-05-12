@@ -20,6 +20,7 @@ export interface CreatePublicEnquiryInput {
   email: string;
   contactNumber: string;
   message: string;
+  source?: "PUBLIC_WEBSITE" | "PUBLIC_QUOTE_REQUEST";
 }
 
 export interface TenantResolutionInput {

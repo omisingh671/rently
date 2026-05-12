@@ -776,6 +776,7 @@ export const listEnquiries = async (req: AuthRequest, res: Response) => {
     limit: query.limit,
     ...(query.search !== undefined && { search: query.search }),
     ...(query.status !== undefined && { status: query.status }),
+    ...(query.source !== undefined && { source: query.source }),
   });
   res.json({ success: true, data });
 };

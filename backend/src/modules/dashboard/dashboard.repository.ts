@@ -276,6 +276,7 @@ interface LeadListFilters {
   propertyId: string;
   search?: string;
   status?: LeadStatus;
+  source?: string;
 }
 
 const buildUserWhere = (filters: Omit<UserListFilters, "page" | "limit">) =>
@@ -473,6 +474,7 @@ const buildEnquiryWhere = (
   ({
     propertyId: filters.propertyId,
     ...(filters.status !== undefined && { status: filters.status }),
+    ...(filters.source !== undefined && { source: filters.source }),
     ...(filters.search !== undefined && {
       OR: [
         { name: { contains: filters.search } },

@@ -16,6 +16,7 @@ type Module = "bookings" | "enquiries" | "quotes";
 type Filters = {
   search: string;
   status: string;
+  source: string;
 };
 
 const moduleKey = (module: Module, propertyId: string) => {
@@ -44,11 +45,14 @@ export const useAdminOperations = (
         limit: 100,
         search: filters.search || undefined,
         status: filters.status || undefined,
+        source: filters.source || undefined,
       };
 
       if (module === "bookings") {
         return listBookingsApi(propertyId, {
-          ...params,
+          page: params.page,
+          limit: params.limit,
+          search: params.search,
           status: params.status as BookingStatus | undefined,
         });
       }
@@ -61,7 +65,9 @@ export const useAdminOperations = (
       }
 
       return listQuotesApi(propertyId, {
-        ...params,
+        page: params.page,
+        limit: params.limit,
+        search: params.search,
         status: params.status as LeadStatus | undefined,
       });
     },
