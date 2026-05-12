@@ -277,7 +277,7 @@ export default function SpacesListPage() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[34rem] lg:grid-cols-[1fr_1fr_auto]">
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[46rem] lg:grid-cols-[1fr_1fr_1fr_auto_auto]">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   From
@@ -307,6 +307,24 @@ export default function SpacesListPage() {
                 />
               </label>
 
+              <label className="block">
+                <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <FiUsers className="h-3 w-3" />
+                  Guests
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={guests || ""}
+                  placeholder="1"
+                  onChange={(event) =>
+                    updateSearchParam("guests", event.target.value)
+                  }
+                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </label>
+
               <button
                 type="button"
                 disabled={!canCheckAvailability || availabilityQuery.isFetching}
@@ -316,6 +334,16 @@ export default function SpacesListPage() {
                 <FiSearch />
                 {availabilityQuery.isFetching ? "Checking..." : "Check"}
               </button>
+
+              {searchParams.toString() && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 sm:col-span-2 lg:col-span-1"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         </div>

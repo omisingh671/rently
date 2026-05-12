@@ -66,7 +66,7 @@ export default function BookingJourney() {
   return (
     <section className="section bg-[#120b49]">
       <div className="container">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           <div>
             <h2 className="heading heading-lg text-white mb-8">
               Booking Process
