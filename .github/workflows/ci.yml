@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: sucasa
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/sucasa
+      API_PREFIX: /api/v1
+      NODE_ENV: development
+      JWT_ACCESS_SECRET: ci_access_secret
+      JWT_REFRESH_SECRET: ci_refresh_secret
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      MAIL_USER: ci@sucasa.test
+      MAIL_APP_PASS: ci-mail-app-pass
+      MAIL_FROM: ci@sucasa.test
+      FRONTEND_URL: http://localhost:5173
+      DASHBOARD_URL: http://localhost:5174
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Backend typecheck lint build
+        run: npm run check
+
+      - name: RBAC tests
+        run: npm run test:rbac
+
+      - name: Booking tests
+        run: npm run test:booking
+
+      - name: Payment tests
+        run: npm run test:payment
+
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: dashboard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        run: npm ci
+
+      - name: Dashboard typecheck lint build
+        run: npm run check
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      VITE_APP_NAME: Sucasa
+      VITE_TENANT_SLUG: sucasa
+      VITE_API_BASE_URL: http://localhost:4000
+      VITE_API_PREFIX: /api/v1
+      VITE_SUPPORT_EMAIL: support@sucasahomes.com
+      VITE_SUPPORT_PHONE: "+91 8099480994"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Frontend typecheck lint build
+        run: npm run check

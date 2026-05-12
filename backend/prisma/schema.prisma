@@ -1,0 +1,635 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  GUEST
+}
+
+enum PropertyAssignmentRole {
+  ADMIN
+  MANAGER
+}
+
+enum PropertyStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UnitStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum RoomProductCategory {
+  NIGHTLY
+  LONG_STAY
+  CORPORATE
+}
+
+enum RateType {
+  NIGHTLY
+  WEEKLY
+  MONTHLY
+}
+
+enum PricingTier {
+  STANDARD
+  CORPORATE
+  SEASONAL
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum TaxType {
+  PERCENTAGE
+  FIXED
+}
+
+enum BookingTargetType {
+  ROOM
+  UNIT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+enum PaymentProvider {
+  MANUAL
+  RAZORPAY
+  STRIPE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  CLOSED
+}
+
+enum MaintenanceTargetType {
+  PROPERTY
+  UNIT
+  ROOM
+}
+
+/**
+ * =========================
+ * USER & AUTH
+ * =========================
+ */
+
+model User {
+  id       String @id @default(uuid())
+  fullName String
+  email    String @unique
+
+  countryCode   String? @db.VarChar(8)
+  contactNumber String? @db.VarChar(20)
+
+  createdByUserId String?
+  passwordHash    String
+  role            UserRole @default(GUEST)
+
+  createdBy                  User?                @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers               User[]               @relation("UserCreator")
+  sessions                   Session[]
+  resetTokens                PasswordResetToken[]
+  bookings                   Booking[]
+  payments                   Payment[]
+  bookingStatusHistory       BookingStatusHistory[] @relation("BookingStatusActor")
+  quotes                     QuoteRequest[]
+  propertyAssignments        PropertyAssignment[] @relation("AssignedUser")
+  createdPropertyAssignments PropertyAssignment[] @relation("AssignmentCreatedBy")
+  createdProperties          Property[]           @relation("PropertyCreatedBy")
+  createdMaintenanceBlocks   MaintenanceBlock[]   @relation("MaintenanceCreatedBy")
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  ip           String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+/**
+ * =========================
+ * INVENTORY
+ * =========================
+ */
+
+model Tenant {
+  id              String       @id @default(uuid())
+  name            String
+  slug            String       @unique
+  primaryDomain   String?      @unique
+  status          TenantStatus @default(ACTIVE)
+  brandName       String
+  logoUrl         String?
+  primaryColor    String       @default("#4f46e5")
+  secondaryColor  String       @default("#f59e0b")
+  supportEmail    String?
+  supportPhone    String?
+  defaultCurrency String       @default("INR")
+  timezone        String       @default("Asia/Kolkata")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  properties Property[]
+
+  @@map("tenants")
+}
+
+model Property {
+  id              String @id @default(uuid())
+  tenantId        String
+  name            String
+  address         String
+  city            String
+  state           String
+  createdByUserId String
+
+  isActive Boolean        @default(true)
+  status   PropertyStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy         User                 @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  units             Unit[]
+  amenities         PropertyAmenity[]
+  amenityCatalog    Amenity[]
+  roomProducts      RoomProduct[]
+  roomPricing       RoomPricing[]
+  bookings          Booking[]
+  payments          Payment[]
+  quoteRequests     QuoteRequest[]
+  enquiries         Enquiry[]
+  assignments       PropertyAssignment[]
+  maintenanceBlocks MaintenanceBlock[]
+  taxes             Tax[]
+  coupons           Coupon[]
+
+  @@unique([tenantId, name, city, state])
+  @@index([tenantId])
+  @@map("properties")
+}
+
+model Unit {
+  id         String @id @default(uuid())
+  propertyId String
+  unitNumber String
+  floor      Int
+
+  isActive Boolean    @default(true)
+  status   UnitStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property          Property           @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  rooms             Room[]
+  pricing           RoomPricing[]
+  amenities         UnitAmenity[]
+  maintenanceBlocks MaintenanceBlock[]
+
+  @@unique([propertyId, unitNumber])
+  @@index([propertyId])
+  @@map("units")
+}
+
+model Room {
+  id           String     @id @default(uuid())
+  unitId       String
+  name         String
+  number       String
+  rent         Float
+  hasAC        Boolean    @default(false)
+  maxOccupancy Int        @default(1)
+  status       RoomStatus @default(AVAILABLE)
+  isActive     Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  amenities         RoomAmenity[]
+  pricing           RoomPricing[]
+  maintenanceBlocks MaintenanceBlock[]
+
+  @@unique([unitId, number])
+  @@index([unitId])
+  @@map("rooms")
+}
+
+/**
+ * =========================
+ * PRODUCTS & PRICING
+ * =========================
+ */
+
+model RoomProduct {
+  id         String              @id @default(uuid())
+  propertyId String
+  name       String
+  occupancy  Int
+  hasAC      Boolean
+  category   RoomProductCategory
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  pricing  RoomPricing[]
+  quotes   QuoteRequest[]
+
+  @@unique([propertyId, name])
+  @@index([propertyId])
+  @@map("room_products")
+}
+
+model RoomPricing {
+  id           String      @id @default(uuid())
+  propertyId   String
+  roomId       String?
+  unitId       String?
+  productId    String
+  rateType     RateType    @default(NIGHTLY)
+  pricingTier  PricingTier @default(STANDARD)
+  minNights    Int         @default(1)
+  maxNights    Int?
+  taxInclusive Boolean     @default(false)
+  price        Decimal
+  validFrom    DateTime
+  validTo      DateTime?
+  createdAt    DateTime    @default(now())
+
+  property Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room     Room?       @relation(fields: [roomId], references: [id], map: "fk_room_pricing_room")
+  unit     Unit?       @relation(fields: [unitId], references: [id], map: "fk_room_pricing_unit")
+  product  RoomProduct @relation(fields: [productId], references: [id], map: "fk_room_pricing_product")
+
+  @@index([propertyId])
+  @@index([roomId])
+  @@index([unitId])
+  @@index([productId])
+  @@index([validFrom, validTo])
+  @@map("room_pricing")
+}
+
+/**
+ * =========================
+ * QUOTES & BOOKINGS
+ * =========================
+ */
+
+model QuoteRequest {
+  id         String            @id @default(uuid())
+  propertyId String
+  userId     String?
+  productId  String?
+  targetType BookingTargetType
+  unitId     String?
+  roomId     String?
+
+  checkIn  DateTime
+  checkOut DateTime
+  status   LeadStatus @default(NEW)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user     User?        @relation(fields: [userId], references: [id], map: "fk_quote_user")
+  product  RoomProduct? @relation(fields: [productId], references: [id], map: "fk_quote_product")
+
+  @@index([propertyId])
+  @@index([userId])
+  @@map("quote_requests")
+}
+
+model Booking {
+  id         String            @id @default(uuid())
+  bookingRef String            @unique
+  propertyId String
+  userId     String
+  productId  String?
+  targetType BookingTargetType
+  unitId     String?
+  roomId     String?
+
+  guestNameSnapshot    String
+  guestEmailSnapshot   String
+  guestContactSnapshot String?
+  targetLabel   String
+  productName   String
+  pricePerNight Decimal
+
+  checkIn     DateTime
+  checkOut    DateTime
+  status      BookingStatus @default(PENDING)
+  totalAmount Decimal
+  internalNotes       String?   @db.Text
+  cancellationReason  String?   @db.Text
+  cancelledAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  payments      Payment[]
+  statusHistory BookingStatusHistory[]
+
+  @@index([propertyId])
+  @@index([userId])
+  @@index([bookingRef])
+  @@index([roomId, checkIn, checkOut])
+  @@index([unitId, checkIn, checkOut])
+  @@index([status, checkIn, checkOut])
+  @@map("bookings")
+}
+
+model BookingStatusHistory {
+  id          String         @id @default(uuid())
+  bookingId   String
+  fromStatus  BookingStatus?
+  toStatus    BookingStatus
+  actorUserId String?
+  note        String?        @db.Text
+  createdAt   DateTime       @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  actor   User?   @relation("BookingStatusActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([actorUserId])
+  @@map("booking_status_history")
+}
+
+model Payment {
+  id                String          @id @default(uuid())
+  bookingId         String
+  propertyId        String
+  userId            String
+  provider          PaymentProvider
+  status            PaymentStatus   @default(PENDING)
+  amount            Decimal
+  currency          String          @default("INR") @db.VarChar(3)
+  idempotencyKey    String          @unique
+  providerOrderId   String?
+  providerPaymentId String?
+  providerSignature String?
+  failureCode       String?
+  failureMessage    String?
+  metadata          Json?
+  paidAt            DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerPaymentId])
+  @@index([bookingId])
+  @@index([propertyId])
+  @@index([userId])
+  @@index([status, createdAt])
+  @@map("payments")
+}
+
+/**
+ * =========================
+ * AMENITIES
+ * =========================
+ */
+
+model Amenity {
+  id         String  @id @default(uuid())
+  propertyId String
+  name       String
+  icon       String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  property          Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  propertyAmenities PropertyAmenity[]
+  unitAmenities     UnitAmenity[]
+  roomAmenities     RoomAmenity[]
+
+  @@unique([propertyId, name])
+  @@index([propertyId])
+  @@map("amenities")
+}
+
+model PropertyAmenity {
+  propertyId String
+  amenityId  String
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade, map: "fk_property_amenity_property")
+  amenity  Amenity  @relation(fields: [amenityId], references: [id], onDelete: Cascade, map: "fk_property_amenity_amenity")
+
+  @@id([propertyId, amenityId])
+  @@map("property_amenities")
+}
+
+model UnitAmenity {
+  unitId    String
+  amenityId String
+
+  unit    Unit    @relation(fields: [unitId], references: [id], onDelete: Cascade, map: "fk_unit_amenity_unit")
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade, map: "fk_unit_amenity_amenity")
+
+  @@id([unitId, amenityId])
+  @@index([amenityId])
+  @@map("unit_amenities")
+}
+
+model RoomAmenity {
+  roomId    String
+  amenityId String
+
+  room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade, map: "fk_room_amenity_room")
+  amenity Amenity @relation(fields: [amenityId], references: [id], onDelete: Cascade, map: "fk_room_amenity_amenity")
+
+  @@id([roomId, amenityId])
+  @@map("room_amenities")
+}
+
+/**
+ * =========================
+ * ENQUIRIES
+ * =========================
+ */
+
+model Enquiry {
+  id            String @id @default(uuid())
+  propertyId    String
+  name          String
+  email         String
+  contactNumber String
+  message       String
+
+  source String?
+  status LeadStatus @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("enquiries")
+}
+
+model PropertyAssignment {
+  id               String                 @id @default(uuid())
+  propertyId       String
+  userId           String
+  role             PropertyAssignmentRole
+  assignedByUserId String
+  createdAt        DateTime               @default(now())
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user       User     @relation("AssignedUser", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy User     @relation("AssignmentCreatedBy", fields: [assignedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([propertyId, userId])
+  @@index([userId])
+  @@index([propertyId, role])
+  @@map("property_assignments")
+}
+
+model MaintenanceBlock {
+  id              String                @id @default(uuid())
+  propertyId      String
+  unitId          String?
+  roomId          String?
+  targetType      MaintenanceTargetType
+  reason          String?
+  startDate       DateTime
+  endDate         DateTime
+  createdByUserId String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  room      Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("MaintenanceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId])
+  @@index([startDate, endDate])
+  @@map("maintenance_blocks")
+}
+
+model Tax {
+  id         String   @id @default(uuid())
+  propertyId String
+  name       String
+  rate       Decimal
+  taxType    TaxType  @default(PERCENTAGE)
+  appliesTo  String   @default("ALL")
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("taxes")
+}
+
+model Coupon {
+  id            String       @id @default(uuid())
+  propertyId    String
+  code          String
+  name          String
+  discountType  DiscountType @default(PERCENTAGE)
+  discountValue Decimal
+  maxUses       Int?
+  usedCount     Int          @default(0)
+  minNights     Int?
+  minAmount     Decimal?
+  validFrom     DateTime
+  validTo       DateTime?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, code])
+  @@index([propertyId])
+  @@map("coupons")
+}

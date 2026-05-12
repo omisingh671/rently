@@ -1,0 +1,1 @@
+export const ADMIN_OPTION_LIST_LIMIT = 100;

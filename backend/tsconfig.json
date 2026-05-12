@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    /* Environment */
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    /* ESM correctness */
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Node globals */
+    "types": ["node"],
+
+    /* Path aliases */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
+    /* Debug */
+    "sourceMap": true,
+    "skipLibCheck": true,
+
+    /* IMPORTANT — typecheck only */
+    "noEmit": true
+  },
+
+  "include": ["src", "scripts", "tests", "prisma"]
+}

@@ -1,0 +1,51 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vite specific
+*.local
+vite.cache/
+
+# OS junk files
+Thumbs.db
+._*
+
+# Test and coverage
+coverage/
+*.lcov
+
+# Temporary files
+temp/
+tmp/
+
+# ESLint / Prettier
+.eslintcache
+.prettier-cache/
