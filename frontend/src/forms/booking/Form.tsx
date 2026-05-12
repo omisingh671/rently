@@ -124,7 +124,7 @@ export default function BookingForm({
             "linear-gradient(135deg, rgba(129,140,248,0.5) 0%, rgba(99,102,241,0.18) 50%, rgba(129,140,248,0.4) 100%)",
         }}
       >
-        <div className="rounded-[calc(1rem-1px)] bg-[#1a1461] p-5 sm:p-6">
+        <div className="rounded-[calc(1rem-1px)] bg-[#1a1461] p-[43px] sm:p-[51px]">
 
 
           {/* ── Form ── */}
@@ -134,14 +134,15 @@ export default function BookingForm({
               className={[
                 /* Override form-control input colours for dark surface */
                 "[&_.form-control_input]:border-indigo-300/20",
-                "[&_.form-control_input]:bg-[#110d52]",
+                "[&_.form-control_input]:bg-[#1e1880]",
                 "[&_.form-control_input]:text-indigo-50",
                 "[&_.form-control_input]:placeholder:text-indigo-300/40",
                 "[&_.form-control_input]:focus-visible:border-indigo-400",
                 "[&_.form-control_input]:focus-visible:ring-indigo-400/40",
                 "[&_.form-control_input]:rounded-xl",
                 "[&_.form-control_input]:py-3",
-                /* Keep date text readable */
+                /* Make the native calendar/clock icons visible on dark bg */
+                "[&_.form-control_input[type=date]]:[color-scheme:dark]",
                 "[&_.form-control_input[type=date]]:text-indigo-100",
                 /* Remove default label styles (replaced inline) */
                 "[&_.form-group]:mb-0",
