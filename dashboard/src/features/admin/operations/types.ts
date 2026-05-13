@@ -96,6 +96,8 @@ export type CheckManualBookingAvailabilityPayload = {
 export type ManualBookingAvailabilityItem = {
   spaceId: string;
   available: boolean;
+  capacity: number;
+  targetType: BookingTargetType;
   reason: string | null;
 };
 

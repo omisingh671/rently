@@ -804,6 +804,9 @@ const getManualBookingSpaceTarget = (
   );
 };
 
+const getManualBookingSpaceCapacity = (space: publicRepo.PublicSpaceRecord) =>
+  space.room?.maxOccupancy ?? space.product.occupancy;
+
 const ensureAmenityIdsBelongToProperty = async (
   propertyId: string,
   amenityIds: string[],
@@ -2761,6 +2764,8 @@ export const checkManualBookingAvailability = async (
         return {
           spaceId,
           available: false,
+          capacity: 0,
+          targetType: BookingTargetType.ROOM,
           reason: "No active price for selected dates",
         };
       }
@@ -2769,11 +2774,14 @@ export const checkManualBookingAvailability = async (
         return {
           spaceId,
           available: false,
+          capacity: getManualBookingSpaceCapacity(space),
+          targetType: getManualBookingSpaceTarget(space).targetType,
           reason: "Space belongs to another property",
         };
       }
 
       const target = getManualBookingSpaceTarget(space);
+      const capacity = getManualBookingSpaceCapacity(space);
       const [hasBooking, hasMaintenance] = await Promise.all([
         publicRepo.hasOverlappingBooking(target, input.from, input.to),
         publicRepo.hasOverlappingMaintenance(
@@ -2788,6 +2796,8 @@ export const checkManualBookingAvailability = async (
         return {
           spaceId,
           available: false,
+          capacity,
+          targetType: target.targetType,
           reason: "Already booked for selected dates",
         };
       }
@@ -2796,6 +2806,8 @@ export const checkManualBookingAvailability = async (
         return {
           spaceId,
           available: false,
+          capacity,
+          targetType: target.targetType,
           reason: "Blocked for maintenance",
         };
       }
@@ -2803,6 +2815,8 @@ export const checkManualBookingAvailability = async (
       return {
         spaceId,
         available: true,
+        capacity,
+        targetType: target.targetType,
         reason: null,
       };
     }),

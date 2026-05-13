@@ -190,6 +190,8 @@ export interface DashboardRoomPricingDTO {
 export interface DashboardManualBookingAvailabilityItemDTO {
   spaceId: string;
   available: boolean;
+  capacity: number;
+  targetType: BookingTargetType;
   reason: string | null;
 }
 
