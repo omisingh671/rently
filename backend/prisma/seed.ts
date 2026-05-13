@@ -3,6 +3,7 @@ import { hashPassword } from "../src/common/utils/password.js";
 import {
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   PricingTier,
@@ -36,7 +37,77 @@ const credentials = {
   },
 } as const;
 
+const seedUnitNumbers = [
+  "201",
+  "202",
+  "301",
+  "302",
+  "401",
+  "402",
+  "501",
+  "502",
+] as const;
+
+const roomSuffixes = ["A", "B", "C"] as const;
+
+const roomProductSeeds = [
+  {
+    name: "Single Non-AC Room",
+    occupancy: 1,
+    hasAC: false,
+    price: 1500,
+  },
+  {
+    name: "Single AC Room",
+    occupancy: 1,
+    hasAC: true,
+    price: 1750,
+  },
+  {
+    name: "Double Non-AC Room",
+    occupancy: 2,
+    hasAC: false,
+    price: 2000,
+  },
+  {
+    name: "Double AC Room",
+    occupancy: 2,
+    hasAC: true,
+    price: 2250,
+  },
+] as const;
+
+async function clearExistingSeedData() {
+  await prisma.$transaction([
+    prisma.bookingStatusHistory.deleteMany(),
+    prisma.payment.deleteMany(),
+    prisma.bookingItem.deleteMany(),
+    prisma.booking.deleteMany(),
+    prisma.quoteRequest.deleteMany(),
+    prisma.enquiry.deleteMany(),
+    prisma.coupon.deleteMany(),
+    prisma.tax.deleteMany(),
+    prisma.maintenanceBlock.deleteMany(),
+    prisma.roomPricing.deleteMany(),
+    prisma.roomAmenity.deleteMany(),
+    prisma.unitAmenity.deleteMany(),
+    prisma.propertyAmenity.deleteMany(),
+    prisma.amenity.deleteMany(),
+    prisma.room.deleteMany(),
+    prisma.unit.deleteMany(),
+    prisma.roomProduct.deleteMany(),
+    prisma.propertyAssignment.deleteMany(),
+    prisma.property.deleteMany(),
+    prisma.tenant.deleteMany(),
+    prisma.passwordResetToken.deleteMany(),
+    prisma.session.deleteMany(),
+    prisma.user.deleteMany(),
+  ]);
+}
+
 async function main() {
+  await clearExistingSeedData();
+
   const [superAdminHash, adminHash, managerHash, guestHash] =
     await Promise.all([
       hashPassword(credentials.superAdmin.password),
@@ -159,67 +230,141 @@ async function main() {
     })),
   });
 
-  const unit = await prisma.unit.create({
-    data: {
-      propertyId: property.id,
-      unitNumber: "A-101",
-      floor: 1,
-      status: UnitStatus.ACTIVE,
-      isActive: true,
-    },
-  });
+  const units = await Promise.all(
+    seedUnitNumbers.map((unitNumber) =>
+      prisma.unit.create({
+        data: {
+          propertyId: property.id,
+          unitNumber,
+          floor: Number(unitNumber.charAt(0)),
+          status: UnitStatus.ACTIVE,
+          isActive: true,
+        },
+      }),
+    ),
+  );
 
   await prisma.unitAmenity.createMany({
-    data: amenities.map((amenity) => ({
-      unitId: unit.id,
-      amenityId: amenity.id,
-    })),
+    data: units.flatMap((unit) =>
+      amenities.map((amenity) => ({
+        unitId: unit.id,
+        amenityId: amenity.id,
+      })),
+    ),
   });
 
-  const room = await prisma.room.create({
-    data: {
-      unitId: unit.id,
-      name: "Deluxe Room",
-      number: "101",
-      rent: 2200,
-      hasAC: true,
-      maxOccupancy: 2,
-      status: RoomStatus.AVAILABLE,
-      isActive: true,
-    },
-  });
+  const rooms = (
+    await Promise.all(
+      units.map((unit) =>
+        Promise.all(
+          roomSuffixes.map((suffix) =>
+            prisma.room.create({
+              data: {
+                unitId: unit.id,
+                name: "Room",
+                number: `${unit.unitNumber}-${suffix}`,
+                rent: 1500,
+                hasAC: true,
+                maxOccupancy: 2,
+                status: RoomStatus.AVAILABLE,
+                isActive: true,
+              },
+            }),
+          ),
+        ),
+      ),
+    )
+  ).flat();
 
   await prisma.roomAmenity.createMany({
-    data: amenities.map((amenity) => ({
-      roomId: room.id,
-      amenityId: amenity.id,
-    })),
+    data: rooms.flatMap((room) =>
+      amenities.map((amenity) => ({
+        roomId: room.id,
+        amenityId: amenity.id,
+      })),
+    ),
   });
 
-  const product = await prisma.roomProduct.create({
-    data: {
-      propertyId: property.id,
-      name: "Deluxe Double Room",
-      occupancy: 2,
-      hasAC: true,
-      category: RoomProductCategory.NIGHTLY,
-    },
-  });
+  const unit = units.find((seededUnit) => seededUnit.unitNumber === "201");
+  const room = rooms.find((seededRoom) => seededRoom.number === "201-A");
 
-  const pricing = await prisma.roomPricing.create({
-    data: {
-      propertyId: property.id,
-      roomId: room.id,
-      unitId: unit.id,
-      productId: product.id,
-      rateType: RateType.NIGHTLY,
-      pricingTier: PricingTier.STANDARD,
-      minNights: 1,
-      taxInclusive: false,
-      price: 2200,
-      validFrom: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  });
+  if (!unit || !room) {
+    throw new Error("Seed inventory invariant failed");
+  }
+
+  const [singleNonAcProduct, singleAcProduct, doubleNonAcProduct, doubleAcProduct] =
+    await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: roomProductSeeds[0].name,
+          occupancy: 1,
+          hasAC: false,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: roomProductSeeds[1].name,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: roomProductSeeds[2].name,
+          occupancy: 2,
+          hasAC: false,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: roomProductSeeds[3].name,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+
+  const productRates = [
+    { productId: singleNonAcProduct.id, price: roomProductSeeds[0].price },
+    { productId: singleAcProduct.id, price: roomProductSeeds[1].price },
+    { productId: doubleNonAcProduct.id, price: roomProductSeeds[2].price },
+    { productId: doubleAcProduct.id, price: roomProductSeeds[3].price },
+  ] as const;
+
+  const pricingRates = await Promise.all(
+    rooms.flatMap((seededRoom) =>
+      productRates.map((rate) =>
+        prisma.roomPricing.create({
+          data: {
+            propertyId: property.id,
+            roomId: seededRoom.id,
+            unitId: seededRoom.unitId,
+            productId: rate.productId,
+            rateType: RateType.NIGHTLY,
+            pricingTier: PricingTier.STANDARD,
+            minNights: 1,
+            taxInclusive: false,
+            price: rate.price,
+            validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        }),
+      ),
+    ),
+  );
+  const doubleAcPricing = pricingRates.find(
+    (rate) => rate.roomId === room.id && rate.productId === doubleAcProduct.id,
+  );
+  if (!doubleAcPricing) {
+    throw new Error("Seed pricing invariant failed");
+  }
 
   await prisma.tax.create({
     data: {
@@ -251,20 +396,36 @@ async function main() {
       bookingRef: "SCH-2026-SEED000001",
       propertyId: property.id,
       userId: guest.id,
-      productId: product.id,
+      productId: doubleAcProduct.id,
       targetType: BookingTargetType.ROOM,
       unitId: unit.id,
       roomId: room.id,
+      comfortOption: ComfortOption.AC,
       guestNameSnapshot: guest.fullName,
       guestEmailSnapshot: guest.email,
       guestContactSnapshot: guest.contactNumber,
-      targetLabel: "Deluxe Room 101",
-      productName: product.name,
-      pricePerNight: pricing.price,
+      targetLabel: "Room 201-A",
+      productName: doubleAcProduct.name,
+      pricePerNight: doubleAcPricing.price,
       checkIn: new Date("2026-05-15T00:00:00.000Z"),
       checkOut: new Date("2026-05-17T00:00:00.000Z"),
       status: BookingStatus.CONFIRMED,
-      totalAmount: 4400,
+      totalAmount: 4500,
+      items: {
+        create: {
+          productId: doubleAcProduct.id,
+          targetType: BookingTargetType.ROOM,
+          unitId: unit.id,
+          roomId: room.id,
+          guestCount: 2,
+          comfortOption: ComfortOption.AC,
+          targetLabel: "Room 201-A",
+          productName: doubleAcProduct.name,
+          capacity: 2,
+          pricePerNight: doubleAcPricing.price,
+          totalAmount: 4500,
+        },
+      },
     },
   });
 
@@ -284,7 +445,7 @@ async function main() {
     data: {
       propertyId: property.id,
       userId: guest.id,
-      productId: product.id,
+      productId: doubleAcProduct.id,
       targetType: BookingTargetType.ROOM,
       unitId: unit.id,
       roomId: room.id,

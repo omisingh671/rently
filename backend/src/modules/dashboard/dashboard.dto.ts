@@ -1,6 +1,9 @@
 import type {
+  BookingPaymentPolicy,
+  BookingType,
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
@@ -52,6 +55,8 @@ export interface DashboardTenantDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
+  payAtCheckInEnabled: boolean;
+  bookingTokenAmount: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -183,6 +188,24 @@ export interface DashboardRoomPricingDTO {
   createdAt: Date;
 }
 
+export interface DashboardManualBookingAvailabilityItemDTO {
+  spaceId: string;
+  available: boolean;
+  capacity: number;
+  targetType: BookingTargetType;
+  reason: string | null;
+  guestCount: number | null;
+  pricePerNight: string | null;
+}
+
+export interface DashboardManualBookingAvailabilityDTO {
+  from: string;
+  to: string;
+  guests: number;
+  availableSpaceIds: string[];
+  items: DashboardManualBookingAvailabilityItemDTO[];
+}
+
 export interface DashboardTaxDTO {
   id: string;
   propertyId: string;
@@ -226,6 +249,9 @@ export interface DashboardBookingDTO {
   guestNameSnapshot: string;
   guestEmailSnapshot: string;
   guestContactSnapshot: string | null;
+  bookingType: BookingType;
+  guestCount: number;
+  comfortOption: ComfortOption;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -237,7 +263,23 @@ export interface DashboardBookingDTO {
   checkOut: Date;
   status: BookingStatus;
   totalAmount: string;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: string;
   internalNotes: string | null;
+  items: Array<{
+    id: string;
+    targetType: BookingTargetType;
+    unitId: string | null;
+    roomId: string | null;
+    productId: string | null;
+    targetLabel: string;
+    productName: string;
+    capacity: number;
+    guestCount: number;
+    comfortOption: ComfortOption;
+    pricePerNight: string;
+    totalAmount: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;

@@ -79,14 +79,45 @@ export default function BookingsList({ bookings }: BookingsListProps) {
               </div>
 
               <div className="mt-2 text-sm text-slate-600">
-                Space:{" "}
-                <Link
-                  to={ROUTES.SPACE_DETAIL(booking.spaceId)}
-                  className="font-medium text-indigo-600 underline-offset-2 hover:underline"
-                >
-                  {booking.spaceName}
-                </Link>
+                {booking.bookingType === "MULTI_ROOM" ? (
+                  <>
+                    Space:{" "}
+                    <span className="font-medium text-slate-900">
+                      {booking.items.length} rooms
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Space:{" "}
+                    <Link
+                      to={ROUTES.SPACE_DETAIL(booking.spaceId)}
+                      className="font-medium text-indigo-600 underline-offset-2 hover:underline"
+                    >
+                      {booking.spaceName}
+                    </Link>
+                  </>
+                )}
               </div>
+
+              <div className="mt-1 text-sm text-slate-600">
+                Guests: {booking.guestCount}
+                <span className="mx-2 text-slate-300">|</span>
+                {booking.comfortOption === "AC" ? "AC" : "Non-AC"}
+              </div>
+
+              {booking.items.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {booking.items.map((item) => (
+                    <span
+                      key={item.id}
+                      className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
+                    >
+                      {item.targetLabel} ({item.guestCount}/{item.capacity},{" "}
+                      {item.comfortOption === "AC" ? "AC" : "Non-AC"})
+                    </span>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-1 text-sm text-slate-600">
                 {formatDate(booking.from)} to {formatDate(booking.to)}

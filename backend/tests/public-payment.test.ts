@@ -4,7 +4,9 @@ import { after, before, test } from "node:test";
 import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
+  BookingPaymentPolicy,
   BookingStatus,
+  ComfortOption,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -27,6 +29,7 @@ type TestState = {
   tenantSlug: string;
   propertyId: string;
   pricingId: string;
+  pricingTwoId: string;
 };
 
 let state: TestState;
@@ -35,9 +38,12 @@ const createBooking = () =>
   publicService.createBooking(
     state.guestId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-03-10T00:00:00.000Z"),
       to: new Date("2027-03-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -92,42 +98,115 @@ before(async () => {
     },
   });
 
-  const room = await prisma.room.create({
-    data: {
-      unitId: unit.id,
-      name: "Payment Test Room",
-      number: "101",
-      rent: 3000,
-      hasAC: true,
-      maxOccupancy: 2,
-      status: RoomStatus.AVAILABLE,
-    },
-  });
+  const [room, roomTwo] = await Promise.all([
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Payment Test Room",
+        number: "101",
+        rent: 3000,
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Payment Test Room",
+        number: "102",
+        rent: 2800,
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+  ]);
 
-  const product = await prisma.roomProduct.create({
-    data: {
-      propertyId: property.id,
-      name: `${testId} Double Room`,
-      occupancy: 2,
-      hasAC: true,
-      category: RoomProductCategory.NIGHTLY,
-    },
-  });
+  const [singleProduct, product] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Single Room`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Double Room`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
 
-  const pricing = await prisma.roomPricing.create({
-    data: {
-      propertyId: property.id,
-      roomId: room.id,
-      unitId: unit.id,
-      productId: product.id,
-      rateType: RateType.NIGHTLY,
-      pricingTier: PricingTier.STANDARD,
-      minNights: 1,
-      taxInclusive: false,
-      price: 3000,
-      validFrom: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  });
+  const pricingRates = await Promise.all([
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: room.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1800,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomTwo.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1700,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: room.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3000,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomTwo.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2800,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+  const pricing = pricingRates[2];
+  const pricingTwo = pricingRates[3];
+  if (!pricing || !pricingTwo) {
+    throw new Error("Payment test pricing invariant failed");
+  }
 
   state = {
     superAdminId: superAdmin.id,
@@ -136,6 +215,7 @@ before(async () => {
     tenantSlug: tenant.slug,
     propertyId: property.id,
     pricingId: pricing.id,
+    pricingTwoId: pricingTwo.id,
   };
 });
 
@@ -173,7 +253,7 @@ test("manual payment confirms a pending booking", async () => {
 
   assert.equal(result.payment.status, "SUCCEEDED");
   assert.equal(result.payment.provider, "MANUAL");
-  assert.equal(result.payment.amount, 6000);
+  assert.equal(result.payment.amount, 10);
   assert.equal(result.payment.currency, "INR");
   assert.equal(result.booking.status, BookingStatus.CONFIRMED);
 
@@ -203,9 +283,12 @@ test("manual payment is idempotent for the same key", async () => {
   const booking = await publicService.createBooking(
     state.guestId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-04-10T00:00:00.000Z"),
       to: new Date("2027-04-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -232,13 +315,154 @@ test("manual payment is idempotent for the same key", async () => {
   assert.equal(paymentCount, 1);
 });
 
+test("manual payment confirms a multi-room booking", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "MULTI_ROOM",
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-06-10T00:00:00.000Z"),
+      to: new Date("2027-06-12T00:00:00.000Z"),
+      guests: 3,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const result = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-multi-room-payment`,
+  });
+
+  assert.equal(booking.items.length, 2);
+  assert.equal(result.payment.amount, 10);
+  assert.equal(result.booking.status, BookingStatus.CONFIRMED);
+});
+
+test("booking is confirmed without payment when token collection is disabled", async () => {
+  await prisma.tenant.update({
+    where: { id: state.tenantId },
+    data: {
+      payAtCheckInEnabled: false,
+    },
+  });
+
+  try {
+    const booking = await publicService.createBooking(
+      state.guestId,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2027-09-10T00:00:00.000Z"),
+        to: new Date("2027-09-12T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(booking.status, BookingStatus.CONFIRMED);
+    assert.equal(booking.paymentPolicy, BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
+    assert.equal(booking.upfrontAmount, 0);
+
+    await assert.rejects(
+      paymentsService.createManualPayment({
+        userId: state.guestId,
+        bookingId: booking.id,
+        idempotencyKey: `${testId}-disabled-token-payment`,
+      }),
+      (reason) => {
+        assert.ok(reason instanceof HttpError);
+        assert.equal(reason.statusCode, 409);
+        assert.equal(reason.code, "BOOKING_PAYMENT_NOT_REQUIRED");
+        return true;
+      },
+    );
+  } finally {
+    await prisma.tenant.update({
+      where: { id: state.tenantId },
+      data: {
+        payAtCheckInEnabled: true,
+      },
+    });
+  }
+});
+
+test("dashboard can create a confirmed walk-in booking without payment", async () => {
+  const booking = await dashboardService.createManualBooking(
+    state.superAdminId,
+    state.propertyId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-08-10T00:00:00.000Z"),
+      to: new Date("2027-08-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      guestName: "Walk In Guest",
+      guestEmail: `${testId}-walk-in@sucasa.test`,
+      countryCode: "+91",
+      contactNumber: "9999999999",
+      internalNotes: "Created at reception",
+    },
+  );
+
+  assert.equal(booking.status, BookingStatus.CONFIRMED);
+  assert.equal(booking.paymentPolicy, BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
+  assert.equal(booking.upfrontAmount, "0");
+  assert.equal(booking.guestEmailSnapshot, `${testId}-walk-in@sucasa.test`);
+  assert.equal(booking.items.length, 1);
+  assert.equal(booking.internalNotes, "Created at reception");
+});
+
+test("dashboard availability check marks booked spaces unavailable", async () => {
+  await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-10-10T00:00:00.000Z"),
+      to: new Date("2027-10-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const result = await dashboardService.checkManualBookingAvailability(
+    state.superAdminId,
+    state.propertyId,
+    {
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-10-10T00:00:00.000Z"),
+      to: new Date("2027-10-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+  );
+
+  const bookedSpace = result.items.find((item) => item.spaceId === state.pricingId);
+  const availableSpace = result.items.find(
+    (item) => item.spaceId === state.pricingTwoId,
+  );
+
+  assert.equal(bookedSpace?.available, false);
+  assert.equal(bookedSpace?.reason, "Already booked for selected dates");
+  assert.equal(availableSpace?.available, true);
+  assert.deepEqual(result.availableSpaceIds, [state.pricingTwoId]);
+});
+
 test("manual payment rejects a second successful payment for one booking", async () => {
   const booking = await publicService.createBooking(
     state.guestId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-05-10T00:00:00.000Z"),
       to: new Date("2027-05-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -269,9 +493,12 @@ test("dashboard booking status updates append audit history and notes", async ()
   const booking = await publicService.createBooking(
     state.guestId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-07-10T00:00:00.000Z"),
       to: new Date("2027-07-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -313,9 +540,12 @@ test("dashboard booking status update rejects invalid lifecycle jumps", async ()
   const booking = await publicService.createBooking(
     state.guestId,
     {
+      bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
       from: new Date("2027-07-20T00:00:00.000Z"),
       to: new Date("2027-07-22T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );

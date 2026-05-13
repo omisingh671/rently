@@ -1,0 +1,8 @@
+ALTER TABLE `rooms` MODIFY `maxOccupancy` INTEGER NOT NULL DEFAULT 2;
+
+ALTER TABLE `bookings`
+  ADD COLUMN `comfortOption` ENUM('AC', 'NON_AC') NOT NULL DEFAULT 'NON_AC';
+
+ALTER TABLE `booking_items`
+  ADD COLUMN `guestCount` INTEGER NOT NULL DEFAULT 1,
+  ADD COLUMN `comfortOption` ENUM('AC', 'NON_AC') NOT NULL DEFAULT 'NON_AC';

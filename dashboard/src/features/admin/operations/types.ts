@@ -9,6 +9,11 @@ export type BookingStatus =
 
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
+export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type ComfortOption = "AC" | "NON_AC";
+export type BookingPaymentPolicy =
+  | "TOKEN_AT_BOOKING"
+  | "NO_UPFRONT_PAYMENT";
 
 export type AdminBooking = {
   id: string;
@@ -21,6 +26,9 @@ export type AdminBooking = {
   guestNameSnapshot: string;
   guestEmailSnapshot: string;
   guestContactSnapshot: string | null;
+  bookingType: BookingType;
+  guestCount: number;
+  comfortOption: ComfortOption;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -32,7 +40,23 @@ export type AdminBooking = {
   checkOut: string;
   status: BookingStatus;
   totalAmount: string;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: string;
   internalNotes: string | null;
+  items: Array<{
+    id: string;
+    targetType: BookingTargetType;
+    unitId: string | null;
+    roomId: string | null;
+    productId: string | null;
+    targetLabel: string;
+    productName: string;
+    capacity: number;
+    guestCount: number;
+    comfortOption: ComfortOption;
+    pricePerNight: string;
+    totalAmount: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;
@@ -50,6 +74,47 @@ export type UpdateBookingPayload = {
   status?: BookingStatus;
   note?: string;
   internalNotes?: string | null;
+};
+
+export type CreateManualBookingPayload = {
+  bookingType: BookingType;
+  spaceId?: string;
+  spaceIds?: string[];
+  from: string;
+  to: string;
+  guests: number;
+  comfortOption: ComfortOption;
+  guestName: string;
+  guestEmail: string;
+  countryCode?: string;
+  contactNumber?: string;
+  internalNotes?: string | null;
+};
+
+export type CheckManualBookingAvailabilityPayload = {
+  spaceIds: string[];
+  from: string;
+  to: string;
+  guests: number;
+  comfortOption: ComfortOption;
+};
+
+export type ManualBookingAvailabilityItem = {
+  spaceId: string;
+  available: boolean;
+  capacity: number;
+  targetType: BookingTargetType;
+  reason: string | null;
+  guestCount: number | null;
+  pricePerNight: string | null;
+};
+
+export type ManualBookingAvailabilityResponse = {
+  from: string;
+  to: string;
+  guests: number;
+  availableSpaceIds: string[];
+  items: ManualBookingAvailabilityItem[];
 };
 
 export type AdminEnquiry = {

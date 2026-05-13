@@ -18,6 +18,7 @@ export const PUBLIC_QUERY_KEYS = {
       checkOut: string;
       guests: number;
       occupancy: string;
+      comfort: string;
     }) =>
       [
         ...tenantScope,
@@ -27,6 +28,7 @@ export const PUBLIC_QUERY_KEYS = {
         criteria.checkOut,
         criteria.guests,
         criteria.occupancy,
+        criteria.comfort,
       ] as const,
   },
 } as const;

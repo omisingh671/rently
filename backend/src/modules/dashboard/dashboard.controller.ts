@@ -7,6 +7,7 @@ import {
   createAssignmentSchema,
   createCouponSchema,
   createDashboardUserSchema,
+  createManualBookingSchema,
   createTenantSchema,
   createRoomPricingSchema,
   createRoomProductSchema,
@@ -31,6 +32,7 @@ import {
   listUnitsQuerySchema,
   listUsersQuerySchema,
   propertyIdParamsSchema,
+  checkManualBookingAvailabilitySchema,
   updateAmenitySchema,
   updateBookingStatusSchema,
   updateCouponSchema,
@@ -109,6 +111,12 @@ export const createTenant = async (req: AuthRequest, res: Response) => {
     ...(body.defaultCurrency !== undefined && {
       defaultCurrency: body.defaultCurrency,
     }),
+    ...(body.payAtCheckInEnabled !== undefined && {
+      payAtCheckInEnabled: body.payAtCheckInEnabled,
+    }),
+    ...(body.bookingTokenAmount !== undefined && {
+      bookingTokenAmount: body.bookingTokenAmount,
+    }),
     ...(body.timezone !== undefined && { timezone: body.timezone }),
   });
   res.status(201).json({ success: true, data });
@@ -134,6 +142,12 @@ export const updateTenant = async (req: AuthRequest, res: Response) => {
     ...(body.supportPhone !== undefined && { supportPhone: body.supportPhone }),
     ...(body.defaultCurrency !== undefined && {
       defaultCurrency: body.defaultCurrency,
+    }),
+    ...(body.payAtCheckInEnabled !== undefined && {
+      payAtCheckInEnabled: body.payAtCheckInEnabled,
+    }),
+    ...(body.bookingTokenAmount !== undefined && {
+      bookingTokenAmount: body.bookingTokenAmount,
     }),
     ...(body.timezone !== undefined && { timezone: body.timezone }),
   });
@@ -751,6 +765,50 @@ export const listBookings = async (req: AuthRequest, res: Response) => {
     ...(query.search !== undefined && { search: query.search }),
     ...(query.status !== undefined && { status: query.status }),
   });
+  res.json({ success: true, data });
+};
+
+export const createManualBooking = async (req: AuthRequest, res: Response) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = createManualBookingSchema.parse(req.body);
+  const data = await service.createManualBooking(getUserId(req), params.propertyId, {
+    bookingType: body.bookingType,
+    ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+    ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+    from: body.from,
+    to: body.to,
+    guests: body.guests,
+    comfortOption: body.comfortOption,
+    guestName: body.guestName,
+    guestEmail: body.guestEmail,
+    ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
+    ...(body.internalNotes !== undefined && {
+      internalNotes: body.internalNotes,
+    }),
+  });
+  res.status(201).json({ success: true, data });
+};
+
+export const checkManualBookingAvailability = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = checkManualBookingAvailabilitySchema.parse(req.body);
+  const data = await service.checkManualBookingAvailability(
+    getUserId(req),
+    params.propertyId,
+    {
+      spaceIds: body.spaceIds,
+      from: body.from,
+      to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+    },
+  );
   res.json({ success: true, data });
 };
 

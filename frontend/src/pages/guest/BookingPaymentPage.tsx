@@ -93,6 +93,15 @@ function BookingSummary({ booking }: { booking: Booking }) {
 
         <div>
           <dt className="text-xs font-semibold uppercase text-slate-500">
+            Guests
+          </dt>
+          <dd className="mt-1 text-sm text-slate-900">
+            {booking.guestCount}
+          </dd>
+        </div>
+
+        <div>
+          <dt className="text-xs font-semibold uppercase text-slate-500">
             Price
           </dt>
           <dd className="mt-1 text-sm text-slate-900">
@@ -107,8 +116,46 @@ function BookingSummary({ booking }: { booking: Booking }) {
           <dd className="mt-1 text-lg font-semibold text-slate-900">
             INR {booking.totalPrice}
           </dd>
+          {booking.upfrontAmount > 0 && (
+            <dd className="mt-1 text-xs text-slate-500">
+              Token due now: INR {booking.upfrontAmount}
+            </dd>
+          )}
+          {booking.remainingPayAtCheckIn > 0 && (
+            <dd className="text-xs text-slate-500">
+              Pay at check-in: INR {booking.remainingPayAtCheckIn}
+            </dd>
+          )}
         </div>
       </dl>
+
+      {booking.items.length > 1 && (
+        <div className="mt-5 rounded-lg border border-slate-100 bg-slate-50 p-4">
+          <div className="text-xs font-semibold uppercase text-slate-500">
+            Rooms
+          </div>
+          <div className="mt-3 space-y-2">
+            {booking.items.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
+                <div>
+                  <div className="font-medium text-slate-900">
+                    {item.targetLabel}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Capacity {item.capacity}
+                  </div>
+                </div>
+                <div className="text-right text-slate-700">
+                  INR {item.totalAmount}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -187,9 +234,11 @@ export default function BookingPaymentPage() {
             <div className="flex items-start gap-3">
               <FiCheckCircle className="mt-1 h-5 w-5 shrink-0" />
               <div>
-                <h2 className="font-semibold">Booking confirmed</h2>
-                <p className="mt-1 text-sm">
-                  Payment has been recorded and your booking is confirmed.
+                  <h2 className="font-semibold">Booking confirmed</h2>
+                  <p className="mt-1 text-sm">
+                  {booking.upfrontAmount > 0
+                    ? "Token payment has been recorded and your booking is confirmed."
+                    : "No upfront payment is required for this booking."}
                 </p>
               </div>
             </div>
@@ -202,7 +251,9 @@ export default function BookingPaymentPage() {
                   Manual payment
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Confirm this booking using the current manual payment flow.
+                  Confirm this booking with a token payment of INR{" "}
+                  {booking.upfrontAmount}. Remaining amount is payable at
+                  check-in.
                 </p>
               </div>
 

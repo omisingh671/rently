@@ -39,6 +39,8 @@ const emptyForm: TenantFormPayload = {
   supportPhone: "",
   defaultCurrency: "INR",
   timezone: "Asia/Kolkata",
+  payAtCheckInEnabled: true,
+  bookingTokenAmount: 10,
 };
 
 const buildTenantSlug = (name: string) => {
@@ -72,6 +74,8 @@ const toPayload = (
     supportPhone: form.supportPhone?.trim() || null,
     defaultCurrency: form.defaultCurrency?.trim().toUpperCase() || "INR",
     timezone: form.timezone?.trim() || "Asia/Kolkata",
+    payAtCheckInEnabled: form.payAtCheckInEnabled ?? true,
+    bookingTokenAmount: Number(form.bookingTokenAmount ?? 10),
   };
 };
 
@@ -88,6 +92,8 @@ const formFromTenant = (tenant: AdminTenant): TenantFormPayload => ({
   supportPhone: tenant.supportPhone ?? "",
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
+  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
+  bookingTokenAmount: Number(tenant.bookingTokenAmount),
 });
 
 export default function TenantsPage() {
@@ -130,11 +136,14 @@ export default function TenantsPage() {
   const safeItems = data?.items ?? [];
   const isInitialLoading = isPending && safeItems.length === 0;
 
-  const updateField = (name: keyof TenantFormPayload, value: string) => {
+  const updateField = (
+    name: keyof TenantFormPayload,
+    value: string | number | boolean,
+  ) => {
     setForm((current) => ({
       ...current,
       [name]: value,
-      ...(name === "name" && !editingTenant
+      ...(name === "name" && typeof value === "string" && !editingTenant
         ? { slug: buildTenantSlug(value) }
         : {}),
     }));
@@ -276,6 +285,29 @@ export default function TenantsPage() {
               />
             </label>
           </div>
+          <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.payAtCheckInEnabled ?? true}
+              onChange={(event) =>
+                updateField("payAtCheckInEnabled", event.target.checked)
+              }
+              className="h-4 w-4"
+            />
+            Token before check-in
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={form.bookingTokenAmount ?? 10}
+            onChange={(event) =>
+              updateField("bookingTokenAmount", Number(event.target.value))
+            }
+            placeholder="Token amount"
+            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300 disabled:bg-slate-50 disabled:text-slate-400"
+            disabled={!form.payAtCheckInEnabled}
+          />
         </div>
 
         {serverError && (
@@ -329,15 +361,16 @@ export default function TenantsPage() {
               <AdminTableCell as="th">Slug</AdminTableCell>
               <AdminTableCell as="th">Domain</AdminTableCell>
               <AdminTableCell as="th">Support</AdminTableCell>
+              <AdminTableCell as="th">Booking Payment</AdminTableCell>
               <AdminTableCell as="th">Status</AdminTableCell>
               <AdminTableCell as="th">Action</AdminTableCell>
             </tr>
           </AdminTableHeader>
           <tbody className={isFetching ? "opacity-70" : ""}>
             {isInitialLoading ? (
-              <AdminTableEmpty colSpan={7} message="Loading tenants..." />
+              <AdminTableEmpty colSpan={8} message="Loading tenants..." />
             ) : safeItems.length === 0 ? (
-              <AdminTableEmpty colSpan={7} message="No tenants found." />
+              <AdminTableEmpty colSpan={8} message="No tenants found." />
             ) : (
               safeItems.map((tenant, index) => (
                 <AdminTableRow key={tenant.id}>
@@ -350,6 +383,11 @@ export default function TenantsPage() {
                   <AdminTableCell>{tenant.slug}</AdminTableCell>
                   <AdminTableCell>{tenant.primaryDomain ?? "-"}</AdminTableCell>
                   <AdminTableCell>{tenant.supportEmail ?? "-"}</AdminTableCell>
+                  <AdminTableCell>
+                    {tenant.payAtCheckInEnabled
+                      ? `Token INR ${Number(tenant.bookingTokenAmount)}`
+                      : "No upfront payment"}
+                  </AdminTableCell>
                   <AdminTableCell>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
                       {tenant.status}

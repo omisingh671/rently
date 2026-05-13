@@ -1,5 +1,8 @@
 import {
+  BookingPaymentPolicy,
   BookingStatus,
+  BookingTargetType,
+  ComfortOption,
   LeadStatus,
   MaintenanceTargetType,
   PricingTier,
@@ -11,11 +14,16 @@ import {
 import { hashPassword } from "@/common/utils/password.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type { PaginatedResult } from "@/common/types/pagination.js";
+import { randomUUID } from "node:crypto";
+import { createBookingForUser } from "@/modules/public/public.service.js";
+import * as publicRepo from "@/modules/public/public.repository.js";
 import * as repo from "./dashboard.repository.js";
 import type {
   CreateDashboardAmenityInput,
   CreateDashboardAssignmentInput,
   CreateDashboardCouponInput,
+  CreateDashboardManualBookingInput,
+  CheckDashboardManualBookingAvailabilityInput,
   CreateDashboardTenantInput,
   CreateDashboardRoomPricingInput,
   CreateDashboardRoomProductInput,
@@ -60,6 +68,7 @@ import type {
   DashboardBookingDTO,
   DashboardCouponDTO,
   DashboardEnquiryDTO,
+  DashboardManualBookingAvailabilityDTO,
   DashboardMaintenanceBlockDTO,
   DashboardMeDTO,
   DashboardPropertyAssignmentDTO,
@@ -74,6 +83,7 @@ import type {
   DashboardUserDTO,
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
+import type { PublicSpaceTarget } from "@/modules/public/public.inputs.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -199,6 +209,8 @@ const mapTenant = (tenant: repo.DashboardTenantRecord): DashboardTenantDTO => ({
   supportPhone: tenant.supportPhone ?? null,
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
+  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
+  bookingTokenAmount: tenant.bookingTokenAmount.toString(),
   createdAt: tenant.createdAt,
   updatedAt: tenant.updatedAt,
 });
@@ -363,6 +375,9 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
   guestNameSnapshot: booking.guestNameSnapshot,
   guestEmailSnapshot: booking.guestEmailSnapshot,
   guestContactSnapshot: booking.guestContactSnapshot ?? null,
+  bookingType: booking.bookingType,
+  guestCount: booking.guestCount,
+  comfortOption: booking.comfortOption,
   productId: booking.productId ?? null,
   targetType: booking.targetType,
   unitId: booking.unitId ?? null,
@@ -374,7 +389,23 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
   checkOut: booking.checkOut,
   status: booking.status,
   totalAmount: booking.totalAmount.toString(),
+  paymentPolicy: booking.paymentPolicy,
+  upfrontAmount: booking.upfrontAmount.toString(),
   internalNotes: booking.internalNotes ?? null,
+  items: booking.items.map((item) => ({
+    id: item.id,
+    targetType: item.targetType,
+    unitId: item.unitId ?? null,
+    roomId: item.roomId ?? null,
+    productId: item.productId ?? null,
+    targetLabel: item.targetLabel,
+    productName: item.productName,
+    capacity: item.capacity,
+    guestCount: item.guestCount,
+    comfortOption: item.comfortOption,
+    pricePerNight: item.pricePerNight.toString(),
+    totalAmount: item.totalAmount.toString(),
+  })),
   statusHistory: booking.statusHistory.map((event) => ({
     id: event.id,
     fromStatus: event.fromStatus ?? null,
@@ -697,6 +728,106 @@ const ensureUniqueUserEmail = async (email: string) => {
   }
 };
 
+const findOrCreateWalkInGuest = async (
+  actor: DashboardActor,
+  input: Pick<
+    CreateDashboardManualBookingInput,
+    "guestName" | "guestEmail" | "countryCode" | "contactNumber"
+  >,
+) => {
+  const email = input.guestEmail.trim().toLowerCase();
+  const existingUser = await repo.findUserByEmail(email);
+
+  if (existingUser) {
+    if (existingUser.role !== UserRole.GUEST) {
+      throw new HttpError(
+        409,
+        "GUEST_EMAIL_UNAVAILABLE",
+        "This email belongs to a dashboard user",
+      );
+    }
+
+    return repo.updateUserById(existingUser.id, {
+      fullName: input.guestName,
+      ...(input.countryCode !== undefined &&
+        input.contactNumber !== undefined && {
+          countryCode: input.countryCode,
+          contactNumber: input.contactNumber,
+        }),
+    });
+  }
+
+  const passwordHash = await hashPassword(randomUUID());
+  return repo.createUser({
+    fullName: input.guestName,
+    email,
+    passwordHash,
+    role: UserRole.GUEST,
+    createdBy: {
+      connect: {
+        id: actor.id,
+      },
+    },
+    ...(input.countryCode !== undefined &&
+      input.contactNumber !== undefined && {
+        countryCode: input.countryCode,
+        contactNumber: input.contactNumber,
+      }),
+  });
+};
+
+const getStayNights = (from: Date, to: Date) =>
+  Math.max(
+    1,
+    Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+
+const getManualBookingSpaceTarget = (
+  space: publicRepo.PublicSpaceRecord,
+): PublicSpaceTarget => {
+  if (space.roomId) {
+    return {
+      targetType: BookingTargetType.ROOM,
+      unitId: space.room?.unitId ?? null,
+      roomId: space.roomId,
+    };
+  }
+
+  if (space.unitId) {
+    return {
+      targetType: BookingTargetType.UNIT,
+      unitId: space.unitId,
+      roomId: null,
+    };
+  }
+
+  throw new HttpError(
+    422,
+    "SPACE_NOT_BOOKABLE",
+    "Space is missing a bookable target",
+  );
+};
+
+const getManualBookingSpaceCapacity = (space: publicRepo.PublicSpaceRecord) =>
+  space.room?.maxOccupancy ?? space.product.occupancy;
+
+const assertManualBookingComfortAvailable = (
+  space: publicRepo.PublicSpaceRecord,
+  comfortOption: ComfortOption,
+) => {
+  if (
+    comfortOption === ComfortOption.AC &&
+    space.roomId !== null &&
+    space.room?.hasAC !== true
+  ) {
+    throw new HttpError(
+      422,
+      "COMFORT_OPTION_NOT_AVAILABLE",
+      "Selected room does not support AC bookings",
+    );
+  }
+};
+
 const ensureAmenityIdsBelongToProperty = async (
   propertyId: string,
   amenityIds: string[],
@@ -787,7 +918,9 @@ const assertValidNightRange = (minNights?: number, maxNights?: number) => {
 };
 
 const ensureRoomProductBelongsToProperty = (
-  product: repo.DashboardRoomProductRecord,
+  product: {
+    propertyId: string;
+  },
   propertyId: string,
 ) => {
   if (product.propertyId !== propertyId) {
@@ -795,6 +928,28 @@ const ensureRoomProductBelongsToProperty = (
       400,
       "INVALID_PRODUCT",
       "Room product does not belong to the selected property",
+    );
+  }
+};
+
+const assertRoomPricingComfortSupported = async (
+  target: {
+    roomId?: string | undefined;
+  },
+  product: {
+    hasAC: boolean;
+  },
+) => {
+  if (!target.roomId || !product.hasAC) {
+    return;
+  }
+
+  const room = await ensureRoomExists(target.roomId);
+  if (!room.hasAC) {
+    throw new HttpError(
+      422,
+      "COMFORT_OPTION_NOT_AVAILABLE",
+      "Selected room does not support AC pricing",
     );
   }
 };
@@ -1042,6 +1197,12 @@ export const createTenant = async (
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
       }),
+      ...(input.payAtCheckInEnabled !== undefined && {
+        payAtCheckInEnabled: input.payAtCheckInEnabled,
+      }),
+      ...(input.bookingTokenAmount !== undefined && {
+        bookingTokenAmount: input.bookingTokenAmount,
+      }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
 
@@ -1095,6 +1256,12 @@ export const updateTenant = async (
       }),
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
+      }),
+      ...(input.payAtCheckInEnabled !== undefined && {
+        payAtCheckInEnabled: input.payAtCheckInEnabled,
+      }),
+      ...(input.bookingTokenAmount !== undefined && {
+        bookingTokenAmount: input.bookingTokenAmount,
       }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
@@ -1960,7 +2127,7 @@ export const createRoom = async (
     number: input.number,
     rent: input.rent,
     hasAC: input.hasAC ?? false,
-    maxOccupancy: input.maxOccupancy ?? 1,
+    maxOccupancy: input.maxOccupancy ?? 2,
     ...(input.status !== undefined && { status: input.status }),
   });
 
@@ -2308,6 +2475,7 @@ export const createRoomPricing = async (
   const product = await ensureRoomProductExists(input.productId);
   ensureRoomProductBelongsToProperty(product, propertyId);
   const target = await resolvePricingTarget(propertyId, input);
+  await assertRoomPricingComfortSupported(target, product);
 
   const pricing = await repo.createRoomPricing({
     property: {
@@ -2364,15 +2532,22 @@ export const updateRoomPricing = async (
     input.maxNights ?? existingPricing.maxNights ?? undefined,
   );
 
-  if (input.productId !== undefined) {
-    const product = await ensureRoomProductExists(input.productId);
-    ensureRoomProductBelongsToProperty(product, existingPricing.propertyId);
-  }
+  const nextProduct =
+    input.productId !== undefined
+      ? await ensureRoomProductExists(input.productId)
+      : existingPricing.product;
+  ensureRoomProductBelongsToProperty(nextProduct, existingPricing.propertyId);
 
   const target =
     input.unitId !== undefined || input.roomId !== undefined
       ? await resolvePricingTarget(existingPricing.propertyId, input)
       : undefined;
+  await assertRoomPricingComfortSupported(
+    target ?? {
+      roomId: existingPricing.roomId ?? undefined,
+    },
+    nextProduct,
+  );
 
   const pricing = await repo.updateRoomPricingById(pricingId, {
     ...(input.productId !== undefined && {
@@ -2611,6 +2786,207 @@ export const listBookings = async (
     total,
     items.map(mapBooking),
   );
+};
+
+export const checkManualBookingAvailability = async (
+  userId: string,
+  propertyId: string,
+  input: CheckDashboardManualBookingAvailabilityInput,
+): Promise<DashboardManualBookingAvailabilityDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+  const uniqueSpaceIds = [...new Set(input.spaceIds)];
+  const nights = getStayNights(input.from, input.to);
+
+  const items = await Promise.all(
+    uniqueSpaceIds.map(async (spaceId) => {
+      const space = await publicRepo.findActiveSpaceById(
+        spaceId,
+        new Date(),
+        property.tenantId,
+        undefined,
+        {
+          checkIn: input.from,
+          checkOut: input.to,
+          nights,
+        },
+      );
+
+      if (!space) {
+        return {
+          spaceId,
+          available: false,
+          capacity: 0,
+          targetType: BookingTargetType.ROOM,
+          reason: "No active price for selected dates",
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      if (space.propertyId !== propertyId) {
+        return {
+          spaceId,
+          available: false,
+          capacity: getManualBookingSpaceCapacity(space),
+          targetType: getManualBookingSpaceTarget(space).targetType,
+          reason: "Space belongs to another property",
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      const target = getManualBookingSpaceTarget(space);
+      const capacity = getManualBookingSpaceCapacity(space);
+      const pricingGuestCount = input.guests <= capacity ? input.guests : 1;
+      const [hasBooking, hasMaintenance] = await Promise.all([
+        publicRepo.hasOverlappingBooking(target, input.from, input.to),
+        publicRepo.hasOverlappingMaintenance(
+          propertyId,
+          target,
+          input.from,
+          input.to,
+        ),
+      ]);
+
+      if (hasBooking) {
+        return {
+          spaceId,
+          available: false,
+          capacity,
+          targetType: target.targetType,
+          reason: "Already booked for selected dates",
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      if (hasMaintenance) {
+        return {
+          spaceId,
+          available: false,
+          capacity,
+          targetType: target.targetType,
+          reason: "Blocked for maintenance",
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      try {
+        assertManualBookingComfortAvailable(space, input.comfortOption);
+      } catch (error) {
+        if (error instanceof HttpError) {
+          return {
+            spaceId,
+            available: false,
+            capacity,
+            targetType: target.targetType,
+            reason: error.message,
+            guestCount: null,
+            pricePerNight: null,
+          };
+        }
+
+        throw error;
+      }
+
+      const pricedSpace = await publicRepo.findActivePricingForTarget(
+        target,
+        new Date(),
+        property.tenantId,
+        {
+          guestCount: pricingGuestCount,
+          comfortOption: input.comfortOption,
+        },
+        {
+          checkIn: input.from,
+          checkOut: input.to,
+          nights,
+        },
+      );
+
+      if (!pricedSpace) {
+        return {
+          spaceId,
+          available: false,
+          capacity,
+          targetType: target.targetType,
+          reason: `No active ${input.comfortOption === ComfortOption.AC ? "AC" : "Non-AC"} price for ${pricingGuestCount} guest${pricingGuestCount === 1 ? "" : "s"}`,
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      return {
+        spaceId,
+        available: true,
+        capacity,
+        targetType: target.targetType,
+        reason: null,
+        guestCount: pricingGuestCount,
+        pricePerNight: pricedSpace.price.toString(),
+      };
+    }),
+  );
+
+  return {
+    from: input.from.toISOString(),
+    to: input.to.toISOString(),
+    guests: input.guests,
+    availableSpaceIds: items
+      .filter((item) => item.available)
+      .map((item) => item.spaceId),
+    items,
+  };
+};
+
+export const createManualBooking = async (
+  userId: string,
+  propertyId: string,
+  input: CreateDashboardManualBookingInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+  const guest = await findOrCreateWalkInGuest(actor, input);
+
+  const createdBooking = await createBookingForUser(
+    guest.id,
+    {
+      bookingType: input.bookingType,
+      ...(input.spaceId !== undefined && { spaceId: input.spaceId }),
+      ...(input.spaceIds !== undefined && { spaceIds: input.spaceIds }),
+      from: input.from,
+      to: input.to,
+      guests: input.guests,
+      comfortOption: input.comfortOption,
+    },
+    {
+      tenantId: property.tenantId,
+    },
+    {
+      actorUserId: actor.id,
+      requiredPropertyId: propertyId,
+      paymentPolicy: BookingPaymentPolicy.NO_UPFRONT_PAYMENT,
+      upfrontAmount: 0,
+      initialStatus: BookingStatus.CONFIRMED,
+      statusHistoryNote: "Manual walk-in booking created from dashboard",
+      internalNotes: input.internalNotes ?? null,
+    },
+  );
+
+  const booking = await repo.findBookingById(createdBooking.id);
+  if (!booking) {
+    throw new HttpError(
+      500,
+      "BOOKING_READ_FAILED",
+      "Booking was created but could not be loaded",
+    );
+  }
+
+  return mapBooking(booking);
 };
 
 export const updateBooking = async (

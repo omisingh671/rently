@@ -60,6 +60,7 @@ export const checkAvailability = async (req: AuthRequest, res: Response) => {
       checkOut: body.checkOut,
       guests: body.guests,
       occupancyType: body.occupancyType,
+      comfortOption: body.comfortOption,
     },
     resolveTenantInput(req),
   );
@@ -72,9 +73,13 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
   const data = await service.createBooking(
     getUserId(req),
     {
-      spaceId: body.spaceId,
+      bookingType: body.bookingType,
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,
       to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
     },
     resolveTenantInput(req),
   );

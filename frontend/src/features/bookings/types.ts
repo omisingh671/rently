@@ -14,15 +14,41 @@ export type PaymentStatus =
   | "CANCELLED"
   | "REFUNDED";
 
+export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type ComfortOption = "AC" | "NON_AC";
+export type BookingPaymentPolicy =
+  | "TOKEN_AT_BOOKING"
+  | "NO_UPFRONT_PAYMENT";
+
+export interface BookingItem {
+  id: string;
+  targetType: "ROOM" | "UNIT";
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  pricePerNight: number;
+  totalAmount: number;
+}
+
 export interface Booking {
   id: string;
   bookingRef: string;
   userId: string;
   spaceId: string;
   propertyId: string;
+  bookingType: BookingType;
+  guestCount: number;
+  comfortOption: ComfortOption;
   title: string;
   spaceName: string;
   status: BookingStatus;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;
@@ -30,6 +56,8 @@ export interface Booking {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  remainingPayAtCheckIn: number;
+  items: BookingItem[];
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;

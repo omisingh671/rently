@@ -95,6 +95,11 @@ const dashboardCouponInclude = {
 const dashboardBookingInclude = {
   property: true,
   user: true,
+  items: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
   statusHistory: {
     include: {
       actor: true,

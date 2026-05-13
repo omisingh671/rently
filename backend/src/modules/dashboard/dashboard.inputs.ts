@@ -1,5 +1,6 @@
 import type {
   BookingStatus,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
@@ -147,6 +148,8 @@ export interface CreateDashboardTenantInput {
   supportPhone?: string;
   defaultCurrency?: string;
   timezone?: string;
+  payAtCheckInEnabled?: boolean;
+  bookingTokenAmount?: number;
 }
 
 export interface UpdateDashboardTenantInput {
@@ -162,6 +165,8 @@ export interface UpdateDashboardTenantInput {
   supportPhone?: string | null;
   defaultCurrency?: string;
   timezone?: string;
+  payAtCheckInEnabled?: boolean;
+  bookingTokenAmount?: number;
 }
 
 export interface CreateDashboardUserInput {
@@ -340,6 +345,29 @@ export interface UpdateDashboardBookingInput {
   status?: BookingStatus;
   internalNotes?: string | null;
   note?: string;
+}
+
+export interface CreateDashboardManualBookingInput {
+  bookingType: "SINGLE_TARGET" | "MULTI_ROOM";
+  spaceId?: string;
+  spaceIds?: string[];
+  from: Date;
+  to: Date;
+  guests: number;
+  comfortOption: ComfortOption;
+  guestName: string;
+  guestEmail: string;
+  countryCode?: string;
+  contactNumber?: string;
+  internalNotes?: string | null;
+}
+
+export interface CheckDashboardManualBookingAvailabilityInput {
+  spaceIds: string[];
+  from: Date;
+  to: Date;
+  guests: number;
+  comfortOption: ComfortOption;
 }
 
 export interface UpdateDashboardLeadInput {

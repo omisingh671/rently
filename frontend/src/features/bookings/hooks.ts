@@ -3,6 +3,7 @@ import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
 import * as api from "./api";
 import type { Booking, CreateManualPaymentResponse } from "./types";
 import { useAuthStore } from "@/stores/authStore";
+import type { CreateBookingPayload } from "./api";
 
 export const BOOKING_KEYS = {
   all: PUBLIC_QUERY_KEYS.bookings.all,
@@ -34,11 +35,7 @@ export const useBooking = (id?: string, enabled = true) => {
 export const useCreateBooking = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: {
-      spaceId: string;
-      from: string;
-      to: string;
-    }) => {
+    mutationFn: async (payload: CreateBookingPayload) => {
       return api.createBooking(payload);
     },
     onSuccess: () => {

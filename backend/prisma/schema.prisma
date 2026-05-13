@@ -48,6 +48,11 @@ enum RoomProductCategory {
   CORPORATE
 }
 
+enum ComfortOption {
+  AC
+  NON_AC
+}
+
 enum RateType {
   NIGHTLY
   WEEKLY
@@ -75,12 +80,22 @@ enum BookingTargetType {
   UNIT
 }
 
+enum BookingType {
+  SINGLE_TARGET
+  MULTI_ROOM
+}
+
 enum BookingStatus {
   PENDING
   CONFIRMED
   CHECKED_IN
   CHECKED_OUT
   CANCELLED
+}
+
+enum BookingPaymentPolicy {
+  TOKEN_AT_BOOKING
+  NO_UPFRONT_PAYMENT
 }
 
 enum PaymentProvider {
@@ -197,6 +212,8 @@ model Tenant {
   supportPhone    String?
   defaultCurrency String       @default("INR")
   timezone        String       @default("Asia/Kolkata")
+  payAtCheckInEnabled Boolean  @default(true)
+  bookingTokenAmount Decimal   @default(10)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -272,7 +289,7 @@ model Room {
   number       String
   rent         Float
   hasAC        Boolean    @default(false)
-  maxOccupancy Int        @default(1)
+  maxOccupancy Int        @default(2)
   status       RoomStatus @default(AVAILABLE)
   isActive     Boolean    @default(true)
 
@@ -383,9 +400,12 @@ model Booking {
   propertyId String
   userId     String
   productId  String?
+  bookingType BookingType      @default(SINGLE_TARGET)
   targetType BookingTargetType
   unitId     String?
   roomId     String?
+  guestCount Int               @default(1)
+  comfortOption ComfortOption
 
   guestNameSnapshot    String
   guestEmailSnapshot   String
@@ -398,6 +418,8 @@ model Booking {
   checkOut    DateTime
   status      BookingStatus @default(PENDING)
   totalAmount Decimal
+  paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
+  upfrontAmount Decimal              @default(10)
   internalNotes       String?   @db.Text
   cancellationReason  String?   @db.Text
   cancelledAt         DateTime?
@@ -406,6 +428,7 @@ model Booking {
 
   property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  items         BookingItem[]
   payments      Payment[]
   statusHistory BookingStatusHistory[]
 
@@ -416,6 +439,32 @@ model Booking {
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
   @@map("bookings")
+}
+
+model BookingItem {
+  id         String            @id @default(uuid())
+  bookingId  String
+  productId  String?
+  targetType BookingTargetType
+  unitId     String?
+  roomId     String?
+  guestCount Int               @default(1)
+  comfortOption ComfortOption
+
+  targetLabel   String
+  productName   String
+  capacity      Int
+  pricePerNight Decimal
+  totalAmount   Decimal
+
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([roomId])
+  @@index([unitId])
+  @@map("booking_items")
 }
 
 model BookingStatusHistory {

@@ -75,6 +75,15 @@ export const createManualPayment = async (
       throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
     }
 
+    const upfrontAmount = Number(booking.upfrontAmount);
+    if (upfrontAmount <= 0) {
+      throw new HttpError(
+        409,
+        "BOOKING_PAYMENT_NOT_REQUIRED",
+        "This booking does not require upfront payment",
+      );
+    }
+
     if (booking.status === BookingStatus.CANCELLED) {
       throw new HttpError(
         409,
@@ -132,7 +141,7 @@ export const createManualPayment = async (
         bookingId: booking.id,
         propertyId: booking.propertyId,
         userId: booking.userId,
-        amount: booking.totalAmount,
+        amount: upfrontAmount,
         currency: booking.property.tenant.defaultCurrency,
         idempotencyKey: input.idempotencyKey,
         paidAt: new Date(),

@@ -1,6 +1,9 @@
 import type {
+  BookingPaymentPolicy,
+  BookingType,
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
 } from "@/generated/prisma/client.js";
 
 export interface PublicTenantConfigDTO {
@@ -15,6 +18,8 @@ export interface PublicTenantConfigDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
+  payAtCheckInEnabled: boolean;
+  bookingTokenAmount: number;
 }
 
 export interface PublicSpaceDTO {
@@ -24,7 +29,9 @@ export interface PublicSpaceDTO {
   description: string;
   pricePerNight: number;
   capacity: number;
+  guestCount: number;
   hasAC: boolean;
+  comfortOption: ComfortOption;
   location: string;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -35,12 +42,34 @@ export interface PublicAvailabilitySpaceDTO {
   spaceId: string;
   title: string;
   location: string;
+  capacity: number;
+  comfortOption: ComfortOption;
+  pricePerNight: number;
   priceTotal: number;
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
 }
 
 export interface PublicAvailabilityDTO {
   available: boolean;
   spaces: PublicAvailabilitySpaceDTO[];
+  groupCandidates: PublicAvailabilitySpaceDTO[];
+}
+
+export interface PublicBookingItemDTO {
+  id: string;
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  pricePerNight: number;
+  totalAmount: number;
 }
 
 export interface PublicBookingDTO {
@@ -49,9 +78,14 @@ export interface PublicBookingDTO {
   userId: string;
   spaceId: string;
   propertyId: string;
+  bookingType: BookingType;
+  guestCount: number;
+  comfortOption: ComfortOption;
   title: string;
   spaceName: string;
   status: BookingStatus;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;
@@ -59,6 +93,8 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  remainingPayAtCheckIn: number;
+  items: PublicBookingItemDTO[];
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;

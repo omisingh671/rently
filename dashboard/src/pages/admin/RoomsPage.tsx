@@ -175,7 +175,7 @@ export default function RoomsPage() {
                   number: "",
                   rent: 1,
                   hasAC: false,
-                  maxOccupancy: 1,
+                  maxOccupancy: 2,
                   status: "AVAILABLE",
                   isActive: true,
                   amenityIds: [],

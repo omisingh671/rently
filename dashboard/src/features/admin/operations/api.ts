@@ -7,8 +7,11 @@ import type {
   AdminQuote,
   BookingListResponse,
   BookingStatus,
+  CheckManualBookingAvailabilityPayload,
+  CreateManualBookingPayload,
   EnquiryListResponse,
   LeadStatus,
+  ManualBookingAvailabilityResponse,
   QuoteListResponse,
   UpdateBookingPayload,
 } from "./types";
@@ -26,6 +29,29 @@ export const listBookingsApi = async (
   const { data } = await axiosInstance.get<
     ApiSuccessResponse<BookingListResponse>
   >(API_ENDPOINTS.operations.bookingsByProperty(propertyId), { params });
+
+  return data.data;
+};
+
+export const checkManualBookingAvailabilityApi = async (
+  propertyId: string,
+  payload: CheckManualBookingAvailabilityPayload,
+): Promise<ManualBookingAvailabilityResponse> => {
+  const { data } = await axiosInstance.post<
+    ApiSuccessResponse<ManualBookingAvailabilityResponse>
+  >(API_ENDPOINTS.operations.bookingAvailabilityByProperty(propertyId), payload);
+
+  return data.data;
+};
+
+export const createManualBookingApi = async (
+  propertyId: string,
+  payload: CreateManualBookingPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingsByProperty(propertyId),
+    payload,
+  );
 
   return data.data;
 };

@@ -4,6 +4,7 @@ import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
 import { useAdminOperations } from "../hooks/useAdminOperations";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import type {
   AdminBooking,
   AdminEnquiry,
@@ -12,7 +13,7 @@ import type {
   LeadStatus,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
-import { FiLogIn, FiLogOut } from "react-icons/fi";
+import { FiLogIn, FiLogOut, FiPlus } from "react-icons/fi";
 
 type Module = "bookings" | "enquiries" | "quotes";
 
@@ -173,6 +174,17 @@ export default function OperationsPage({ module }: Props) {
         </div>
 
         <div className="flex flex-wrap gap-3">
+          {module === "bookings" && (
+            <Button
+              size="sm"
+              variant="dark"
+              icon={<FiPlus />}
+              to={adminPath(ADMIN_ROUTES.WALK_IN_BOOKING)}
+            >
+              Walk-in booking
+            </Button>
+          )}
+
           <select
             value={selectedPropertyId}
             onChange={(event) => setPropertyId(event.target.value)}
@@ -287,14 +299,37 @@ export default function OperationsPage({ module }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <div>{booking.targetLabel}</div>
+                      <div>
+                        {booking.bookingType === "MULTI_ROOM"
+                          ? `Multi-room stay (${booking.items.length} rooms)`
+                          : booking.targetLabel}
+                      </div>
                       <div className="text-xs text-slate-500">
                         {formatDate(booking.checkIn)} -{" "}
                         {formatDate(booking.checkOut)}
                       </div>
+                      <div className="text-xs text-slate-500">
+                        Guests: {booking.guestCount}
+                      </div>
                     </td>
-                    <td className="px-4 py-3">{booking.productName}</td>
-                    <td className="px-4 py-3">{booking.totalAmount}</td>
+                    <td className="px-4 py-3">
+                      <div>{booking.productName}</div>
+                      {booking.items.length > 1 && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          {booking.items
+                            .map((item) => item.targetLabel)
+                            .join(", ")}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>{booking.totalAmount}</div>
+                      <div className="text-xs text-slate-500">
+                        {Number(booking.upfrontAmount) > 0
+                          ? `Token ${booking.upfrontAmount}`
+                          : "No upfront"}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <StatusSelect
                         value={booking.status}

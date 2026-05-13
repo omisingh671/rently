@@ -1,4 +1,5 @@
-import { Link, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiCalendar,
@@ -11,13 +12,17 @@ import {
 } from "react-icons/fi";
 
 import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
+import { ROUTES } from "@/configs/routePaths";
 import { checkAvailability } from "@/features/availability/api";
 import type { AvailabilityResult } from "@/features/availability/domain";
+import { useCreateBooking } from "@/features/bookings/hooks";
 import { useSpaces } from "@/features/spaces/hooks";
 import type { Space } from "@/features/spaces/types";
+import { useAuthStore } from "@/stores/authStore";
+import { normalizeApiError } from "@/utils/errors";
 
 type OccupancyFilter = "all" | "single" | "double" | "unit";
-type ClimateFilter = "all" | "ac" | "non-ac";
+type ClimateFilter = "ac" | "non-ac";
 
 const occupancyOptions: Array<{
   value: OccupancyFilter;
@@ -52,11 +57,6 @@ const climateOptions: Array<{
   description: string;
 }> = [
   {
-    value: "all",
-    label: "All room types",
-    description: "Show AC and non-AC spaces",
-  },
-  {
     value: "ac",
     label: "AC",
     description: "Air-conditioned spaces only",
@@ -76,8 +76,7 @@ const isOccupancyFilter = (value: string | null): value is OccupancyFilter =>
 
 const getClimateFilter = (value: string | null): ClimateFilter => {
   if (value === "true") return "ac";
-  if (value === "false") return "non-ac";
-  return "all";
+  return "non-ac";
 };
 
 const getSpaceOccupancy = (space: Space): OccupancyFilter => {
@@ -97,13 +96,25 @@ const isValidDateRange = (from: string, to: string) =>
 
 export default function SpacesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const query = useSpaces(true);
+  const createBookingMutation = useCreateBooking();
+  const isAuthenticated = useAuthStore((s) => !!s.accessToken && !!s.user);
+  const [selectedGroupSpaceIds, setSelectedGroupSpaceIds] = useState<string[]>(
+    [],
+  );
+  const [groupBookingError, setGroupBookingError] = useState<string | null>(
+    null,
+  );
 
   const occupancyParam = searchParams.get("occupancy");
   const selectedOccupancy = isOccupancyFilter(occupancyParam)
     ? occupancyParam
     : "all";
   const selectedClimate = getClimateFilter(searchParams.get("ac"));
+  const selectedComfortOption =
+    selectedClimate === "ac" ? "AC" : "NON_AC";
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
   const guestsParam = Number(searchParams.get("guests"));
@@ -111,7 +122,13 @@ export default function SpacesListPage() {
   const availabilityGuests = guests || 1;
   const canCheckAvailability = isValidDateRange(from, to);
   const availabilityOccupancyKey =
-    selectedOccupancy === "single" ? "single" : "double";
+    selectedOccupancy === "single"
+      ? "single"
+      : selectedOccupancy === "unit"
+        ? "unit"
+        : availabilityGuests > 2
+          ? "multi_room"
+          : "double";
 
   const availabilityQuery = useQuery<AvailabilityResult, Error>({
     queryKey: PUBLIC_QUERY_KEYS.availability.byCriteria({
@@ -122,6 +139,7 @@ export default function SpacesListPage() {
         selectedOccupancy === "all" && availabilityGuests === 1
           ? "all"
           : availabilityOccupancyKey,
+      comfort: selectedComfortOption,
     }),
     queryFn: async () => {
       if (selectedOccupancy === "all" && availabilityGuests === 1) {
@@ -131,18 +149,21 @@ export default function SpacesListPage() {
             checkOut: to,
             guests: availabilityGuests,
             occupancyType: "single",
+            comfortOption: selectedComfortOption,
           }),
           checkAvailability({
             checkIn: from,
             checkOut: to,
             guests: availabilityGuests,
             occupancyType: "double",
+            comfortOption: selectedComfortOption,
           }),
         ]);
 
         return {
           available: singleResult.available || doubleResult.available,
           spaces: [...singleResult.spaces, ...doubleResult.spaces],
+          groupCandidates: [],
         };
       }
 
@@ -151,6 +172,7 @@ export default function SpacesListPage() {
         checkOut: to,
         guests: availabilityGuests,
         occupancyType: availabilityOccupancyKey,
+        comfortOption: selectedComfortOption,
       });
     },
     enabled: canCheckAvailability,
@@ -176,11 +198,7 @@ export default function SpacesListPage() {
   const updateClimateFilter = (value: ClimateFilter) => {
     const next = new URLSearchParams(searchParams);
 
-    if (value === "all") {
-      next.delete("ac");
-    } else {
-      next.set("ac", value === "ac" ? "true" : "false");
-    }
+    next.set("ac", value === "ac" ? "true" : "false");
 
     setSearchParams(next, { replace: true });
   };
@@ -213,13 +231,22 @@ export default function SpacesListPage() {
 
   const spaces = query.data ?? [];
   const filteredSpaces = spaces.filter((space) => {
+    const occupancy = getSpaceOccupancy(space);
+    const canBeMultiRoomCandidate =
+      guests > 2 &&
+      selectedOccupancy !== "single" &&
+      selectedOccupancy !== "unit" &&
+      occupancy !== "unit";
     const matchesOccupancy =
       selectedOccupancy === "all" ||
-      getSpaceOccupancy(space) === selectedOccupancy;
+      occupancy === selectedOccupancy ||
+      canBeMultiRoomCandidate;
     const matchesClimate =
-      selectedClimate === "all" ||
-      (selectedClimate === "ac" ? space.hasAC : !space.hasAC);
-    const matchesGuests = guests === 0 || space.capacity >= guests;
+      selectedClimate === "ac"
+        ? space.comfortOption === "AC"
+        : space.comfortOption === "NON_AC";
+    const matchesGuests =
+      guests === 0 || space.guestCount === guests || canBeMultiRoomCandidate;
 
     return matchesOccupancy && matchesClimate && matchesGuests;
   });
@@ -231,6 +258,68 @@ export default function SpacesListPage() {
   );
   const showAvailabilityState =
     canCheckAvailability && availabilityQuery.status === "success";
+  const groupCandidates = availabilityQuery.data?.groupCandidates ?? [];
+  const selectedGroupSpaces = groupCandidates.filter((space) =>
+    selectedGroupSpaceIds.includes(space.spaceId),
+  );
+  const currentSelectedGroupSpaceIds = selectedGroupSpaces.map(
+    (space) => space.spaceId,
+  );
+  const selectedGroupCapacity = selectedGroupSpaces.reduce(
+    (total, space) => total + space.capacity,
+    0,
+  );
+  const selectedGroupTotal = selectedGroupSpaces.reduce(
+    (total, space) => total + space.priceTotal,
+    0,
+  );
+  const showGroupSelection =
+    showAvailabilityState &&
+    guests > 2 &&
+    selectedOccupancy !== "single" &&
+    selectedOccupancy !== "unit" &&
+    groupCandidates.length > 0;
+  const canBookGroup =
+    showGroupSelection &&
+    currentSelectedGroupSpaceIds.length >= 2 &&
+    selectedGroupCapacity >= guests;
+
+  const toggleGroupSpace = (spaceId: string) => {
+    setGroupBookingError(null);
+    setSelectedGroupSpaceIds((current) =>
+      current.includes(spaceId)
+        ? current.filter((id) => id !== spaceId)
+        : [...current, spaceId],
+    );
+  };
+
+  const createGroupBooking = async () => {
+    if (!canBookGroup || !from || !to) return;
+
+    if (!isAuthenticated) {
+      navigate(ROUTES.LOGIN, {
+        state: { from: location },
+        replace: true,
+      });
+      return;
+    }
+
+    try {
+      setGroupBookingError(null);
+      const booking = await createBookingMutation.mutateAsync({
+        bookingType: "MULTI_ROOM",
+        spaceIds: currentSelectedGroupSpaceIds,
+        from: new Date(`${from}T00:00:00`).toISOString(),
+        to: new Date(`${to}T00:00:00`).toISOString(),
+        guests,
+        comfortOption: selectedComfortOption,
+      });
+
+      navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
+    } catch (error: unknown) {
+      setGroupBookingError(normalizeApiError(error).message);
+    }
+  };
 
   const buildSpaceHref = (spaceId: string) => {
     const detailParams = new URLSearchParams();
@@ -240,9 +329,7 @@ export default function SpacesListPage() {
     if (selectedOccupancy !== "all") {
       detailParams.set("occupancy", selectedOccupancy);
     }
-    if (selectedClimate !== "all") {
-      detailParams.set("ac", selectedClimate === "ac" ? "true" : "false");
-    }
+    detailParams.set("ac", selectedClimate === "ac" ? "true" : "false");
 
     const suffix = detailParams.toString();
     return suffix ? `/spaces/${spaceId}?${suffix}` : `/spaces/${spaceId}`;
@@ -449,13 +536,107 @@ export default function SpacesListPage() {
               </div>
             )}
 
+            {showGroupSelection && (
+              <div className="mb-5 rounded-2xl border border-indigo-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      Build a multi-room stay
+                    </h3>
+                    <p className="mt-1 text-sm text-muted">
+                      Select rooms until the total capacity covers {guests}{" "}
+                      guests.
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm">
+                    <div className="font-semibold text-indigo-900">
+                      {selectedGroupCapacity} / {guests} guests covered
+                    </div>
+                    <div className="mt-1 text-indigo-700">
+                      {formatPrice(selectedGroupTotal)} total
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {groupCandidates.map((space) => {
+                    const selected = selectedGroupSpaceIds.includes(
+                      space.spaceId,
+                    );
+
+                    return (
+                      <button
+                        key={space.spaceId}
+                        type="button"
+                        onClick={() => toggleGroupSpace(space.spaceId)}
+                        className={`rounded-xl border p-4 text-left transition ${
+                          selected
+                            ? "border-indigo-500 bg-indigo-50"
+                            : "border-slate-200 bg-white hover:border-indigo-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-900">
+                              {space.title}
+                            </div>
+                            <div className="mt-1 text-sm text-muted">
+                              {space.location}
+                            </div>
+                            <div className="mt-2 text-xs font-semibold text-slate-600">
+                              Capacity {space.capacity}
+                            </div>
+                          </div>
+                          <div className="text-right text-sm">
+                            <div className="font-semibold text-slate-900">
+                              {formatPrice(space.priceTotal)}
+                            </div>
+                            <div className="text-xs text-muted">
+                              {formatPrice(space.pricePerNight)} / night
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {groupBookingError && (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {groupBookingError}
+                  </div>
+                )}
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted">
+                    {canBookGroup
+                      ? "Ready to book these rooms together."
+                      : "Select at least two rooms with enough capacity."}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={!canBookGroup || createBookingMutation.isPending}
+                    onClick={() => void createGroupBooking()}
+                    className="inline-flex h-11 items-center justify-center rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {createBookingMutation.isPending
+                      ? "Booking..."
+                      : "Book selected rooms"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {filteredSpaces.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
                 <h3 className="text-lg font-semibold text-slate-900">
                   No matching spaces
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  Try another occupancy filter or clear filters.
+                  {guests > 2
+                    ? "Select stay dates to check multi-room availability, or clear filters."
+                    : "Try another occupancy filter or clear filters."}
                 </p>
               </div>
             ) : (
@@ -480,10 +661,10 @@ export default function SpacesListPage() {
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                           <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                             <FiUsers />
-                            {getSpaceOccupancy(space) === "unit"
-                              ? "Full unit"
-                              : `${space.capacity} guest${
-                                  space.capacity === 1 ? "" : "s"
+                              {getSpaceOccupancy(space) === "unit"
+                                ? "Full unit"
+                              : `${space.guestCount} guest${
+                                  space.guestCount === 1 ? "" : "s"
                                 }`}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -492,7 +673,7 @@ export default function SpacesListPage() {
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                             <FiWind />
-                            {space.hasAC ? "AC" : "Non-AC"}
+                            {space.comfortOption === "AC" ? "AC" : "Non-AC"}
                           </span>
                           {availabilityChecked && (
                             <span
