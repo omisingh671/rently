@@ -15,6 +15,9 @@ export type PaymentStatus =
   | "REFUNDED";
 
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type BookingPaymentPolicy =
+  | "TOKEN_AT_BOOKING"
+  | "NO_UPFRONT_PAYMENT";
 
 export interface BookingItem {
   id: string;
@@ -40,6 +43,8 @@ export interface Booking {
   title: string;
   spaceName: string;
   status: BookingStatus;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;
@@ -47,6 +52,7 @@ export interface Booking {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  remainingPayAtCheckIn: number;
   items: BookingItem[];
   internalNotes: string | null;
   cancellationReason: string | null;

@@ -88,6 +88,11 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum BookingPaymentPolicy {
+  TOKEN_AT_BOOKING
+  NO_UPFRONT_PAYMENT
+}
+
 enum PaymentProvider {
   MANUAL
   RAZORPAY
@@ -202,6 +207,8 @@ model Tenant {
   supportPhone    String?
   defaultCurrency String       @default("INR")
   timezone        String       @default("Asia/Kolkata")
+  payAtCheckInEnabled Boolean  @default(true)
+  bookingTokenAmount Decimal   @default(10)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -405,6 +412,8 @@ model Booking {
   checkOut    DateTime
   status      BookingStatus @default(PENDING)
   totalAmount Decimal
+  paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
+  upfrontAmount Decimal              @default(10)
   internalNotes       String?   @db.Text
   cancellationReason  String?   @db.Text
   cancelledAt         DateTime?

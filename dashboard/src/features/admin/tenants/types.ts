@@ -14,6 +14,8 @@ export type AdminTenant = {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
+  payAtCheckInEnabled: boolean;
+  bookingTokenAmount: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -31,6 +33,8 @@ export type TenantFormPayload = {
   supportPhone?: string | null;
   defaultCurrency?: string;
   timezone?: string;
+  payAtCheckInEnabled?: boolean;
+  bookingTokenAmount?: number;
 };
 
 export type TenantUpdateVariables = {

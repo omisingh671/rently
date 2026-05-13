@@ -116,6 +116,16 @@ function BookingSummary({ booking }: { booking: Booking }) {
           <dd className="mt-1 text-lg font-semibold text-slate-900">
             INR {booking.totalPrice}
           </dd>
+          {booking.upfrontAmount > 0 && (
+            <dd className="mt-1 text-xs text-slate-500">
+              Token due now: INR {booking.upfrontAmount}
+            </dd>
+          )}
+          {booking.remainingPayAtCheckIn > 0 && (
+            <dd className="text-xs text-slate-500">
+              Pay at check-in: INR {booking.remainingPayAtCheckIn}
+            </dd>
+          )}
         </div>
       </dl>
 
@@ -224,9 +234,11 @@ export default function BookingPaymentPage() {
             <div className="flex items-start gap-3">
               <FiCheckCircle className="mt-1 h-5 w-5 shrink-0" />
               <div>
-                <h2 className="font-semibold">Booking confirmed</h2>
-                <p className="mt-1 text-sm">
-                  Payment has been recorded and your booking is confirmed.
+                  <h2 className="font-semibold">Booking confirmed</h2>
+                  <p className="mt-1 text-sm">
+                  {booking.upfrontAmount > 0
+                    ? "Token payment has been recorded and your booking is confirmed."
+                    : "No upfront payment is required for this booking."}
                 </p>
               </div>
             </div>
@@ -239,7 +251,9 @@ export default function BookingPaymentPage() {
                   Manual payment
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Confirm this booking using the current manual payment flow.
+                  Confirm this booking with a token payment of INR{" "}
+                  {booking.upfrontAmount}. Remaining amount is payable at
+                  check-in.
                 </p>
               </div>
 

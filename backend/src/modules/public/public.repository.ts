@@ -117,6 +117,14 @@ export const findActiveTenantBySlug = (slug: string) =>
     },
   });
 
+export const findActiveTenantById = (id: string) =>
+  prisma.tenant.findFirst({
+    where: {
+      id,
+      status: "ACTIVE",
+    },
+  });
+
 export const findActiveTenantByDomain = (domain: string) =>
   prisma.tenant.findFirst({
     where: {

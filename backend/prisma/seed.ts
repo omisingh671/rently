@@ -36,7 +36,37 @@ const credentials = {
   },
 } as const;
 
+async function clearExistingSeedData() {
+  await prisma.$transaction([
+    prisma.bookingStatusHistory.deleteMany(),
+    prisma.payment.deleteMany(),
+    prisma.bookingItem.deleteMany(),
+    prisma.booking.deleteMany(),
+    prisma.quoteRequest.deleteMany(),
+    prisma.enquiry.deleteMany(),
+    prisma.coupon.deleteMany(),
+    prisma.tax.deleteMany(),
+    prisma.maintenanceBlock.deleteMany(),
+    prisma.roomPricing.deleteMany(),
+    prisma.roomAmenity.deleteMany(),
+    prisma.unitAmenity.deleteMany(),
+    prisma.propertyAmenity.deleteMany(),
+    prisma.amenity.deleteMany(),
+    prisma.room.deleteMany(),
+    prisma.unit.deleteMany(),
+    prisma.roomProduct.deleteMany(),
+    prisma.propertyAssignment.deleteMany(),
+    prisma.property.deleteMany(),
+    prisma.tenant.deleteMany(),
+    prisma.passwordResetToken.deleteMany(),
+    prisma.session.deleteMany(),
+    prisma.user.deleteMany(),
+  ]);
+}
+
 async function main() {
+  await clearExistingSeedData();
+
   const [superAdminHash, adminHash, managerHash, guestHash] =
     await Promise.all([
       hashPassword(credentials.superAdmin.password),

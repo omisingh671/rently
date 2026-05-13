@@ -10,6 +10,9 @@ export type BookingStatus =
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type BookingPaymentPolicy =
+  | "TOKEN_AT_BOOKING"
+  | "NO_UPFRONT_PAYMENT";
 
 export type AdminBooking = {
   id: string;
@@ -35,6 +38,8 @@ export type AdminBooking = {
   checkOut: string;
   status: BookingStatus;
   totalAmount: string;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: string;
   internalNotes: string | null;
   items: Array<{
     id: string;
@@ -65,6 +70,41 @@ export type UpdateBookingPayload = {
   status?: BookingStatus;
   note?: string;
   internalNotes?: string | null;
+};
+
+export type CreateManualBookingPayload = {
+  bookingType: BookingType;
+  spaceId?: string;
+  spaceIds?: string[];
+  from: string;
+  to: string;
+  guests: number;
+  guestName: string;
+  guestEmail: string;
+  countryCode?: string;
+  contactNumber?: string;
+  internalNotes?: string | null;
+};
+
+export type CheckManualBookingAvailabilityPayload = {
+  spaceIds: string[];
+  from: string;
+  to: string;
+  guests: number;
+};
+
+export type ManualBookingAvailabilityItem = {
+  spaceId: string;
+  available: boolean;
+  reason: string | null;
+};
+
+export type ManualBookingAvailabilityResponse = {
+  from: string;
+  to: string;
+  guests: number;
+  availableSpaceIds: string[];
+  items: ManualBookingAvailabilityItem[];
 };
 
 export type AdminEnquiry = {

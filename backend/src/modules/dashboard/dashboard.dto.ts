@@ -1,4 +1,5 @@
 import type {
+  BookingPaymentPolicy,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -53,6 +54,8 @@ export interface DashboardTenantDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
+  payAtCheckInEnabled: boolean;
+  bookingTokenAmount: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -184,6 +187,20 @@ export interface DashboardRoomPricingDTO {
   createdAt: Date;
 }
 
+export interface DashboardManualBookingAvailabilityItemDTO {
+  spaceId: string;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface DashboardManualBookingAvailabilityDTO {
+  from: string;
+  to: string;
+  guests: number;
+  availableSpaceIds: string[];
+  items: DashboardManualBookingAvailabilityItemDTO[];
+}
+
 export interface DashboardTaxDTO {
   id: string;
   propertyId: string;
@@ -240,6 +257,8 @@ export interface DashboardBookingDTO {
   checkOut: Date;
   status: BookingStatus;
   totalAmount: string;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: string;
   internalNotes: string | null;
   items: Array<{
     id: string;

@@ -186,6 +186,8 @@ export const createTenantSchema = z.object({
   supportPhone: nullableOptionalString(40),
   defaultCurrency: z.string().trim().min(3).max(3).optional(),
   timezone: z.string().trim().min(1).max(80).optional(),
+  payAtCheckInEnabled: z.boolean().optional(),
+  bookingTokenAmount: z.number().nonnegative().optional(),
 });
 
 export const updateTenantSchema = createTenantSchema
@@ -475,6 +477,59 @@ export const updateBookingStatusSchema = z
       message: "Status or internal notes are required",
     },
   );
+
+export const createManualBookingSchema = contactFieldsRefine(
+  z
+    .object({
+      bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+      spaceId: idSchema.optional(),
+      spaceIds: z.array(idSchema).optional(),
+      from: z.coerce.date(),
+      to: z.coerce.date(),
+      guests: z.coerce.number().int().min(1).max(20),
+      guestName: z.string().trim().min(1).max(120),
+      guestEmail: z.string().trim().email().max(190),
+      countryCode: countryCodeSchema.optional(),
+      contactNumber: contactNumberSchema.optional(),
+      internalNotes: z.string().trim().max(5000).nullable().optional(),
+    })
+    .refine((data) => data.to > data.from, {
+      message: "Check-out must be after check-in",
+      path: ["to"],
+    })
+    .superRefine((data, ctx) => {
+      if (data.bookingType === "MULTI_ROOM") {
+        if (!data.spaceIds || data.spaceIds.length < 2) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "At least two spaces are required for a multi-room booking",
+            path: ["spaceIds"],
+          });
+        }
+        return;
+      }
+
+      if (!data.spaceId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "spaceId is required",
+          path: ["spaceId"],
+        });
+      }
+    }),
+);
+
+export const checkManualBookingAvailabilitySchema = z
+  .object({
+    spaceIds: z.array(idSchema).min(1),
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    guests: z.coerce.number().int().min(1).max(20),
+  })
+  .refine((data) => data.to > data.from, {
+    message: "Check-out must be after check-in",
+    path: ["to"],
+  });
 
 export const updateLeadStatusSchema = z.object({
   status: z.nativeEnum(LeadStatus),

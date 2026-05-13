@@ -30,6 +30,7 @@ export interface CreatePublicEnquiryInput {
 }
 
 export interface TenantResolutionInput {
+  tenantId?: string;
   tenantSlug?: string;
   host?: string;
 }

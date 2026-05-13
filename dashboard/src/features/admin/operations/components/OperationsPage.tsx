@@ -1,6 +1,10 @@
 import { useMemo, useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
+import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
+import { listRatesApi } from "@/features/admin/pricing/api";
+import type { AdminRoomPricing } from "@/features/admin/pricing/types";
 import { useAdminOperations } from "../hooks/useAdminOperations";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -10,9 +14,10 @@ import type {
   AdminQuote,
   BookingStatus,
   LeadStatus,
+  ManualBookingAvailabilityResponse,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
-import { FiLogIn, FiLogOut } from "react-icons/fi";
+import { FiLogIn, FiLogOut, FiPlus } from "react-icons/fi";
 
 type Module = "bookings" | "enquiries" | "quotes";
 
@@ -25,6 +30,28 @@ type BookingWorkflowAction = "checkIn" | "checkOut";
 type ActiveBookingWorkflow = {
   action: BookingWorkflowAction;
   booking: AdminBooking;
+};
+
+type ManualBookingForm = {
+  guestName: string;
+  guestEmail: string;
+  countryCode: string;
+  contactNumber: string;
+  from: string;
+  to: string;
+  guests: string;
+  internalNotes: string;
+};
+
+const emptyManualBookingForm: ManualBookingForm = {
+  guestName: "",
+  guestEmail: "",
+  countryCode: "+91",
+  contactNumber: "",
+  from: "",
+  to: "",
+  guests: "1",
+  internalNotes: "",
 };
 
 const bookingStatuses: BookingStatus[] = [
@@ -73,6 +100,11 @@ const formatDate = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
+const formatRateTarget = (rate: AdminRoomPricing) =>
+  rate.roomLabel ?? (rate.unitNumber ? `Unit ${rate.unitNumber}` : "Space");
+
+const isRoomRate = (rate: AdminRoomPricing) => rate.roomId !== null;
+
 export default function OperationsPage({ module }: Props) {
   const [propertyId, setPropertyId] = useState("");
   const [filters, setFilters] = useState({
@@ -84,6 +116,13 @@ export default function OperationsPage({ module }: Props) {
     useState<ActiveBookingWorkflow | null>(null);
   const [workflowNote, setWorkflowNote] = useState("");
   const [workflowInternalNotes, setWorkflowInternalNotes] = useState("");
+  const [manualBookingOpen, setManualBookingOpen] = useState(false);
+  const [manualBookingForm, setManualBookingForm] =
+    useState<ManualBookingForm>(emptyManualBookingForm);
+  const [selectedSpaceIds, setSelectedSpaceIds] = useState<string[]>([]);
+  const [manualAvailability, setManualAvailability] =
+    useState<ManualBookingAvailabilityResponse | null>(null);
+  const [manualAvailabilityError, setManualAvailabilityError] = useState("");
 
   const { data: propertiesData } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
     search: "",
@@ -101,6 +140,8 @@ export default function OperationsPage({ module }: Props) {
     isPending,
     isFetching,
     updateBooking,
+    createManualBooking,
+    checkManualBookingAvailability,
     checkInBooking,
     checkOutBooking,
     updateEnquiry,
@@ -108,8 +149,38 @@ export default function OperationsPage({ module }: Props) {
     isMutating,
   } = useAdminOperations(module, selectedPropertyId, filters);
 
+  const { data: ratesData, isFetching: isRatesFetching } = useQuery({
+    queryKey: selectedPropertyId
+      ? [...ADMIN_KEYS.pricing.rates(selectedPropertyId), "manual-booking"]
+      : ADMIN_KEYS.pricing.all(),
+    queryFn: () =>
+      listRatesApi(selectedPropertyId, {
+        page: 1,
+        limit: 100,
+      }),
+    enabled: module === "bookings" && manualBookingOpen && !!selectedPropertyId,
+  });
+
   const items = data?.items ?? [];
   const statuses = module === "bookings" ? bookingStatuses : leadStatuses;
+  const rates = ratesData?.items ?? [];
+  const selectedRates = rates.filter((rate) =>
+    selectedSpaceIds.includes(rate.id),
+  );
+  const availabilityBySpaceId = useMemo(
+    () =>
+      new Map(
+        manualAvailability?.items.map((item) => [item.spaceId, item]) ?? [],
+      ),
+    [manualAvailability],
+  );
+  const selectedSpacesAreMultiRoomReady =
+    selectedRates.length <= 1 || selectedRates.every(isRoomRate);
+  const selectedSpacesAreAvailable =
+    manualAvailability !== null &&
+    selectedSpaceIds.every(
+      (spaceId) => availabilityBySpaceId.get(spaceId)?.available === true,
+    );
 
   const openBookingWorkflow = (
     action: BookingWorkflowAction,
@@ -160,6 +231,93 @@ export default function OperationsPage({ module }: Props) {
     closeBookingWorkflow();
   };
 
+  const closeManualBooking = () => {
+    setManualBookingOpen(false);
+    setManualBookingForm(emptyManualBookingForm);
+    setSelectedSpaceIds([]);
+    setManualAvailability(null);
+    setManualAvailabilityError("");
+  };
+
+  const updateManualBookingForm = (patch: Partial<ManualBookingForm>) => {
+    setManualBookingForm((prev) => ({ ...prev, ...patch }));
+    if (
+      patch.from !== undefined ||
+      patch.to !== undefined ||
+      patch.guests !== undefined
+    ) {
+      setManualAvailability(null);
+      setManualAvailabilityError("");
+      setSelectedSpaceIds([]);
+    }
+  };
+
+  const toggleManualBookingSpace = (spaceId: string) => {
+    if (manualAvailability !== null) {
+      const availability = availabilityBySpaceId.get(spaceId);
+      if (availability?.available !== true) return;
+    }
+
+    setSelectedSpaceIds((prev) =>
+      prev.includes(spaceId)
+        ? prev.filter((id) => id !== spaceId)
+        : [...prev, spaceId],
+    );
+  };
+
+  const checkManualAvailability = async () => {
+    if (!selectedPropertyId || rates.length === 0) return;
+    setManualAvailabilityError("");
+    setSelectedSpaceIds([]);
+
+    try {
+      const result = await checkManualBookingAvailability({
+        propertyId: selectedPropertyId,
+        payload: {
+          spaceIds: rates.map((rate) => rate.id),
+          from: manualBookingForm.from,
+          to: manualBookingForm.to,
+          guests: Number(manualBookingForm.guests),
+        },
+      });
+
+      setManualAvailability(result);
+    } catch {
+      setManualAvailability(null);
+      setManualAvailabilityError("Could not check availability. Try again.");
+    }
+  };
+
+  const submitManualBooking = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedPropertyId || selectedSpaceIds.length === 0) return;
+    if (!selectedSpacesAreAvailable) return;
+
+    const isMultiRoom = selectedSpaceIds.length > 1;
+    await createManualBooking({
+      propertyId: selectedPropertyId,
+      payload: {
+        bookingType: isMultiRoom ? "MULTI_ROOM" : "SINGLE_TARGET",
+        ...(isMultiRoom
+          ? { spaceIds: selectedSpaceIds }
+          : { spaceId: selectedSpaceIds[0] }),
+        from: manualBookingForm.from,
+        to: manualBookingForm.to,
+        guests: Number(manualBookingForm.guests),
+        guestName: manualBookingForm.guestName.trim(),
+        guestEmail: manualBookingForm.guestEmail.trim().toLowerCase(),
+        ...(manualBookingForm.countryCode.trim() &&
+          manualBookingForm.contactNumber.trim() && {
+            countryCode: manualBookingForm.countryCode.trim(),
+            contactNumber: manualBookingForm.contactNumber.trim(),
+          }),
+        internalNotes: manualBookingForm.internalNotes.trim() || null,
+      },
+    });
+
+    closeManualBooking();
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -173,6 +331,19 @@ export default function OperationsPage({ module }: Props) {
         </div>
 
         <div className="flex flex-wrap gap-3">
+          {module === "bookings" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="dark"
+              icon={<FiPlus />}
+              disabled={!selectedPropertyId}
+              onClick={() => setManualBookingOpen(true)}
+            >
+              Walk-in booking
+            </Button>
+          )}
+
           <select
             value={selectedPropertyId}
             onChange={(event) => setPropertyId(event.target.value)}
@@ -310,7 +481,14 @@ export default function OperationsPage({ module }: Props) {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">{booking.totalAmount}</td>
+                    <td className="px-4 py-3">
+                      <div>{booking.totalAmount}</div>
+                      <div className="text-xs text-slate-500">
+                        {Number(booking.upfrontAmount) > 0
+                          ? `Token ${booking.upfrontAmount}`
+                          : "No upfront"}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <StatusSelect
                         value={booking.status}
@@ -408,6 +586,25 @@ export default function OperationsPage({ module }: Props) {
         </div>
       )}
 
+      <ManualBookingModal
+        isOpen={manualBookingOpen}
+        form={manualBookingForm}
+        rates={rates}
+        selectedSpaceIds={selectedSpaceIds}
+        isFetchingRates={isRatesFetching}
+        isSubmitting={isMutating}
+        selectedSpacesAreMultiRoomReady={selectedSpacesAreMultiRoomReady}
+        selectedSpacesAreAvailable={selectedSpacesAreAvailable}
+        availability={manualAvailability}
+        availabilityBySpaceId={availabilityBySpaceId}
+        availabilityError={manualAvailabilityError}
+        onFormChange={updateManualBookingForm}
+        onCheckAvailability={checkManualAvailability}
+        onToggleSpace={toggleManualBookingSpace}
+        onClose={closeManualBooking}
+        onSubmit={submitManualBooking}
+      />
+
       <BookingWorkflowModal
         workflow={activeBookingWorkflow}
         note={workflowNote}
@@ -432,6 +629,322 @@ function EmptyRow({ message, colSpan = 5 }: { message: string; colSpan?: number 
         {message}
       </td>
     </tr>
+  );
+}
+
+function ManualBookingModal({
+  isOpen,
+  form,
+  rates,
+  selectedSpaceIds,
+  isFetchingRates,
+  isSubmitting,
+  selectedSpacesAreMultiRoomReady,
+  selectedSpacesAreAvailable,
+  availability,
+  availabilityBySpaceId,
+  availabilityError,
+  onFormChange,
+  onCheckAvailability,
+  onToggleSpace,
+  onClose,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  form: ManualBookingForm;
+  rates: AdminRoomPricing[];
+  selectedSpaceIds: string[];
+  isFetchingRates: boolean;
+  isSubmitting: boolean;
+  selectedSpacesAreMultiRoomReady: boolean;
+  selectedSpacesAreAvailable: boolean;
+  availability: ManualBookingAvailabilityResponse | null;
+  availabilityBySpaceId: Map<
+    string,
+    ManualBookingAvailabilityResponse["items"][number]
+  >;
+  availabilityError: string;
+  onFormChange: (patch: Partial<ManualBookingForm>) => void;
+  onCheckAvailability: () => void;
+  onToggleSpace: (spaceId: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const canCheckAvailability =
+    form.from.length > 0 &&
+    form.to.length > 0 &&
+    Number(form.guests) > 0 &&
+    rates.length > 0 &&
+    !isSubmitting;
+  const canSubmit =
+    selectedSpaceIds.length > 0 &&
+    selectedSpacesAreMultiRoomReady &&
+    selectedSpacesAreAvailable &&
+    form.guestName.trim().length > 0 &&
+    form.guestEmail.trim().length > 0 &&
+    form.from.length > 0 &&
+    form.to.length > 0 &&
+    Number(form.guests) > 0 &&
+    !isSubmitting;
+  const availableCount = availability?.availableSpaceIds.length ?? 0;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Create Walk-in Booking"
+      size="xl"
+      disableBackdropClose={isSubmitting}
+      disableEscapeClose={isSubmitting}
+    >
+      <form className="space-y-4" onSubmit={onSubmit}>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Guest name</span>
+            <input
+              value={form.guestName}
+              required
+              disabled={isSubmitting}
+              onChange={(event) => onFormChange({ guestName: event.target.value })}
+              className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Guest email</span>
+            <input
+              type="email"
+              value={form.guestEmail}
+              required
+              disabled={isSubmitting}
+              onChange={(event) => onFormChange({ guestEmail: event.target.value })}
+              className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">From</span>
+            <input
+              type="date"
+              value={form.from}
+              required
+              disabled={isSubmitting}
+              onChange={(event) => onFormChange({ from: event.target.value })}
+              className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">To</span>
+            <input
+              type="date"
+              value={form.to}
+              required
+              disabled={isSubmitting}
+              onChange={(event) => onFormChange({ to: event.target.value })}
+              className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-slate-700">Guests</span>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={form.guests}
+              required
+              disabled={isSubmitting}
+              onChange={(event) => onFormChange({ guests: event.target.value })}
+              className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            />
+          </label>
+
+          <div className="grid grid-cols-[96px_1fr] gap-2">
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Code</span>
+              <input
+                value={form.countryCode}
+                disabled={isSubmitting}
+                onChange={(event) =>
+                  onFormChange({ countryCode: event.target.value })
+                }
+                className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Phone</span>
+              <input
+                value={form.contactNumber}
+                disabled={isSubmitting}
+                onChange={(event) =>
+                  onFormChange({ contactNumber: event.target.value })
+                }
+                className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <span className="text-sm font-medium text-slate-700">Spaces</span>
+              <div className="text-xs text-slate-500">
+                {availability
+                  ? `${availableCount} available / ${selectedSpaceIds.length} selected`
+                  : "Check dates before selecting rooms"}
+              </div>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!canCheckAvailability}
+              onClick={onCheckAvailability}
+            >
+              Check availability
+            </Button>
+          </div>
+          {availabilityError && (
+            <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {availabilityError}
+            </div>
+          )}
+          {availability && availableCount === 0 && (
+            <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              No spaces are available for these dates.
+            </div>
+          )}
+          <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
+            {isFetchingRates ? (
+              <div className="py-6 text-center text-sm text-slate-500">
+                Loading spaces...
+              </div>
+            ) : rates.length === 0 ? (
+              <div className="py-6 text-center text-sm text-slate-500">
+                No priced spaces found.
+              </div>
+            ) : (
+              rates.map((rate) => (
+                <ManualBookingSpaceOption
+                  key={rate.id}
+                  rate={rate}
+                  checked={selectedSpaceIds.includes(rate.id)}
+                  disabled={isSubmitting}
+                  availability={availabilityBySpaceId.get(rate.id) ?? null}
+                  hasAvailabilityResult={availability !== null}
+                  onToggle={() => onToggleSpace(rate.id)}
+                />
+              ))
+            )}
+          </div>
+          {availability === null && (
+            <p className="mt-2 text-xs text-slate-500">
+              Availability is checked against bookings and maintenance blocks.
+            </p>
+          )}
+          {!selectedSpacesAreAvailable && selectedSpaceIds.length > 0 && (
+            <p className="mt-2 text-xs text-red-600">
+              Remove unavailable spaces before creating the booking.
+            </p>
+          )}
+          {!selectedSpacesAreMultiRoomReady && (
+            <p className="mt-2 text-xs text-red-600">
+              Multi-room walk-in bookings can combine rooms only.
+            </p>
+          )}
+        </div>
+
+        <label className="block text-sm">
+          <span className="font-medium text-slate-700">Internal notes</span>
+          <textarea
+            value={form.internalNotes}
+            maxLength={5000}
+            disabled={isSubmitting}
+            onChange={(event) =>
+              onFormChange({ internalNotes: event.target.value })
+            }
+            className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          />
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={isSubmitting}
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" size="sm" disabled={!canSubmit}>
+            Create booking
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ManualBookingSpaceOption({
+  rate,
+  checked,
+  disabled,
+  availability,
+  hasAvailabilityResult,
+  onToggle,
+}: {
+  rate: AdminRoomPricing;
+  checked: boolean;
+  disabled: boolean;
+  availability: ManualBookingAvailabilityResponse["items"][number] | null;
+  hasAvailabilityResult: boolean;
+  onToggle: () => void;
+}) {
+  const isAvailable = availability?.available === true;
+  const isDisabled = disabled || !isAvailable;
+  const statusText = !hasAvailabilityResult
+    ? "Check needed"
+    : isAvailable
+      ? "Available"
+      : availability?.reason ?? "Unavailable";
+  const statusClass = !hasAvailabilityResult
+    ? "bg-slate-100 text-slate-600"
+    : isAvailable
+      ? "bg-green-50 text-green-700 ring-1 ring-green-200"
+      : "bg-red-50 text-red-700 ring-1 ring-red-200";
+
+  return (
+    <label
+      className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
+        isAvailable
+          ? "border-green-200 bg-white"
+          : "border-slate-200 bg-white opacity-75"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={isDisabled}
+        onChange={onToggle}
+        className="mt-1"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-slate-900">
+            {formatRateTarget(rate)}
+          </span>
+          <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
+            {statusText}
+          </span>
+        </span>
+        <span className="mt-1 block text-xs text-slate-500">
+          {rate.productName} / INR {rate.price} / {rate.rateType}
+        </span>
+      </span>
+    </label>
   );
 }
 

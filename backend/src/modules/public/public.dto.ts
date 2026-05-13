@@ -1,4 +1,5 @@
 import type {
+  BookingPaymentPolicy,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -16,6 +17,8 @@ export interface PublicTenantConfigDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
+  payAtCheckInEnabled: boolean;
+  bookingTokenAmount: number;
 }
 
 export interface PublicSpaceDTO {
@@ -74,6 +77,8 @@ export interface PublicBookingDTO {
   title: string;
   spaceName: string;
   status: BookingStatus;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;
@@ -81,6 +86,7 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  remainingPayAtCheckIn: number;
   items: PublicBookingItemDTO[];
   internalNotes: string | null;
   cancellationReason: string | null;

@@ -1,4 +1,5 @@
 import {
+  BookingPaymentPolicy,
   BookingStatus,
   BookingTargetType,
   BookingType,
@@ -27,6 +28,16 @@ const multiRoomTitle = "Multi-room stay";
 
 const normalizeHost = (host?: string) => host?.split(":")[0]?.toLowerCase();
 
+interface CreateBookingOptions {
+  actorUserId?: string;
+  requiredPropertyId?: string;
+  paymentPolicy?: BookingPaymentPolicy;
+  upfrontAmount?: number;
+  initialStatus?: BookingStatus;
+  statusHistoryNote?: string;
+  internalNotes?: string | null;
+}
+
 const mapTenantConfig = (
   tenant: NonNullable<Awaited<ReturnType<typeof repo.findDefaultTenant>>>,
 ): PublicTenantConfigDTO => ({
@@ -41,9 +52,18 @@ const mapTenantConfig = (
   supportPhone: tenant.supportPhone ?? null,
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
+  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
+  bookingTokenAmount: Number(tenant.bookingTokenAmount),
 });
 
 export const resolveTenant = async (input: TenantResolutionInput = {}) => {
+  if (input.tenantId) {
+    const tenant = await repo.findActiveTenantById(input.tenantId);
+    if (tenant) {
+      return tenant;
+    }
+  }
+
   if (input.tenantSlug) {
     const tenant = await repo.findActiveTenantBySlug(input.tenantSlug);
     if (tenant) {
@@ -185,6 +205,8 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     title,
     spaceName: booking.targetLabel,
     status: booking.status,
+    paymentPolicy: booking.paymentPolicy,
+    upfrontAmount: Number(booking.upfrontAmount),
     guestName: booking.guestNameSnapshot,
     guestEmail: booking.guestEmailSnapshot,
     guestContactNumber: booking.guestContactSnapshot ?? null,
@@ -192,6 +214,10 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     to: booking.checkOut.toISOString(),
     pricePerNight: Number(booking.pricePerNight),
     totalPrice: Number(booking.totalAmount),
+    remainingPayAtCheckIn: Math.max(
+      0,
+      Number(booking.totalAmount) - Number(booking.upfrontAmount),
+    ),
     items,
     internalNotes: booking.internalNotes ?? null,
     cancellationReason: booking.cancellationReason ?? null,
@@ -411,13 +437,25 @@ const getArrayItem = <T>(items: T[], index: number, message: string): T => {
   return item;
 };
 
-export const createBooking = async (
+export const createBookingForUser = async (
   userId: string,
   input: CreatePublicBookingInput,
   tenantInput: TenantResolutionInput = {},
+  options: CreateBookingOptions = {},
 ): Promise<PublicBookingDTO> => {
   const tenant = await resolveTenant(tenantInput);
   const nights = getNights(input.from, input.to);
+  const paymentPolicy =
+    options.paymentPolicy ??
+    (tenant.payAtCheckInEnabled
+      ? BookingPaymentPolicy.TOKEN_AT_BOOKING
+      : BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
+  const upfrontAmount =
+    options.upfrontAmount ??
+    (tenant.payAtCheckInEnabled ? Number(tenant.bookingTokenAmount) : 0);
+  const initialStatus =
+    options.initialStatus ??
+    (tenant.payAtCheckInEnabled ? BookingStatus.PENDING : BookingStatus.CONFIRMED);
 
   for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
     try {
@@ -484,6 +522,23 @@ export const createBooking = async (
           );
         }
 
+        const propertyId = getArrayItem(
+          Array.from(propertyIds),
+          0,
+          "Missing booking property",
+        );
+
+        if (
+          options.requiredPropertyId !== undefined &&
+          propertyId !== options.requiredPropertyId
+        ) {
+          throw new HttpError(
+            422,
+            "BOOKING_PROPERTY_MISMATCH",
+            "Selected spaces do not belong to the selected property",
+          );
+        }
+
         const targets = await Promise.all(
           resolvedSpaces.map((space) =>
             ensureSpaceAvailable(space, input.from, input.to, tx),
@@ -525,6 +580,7 @@ export const createBooking = async (
           (total, item) => total + Number(item.totalAmount),
           0,
         );
+        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
         const pricePerNight = itemInputs.reduce(
           (total, item) => total + Number(item.pricePerNight),
           0,
@@ -573,8 +629,13 @@ export const createBooking = async (
             pricePerNight,
             checkIn: input.from,
             checkOut: input.to,
-            status: BookingStatus.PENDING,
+            status: initialStatus,
             totalAmount,
+            paymentPolicy,
+            upfrontAmount: bookingUpfrontAmount,
+            ...(options.internalNotes !== undefined && {
+              internalNotes: options.internalNotes,
+            }),
             createdAt,
             items: {
               create: itemInputs,
@@ -590,13 +651,17 @@ export const createBooking = async (
                 id: booking.id,
               },
             },
-            toStatus: BookingStatus.PENDING,
+            toStatus: initialStatus,
             actor: {
               connect: {
-                id: userId,
+                id: options.actorUserId ?? userId,
               },
             },
-            note: "Booking created by guest",
+            note:
+              options.statusHistoryNote ??
+              (tenant.payAtCheckInEnabled
+                ? "Booking created by guest"
+                : "Booking created without upfront payment"),
           },
           tx,
         );
@@ -631,6 +696,13 @@ export const createBooking = async (
     "Selected space is no longer available for these dates",
   );
 };
+
+export const createBooking = async (
+  userId: string,
+  input: CreatePublicBookingInput,
+  tenantInput: TenantResolutionInput = {},
+): Promise<PublicBookingDTO> =>
+  createBookingForUser(userId, input, tenantInput);
 
 export const listBookings = async (
   userId: string,

@@ -235,13 +235,21 @@ export default function SpacesListPage() {
 
   const spaces = query.data ?? [];
   const filteredSpaces = spaces.filter((space) => {
+    const occupancy = getSpaceOccupancy(space);
+    const canBeMultiRoomCandidate =
+      guests > 2 &&
+      selectedOccupancy !== "single" &&
+      selectedOccupancy !== "unit" &&
+      occupancy !== "unit";
     const matchesOccupancy =
       selectedOccupancy === "all" ||
-      getSpaceOccupancy(space) === selectedOccupancy;
+      occupancy === selectedOccupancy ||
+      canBeMultiRoomCandidate;
     const matchesClimate =
       selectedClimate === "all" ||
       (selectedClimate === "ac" ? space.hasAC : !space.hasAC);
-    const matchesGuests = guests === 0 || space.capacity >= guests;
+    const matchesGuests =
+      guests === 0 || space.capacity >= guests || canBeMultiRoomCandidate;
 
     return matchesOccupancy && matchesClimate && matchesGuests;
   });
@@ -630,7 +638,9 @@ export default function SpacesListPage() {
                   No matching spaces
                 </h3>
                 <p className="mt-2 text-sm text-muted">
-                  Try another occupancy filter or clear filters.
+                  {guests > 2
+                    ? "Select stay dates to check multi-room availability, or clear filters."
+                    : "Try another occupancy filter or clear filters."}
                 </p>
               </div>
             ) : (

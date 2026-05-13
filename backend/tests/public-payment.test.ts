@@ -4,6 +4,7 @@ import { after, before, test } from "node:test";
 import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
+  BookingPaymentPolicy,
   BookingStatus,
   PricingTier,
   PropertyStatus,
@@ -206,7 +207,7 @@ test("manual payment confirms a pending booking", async () => {
 
   assert.equal(result.payment.status, "SUCCEEDED");
   assert.equal(result.payment.provider, "MANUAL");
-  assert.equal(result.payment.amount, 6000);
+  assert.equal(result.payment.amount, 10);
   assert.equal(result.payment.currency, "INR");
   assert.equal(result.booking.status, BookingStatus.CONFIRMED);
 
@@ -287,8 +288,117 @@ test("manual payment confirms a multi-room booking", async () => {
   });
 
   assert.equal(booking.items.length, 2);
-  assert.equal(result.payment.amount, 11600);
+  assert.equal(result.payment.amount, 10);
   assert.equal(result.booking.status, BookingStatus.CONFIRMED);
+});
+
+test("booking is confirmed without payment when token collection is disabled", async () => {
+  await prisma.tenant.update({
+    where: { id: state.tenantId },
+    data: {
+      payAtCheckInEnabled: false,
+    },
+  });
+
+  try {
+    const booking = await publicService.createBooking(
+      state.guestId,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2027-09-10T00:00:00.000Z"),
+        to: new Date("2027-09-12T00:00:00.000Z"),
+        guests: 2,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(booking.status, BookingStatus.CONFIRMED);
+    assert.equal(booking.paymentPolicy, BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
+    assert.equal(booking.upfrontAmount, 0);
+
+    await assert.rejects(
+      paymentsService.createManualPayment({
+        userId: state.guestId,
+        bookingId: booking.id,
+        idempotencyKey: `${testId}-disabled-token-payment`,
+      }),
+      (reason) => {
+        assert.ok(reason instanceof HttpError);
+        assert.equal(reason.statusCode, 409);
+        assert.equal(reason.code, "BOOKING_PAYMENT_NOT_REQUIRED");
+        return true;
+      },
+    );
+  } finally {
+    await prisma.tenant.update({
+      where: { id: state.tenantId },
+      data: {
+        payAtCheckInEnabled: true,
+      },
+    });
+  }
+});
+
+test("dashboard can create a confirmed walk-in booking without payment", async () => {
+  const booking = await dashboardService.createManualBooking(
+    state.superAdminId,
+    state.propertyId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-08-10T00:00:00.000Z"),
+      to: new Date("2027-08-12T00:00:00.000Z"),
+      guests: 2,
+      guestName: "Walk In Guest",
+      guestEmail: `${testId}-walk-in@sucasa.test`,
+      countryCode: "+91",
+      contactNumber: "9999999999",
+      internalNotes: "Created at reception",
+    },
+  );
+
+  assert.equal(booking.status, BookingStatus.CONFIRMED);
+  assert.equal(booking.paymentPolicy, BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
+  assert.equal(booking.upfrontAmount, "0");
+  assert.equal(booking.guestEmailSnapshot, `${testId}-walk-in@sucasa.test`);
+  assert.equal(booking.items.length, 1);
+  assert.equal(booking.internalNotes, "Created at reception");
+});
+
+test("dashboard availability check marks booked spaces unavailable", async () => {
+  await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-10-10T00:00:00.000Z"),
+      to: new Date("2027-10-12T00:00:00.000Z"),
+      guests: 2,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const result = await dashboardService.checkManualBookingAvailability(
+    state.superAdminId,
+    state.propertyId,
+    {
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-10-10T00:00:00.000Z"),
+      to: new Date("2027-10-12T00:00:00.000Z"),
+      guests: 2,
+    },
+  );
+
+  const bookedSpace = result.items.find((item) => item.spaceId === state.pricingId);
+  const availableSpace = result.items.find(
+    (item) => item.spaceId === state.pricingTwoId,
+  );
+
+  assert.equal(bookedSpace?.available, false);
+  assert.equal(bookedSpace?.reason, "Already booked for selected dates");
+  assert.equal(availableSpace?.available, true);
+  assert.deepEqual(result.availableSpaceIds, [state.pricingTwoId]);
 });
 
 test("manual payment rejects a second successful payment for one booking", async () => {

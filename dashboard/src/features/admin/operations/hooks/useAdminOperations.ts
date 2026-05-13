@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
 import {
+  checkManualBookingAvailabilityApi,
   checkInBookingApi,
   checkOutBookingApi,
+  createManualBookingApi,
   listBookingsApi,
   listEnquiriesApi,
   listQuotesApi,
@@ -10,7 +12,13 @@ import {
   updateEnquiryStatusApi,
   updateQuoteStatusApi,
 } from "../api";
-import type { BookingStatus, LeadStatus, UpdateBookingPayload } from "../types";
+import type {
+  BookingStatus,
+  CheckManualBookingAvailabilityPayload,
+  CreateManualBookingPayload,
+  LeadStatus,
+  UpdateBookingPayload,
+} from "../types";
 
 type Module = "bookings" | "enquiries" | "quotes";
 type Filters = {
@@ -92,6 +100,27 @@ export const useAdminOperations = (
     onSuccess: (booking) => invalidate(booking.propertyId),
   });
 
+  const createManualBooking = useMutation({
+    mutationFn: ({
+      propertyId: targetPropertyId,
+      payload,
+    }: {
+      propertyId: string;
+      payload: CreateManualBookingPayload;
+    }) => createManualBookingApi(targetPropertyId, payload),
+    onSuccess: (booking) => invalidate(booking.propertyId),
+  });
+
+  const checkManualBookingAvailability = useMutation({
+    mutationFn: ({
+      propertyId: targetPropertyId,
+      payload,
+    }: {
+      propertyId: string;
+      payload: CheckManualBookingAvailabilityPayload;
+    }) => checkManualBookingAvailabilityApi(targetPropertyId, payload),
+  });
+
   const checkInBooking = useMutation({
     mutationFn: ({
       bookingId,
@@ -136,12 +165,17 @@ export const useAdminOperations = (
     isPending: query.isPending,
     isFetching: query.isFetching,
     updateBooking: updateBooking.mutateAsync,
+    createManualBooking: createManualBooking.mutateAsync,
+    checkManualBookingAvailability:
+      checkManualBookingAvailability.mutateAsync,
     checkInBooking: checkInBooking.mutateAsync,
     checkOutBooking: checkOutBooking.mutateAsync,
     updateEnquiry: updateEnquiry.mutateAsync,
     updateQuote: updateQuote.mutateAsync,
     isMutating:
       updateBooking.isPending ||
+      createManualBooking.isPending ||
+      checkManualBookingAvailability.isPending ||
       checkInBooking.isPending ||
       checkOutBooking.isPending ||
       updateEnquiry.isPending ||

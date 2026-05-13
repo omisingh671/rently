@@ -96,6 +96,11 @@ router.post("/properties/:propertyId/coupons", controller.createCoupon);
 router.patch("/coupons/:id", controller.updateCoupon);
 
 router.get("/properties/:propertyId/bookings", controller.listBookings);
+router.post(
+  "/properties/:propertyId/bookings/availability",
+  controller.checkManualBookingAvailability,
+);
+router.post("/properties/:propertyId/bookings", controller.createManualBooking);
 router.patch("/bookings/:id", controller.updateBooking);
 
 router.get("/properties/:propertyId/enquiries", controller.listEnquiries);

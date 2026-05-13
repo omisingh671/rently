@@ -1,5 +1,7 @@
 import {
+  BookingPaymentPolicy,
   BookingStatus,
+  BookingTargetType,
   LeadStatus,
   MaintenanceTargetType,
   PricingTier,
@@ -11,11 +13,16 @@ import {
 import { hashPassword } from "@/common/utils/password.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type { PaginatedResult } from "@/common/types/pagination.js";
+import { randomUUID } from "node:crypto";
+import { createBookingForUser } from "@/modules/public/public.service.js";
+import * as publicRepo from "@/modules/public/public.repository.js";
 import * as repo from "./dashboard.repository.js";
 import type {
   CreateDashboardAmenityInput,
   CreateDashboardAssignmentInput,
   CreateDashboardCouponInput,
+  CreateDashboardManualBookingInput,
+  CheckDashboardManualBookingAvailabilityInput,
   CreateDashboardTenantInput,
   CreateDashboardRoomPricingInput,
   CreateDashboardRoomProductInput,
@@ -60,6 +67,7 @@ import type {
   DashboardBookingDTO,
   DashboardCouponDTO,
   DashboardEnquiryDTO,
+  DashboardManualBookingAvailabilityDTO,
   DashboardMaintenanceBlockDTO,
   DashboardMeDTO,
   DashboardPropertyAssignmentDTO,
@@ -74,6 +82,7 @@ import type {
   DashboardUserDTO,
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
+import type { PublicSpaceTarget } from "@/modules/public/public.inputs.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -199,6 +208,8 @@ const mapTenant = (tenant: repo.DashboardTenantRecord): DashboardTenantDTO => ({
   supportPhone: tenant.supportPhone ?? null,
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
+  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
+  bookingTokenAmount: tenant.bookingTokenAmount.toString(),
   createdAt: tenant.createdAt,
   updatedAt: tenant.updatedAt,
 });
@@ -376,6 +387,8 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
   checkOut: booking.checkOut,
   status: booking.status,
   totalAmount: booking.totalAmount.toString(),
+  paymentPolicy: booking.paymentPolicy,
+  upfrontAmount: booking.upfrontAmount.toString(),
   internalNotes: booking.internalNotes ?? null,
   items: booking.items.map((item) => ({
     id: item.id,
@@ -709,6 +722,86 @@ const ensureUniqueUserEmail = async (email: string) => {
   if (existingUser) {
     throw new HttpError(409, "EMAIL_EXISTS", "Email already registered");
   }
+};
+
+const findOrCreateWalkInGuest = async (
+  actor: DashboardActor,
+  input: Pick<
+    CreateDashboardManualBookingInput,
+    "guestName" | "guestEmail" | "countryCode" | "contactNumber"
+  >,
+) => {
+  const email = input.guestEmail.trim().toLowerCase();
+  const existingUser = await repo.findUserByEmail(email);
+
+  if (existingUser) {
+    if (existingUser.role !== UserRole.GUEST) {
+      throw new HttpError(
+        409,
+        "GUEST_EMAIL_UNAVAILABLE",
+        "This email belongs to a dashboard user",
+      );
+    }
+
+    return repo.updateUserById(existingUser.id, {
+      fullName: input.guestName,
+      ...(input.countryCode !== undefined &&
+        input.contactNumber !== undefined && {
+          countryCode: input.countryCode,
+          contactNumber: input.contactNumber,
+        }),
+    });
+  }
+
+  const passwordHash = await hashPassword(randomUUID());
+  return repo.createUser({
+    fullName: input.guestName,
+    email,
+    passwordHash,
+    role: UserRole.GUEST,
+    createdBy: {
+      connect: {
+        id: actor.id,
+      },
+    },
+    ...(input.countryCode !== undefined &&
+      input.contactNumber !== undefined && {
+        countryCode: input.countryCode,
+        contactNumber: input.contactNumber,
+      }),
+  });
+};
+
+const getStayNights = (from: Date, to: Date) =>
+  Math.max(
+    1,
+    Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+
+const getManualBookingSpaceTarget = (
+  space: publicRepo.PublicSpaceRecord,
+): PublicSpaceTarget => {
+  if (space.roomId) {
+    return {
+      targetType: BookingTargetType.ROOM,
+      unitId: space.room?.unitId ?? null,
+      roomId: space.roomId,
+    };
+  }
+
+  if (space.unitId) {
+    return {
+      targetType: BookingTargetType.UNIT,
+      unitId: space.unitId,
+      roomId: null,
+    };
+  }
+
+  throw new HttpError(
+    422,
+    "SPACE_NOT_BOOKABLE",
+    "Space is missing a bookable target",
+  );
 };
 
 const ensureAmenityIdsBelongToProperty = async (
@@ -1056,6 +1149,12 @@ export const createTenant = async (
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
       }),
+      ...(input.payAtCheckInEnabled !== undefined && {
+        payAtCheckInEnabled: input.payAtCheckInEnabled,
+      }),
+      ...(input.bookingTokenAmount !== undefined && {
+        bookingTokenAmount: input.bookingTokenAmount,
+      }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
 
@@ -1109,6 +1208,12 @@ export const updateTenant = async (
       }),
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
+      }),
+      ...(input.payAtCheckInEnabled !== undefined && {
+        payAtCheckInEnabled: input.payAtCheckInEnabled,
+      }),
+      ...(input.bookingTokenAmount !== undefined && {
+        bookingTokenAmount: input.bookingTokenAmount,
       }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
@@ -2625,6 +2730,139 @@ export const listBookings = async (
     total,
     items.map(mapBooking),
   );
+};
+
+export const checkManualBookingAvailability = async (
+  userId: string,
+  propertyId: string,
+  input: CheckDashboardManualBookingAvailabilityInput,
+): Promise<DashboardManualBookingAvailabilityDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+  const uniqueSpaceIds = [...new Set(input.spaceIds)];
+  const nights = getStayNights(input.from, input.to);
+
+  const items = await Promise.all(
+    uniqueSpaceIds.map(async (spaceId) => {
+      const space = await publicRepo.findActiveSpaceById(
+        spaceId,
+        new Date(),
+        property.tenantId,
+        undefined,
+        {
+          checkIn: input.from,
+          checkOut: input.to,
+          nights,
+        },
+      );
+
+      if (!space) {
+        return {
+          spaceId,
+          available: false,
+          reason: "No active price for selected dates",
+        };
+      }
+
+      if (space.propertyId !== propertyId) {
+        return {
+          spaceId,
+          available: false,
+          reason: "Space belongs to another property",
+        };
+      }
+
+      const target = getManualBookingSpaceTarget(space);
+      const [hasBooking, hasMaintenance] = await Promise.all([
+        publicRepo.hasOverlappingBooking(target, input.from, input.to),
+        publicRepo.hasOverlappingMaintenance(
+          propertyId,
+          target,
+          input.from,
+          input.to,
+        ),
+      ]);
+
+      if (hasBooking) {
+        return {
+          spaceId,
+          available: false,
+          reason: "Already booked for selected dates",
+        };
+      }
+
+      if (hasMaintenance) {
+        return {
+          spaceId,
+          available: false,
+          reason: "Blocked for maintenance",
+        };
+      }
+
+      return {
+        spaceId,
+        available: true,
+        reason: null,
+      };
+    }),
+  );
+
+  return {
+    from: input.from.toISOString(),
+    to: input.to.toISOString(),
+    guests: input.guests,
+    availableSpaceIds: items
+      .filter((item) => item.available)
+      .map((item) => item.spaceId),
+    items,
+  };
+};
+
+export const createManualBooking = async (
+  userId: string,
+  propertyId: string,
+  input: CreateDashboardManualBookingInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+  const guest = await findOrCreateWalkInGuest(actor, input);
+
+  const createdBooking = await createBookingForUser(
+    guest.id,
+    {
+      bookingType: input.bookingType,
+      ...(input.spaceId !== undefined && { spaceId: input.spaceId }),
+      ...(input.spaceIds !== undefined && { spaceIds: input.spaceIds }),
+      from: input.from,
+      to: input.to,
+      guests: input.guests,
+    },
+    {
+      tenantId: property.tenantId,
+    },
+    {
+      actorUserId: actor.id,
+      requiredPropertyId: propertyId,
+      paymentPolicy: BookingPaymentPolicy.NO_UPFRONT_PAYMENT,
+      upfrontAmount: 0,
+      initialStatus: BookingStatus.CONFIRMED,
+      statusHistoryNote: "Manual walk-in booking created from dashboard",
+      internalNotes: input.internalNotes ?? null,
+    },
+  );
+
+  const booking = await repo.findBookingById(createdBooking.id);
+  if (!booking) {
+    throw new HttpError(
+      500,
+      "BOOKING_READ_FAILED",
+      "Booking was created but could not be loaded",
+    );
+  }
+
+  return mapBooking(booking);
 };
 
 export const updateBooking = async (
