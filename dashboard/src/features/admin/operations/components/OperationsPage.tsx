@@ -13,7 +13,7 @@ import type {
   LeadStatus,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
-import { FiLogIn, FiLogOut, FiPlus } from "react-icons/fi";
+import { FiClipboard, FiLogIn, FiLogOut, FiPlus } from "react-icons/fi";
 
 type Module = "bookings" | "enquiries" | "quotes";
 
@@ -175,14 +175,24 @@ export default function OperationsPage({ module }: Props) {
 
         <div className="flex flex-wrap gap-3">
           {module === "bookings" && (
-            <Button
-              size="sm"
-              variant="dark"
-              icon={<FiPlus />}
-              to={adminPath(ADMIN_ROUTES.WALK_IN_BOOKING)}
-            >
-              Walk-in booking
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<FiClipboard />}
+                to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
+              >
+                Room board
+              </Button>
+              <Button
+                size="sm"
+                variant="dark"
+                icon={<FiPlus />}
+                to={adminPath(ADMIN_ROUTES.WALK_IN_BOOKING)}
+              >
+                Walk-in booking
+              </Button>
+            </>
           )}
 
           <select

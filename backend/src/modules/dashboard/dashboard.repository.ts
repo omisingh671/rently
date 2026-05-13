@@ -1,6 +1,7 @@
 import { prisma } from "@/db/prisma.js";
 import {
   type BookingStatus,
+  BookingStatus as BookingStatusValue,
   type DiscountType,
   type LeadStatus,
   type MaintenanceTargetType,
@@ -162,6 +163,19 @@ export type DashboardEnquiryRecord = Prisma.EnquiryGetPayload<{
 export type DashboardQuoteRecord = Prisma.QuoteRequestGetPayload<{
   include: typeof dashboardQuoteInclude;
 }>;
+export type DashboardRoomBoardRoomRecord = Prisma.RoomGetPayload<{
+  include: {
+    unit: true;
+  };
+}>;
+export type DashboardRoomBoardBookingItemRecord =
+  Prisma.BookingItemGetPayload<{
+    include: {
+      booking: true;
+    };
+  }>;
+export type DashboardRoomBoardMaintenanceRecord =
+  Prisma.MaintenanceBlockGetPayload<Record<string, never>>;
 
 interface UserListFilters {
   page: number;
@@ -995,6 +1009,62 @@ export const countRooms = (propertyIds?: string[]) =>
     },
   });
 
+export const listRoomBoardRooms = (propertyId: string) =>
+  prisma.room.findMany({
+    where: {
+      unit: {
+        is: {
+          propertyId,
+        },
+      },
+    },
+    include: {
+      unit: true,
+    },
+    orderBy: [
+      { unit: { floor: "asc" } },
+      { unit: { unitNumber: "asc" } },
+      { number: "asc" },
+    ],
+  });
+
+export const listRoomBoardBookingItems = (
+  propertyId: string,
+  from: Date,
+  to: Date,
+) =>
+  prisma.bookingItem.findMany({
+    where: {
+      booking: {
+        propertyId,
+        status: { not: BookingStatusValue.CANCELLED },
+        checkIn: { lt: to },
+        checkOut: { gt: from },
+      },
+    },
+    include: {
+      booking: true,
+    },
+    orderBy: [
+      { booking: { checkIn: "asc" } },
+      { booking: { createdAt: "asc" } },
+    ],
+  });
+
+export const listRoomBoardMaintenanceBlocks = (
+  propertyId: string,
+  from: Date,
+  to: Date,
+) =>
+  prisma.maintenanceBlock.findMany({
+    where: {
+      propertyId,
+      startDate: { lt: to },
+      endDate: { gt: from },
+    },
+    orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+  });
+
 export const listMaintenancePaginated = async (
   filters: MaintenanceListFilters,
 ) => {
@@ -1199,6 +1269,39 @@ export const findRoomPricingById = (id: string) =>
     where: { id },
     include: dashboardRoomPricingInclude,
   });
+
+export const findOverlappingRoomPricing = (input: {
+  propertyId: string;
+  productId: string;
+  roomId?: string | null;
+  unitId?: string | null;
+  rateType: RateType;
+  validFrom: Date;
+  validTo?: Date | null;
+  excludePricingId?: string;
+}) => {
+  const scopeWhere =
+    input.roomId !== undefined && input.roomId !== null
+      ? { roomId: input.roomId }
+      : input.unitId !== undefined && input.unitId !== null
+        ? { roomId: null, unitId: input.unitId }
+        : { roomId: null, unitId: null };
+
+  return prisma.roomPricing.findFirst({
+    where: {
+      propertyId: input.propertyId,
+      productId: input.productId,
+      rateType: input.rateType,
+      ...scopeWhere,
+      ...(input.excludePricingId !== undefined && {
+        id: { not: input.excludePricingId },
+      }),
+      validFrom: { lte: input.validTo ?? new Date("9999-12-31T00:00:00.000Z") },
+      OR: [{ validTo: null }, { validTo: { gte: input.validFrom } }],
+    },
+    include: dashboardRoomPricingInclude,
+  });
+};
 
 export const createRoomPricing = (data: Prisma.RoomPricingCreateInput) =>
   prisma.roomPricing.create({

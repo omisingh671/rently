@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiCalendar,
-  FiHome,
-  FiMapPin,
+  FiCheckCircle,
   FiSearch,
-  FiSliders,
   FiUsers,
   FiWind,
 } from "react-icons/fi";
@@ -14,74 +12,32 @@ import {
 import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
 import { ROUTES } from "@/configs/routePaths";
 import { checkAvailability } from "@/features/availability/api";
-import type { AvailabilityResult } from "@/features/availability/domain";
+import type {
+  AvailabilityOption,
+  AvailabilityResult,
+  ComfortFilter,
+  ComfortOption,
+} from "@/features/availability/domain";
 import { useCreateBooking } from "@/features/bookings/hooks";
-import { useSpaces } from "@/features/spaces/hooks";
-import type { Space } from "@/features/spaces/types";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 
-type OccupancyFilter = "all" | "single" | "double" | "unit";
-type ClimateFilter = "ac" | "non-ac";
-
-const occupancyOptions: Array<{
-  value: OccupancyFilter;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "all",
-    label: "All spaces",
-    description: "Rooms and full units",
-  },
-  {
-    value: "single",
-    label: "Single occupancy",
-    description: "Private room for one guest",
-  },
-  {
-    value: "double",
-    label: "Double occupancy",
-    description: "Room for two guests",
-  },
-  {
-    value: "unit",
-    label: "Full unit",
-    description: "Complete apartment/unit",
-  },
+const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
+  { value: "ALL", label: "All" },
+  { value: "AC", label: "AC" },
+  { value: "NON_AC", label: "Non-AC" },
 ];
 
-const climateOptions: Array<{
-  value: ClimateFilter;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "ac",
-    label: "AC",
-    description: "Air-conditioned spaces only",
-  },
-  {
-    value: "non-ac",
-    label: "Non-AC",
-    description: "Naturally ventilated spaces",
-  },
-];
+const isComfortFilter = (value: string | null): value is ComfortFilter =>
+  value === "ALL" || value === "AC" || value === "NON_AC";
 
-const isOccupancyFilter = (value: string | null): value is OccupancyFilter =>
-  value === "all" ||
-  value === "single" ||
-  value === "double" ||
-  value === "unit";
-
-const getClimateFilter = (value: string | null): ClimateFilter => {
-  if (value === "true") return "ac";
-  return "non-ac";
-};
-
-const getSpaceOccupancy = (space: Space): OccupancyFilter => {
-  if (space.targetType === "UNIT") return "unit";
-  return space.capacity <= 1 ? "single" : "double";
+const getInitialComfort = (searchParams: URLSearchParams): ComfortFilter => {
+  const comfort = searchParams.get("comfort");
+  if (isComfortFilter(comfort)) return comfort;
+  const legacyAc = searchParams.get("ac");
+  if (legacyAc === "true") return "AC";
+  if (legacyAc === "false") return "NON_AC";
+  return "ALL";
 };
 
 const formatPrice = (price: number) =>
@@ -94,85 +50,75 @@ const formatPrice = (price: number) =>
 const isValidDateRange = (from: string, to: string) =>
   Boolean(from && to) && new Date(to) > new Date(from);
 
+const mergeAvailabilityResults = (
+  results: AvailabilityResult[],
+): AvailabilityResult => {
+  const optionsById = new Map<string, AvailabilityOption>();
+
+  for (const result of results) {
+    for (const option of result.options) {
+      optionsById.set(option.optionId, option);
+    }
+  }
+
+  const options = [...optionsById.values()]
+    .sort(
+      (left, right) =>
+        left.totalCapacity - right.totalCapacity ||
+        left.itemCount - right.itemCount ||
+        left.stayTotal - right.stayTotal,
+    )
+    .slice(0, 6);
+
+  return {
+    available: options.length > 0,
+    options,
+  };
+};
+
 export default function SpacesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const query = useSpaces(true);
   const createBookingMutation = useCreateBooking();
-  const isAuthenticated = useAuthStore((s) => !!s.accessToken && !!s.user);
-  const [selectedGroupSpaceIds, setSelectedGroupSpaceIds] = useState<string[]>(
-    [],
-  );
-  const [groupBookingError, setGroupBookingError] = useState<string | null>(
-    null,
-  );
+  const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
-  const occupancyParam = searchParams.get("occupancy");
-  const selectedOccupancy = isOccupancyFilter(occupancyParam)
-    ? occupancyParam
-    : "all";
-  const selectedClimate = getClimateFilter(searchParams.get("ac"));
-  const selectedComfortOption =
-    selectedClimate === "ac" ? "AC" : "NON_AC";
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
   const guestsParam = Number(searchParams.get("guests"));
-  const guests = Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 0;
-  const availabilityGuests = guests || 1;
+  const guests = Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 1;
+  const comfort = getInitialComfort(searchParams);
   const canCheckAvailability = isValidDateRange(from, to);
-  const availabilityOccupancyKey =
-    selectedOccupancy === "single"
-      ? "single"
-      : selectedOccupancy === "unit"
-        ? "unit"
-        : availabilityGuests > 2
-          ? "multi_room"
-          : "double";
 
   const availabilityQuery = useQuery<AvailabilityResult, Error>({
     queryKey: PUBLIC_QUERY_KEYS.availability.byCriteria({
       checkIn: from,
       checkOut: to,
-      guests: availabilityGuests,
-      occupancy:
-        selectedOccupancy === "all" && availabilityGuests === 1
-          ? "all"
-          : availabilityOccupancyKey,
-      comfort: selectedComfortOption,
+      guests,
+      comfort,
     }),
     queryFn: async () => {
-      if (selectedOccupancy === "all" && availabilityGuests === 1) {
-        const [singleResult, doubleResult] = await Promise.all([
-          checkAvailability({
-            checkIn: from,
-            checkOut: to,
-            guests: availabilityGuests,
-            occupancyType: "single",
-            comfortOption: selectedComfortOption,
-          }),
-          checkAvailability({
-            checkIn: from,
-            checkOut: to,
-            guests: availabilityGuests,
-            occupancyType: "double",
-            comfortOption: selectedComfortOption,
-          }),
-        ]);
+      if (comfort === "ALL") {
+        const results = await Promise.all(
+          (["AC", "NON_AC"] satisfies ComfortOption[]).map((comfortOption) =>
+            checkAvailability({
+              checkIn: from,
+              checkOut: to,
+              guests,
+              comfortOption,
+            }),
+          ),
+        );
 
-        return {
-          available: singleResult.available || doubleResult.available,
-          spaces: [...singleResult.spaces, ...doubleResult.spaces],
-          groupCandidates: [],
-        };
+        return mergeAvailabilityResults(results);
       }
 
       return checkAvailability({
         checkIn: from,
         checkOut: to,
-        guests: availabilityGuests,
-        occupancyType: availabilityOccupancyKey,
-        comfortOption: selectedComfortOption,
+        guests,
+        comfortOption: comfort,
       });
     },
     enabled: canCheckAvailability,
@@ -188,113 +134,18 @@ export default function SpacesListPage() {
       next.delete(key);
     }
 
-    if (key === "occupancy" && value === "all") {
-      next.delete("occupancy");
-    }
-
-    setSearchParams(next, { replace: true });
-  };
-
-  const updateClimateFilter = (value: ClimateFilter) => {
-    const next = new URLSearchParams(searchParams);
-
-    next.set("ac", value === "ac" ? "true" : "false");
-
+    next.delete("occupancy");
+    next.delete("ac");
     setSearchParams(next, { replace: true });
   };
 
   const clearFilters = () => {
+    setBookingError(null);
     setSearchParams({}, { replace: true });
   };
 
-  if (query.status === "pending") {
-    return (
-      <section className="section bg-surface">
-        <div className="container">
-          <div className="text-lg font-medium mb-4">Spaces</div>
-          <div>Loading spaces...</div>
-        </div>
-      </section>
-    );
-  }
-
-  if (query.status === "error") {
-    return (
-      <section className="section bg-surface">
-        <div className="container">
-          <h1 className="text-2xl font-semibold mb-3">Spaces</h1>
-          <div className="text-danger">Error: {query.error?.message}</div>
-        </div>
-      </section>
-    );
-  }
-
-  const spaces = query.data ?? [];
-  const filteredSpaces = spaces.filter((space) => {
-    const occupancy = getSpaceOccupancy(space);
-    const canBeMultiRoomCandidate =
-      guests > 2 &&
-      selectedOccupancy !== "single" &&
-      selectedOccupancy !== "unit" &&
-      occupancy !== "unit";
-    const matchesOccupancy =
-      selectedOccupancy === "all" ||
-      occupancy === selectedOccupancy ||
-      canBeMultiRoomCandidate;
-    const matchesClimate =
-      selectedClimate === "ac"
-        ? space.comfortOption === "AC"
-        : space.comfortOption === "NON_AC";
-    const matchesGuests =
-      guests === 0 || space.guestCount === guests || canBeMultiRoomCandidate;
-
-    return matchesOccupancy && matchesClimate && matchesGuests;
-  });
-  const selectedLabel =
-    occupancyOptions.find((option) => option.value === selectedOccupancy)
-      ?.label ?? "All spaces";
-  const availableSpaceIds = new Set(
-    availabilityQuery.data?.spaces.map((space) => space.spaceId) ?? []
-  );
-  const showAvailabilityState =
-    canCheckAvailability && availabilityQuery.status === "success";
-  const groupCandidates = availabilityQuery.data?.groupCandidates ?? [];
-  const selectedGroupSpaces = groupCandidates.filter((space) =>
-    selectedGroupSpaceIds.includes(space.spaceId),
-  );
-  const currentSelectedGroupSpaceIds = selectedGroupSpaces.map(
-    (space) => space.spaceId,
-  );
-  const selectedGroupCapacity = selectedGroupSpaces.reduce(
-    (total, space) => total + space.capacity,
-    0,
-  );
-  const selectedGroupTotal = selectedGroupSpaces.reduce(
-    (total, space) => total + space.priceTotal,
-    0,
-  );
-  const showGroupSelection =
-    showAvailabilityState &&
-    guests > 2 &&
-    selectedOccupancy !== "single" &&
-    selectedOccupancy !== "unit" &&
-    groupCandidates.length > 0;
-  const canBookGroup =
-    showGroupSelection &&
-    currentSelectedGroupSpaceIds.length >= 2 &&
-    selectedGroupCapacity >= guests;
-
-  const toggleGroupSpace = (spaceId: string) => {
-    setGroupBookingError(null);
-    setSelectedGroupSpaceIds((current) =>
-      current.includes(spaceId)
-        ? current.filter((id) => id !== spaceId)
-        : [...current, spaceId],
-    );
-  };
-
-  const createGroupBooking = async () => {
-    if (!canBookGroup || !from || !to) return;
+  const bookOption = async (option: AvailabilityOption) => {
+    if (!canCheckAvailability) return;
 
     if (!isAuthenticated) {
       navigate(ROUTES.LOGIN, {
@@ -305,66 +156,42 @@ export default function SpacesListPage() {
     }
 
     try {
-      setGroupBookingError(null);
+      setBookingError(null);
       const booking = await createBookingMutation.mutateAsync({
-        bookingType: "MULTI_ROOM",
-        spaceIds: currentSelectedGroupSpaceIds,
-        from: new Date(`${from}T00:00:00`).toISOString(),
-        to: new Date(`${to}T00:00:00`).toISOString(),
+        bookingOptionId: option.optionId,
+        from,
+        to,
         guests,
-        comfortOption: selectedComfortOption,
+        comfortOption: option.comfortOption,
       });
 
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
-      setGroupBookingError(normalizeApiError(error).message);
+      setBookingError(normalizeApiError(error).message);
     }
   };
 
-  const buildSpaceHref = (spaceId: string) => {
-    const detailParams = new URLSearchParams();
-    if (from) detailParams.set("from", from);
-    if (to) detailParams.set("to", to);
-    if (guests) detailParams.set("guests", String(guests));
-    if (selectedOccupancy !== "all") {
-      detailParams.set("occupancy", selectedOccupancy);
-    }
-    detailParams.set("ac", selectedClimate === "ac" ? "true" : "false");
-
-    const suffix = detailParams.toString();
-    return suffix ? `/spaces/${spaceId}?${suffix}` : `/spaces/${spaceId}`;
-  };
-
-  if (spaces.length === 0) {
-    return (
-      <section className="section bg-surface">
-        <div className="container">
-          <h1 className="text-2xl font-semibold mb-3">Spaces</h1>
-          <div className="text-muted">No spaces available yet.</div>
-        </div>
-      </section>
-    );
-  }
+  const options = availabilityQuery.data?.options ?? [];
 
   return (
     <section className="section bg-surface">
       <div className="container">
         <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <span className="badge badge-primary kicker inline-flex items-center gap-2">
                 <FiCalendar /> Stay dates
               </span>
               <h1 className="mt-4 text-3xl font-semibold text-slate-900">
-                Available Spaces
+                Find Your Stay
               </h1>
               <p className="mt-2 max-w-2xl text-sm text-muted">
-                Choose dates, filter by occupancy, and continue with the space
-                that fits your stay.
+                Choose dates, guests, and comfort. We will show simple bookable
+                options without room numbers or internal rate names.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:w-[46rem] lg:grid-cols-[1fr_1fr_1fr_auto_auto]">
+            <div className="grid gap-3 sm:grid-cols-2 xl:w-[50rem] xl:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto_auto]">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                   From
@@ -403,8 +230,7 @@ export default function SpacesListPage() {
                   type="number"
                   min={1}
                   step={1}
-                  value={guests || ""}
-                  placeholder="1"
+                  value={guests}
                   onChange={(event) =>
                     updateSearchParam("guests", event.target.value)
                   }
@@ -412,11 +238,31 @@ export default function SpacesListPage() {
                 />
               </label>
 
+              <label className="block">
+                <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <FiWind className="h-3 w-3" />
+                  Comfort
+                </span>
+                <select
+                  value={comfort}
+                  onChange={(event) =>
+                    updateSearchParam("comfort", event.target.value)
+                  }
+                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                >
+                  {comfortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <button
                 type="button"
                 disabled={!canCheckAvailability || availabilityQuery.isFetching}
                 onClick={() => void availabilityQuery.refetch()}
-                className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 lg:col-span-1"
+                className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 xl:col-span-1"
               >
                 <FiSearch />
                 {availabilityQuery.isFetching ? "Checking..." : "Check"}
@@ -426,7 +272,7 @@ export default function SpacesListPage() {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 sm:col-span-2 lg:col-span-1"
+                  className="inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 sm:col-span-2 xl:col-span-1"
                 >
                   Clear
                 </button>
@@ -435,291 +281,112 @@ export default function SpacesListPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-          <aside className="h-max rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <FiSliders className="text-indigo-600" />
-              Filters
-            </div>
-
-            <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Occupancy
-            </div>
-            <div className="space-y-2">
-              {occupancyOptions.map((option) => {
-                const selected = option.value === selectedOccupancy;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => updateSearchParam("occupancy", option.value)}
-                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-800"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold">
-                      {option.label}
-                    </span>
-                    <span className="mt-1 block text-xs text-slate-500">
-                      {option.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-6 mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Room type
-            </div>
-            <div className="space-y-2">
-              {climateOptions.map((option) => {
-                const selected = option.value === selectedClimate;
-
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => updateClimateFilter(option.value)}
-                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-800"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50"
-                    }`}
-                  >
-                    <span className="block text-sm font-semibold">
-                      {option.label}
-                    </span>
-                    <span className="mt-1 block text-xs text-slate-500">
-                      {option.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              Clear filters
-            </button>
-          </aside>
-
-          <div>
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  {selectedLabel}
-                </h2>
-                <p className="text-sm text-muted">
-                  {filteredSpaces.length} of {spaces.length} spaces shown
-                </p>
-              </div>
-
-              <div className="text-sm text-muted">
-                {from && to ? `${from} to ${to}` : "Select dates to prefill booking"}
-                {guests ? ` - ${guests} guest${guests === 1 ? "" : "s"}` : ""}
-              </div>
-            </div>
-
-            {canCheckAvailability && (
-              <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                {availabilityQuery.isFetching
-                  ? "Checking availability for selected dates..."
-                  : availabilityQuery.isError
-                    ? `Unable to check availability: ${availabilityQuery.error.message}`
-                    : "Green cards are available for selected dates. Orange cards may be booked or under maintenance."}
-              </div>
-            )}
-
-            {showGroupSelection && (
-              <div className="mb-5 rounded-2xl border border-indigo-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      Build a multi-room stay
-                    </h3>
-                    <p className="mt-1 text-sm text-muted">
-                      Select rooms until the total capacity covers {guests}{" "}
-                      guests.
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm">
-                    <div className="font-semibold text-indigo-900">
-                      {selectedGroupCapacity} / {guests} guests covered
-                    </div>
-                    <div className="mt-1 text-indigo-700">
-                      {formatPrice(selectedGroupTotal)} total
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {groupCandidates.map((space) => {
-                    const selected = selectedGroupSpaceIds.includes(
-                      space.spaceId,
-                    );
-
-                    return (
-                      <button
-                        key={space.spaceId}
-                        type="button"
-                        onClick={() => toggleGroupSpace(space.spaceId)}
-                        className={`rounded-xl border p-4 text-left transition ${
-                          selected
-                            ? "border-indigo-500 bg-indigo-50"
-                            : "border-slate-200 bg-white hover:border-indigo-300"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold text-slate-900">
-                              {space.title}
-                            </div>
-                            <div className="mt-1 text-sm text-muted">
-                              {space.location}
-                            </div>
-                            <div className="mt-2 text-xs font-semibold text-slate-600">
-                              Capacity {space.capacity}
-                            </div>
-                          </div>
-                          <div className="text-right text-sm">
-                            <div className="font-semibold text-slate-900">
-                              {formatPrice(space.priceTotal)}
-                            </div>
-                            <div className="text-xs text-muted">
-                              {formatPrice(space.pricePerNight)} / night
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {groupBookingError && (
-                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                    {groupBookingError}
-                  </div>
-                )}
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-muted">
-                    {canBookGroup
-                      ? "Ready to book these rooms together."
-                      : "Select at least two rooms with enough capacity."}
-                  </p>
-                  <button
-                    type="button"
-                    disabled={!canBookGroup || createBookingMutation.isPending}
-                    onClick={() => void createGroupBooking()}
-                    className="inline-flex h-11 items-center justify-center rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {createBookingMutation.isPending
-                      ? "Booking..."
-                      : "Book selected rooms"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {filteredSpaces.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                <h3 className="text-lg font-semibold text-slate-900">
-                  No matching spaces
-                </h3>
-                <p className="mt-2 text-sm text-muted">
-                  {guests > 2
-                    ? "Select stay dates to check multi-room availability, or clear filters."
-                    : "Try another occupancy filter or clear filters."}
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4">
-                {filteredSpaces.map((space) => {
-                  const availabilityChecked = showAvailabilityState;
-                  const isAvailable = availableSpaceIds.has(space.id);
-                  const cardTone = !availabilityChecked
-                    ? "border-slate-200 hover:border-indigo-300"
-                    : isAvailable
-                      ? "border-emerald-200 bg-emerald-50/30 hover:border-emerald-300"
-                      : "border-orange-200 bg-orange-50/40 hover:border-orange-300";
-
-                  return (
-                    <Link
-                      key={space.id}
-                      to={buildSpaceHref(space.id)}
-                      className={`group block rounded-2xl border bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardTone}`}
-                    >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-                            <FiUsers />
-                              {getSpaceOccupancy(space) === "unit"
-                                ? "Full unit"
-                              : `${space.guestCount} guest${
-                                  space.guestCount === 1 ? "" : "s"
-                                }`}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            <FiHome />
-                            {space.targetType === "UNIT" ? "Unit" : "Room"}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            <FiWind />
-                            {space.comfortOption === "AC" ? "AC" : "Non-AC"}
-                          </span>
-                          {availabilityChecked && (
-                            <span
-                              className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                isAvailable
-                                  ? "bg-emerald-100 text-emerald-700"
-                                  : "bg-orange-100 text-orange-700"
-                              }`}
-                            >
-                              {isAvailable ? "Available" : "Unavailable"}
-                            </span>
-                          )}
-                        </div>
-
-                        <h3 className="text-lg font-semibold text-slate-900 transition group-hover:text-indigo-700">
-                          {space.title}
-                        </h3>
-
-                        {space.location && (
-                          <p className="mt-2 flex items-center gap-2 text-sm text-muted">
-                            <FiMapPin className="shrink-0" />
-                            {space.location}
-                          </p>
-                        )}
-
-                        {space.description && (
-                          <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                            {space.description}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="shrink-0 rounded-xl bg-slate-50 px-4 py-3 text-left sm:text-right">
-                        <div className="text-lg font-semibold text-slate-900">
-                          {formatPrice(space.pricePerNight)}
-                        </div>
-                        <div className="text-xs text-muted">per night</div>
-                      </div>
-                    </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
+        {bookingError && (
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {bookingError}
           </div>
-        </div>
+        )}
+
+        {!canCheckAvailability ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Select stay dates
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Enter check-in, check-out, and guest count to see booking options.
+            </p>
+          </div>
+        ) : availabilityQuery.isFetching ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-muted">
+            Checking availability for your stay...
+          </div>
+        ) : availabilityQuery.isError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+            <h2 className="text-lg font-semibold text-red-900">
+              Unable to check availability
+            </h2>
+            <p className="mt-2 text-sm text-red-700">
+              {availabilityQuery.error.message}
+            </p>
+          </div>
+        ) : options.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <h2 className="text-lg font-semibold text-slate-900">
+              No booking options available
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Try different dates, guest count, or comfort selection.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {options.map((option) => (
+              <article
+                key={option.optionId}
+                className="flex min-h-[18rem] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                      <FiCheckCircle />
+                      {option.itemCount} item{option.itemCount === 1 ? "" : "s"}
+                    </div>
+                    <h2 className="mt-4 text-xl font-semibold text-slate-900">
+                      {option.title}
+                    </h2>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    {option.comfortOption === "AC" ? "AC" : "Non-AC"}
+                  </span>
+                </div>
+
+                <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Guest split
+                    </dt>
+                    <dd className="mt-1 font-semibold text-slate-900">
+                      {option.guestSplit}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Capacity
+                    </dt>
+                    <dd className="mt-1 font-semibold text-slate-900">
+                      {option.totalCapacity} guests
+                    </dd>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nightly
+                    </dt>
+                    <dd className="mt-1 font-semibold text-slate-900">
+                      {formatPrice(option.nightlyTotal)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Stay total
+                    </dt>
+                    <dd className="mt-1 font-semibold text-slate-900">
+                      {formatPrice(option.stayTotal)}
+                    </dd>
+                  </div>
+                </dl>
+
+                <button
+                  type="button"
+                  disabled={createBookingMutation.isPending}
+                  onClick={() => void bookOption(option)}
+                  className="mt-auto inline-flex h-11 items-center justify-center rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {createBookingMutation.isPending ? "Booking..." : "Continue"}
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

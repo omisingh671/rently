@@ -25,6 +25,7 @@ export const ADMIN_ROUTES = {
   },
 
   BOOKINGS: "bookings",
+  ROOM_BOARD: "room-board",
   WALK_IN_BOOKING: "bookings/walk-in",
   ENQUIRIES: "enquiries",
   QUOTES: "quotes",

@@ -2,10 +2,12 @@ import axiosInstance from "@/api/axios";
 import type {
   Booking,
   ComfortOption,
+  CreateOptionBookingPayload,
   CreateManualPaymentResponse,
 } from "./types";
 
 export type CreateBookingPayload =
+  | CreateOptionBookingPayload
   | {
       bookingType?: "SINGLE_TARGET";
       spaceId: string;

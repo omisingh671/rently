@@ -103,6 +103,8 @@ export const API_ENDPOINTS = {
   operations: {
     bookingsByProperty: (propertyId: string) =>
       `/dashboard/properties/${propertyId}/bookings`,
+    roomBoardByProperty: (propertyId: string) =>
+      `/dashboard/properties/${propertyId}/room-board`,
     bookingAvailabilityByProperty: (propertyId: string) =>
       `/dashboard/properties/${propertyId}/bookings/availability`,
     bookingById: (bookingId: string) => `/dashboard/bookings/${bookingId}`,

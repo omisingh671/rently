@@ -78,6 +78,7 @@ export type UpdateBookingPayload = {
 
 export type CreateManualBookingPayload = {
   bookingType: BookingType;
+  bookingOptionId?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: string;
@@ -92,7 +93,7 @@ export type CreateManualBookingPayload = {
 };
 
 export type CheckManualBookingAvailabilityPayload = {
-  spaceIds: string[];
+  spaceIds?: string[];
   from: string;
   to: string;
   guests: number;
@@ -101,6 +102,12 @@ export type CheckManualBookingAvailabilityPayload = {
 
 export type ManualBookingAvailabilityItem = {
   spaceId: string;
+  bookingOptionId: string;
+  title: string;
+  guestSplit: string;
+  itemCount: number;
+  nightlyTotal: string;
+  stayTotal: string;
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
@@ -115,6 +122,64 @@ export type ManualBookingAvailabilityResponse = {
   guests: number;
   availableSpaceIds: string[];
   items: ManualBookingAvailabilityItem[];
+};
+
+export type RoomBoardStatus =
+  | "AVAILABLE"
+  | "RESERVED"
+  | "OCCUPIED"
+  | "MAINTENANCE"
+  | "INACTIVE";
+
+export type RoomBoardRoom = {
+  roomId: string;
+  roomNumber: string;
+  roomName: string;
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  hasAC: boolean;
+  maxOccupancy: number;
+  inventoryStatus: string;
+  isActive: boolean;
+  boardStatus: RoomBoardStatus;
+  reason: string | null;
+  booking: {
+    id: string;
+    bookingRef: string;
+    status: BookingStatus;
+    bookingType: BookingType;
+    guestName: string;
+    guestCount: number;
+    checkIn: string;
+    checkOut: string;
+    targetLabel: string;
+  } | null;
+  maintenance: {
+    id: string;
+    targetType: "PROPERTY" | "UNIT" | "ROOM";
+    reason: string;
+    startDate: string;
+    endDate: string;
+  } | null;
+};
+
+export type RoomBoardUnit = {
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  status: string;
+  isActive: boolean;
+  rooms: RoomBoardRoom[];
+};
+
+export type RoomBoardResponse = {
+  propertyId: string;
+  propertyName: string;
+  from: string;
+  to: string;
+  summary: Record<RoomBoardStatus, number>;
+  units: RoomBoardUnit[];
 };
 
 export type AdminEnquiry = {

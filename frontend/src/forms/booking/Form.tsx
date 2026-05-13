@@ -7,7 +7,6 @@ import {
   LuRotateCcw,
   LuCalendar,
   LuUsers,
-  LuBed,
 } from "react-icons/lu";
 
 import BookingFormSchema, {
@@ -21,56 +20,12 @@ import Button from "@/components/ui/Button";
 /* ─────────────────────────────────────────────
    Inline Occupancy Toggle — styled pill chips
 ───────────────────────────────────────────── */
-function OccupancyToggle() {
-  const { register, setValue, control } = useFormContext<BookingFormValues>();
-  const selected = useWatch({ control, name: "occupancyType" });
-
-  const options: { label: string; value: BookingFormValues["occupancyType"] }[] = [
-    { label: "Single", value: "single" },
-    { label: "Double", value: "double" },
-  ];
-
-  return (
-    <div className="form-group">
-      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-200">
-        <LuBed className="h-3.5 w-3.5 opacity-70" />
-        Occupancy type
-      </p>
-
-      {/* Hidden real input keeps RHF in sync */}
-      <input type="hidden" {...register("occupancyType")} />
-
-      <div className="flex gap-2">
-        {options.map((opt) => {
-          const active = selected === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() =>
-                setValue("occupancyType", opt.value, { shouldValidate: true })
-              }
-              className={[
-                "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all duration-200 cursor-pointer",
-                active
-                  ? "border-indigo-400 bg-indigo-500/30 text-indigo-100 shadow-[0_0_12px_rgba(99,102,241,0.35)]"
-                  : "border-indigo-300/20 bg-white/5 text-indigo-200/70 hover:bg-white/10 hover:border-indigo-300/40 hover:text-indigo-100",
-              ].join(" ")}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function ComfortToggle() {
   const { register, setValue, control } = useFormContext<BookingFormValues>();
   const selected = useWatch({ control, name: "comfortOption" });
 
   const options: { label: string; value: BookingFormValues["comfortOption"] }[] = [
+    { label: "All", value: "ALL" },
     { label: "Non-AC", value: "NON_AC" },
     { label: "AC", value: "AC" },
   ];
@@ -133,8 +88,7 @@ export default function BookingForm({
       checkIn: "",
       checkOut: "",
       guests: 1,
-      occupancyType: "single",
-      comfortOption: "NON_AC",
+      comfortOption: "ALL",
     },
   });
 
@@ -233,8 +187,6 @@ export default function BookingForm({
                   />
                 </div>
 
-                {/* Occupancy pill toggle */}
-                <OccupancyToggle />
                 <ComfortToggle />
               </div>
 

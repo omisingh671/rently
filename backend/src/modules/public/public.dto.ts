@@ -51,10 +51,21 @@ export interface PublicAvailabilitySpaceDTO {
   roomId: string | null;
 }
 
+export interface PublicAvailabilityOptionDTO {
+  optionId: string;
+  title: string;
+  guestSplit: string;
+  totalCapacity: number;
+  comfortOption: ComfortOption;
+  nightlyTotal: number;
+  stayTotal: number;
+  nights: number;
+  itemCount: number;
+}
+
 export interface PublicAvailabilityDTO {
   available: boolean;
-  spaces: PublicAvailabilitySpaceDTO[];
-  groupCandidates: PublicAvailabilitySpaceDTO[];
+  options: PublicAvailabilityOptionDTO[];
 }
 
 export interface PublicBookingItemDTO {

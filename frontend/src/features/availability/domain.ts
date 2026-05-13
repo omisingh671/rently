@@ -1,29 +1,26 @@
-export type OccupancyType = "single" | "double" | "unit" | "multi_room";
 export type ComfortOption = "AC" | "NON_AC";
+export type ComfortFilter = "ALL" | ComfortOption;
 
 export interface AvailabilityCriteria {
   checkIn: string;
   checkOut: string;
   guests: number;
-  occupancyType: OccupancyType;
-  comfortOption: ComfortOption;
+  comfortOption: ComfortFilter;
 }
 
-export interface AvailabilitySpace {
-  spaceId: string;
+export interface AvailabilityOption {
+  optionId: string;
   title: string;
-  location?: string;
-  capacity: number;
+  guestSplit: string;
+  totalCapacity: number;
   comfortOption: ComfortOption;
-  pricePerNight: number;
-  priceTotal: number;
-  targetType: "ROOM" | "UNIT";
-  unitId: string | null;
-  roomId: string | null;
+  nightlyTotal: number;
+  stayTotal: number;
+  nights: number;
+  itemCount: number;
 }
 
 export interface AvailabilityResult {
   available: boolean;
-  spaces: AvailabilitySpace[];
-  groupCandidates: AvailabilitySpace[];
+  options: AvailabilityOption[];
 }

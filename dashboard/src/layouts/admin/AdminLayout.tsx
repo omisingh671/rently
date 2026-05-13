@@ -60,6 +60,9 @@ function getAdminPageMeta(pathname: string) {
   if (pathname.includes(ADMIN_ROUTES.INVENTORY))
     return { title: "Inventory", subtitle: "Manage inventory" };
 
+  if (pathname.includes(ADMIN_ROUTES.ROOM_BOARD))
+    return { title: "Room Board", subtitle: "Room availability operations" };
+
   if (pathname.includes(ADMIN_ROUTES.BOOKINGS))
     return { title: "Bookings", subtitle: "Reservations overview" };
 

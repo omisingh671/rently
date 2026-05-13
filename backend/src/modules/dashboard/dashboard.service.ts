@@ -2,13 +2,14 @@ import {
   BookingPaymentPolicy,
   BookingStatus,
   BookingTargetType,
-  ComfortOption,
   LeadStatus,
   MaintenanceTargetType,
   PricingTier,
   Prisma,
   PropertyAssignmentRole,
   RateType,
+  RoomStatus,
+  UnitStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
 import { hashPassword } from "@/common/utils/password.js";
@@ -16,7 +17,7 @@ import { HttpError } from "@/common/errors/http-error.js";
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import { randomUUID } from "node:crypto";
 import { createBookingForUser } from "@/modules/public/public.service.js";
-import * as publicRepo from "@/modules/public/public.repository.js";
+import { generateAvailabilityOptions } from "@/modules/public/public-availability.service.js";
 import * as repo from "./dashboard.repository.js";
 import type {
   CreateDashboardAmenityInput,
@@ -45,6 +46,7 @@ import type {
   DashboardRoomProductListInput,
   DashboardPropertyListInput,
   DashboardRoomListInput,
+  DashboardRoomBoardInput,
   DashboardTaxListInput,
   DashboardTenantListInput,
   DashboardUnitListInput,
@@ -73,6 +75,8 @@ import type {
   DashboardMeDTO,
   DashboardPropertyAssignmentDTO,
   DashboardPropertyDTO,
+  DashboardRoomBoardDTO,
+  DashboardRoomBoardStatus,
   DashboardRoomPricingDTO,
   DashboardRoomProductDTO,
   DashboardRoomDTO,
@@ -83,7 +87,6 @@ import type {
   DashboardUserDTO,
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
-import type { PublicSpaceTarget } from "@/modules/public/public.inputs.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -418,6 +421,77 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
   createdAt: booking.createdAt,
   updatedAt: booking.updatedAt,
 });
+
+const roomBoardStatuses: DashboardRoomBoardStatus[] = [
+  "AVAILABLE",
+  "RESERVED",
+  "OCCUPIED",
+  "MAINTENANCE",
+  "INACTIVE",
+];
+
+const getBookingBoardStatus = (
+  booking: repo.DashboardRoomBoardBookingItemRecord["booking"],
+): DashboardRoomBoardStatus =>
+  booking.status === BookingStatus.CHECKED_IN ? "OCCUPIED" : "RESERVED";
+
+const findRoomBoardBooking = (
+  room: repo.DashboardRoomBoardRoomRecord,
+  bookingItems: repo.DashboardRoomBoardBookingItemRecord[],
+) =>
+  bookingItems.find((item) =>
+    item.targetType === BookingTargetType.UNIT
+      ? item.unitId === room.unitId
+      : item.roomId === room.id,
+  ) ?? null;
+
+const findRoomBoardMaintenance = (
+  room: repo.DashboardRoomBoardRoomRecord,
+  maintenanceBlocks: repo.DashboardRoomBoardMaintenanceRecord[],
+) =>
+  maintenanceBlocks.find((block) => {
+    if (block.targetType === MaintenanceTargetType.PROPERTY) {
+      return true;
+    }
+    if (block.targetType === MaintenanceTargetType.UNIT) {
+      return block.unitId === room.unitId;
+    }
+    return block.roomId === room.id;
+  }) ?? null;
+
+const getRoomBoardStatus = (
+  room: repo.DashboardRoomBoardRoomRecord,
+  bookingItem: repo.DashboardRoomBoardBookingItemRecord | null,
+  maintenanceBlock: repo.DashboardRoomBoardMaintenanceRecord | null,
+): { status: DashboardRoomBoardStatus; reason: string | null } => {
+  if (!room.isActive || !room.unit.isActive) {
+    return { status: "INACTIVE", reason: "Inventory is inactive" };
+  }
+
+  if (
+    room.status === RoomStatus.MAINTENANCE ||
+    room.unit.status === UnitStatus.MAINTENANCE ||
+    maintenanceBlock
+  ) {
+    return {
+      status: "MAINTENANCE",
+      reason: maintenanceBlock?.reason ?? "Marked for maintenance",
+    };
+  }
+
+  if (bookingItem) {
+    return {
+      status: getBookingBoardStatus(bookingItem.booking),
+      reason: `${bookingItem.booking.bookingRef} - ${bookingItem.booking.guestNameSnapshot}`,
+    };
+  }
+
+  if (room.status === RoomStatus.OCCUPIED) {
+    return { status: "OCCUPIED", reason: "Marked occupied" };
+  }
+
+  return { status: "AVAILABLE", reason: null };
+};
 
 const mapEnquiry = (
   enquiry: repo.DashboardEnquiryRecord,
@@ -782,52 +856,6 @@ const getStayNights = (from: Date, to: Date) =>
     Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)),
   );
 
-const getManualBookingSpaceTarget = (
-  space: publicRepo.PublicSpaceRecord,
-): PublicSpaceTarget => {
-  if (space.roomId) {
-    return {
-      targetType: BookingTargetType.ROOM,
-      unitId: space.room?.unitId ?? null,
-      roomId: space.roomId,
-    };
-  }
-
-  if (space.unitId) {
-    return {
-      targetType: BookingTargetType.UNIT,
-      unitId: space.unitId,
-      roomId: null,
-    };
-  }
-
-  throw new HttpError(
-    422,
-    "SPACE_NOT_BOOKABLE",
-    "Space is missing a bookable target",
-  );
-};
-
-const getManualBookingSpaceCapacity = (space: publicRepo.PublicSpaceRecord) =>
-  space.room?.maxOccupancy ?? space.product.occupancy;
-
-const assertManualBookingComfortAvailable = (
-  space: publicRepo.PublicSpaceRecord,
-  comfortOption: ComfortOption,
-) => {
-  if (
-    comfortOption === ComfortOption.AC &&
-    space.roomId !== null &&
-    space.room?.hasAC !== true
-  ) {
-    throw new HttpError(
-      422,
-      "COMFORT_OPTION_NOT_AVAILABLE",
-      "Selected room does not support AC bookings",
-    );
-  }
-};
-
 const ensureAmenityIdsBelongToProperty = async (
   propertyId: string,
   amenityIds: string[],
@@ -957,8 +985,8 @@ const assertRoomPricingComfortSupported = async (
 const resolvePricingTarget = async (
   propertyId: string,
   input: {
-    unitId?: string | undefined;
-    roomId?: string | undefined;
+    unitId?: string | null | undefined;
+    roomId?: string | null | undefined;
   },
 ) => {
   if (input.unitId && input.roomId) {
@@ -993,6 +1021,42 @@ const resolvePricingTarget = async (
     unitId: undefined,
     roomId: undefined,
   };
+};
+
+const assertNoOverlappingRoomPricing = async (
+  propertyId: string,
+  input: {
+    productId: string;
+    target: {
+      unitId?: string | null | undefined;
+      roomId?: string | null | undefined;
+    };
+    rateType: RateType;
+    validFrom: Date;
+    validTo?: Date | null | undefined;
+    excludePricingId?: string;
+  },
+) => {
+  const overlapping = await repo.findOverlappingRoomPricing({
+    propertyId,
+    productId: input.productId,
+    unitId: input.target.unitId ?? null,
+    roomId: input.target.roomId ?? null,
+    rateType: input.rateType,
+    validFrom: input.validFrom,
+    ...(input.validTo !== undefined && { validTo: input.validTo }),
+    ...(input.excludePricingId !== undefined && {
+      excludePricingId: input.excludePricingId,
+    }),
+  });
+
+  if (overlapping) {
+    throw new HttpError(
+      409,
+      "ROOM_PRICING_OVERLAP",
+      "An overlapping price rule already exists for this rate product, scope, and date range",
+    );
+  }
 };
 
 const resolveMaintenanceTarget = async (
@@ -2084,6 +2148,93 @@ export const listRooms = async (
   );
 };
 
+export const getRoomBoard = async (
+  userId: string,
+  propertyId: string,
+  input: DashboardRoomBoardInput,
+): Promise<DashboardRoomBoardDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+  const [rooms, bookingItems, maintenanceBlocks] = await Promise.all([
+    repo.listRoomBoardRooms(propertyId),
+    repo.listRoomBoardBookingItems(propertyId, input.from, input.to),
+    repo.listRoomBoardMaintenanceBlocks(propertyId, input.from, input.to),
+  ]);
+  const summary = roomBoardStatuses.reduce(
+    (result, status) => ({
+      ...result,
+      [status]: 0,
+    }),
+    {} as Record<DashboardRoomBoardStatus, number>,
+  );
+  const units = new Map<string, DashboardRoomBoardDTO["units"][number]>();
+
+  for (const room of rooms) {
+    const bookingItem = findRoomBoardBooking(room, bookingItems);
+    const maintenanceBlock = findRoomBoardMaintenance(room, maintenanceBlocks);
+    const board = getRoomBoardStatus(room, bookingItem, maintenanceBlock);
+    summary[board.status] += 1;
+
+    const unit = units.get(room.unitId) ?? {
+      unitId: room.unitId,
+      unitNumber: room.unit.unitNumber,
+      floor: room.unit.floor,
+      status: room.unit.status,
+      isActive: room.unit.isActive,
+      rooms: [],
+    };
+
+    unit.rooms.push({
+      roomId: room.id,
+      roomNumber: room.number,
+      roomName: room.name,
+      unitId: room.unitId,
+      unitNumber: room.unit.unitNumber,
+      floor: room.unit.floor,
+      hasAC: room.hasAC,
+      maxOccupancy: room.maxOccupancy,
+      inventoryStatus: room.status,
+      isActive: room.isActive,
+      boardStatus: board.status,
+      reason: board.reason,
+      booking: bookingItem
+        ? {
+            id: bookingItem.booking.id,
+            bookingRef: bookingItem.booking.bookingRef,
+            status: bookingItem.booking.status,
+            bookingType: bookingItem.booking.bookingType,
+            guestName: bookingItem.booking.guestNameSnapshot,
+            guestCount: bookingItem.booking.guestCount,
+            checkIn: bookingItem.booking.checkIn,
+            checkOut: bookingItem.booking.checkOut,
+            targetLabel: bookingItem.targetLabel,
+          }
+        : null,
+      maintenance: maintenanceBlock
+        ? {
+            id: maintenanceBlock.id,
+            targetType: maintenanceBlock.targetType,
+            reason: maintenanceBlock.reason ?? "Maintenance block",
+            startDate: maintenanceBlock.startDate,
+            endDate: maintenanceBlock.endDate,
+          }
+        : null,
+    });
+
+    units.set(room.unitId, unit);
+  }
+
+  return {
+    propertyId,
+    propertyName: property.name,
+    from: input.from.toISOString(),
+    to: input.to.toISOString(),
+    summary,
+    units: [...units.values()],
+  };
+};
+
 export const getRoomById = async (
   userId: string,
   roomId: string,
@@ -2476,6 +2627,13 @@ export const createRoomPricing = async (
   ensureRoomProductBelongsToProperty(product, propertyId);
   const target = await resolvePricingTarget(propertyId, input);
   await assertRoomPricingComfortSupported(target, product);
+  await assertNoOverlappingRoomPricing(propertyId, {
+    productId: input.productId,
+    target,
+    rateType: input.rateType ?? RateType.NIGHTLY,
+    validFrom: input.validFrom,
+    validTo: input.validTo,
+  });
 
   const pricing = await repo.createRoomPricing({
     property: {
@@ -2548,6 +2706,19 @@ export const updateRoomPricing = async (
     },
     nextProduct,
   );
+  await assertNoOverlappingRoomPricing(existingPricing.propertyId, {
+    productId: nextProduct.id,
+    target:
+      target ??
+      {
+        unitId: existingPricing.roomId ? undefined : existingPricing.unitId,
+        roomId: existingPricing.roomId ?? undefined,
+      },
+    rateType: input.rateType ?? existingPricing.rateType,
+    validFrom: nextValidFrom,
+    validTo: nextValidTo,
+    excludePricingId: pricingId,
+  });
 
   const pricing = await repo.updateRoomPricingById(pricingId, {
     ...(input.productId !== undefined && {
@@ -2577,6 +2748,16 @@ export const updateRoomPricing = async (
         disconnect: true,
       },
     }),
+    ...(target !== undefined &&
+      target.unitId === undefined &&
+      target.roomId === undefined && {
+        unit: {
+          disconnect: true,
+        },
+        room: {
+          disconnect: true,
+        },
+      }),
     ...(input.rateType !== undefined && { rateType: input.rateType }),
     ...(input.pricingTier !== undefined && {
       pricingTier: input.pricingTier,
@@ -2796,140 +2977,41 @@ export const checkManualBookingAvailability = async (
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
   const property = await ensurePropertyExists(propertyId);
-  const uniqueSpaceIds = [...new Set(input.spaceIds)];
   const nights = getStayNights(input.from, input.to);
-
-  const items = await Promise.all(
-    uniqueSpaceIds.map(async (spaceId) => {
-      const space = await publicRepo.findActiveSpaceById(
-        spaceId,
-        new Date(),
-        property.tenantId,
-        undefined,
-        {
-          checkIn: input.from,
-          checkOut: input.to,
-          nights,
-        },
-      );
-
-      if (!space) {
-        return {
-          spaceId,
-          available: false,
-          capacity: 0,
-          targetType: BookingTargetType.ROOM,
-          reason: "No active price for selected dates",
-          guestCount: null,
-          pricePerNight: null,
-        };
-      }
-
-      if (space.propertyId !== propertyId) {
-        return {
-          spaceId,
-          available: false,
-          capacity: getManualBookingSpaceCapacity(space),
-          targetType: getManualBookingSpaceTarget(space).targetType,
-          reason: "Space belongs to another property",
-          guestCount: null,
-          pricePerNight: null,
-        };
-      }
-
-      const target = getManualBookingSpaceTarget(space);
-      const capacity = getManualBookingSpaceCapacity(space);
-      const pricingGuestCount = input.guests <= capacity ? input.guests : 1;
-      const [hasBooking, hasMaintenance] = await Promise.all([
-        publicRepo.hasOverlappingBooking(target, input.from, input.to),
-        publicRepo.hasOverlappingMaintenance(
-          propertyId,
-          target,
-          input.from,
-          input.to,
-        ),
-      ]);
-
-      if (hasBooking) {
-        return {
-          spaceId,
-          available: false,
-          capacity,
-          targetType: target.targetType,
-          reason: "Already booked for selected dates",
-          guestCount: null,
-          pricePerNight: null,
-        };
-      }
-
-      if (hasMaintenance) {
-        return {
-          spaceId,
-          available: false,
-          capacity,
-          targetType: target.targetType,
-          reason: "Blocked for maintenance",
-          guestCount: null,
-          pricePerNight: null,
-        };
-      }
-
-      try {
-        assertManualBookingComfortAvailable(space, input.comfortOption);
-      } catch (error) {
-        if (error instanceof HttpError) {
-          return {
-            spaceId,
-            available: false,
-            capacity,
-            targetType: target.targetType,
-            reason: error.message,
-            guestCount: null,
-            pricePerNight: null,
-          };
-        }
-
-        throw error;
-      }
-
-      const pricedSpace = await publicRepo.findActivePricingForTarget(
-        target,
-        new Date(),
-        property.tenantId,
-        {
-          guestCount: pricingGuestCount,
-          comfortOption: input.comfortOption,
-        },
-        {
-          checkIn: input.from,
-          checkOut: input.to,
-          nights,
-        },
-      );
-
-      if (!pricedSpace) {
-        return {
-          spaceId,
-          available: false,
-          capacity,
-          targetType: target.targetType,
-          reason: `No active ${input.comfortOption === ComfortOption.AC ? "AC" : "Non-AC"} price for ${pricingGuestCount} guest${pricingGuestCount === 1 ? "" : "s"}`,
-          guestCount: null,
-          pricePerNight: null,
-        };
-      }
-
-      return {
-        spaceId,
-        available: true,
-        capacity,
-        targetType: target.targetType,
-        reason: null,
-        guestCount: pricingGuestCount,
-        pricePerNight: pricedSpace.price.toString(),
-      };
-    }),
+  const options = await generateAvailabilityOptions(
+    {
+      checkIn: input.from,
+      checkOut: input.to,
+      guests: input.guests,
+      comfortOption: input.comfortOption,
+    },
+    property.tenantId,
+    nights,
   );
+  const propertyOptions = options.filter(
+    (option) => option.propertyId === propertyId,
+  );
+  const items = propertyOptions.map((option) => {
+    const firstItem = option.items[0];
+    return {
+      spaceId: option.optionId,
+      bookingOptionId: option.optionId,
+      title: option.title,
+      guestSplit: option.guestSplit,
+      itemCount: option.itemCount,
+      nightlyTotal: option.nightlyTotal.toString(),
+      stayTotal: option.stayTotal.toString(),
+      available: true,
+      capacity: option.totalCapacity,
+      targetType:
+        option.items.length === 1 && firstItem
+          ? firstItem.target.targetType
+          : BookingTargetType.ROOM,
+      reason: null,
+      guestCount: input.guests,
+      pricePerNight: option.nightlyTotal.toString(),
+    };
+  });
 
   return {
     from: input.from.toISOString(),
@@ -2956,6 +3038,9 @@ export const createManualBooking = async (
     guest.id,
     {
       bookingType: input.bookingType,
+      ...(input.bookingOptionId !== undefined && {
+        bookingOptionId: input.bookingOptionId,
+      }),
       ...(input.spaceId !== undefined && { spaceId: input.spaceId }),
       ...(input.spaceIds !== undefined && { spaceIds: input.spaceIds }),
       from: input.from,

@@ -190,6 +190,12 @@ export interface DashboardRoomPricingDTO {
 
 export interface DashboardManualBookingAvailabilityItemDTO {
   spaceId: string;
+  bookingOptionId: string;
+  title: string;
+  guestSplit: string;
+  itemCount: number;
+  nightlyTotal: string;
+  stayTotal: string;
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
@@ -204,6 +210,64 @@ export interface DashboardManualBookingAvailabilityDTO {
   guests: number;
   availableSpaceIds: string[];
   items: DashboardManualBookingAvailabilityItemDTO[];
+}
+
+export type DashboardRoomBoardStatus =
+  | "AVAILABLE"
+  | "RESERVED"
+  | "OCCUPIED"
+  | "MAINTENANCE"
+  | "INACTIVE";
+
+export interface DashboardRoomBoardRoomDTO {
+  roomId: string;
+  roomNumber: string;
+  roomName: string;
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  hasAC: boolean;
+  maxOccupancy: number;
+  inventoryStatus: RoomStatus;
+  isActive: boolean;
+  boardStatus: DashboardRoomBoardStatus;
+  reason: string | null;
+  booking: {
+    id: string;
+    bookingRef: string;
+    status: BookingStatus;
+    bookingType: BookingType;
+    guestName: string;
+    guestCount: number;
+    checkIn: Date;
+    checkOut: Date;
+    targetLabel: string;
+  } | null;
+  maintenance: {
+    id: string;
+    targetType: MaintenanceTargetType;
+    reason: string;
+    startDate: Date;
+    endDate: Date;
+  } | null;
+}
+
+export interface DashboardRoomBoardUnitDTO {
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  status: UnitStatus;
+  isActive: boolean;
+  rooms: DashboardRoomBoardRoomDTO[];
+}
+
+export interface DashboardRoomBoardDTO {
+  propertyId: string;
+  propertyName: string;
+  from: string;
+  to: string;
+  summary: Record<DashboardRoomBoardStatus, number>;
+  units: DashboardRoomBoardUnitDTO[];
 }
 
 export interface DashboardTaxDTO {

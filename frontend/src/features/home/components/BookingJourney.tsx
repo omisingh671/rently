@@ -18,8 +18,8 @@ const steps: RawStep[] = [
   },
   {
     id: 2,
-    title: "2. Choose Occupancy Type",
-    subtitle: "Single or double occupancy.",
+    title: "2. Choose Comfort",
+    subtitle: "Select AC, Non-AC, or view all options.",
     media: "users",
   },
   {
@@ -56,8 +56,7 @@ export default function BookingJourney() {
       from: values.checkIn,
       to: values.checkOut,
       guests: String(values.guests),
-      occupancy: values.occupancyType,
-      ac: values.comfortOption === "AC" ? "true" : "false",
+      comfort: values.comfortOption,
     });
 
     navigate(`${ROUTES.SPACES}?${searchParams.toString()}`);

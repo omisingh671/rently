@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 
 import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
+import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
 import {
   BookingStatus,
   ComfortOption,
@@ -26,10 +27,17 @@ type TestState = {
   tenantId: string;
   tenantSlug: string;
   propertyId: string;
+  unitId: string;
+  roomId: string;
+  roomTwoId: string;
+  roomThreeId: string;
+  productId: string;
   pricingId: string;
   pricingTwoId: string;
+  pricingThreeId: string;
   singlePricingId: string;
   singlePricingTwoId: string;
+  singlePricingThreeId: string;
   unitPricingId: string;
 };
 
@@ -94,16 +102,26 @@ before(async () => {
     },
   });
 
-  const unit = await prisma.unit.create({
+  const [unit, unitTwo] = await Promise.all([
+    prisma.unit.create({
     data: {
       propertyId: property.id,
       unitNumber: `${testId}-101`,
       floor: 1,
       status: UnitStatus.ACTIVE,
     },
-  });
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: `${testId}-201`,
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
 
-  const [room, roomTwo] = await Promise.all([
+  const [room, roomTwo, roomThree] = await Promise.all([
     prisma.room.create({
       data: {
         unitId: unit.id,
@@ -121,6 +139,17 @@ before(async () => {
         name: "Booking Test Room",
         number: "102",
         rent: 2500,
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unitTwo.id,
+        name: "Booking Test Room",
+        number: "201",
+        rent: 2200,
         hasAC: true,
         maxOccupancy: 2,
         status: RoomStatus.AVAILABLE,
@@ -158,7 +187,15 @@ before(async () => {
     }),
   ]);
 
-  const [singlePricing, singlePricingTwo, pricing, pricingTwo, unitPricing] =
+  const [
+    singlePricing,
+    singlePricingTwo,
+    singlePricingThree,
+    pricing,
+    pricingTwo,
+    pricingThree,
+    unitPricing,
+  ] =
     await Promise.all([
     prisma.roomPricing.create({
       data: {
@@ -191,6 +228,20 @@ before(async () => {
     prisma.roomPricing.create({
       data: {
         propertyId: property.id,
+        roomId: roomThree.id,
+        unitId: unitTwo.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1400,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
         roomId: room.id,
         unitId: unit.id,
         productId: product.id,
@@ -199,6 +250,20 @@ before(async () => {
         minNights: 1,
         taxInclusive: false,
         price: 2500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomThree.id,
+        unitId: unitTwo.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2200,
         validFrom: new Date("2026-01-01T00:00:00.000Z"),
       },
     }),
@@ -238,10 +303,17 @@ before(async () => {
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
     propertyId: property.id,
+    unitId: unit.id,
+    roomId: room.id,
+    roomTwoId: roomTwo.id,
+    roomThreeId: roomThree.id,
+    productId: product.id,
     pricingId: pricing.id,
-    pricingTwoId: pricingTwo.id,
+    pricingTwoId: pricingThree.id,
+    pricingThreeId: pricingTwo.id,
     singlePricingId: singlePricing.id,
     singlePricingTwoId: singlePricingTwo.id,
+    singlePricingThreeId: singlePricingThree.id,
     unitPricingId: unitPricing.id,
   };
 });
@@ -317,7 +389,12 @@ test("public availability respects pricing stay limits and validity windows", as
   await prisma.roomPricing.updateMany({
     where: {
       id: {
-        in: [state.pricingId, state.pricingTwoId],
+        in: [
+          state.pricingId,
+          state.pricingTwoId,
+          state.pricingThreeId,
+          state.unitPricingId,
+        ],
       },
     },
     data: {
@@ -331,7 +408,6 @@ test("public availability respects pricing stay limits and validity windows", as
       checkIn: new Date("2027-06-10T00:00:00.000Z"),
       checkOut: new Date("2027-06-12T00:00:00.000Z"),
       guests: 2,
-      occupancyType: "double",
       comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
@@ -342,7 +418,12 @@ test("public availability respects pricing stay limits and validity windows", as
   await prisma.roomPricing.updateMany({
     where: {
       id: {
-        in: [state.pricingId, state.pricingTwoId],
+        in: [
+          state.pricingId,
+          state.pricingTwoId,
+          state.pricingThreeId,
+          state.unitPricingId,
+        ],
       },
     },
     data: {
@@ -356,7 +437,6 @@ test("public availability respects pricing stay limits and validity windows", as
       checkIn: new Date("2027-06-10T00:00:00.000Z"),
       checkOut: new Date("2027-06-12T00:00:00.000Z"),
       guests: 2,
-      occupancyType: "double",
       comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
@@ -367,7 +447,12 @@ test("public availability respects pricing stay limits and validity windows", as
   await prisma.roomPricing.updateMany({
     where: {
       id: {
-        in: [state.pricingId, state.pricingTwoId],
+        in: [
+          state.pricingId,
+          state.pricingTwoId,
+          state.pricingThreeId,
+          state.unitPricingId,
+        ],
       },
     },
     data: {
@@ -375,6 +460,106 @@ test("public availability respects pricing stay limits and validity windows", as
       validTo: null,
     },
   });
+});
+
+test("public availability returns limited public-safe booking options", async () => {
+  const availability = await publicService.checkAvailability(
+    {
+      checkIn: new Date("2029-01-10T00:00:00.000Z"),
+      checkOut: new Date("2029-01-12T00:00:00.000Z"),
+      guests: 5,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(availability.available, true);
+  assert.ok(availability.options.length > 0);
+  assert.ok(availability.options.length <= 6);
+
+  const roomOption = availability.options.find(
+    (option) => option.title === "3 Rooms",
+  );
+
+  assert.ok(roomOption);
+  assert.equal(roomOption.guestSplit, "2 + 2 + 1");
+  assert.equal(roomOption.totalCapacity >= 5, true);
+
+  const publicJson = JSON.stringify(availability);
+  assert.equal(publicJson.includes(state.roomId), false);
+  assert.equal(publicJson.includes(state.roomTwoId), false);
+  assert.equal(publicJson.includes(state.roomThreeId), false);
+  assert.equal(publicJson.includes(state.pricingId), false);
+  assert.equal(publicJson.includes("101"), false);
+  assert.equal(publicJson.includes("102"), false);
+  assert.equal(publicJson.includes("201"), false);
+  assert.equal(publicJson.includes("Double Room"), false);
+  assert.equal(publicJson.includes("Single Room"), false);
+});
+
+test("public booking can reserve a generated option by opaque option id", async () => {
+  const availability = await publicService.checkAvailability(
+    {
+      checkIn: new Date("2029-02-10T00:00:00.000Z"),
+      checkOut: new Date("2029-02-12T00:00:00.000Z"),
+      guests: 5,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const roomOption = availability.options.find(
+    (option) => option.title === "3 Rooms",
+  );
+
+  assert.ok(roomOption);
+
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      bookingOptionId: roomOption.optionId,
+      from: new Date("2029-02-10T00:00:00.000Z"),
+      to: new Date("2029-02-12T00:00:00.000Z"),
+      guests: 5,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(booking.bookingType, "MULTI_ROOM");
+  assert.equal(booking.guestCount, 5);
+  assert.equal(booking.title, "Multi-room stay (3 rooms)");
+  assert.equal(booking.totalPrice, roomOption.stayTotal);
+  assert.deepEqual(
+    booking.items.map((item) => item.guestCount).sort((a, b) => a - b),
+    [1, 2, 2],
+  );
+  assert.deepEqual(
+    booking.items.map((item) => item.targetLabel).sort(),
+    ["Room 1", "Room 2", "Room 3"],
+  );
+});
+
+test("dashboard pricing blocks duplicate overlapping price rules", async () => {
+  await assert.rejects(
+    () =>
+      dashboardService.createRoomPricing(state.superAdminId, state.propertyId, {
+        productId: state.productId,
+        roomId: state.roomId,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2700,
+        validFrom: new Date("2026-06-01T00:00:00.000Z"),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "ROOM_PRICING_OVERLAP");
+      return true;
+    },
+  );
 });
 
 test("public booking rejects single room when guest count exceeds capacity", async () => {

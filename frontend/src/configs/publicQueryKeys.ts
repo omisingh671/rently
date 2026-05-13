@@ -17,7 +17,6 @@ export const PUBLIC_QUERY_KEYS = {
       checkIn: string;
       checkOut: string;
       guests: number;
-      occupancy: string;
       comfort: string;
     }) =>
       [
@@ -27,7 +26,6 @@ export const PUBLIC_QUERY_KEYS = {
         criteria.checkIn,
         criteria.checkOut,
         criteria.guests,
-        criteria.occupancy,
         criteria.comfort,
       ] as const,
   },

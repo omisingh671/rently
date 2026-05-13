@@ -13,6 +13,7 @@ import type {
   LeadStatus,
   ManualBookingAvailabilityResponse,
   QuoteListResponse,
+  RoomBoardResponse,
   UpdateBookingPayload,
 } from "./types";
 
@@ -40,6 +41,18 @@ export const checkManualBookingAvailabilityApi = async (
   const { data } = await axiosInstance.post<
     ApiSuccessResponse<ManualBookingAvailabilityResponse>
   >(API_ENDPOINTS.operations.bookingAvailabilityByProperty(propertyId), payload);
+
+  return data.data;
+};
+
+export const getRoomBoardApi = async (
+  propertyId: string,
+  params: { from: string; to: string },
+): Promise<RoomBoardResponse> => {
+  const { data } = await axiosInstance.get<ApiSuccessResponse<RoomBoardResponse>>(
+    API_ENDPOINTS.operations.roomBoardByProperty(propertyId),
+    { params },
+  );
 
   return data.data;
 };

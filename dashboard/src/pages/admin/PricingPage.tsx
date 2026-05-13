@@ -8,6 +8,7 @@ import { useAdminRooms } from "@/features/admin/rooms/hooks/useAdminRooms";
 import { useAdminUnits } from "@/features/admin/units/hooks/useAdminUnits";
 import { useAdminPricing } from "@/features/admin/pricing/hooks/useAdminPricing";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
+import { normalizeApiError } from "@/utils/errors";
 import type {
   AdminCoupon,
   AdminRoomPricing,
@@ -101,8 +102,8 @@ type TaxForm = z.input<typeof taxSchema>;
 type CouponForm = z.input<typeof couponSchema>;
 
 const tabs: Array<{ key: Tab; label: string }> = [
-  { key: "products", label: "Products" },
-  { key: "rates", label: "Rates" },
+  { key: "products", label: "Rate Products" },
+  { key: "rates", label: "Price Rules / Rates" },
   { key: "taxes", label: "Taxes" },
   { key: "coupons", label: "Coupons" },
 ];
@@ -162,9 +163,9 @@ const formatDate = (value: string | null) =>
     : "Open";
 
 const getRateTarget = (rate: AdminRoomPricing) => {
-  if (rate.roomLabel) return rate.roomLabel;
-  if (rate.unitNumber) return rate.unitNumber;
-  return "Property";
+  if (rate.roomLabel) return `Room override: ${rate.roomLabel}`;
+  if (rate.unitNumber) return `Unit override: ${rate.unitNumber}`;
+  return "Property-wide";
 };
 
 export default function PricingPage() {
@@ -243,6 +244,10 @@ export default function PricingPage() {
       price: parsed.price,
       validFrom: parsed.validFrom,
       ...(parsed.validTo && { validTo: parsed.validTo }),
+      ...(parsed.targetType === "PROPERTY" && {
+        unitId: null,
+        roomId: null,
+      }),
       ...(parsed.targetType === "UNIT" &&
         parsed.unitId && { unitId: parsed.unitId }),
       ...(parsed.targetType === "ROOM" &&
@@ -257,8 +262,8 @@ export default function PricingPage() {
       }
       setRateForm(emptyRate);
       setEditingRate(null);
-    } catch {
-      setError("Could not save rate");
+    } catch (error) {
+      setError(normalizeApiError(error).message);
     }
   };
 
@@ -365,8 +370,12 @@ export default function PricingPage() {
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[380px_1fr]">
               <div className="rounded-md border border-slate-200 bg-white p-5">
                 <h2 className="text-base font-semibold text-slate-900">
-                  {editingProduct ? "Edit Product" : "Create Product"}
+                  {editingProduct ? "Edit Rate Product" : "Create Rate Product"}
                 </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Define reusable internal pricing types such as Single AC,
+                  Double Non-AC, or Whole Unit AC.
+                </p>
                 <div className="mt-4 space-y-4">
                   <input
                     value={productForm.name}
@@ -376,7 +385,7 @@ export default function PricingPage() {
                         name: event.target.value,
                       }))
                     }
-                    placeholder="Product name"
+                    placeholder="Rate product name"
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                   />
                   <input
@@ -416,11 +425,11 @@ export default function PricingPage() {
                         }))
                       }
                     />
-                    AC product
+                    AC rate product
                   </label>
                   <div className="flex gap-2">
                     <Button disabled={isMutating} onClick={submitProduct}>
-                      {editingProduct ? "Save Product" : "Create Product"}
+                      {editingProduct ? "Save Rate Product" : "Create Rate Product"}
                     </Button>
                     {editingProduct && (
                       <Button
@@ -478,8 +487,12 @@ export default function PricingPage() {
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[420px_1fr]">
               <div className="rounded-md border border-slate-200 bg-white p-5">
                 <h2 className="text-base font-semibold text-slate-900">
-                  {editingRate ? "Edit Rate" : "Create Rate"}
+                  {editingRate ? "Edit Price Rule" : "Create Price Rule"}
                 </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Create property-wide rates first. Use overrides only when a
+                  specific unit or room has different pricing.
+                </p>
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <select
                     value={rateForm.productId}
@@ -491,7 +504,7 @@ export default function PricingPage() {
                     }
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
                   >
-                    <option value="">Select product</option>
+                    <option value="">Select rate product</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name}
@@ -511,8 +524,8 @@ export default function PricingPage() {
                     className="rounded-md border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
                   >
                     <option value="PROPERTY">Property-wide</option>
-                    <option value="UNIT">Unit</option>
-                    <option value="ROOM">Room</option>
+                    <option value="UNIT">Unit override</option>
+                    <option value="ROOM">Room override</option>
                   </select>
                   {rateForm.targetType === "UNIT" && (
                     <select
@@ -658,7 +671,7 @@ export default function PricingPage() {
                   </label>
                   <div className="flex gap-2 sm:col-span-2">
                     <Button disabled={isMutating} onClick={submitRate}>
-                      {editingRate ? "Save Rate" : "Create Rate"}
+                      {editingRate ? "Save Price Rule" : "Create Price Rule"}
                     </Button>
                     {editingRate && (
                       <Button
@@ -676,7 +689,7 @@ export default function PricingPage() {
               </div>
 
               <PricingTable
-                headers={["Product", "Target", "Rate", "Price", "Validity", "Action"]}
+                headers={["Rate Product", "Applies To", "Rate", "Price", "Validity", "Action"]}
                 loading={isFetching}
                 empty={rates.length === 0}
               >
