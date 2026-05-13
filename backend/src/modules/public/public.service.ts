@@ -3,6 +3,7 @@ import {
   BookingStatus,
   BookingTargetType,
   BookingType,
+  ComfortOption,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -147,6 +148,9 @@ const getSpaceTarget = (space: repo.PublicSpaceRecord): PublicSpaceTarget => {
 const getSpaceCapacity = (space: repo.PublicSpaceRecord) =>
   space.room?.maxOccupancy ?? space.product.occupancy;
 
+const getSpaceComfortOption = (space: repo.PublicSpaceRecord) =>
+  space.product.hasAC ? ComfortOption.AC : ComfortOption.NON_AC;
+
 const getSpaceTitle = (space: repo.PublicSpaceRecord) => {
   const targetName = space.room
     ? `${space.room.name} ${space.room.number}`
@@ -168,7 +172,9 @@ const mapSpace = (space: repo.PublicSpaceRecord): PublicSpaceDTO => {
     description: `${space.product.category.toLowerCase()} stay at ${space.property.name}`,
     pricePerNight: Number(space.price),
     capacity: getSpaceCapacity(space),
+    guestCount: space.product.occupancy,
     hasAC: space.room?.hasAC ?? space.product.hasAC,
+    comfortOption: getSpaceComfortOption(space),
     location: getSpaceLocation(space),
     targetType: target.targetType,
     unitId: target.unitId,
@@ -186,6 +192,8 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     targetLabel: item.targetLabel,
     productName: item.productName,
     capacity: item.capacity,
+    guestCount: item.guestCount,
+    comfortOption: item.comfortOption,
     pricePerNight: Number(item.pricePerNight),
     totalAmount: Number(item.totalAmount),
   }));
@@ -202,6 +210,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     propertyId: booking.propertyId,
     bookingType: booking.bookingType,
     guestCount: booking.guestCount,
+    comfortOption: booking.comfortOption,
     title,
     spaceName: booking.targetLabel,
     status: booking.status,
@@ -287,6 +296,7 @@ const mapAvailableSpace = (
     title: getSpaceTitle(space),
     location: getSpaceLocation(space),
     capacity: getSpaceCapacity(space),
+    comfortOption: getSpaceComfortOption(space),
     pricePerNight,
     priceTotal: pricePerNight * nights,
     targetType: target.targetType,
@@ -311,11 +321,11 @@ const spaceMatchesAvailabilityInput = (
   }
 
   if (input.occupancyType === "single") {
-    return target.targetType === BookingTargetType.ROOM && capacity === 1;
+    return target.targetType === BookingTargetType.ROOM;
   }
 
   if (input.occupancyType === "double") {
-    return target.targetType === BookingTargetType.ROOM && capacity >= 2;
+    return target.targetType === BookingTargetType.ROOM;
   }
 
   return target.targetType === BookingTargetType.UNIT;
@@ -352,6 +362,8 @@ export const checkAvailability = async (
     input.occupancyType === "double" || input.occupancyType === "multi_room"
       ? 1
       : input.guests;
+  const pricingGuestCount =
+    input.occupancyType === "multi_room" ? 1 : input.guests;
   const spaces = await repo.listActiveSpaces(
     now(),
     minOccupancy,
@@ -361,6 +373,10 @@ export const checkAvailability = async (
       checkIn: input.checkIn,
       checkOut: input.checkOut,
       nights,
+    },
+    {
+      guestCount: pricingGuestCount,
+      comfortOption: input.comfortOption,
     },
   );
   const availableSpaces = [];
@@ -410,6 +426,7 @@ const buildBookingItemCreateInput = (
   space: repo.PublicSpaceRecord,
   target: PublicSpaceTarget,
   nights: number,
+  guestCount: number,
 ): Prisma.BookingItemCreateWithoutBookingInput => {
   const pricePerNight = Number(space.price);
 
@@ -418,6 +435,8 @@ const buildBookingItemCreateInput = (
     targetType: target.targetType,
     unitId: target.unitId,
     roomId: target.roomId,
+    guestCount,
+    comfortOption: getSpaceComfortOption(space),
     targetLabel: target.roomId
       ? `${space.room?.name ?? "Room"} ${space.room?.number ?? ""}`.trim()
       : `Unit ${space.unit?.unitNumber ?? ""}`.trim(),
@@ -426,6 +445,124 @@ const buildBookingItemCreateInput = (
     pricePerNight,
     totalAmount: pricePerNight * nights,
   };
+};
+
+const getTargetKey = (target: PublicSpaceTarget) =>
+  target.targetType === BookingTargetType.ROOM
+    ? `ROOM:${target.roomId ?? ""}`
+    : `UNIT:${target.unitId ?? ""}`;
+
+const allocateGuestsAcrossRooms = (
+  spaces: repo.PublicSpaceRecord[],
+  totalGuests: number,
+) => {
+  if (spaces.length > totalGuests) {
+    throw new HttpError(
+      422,
+      "TOO_MANY_ROOMS_FOR_GUESTS",
+      "Each selected room must have at least one guest",
+    );
+  }
+
+  const allocations = spaces.map((space) => ({
+    space,
+    guestCount: 1,
+    remainingCapacity: Math.max(0, getSpaceCapacity(space) - 1),
+  }));
+  let remainingGuests = totalGuests - allocations.length;
+
+  for (const allocation of allocations) {
+    if (remainingGuests === 0) {
+      break;
+    }
+
+    const additionalGuests = Math.min(
+      allocation.remainingCapacity,
+      remainingGuests,
+    );
+    allocation.guestCount += additionalGuests;
+    remainingGuests -= additionalGuests;
+  }
+
+  if (remainingGuests > 0) {
+    throw new HttpError(
+      422,
+      "INSUFFICIENT_CAPACITY",
+      "Selected spaces do not cover the requested guest count",
+    );
+  }
+
+  return allocations.map(({ space, guestCount }) => ({
+    space,
+    guestCount,
+  }));
+};
+
+const assertComfortAvailableForSpace = (
+  space: repo.PublicSpaceRecord,
+  comfortOption: ComfortOption,
+) => {
+  if (
+    comfortOption === ComfortOption.AC &&
+    space.roomId !== null &&
+    space.room?.hasAC !== true
+  ) {
+    throw new HttpError(
+      422,
+      "COMFORT_OPTION_NOT_AVAILABLE",
+      "Selected room does not support AC bookings",
+    );
+  }
+};
+
+const resolvePricedSpace = async (
+  space: repo.PublicSpaceRecord,
+  target: PublicSpaceTarget,
+  guestCount: number,
+  comfortOption: ComfortOption,
+  tenantId: string,
+  checkIn: Date,
+  checkOut: Date,
+  nights: number,
+  tx: Prisma.TransactionClient,
+) => {
+  const capacity = getSpaceCapacity(space);
+
+  if (guestCount > capacity) {
+    throw new HttpError(
+      422,
+      "INSUFFICIENT_CAPACITY",
+      "Selected room does not cover the assigned guest count",
+    );
+  }
+
+  assertComfortAvailableForSpace(space, comfortOption);
+
+  const pricedSpace = await repo.findActivePricingForTarget(
+    target,
+    now(),
+    tenantId,
+    {
+      guestCount,
+      comfortOption,
+    },
+    {
+      checkIn,
+      checkOut,
+      nights,
+    },
+    tx,
+  );
+
+  if (!pricedSpace) {
+    throw new HttpError(
+      422,
+      "PRICE_NOT_CONFIGURED",
+      `No active ${comfortOption === ComfortOption.AC ? "AC" : "Non-AC"} price is configured for ${guestCount} guest${guestCount === 1 ? "" : "s"} in the selected room`,
+    );
+  }
+
+  return pricedSpace;
 };
 
 const getArrayItem = <T>(items: T[], index: number, message: string): T => {
@@ -468,7 +605,7 @@ export const createBookingForUser = async (
           throw new HttpError(404, "USER_NOT_FOUND", "User not found");
         }
 
-        const spaces =
+        const selectedSpaces =
           input.bookingType === "MULTI_ROOM"
             ? await Promise.all(
                 (input.spaceIds ?? []).map((spaceId) =>
@@ -493,16 +630,22 @@ export const createBookingForUser = async (
                 ),
               ];
 
-        if (spaces.some((space) => !space)) {
+        if (selectedSpaces.some((space) => !space)) {
           throw new HttpError(404, "SPACE_NOT_FOUND", "Space not found");
         }
 
-        const resolvedSpaces = spaces.filter(
+        const resolvedSelectedSpaces = selectedSpaces.filter(
           (space): space is repo.PublicSpaceRecord => space !== null,
         );
-        const uniqueSpaceIds = new Set(resolvedSpaces.map((space) => space.id));
 
-        if (uniqueSpaceIds.size !== resolvedSpaces.length) {
+        const selectedTargets = await Promise.all(
+          resolvedSelectedSpaces.map((space) =>
+            ensureSpaceAvailable(space, input.from, input.to, tx),
+          ),
+        );
+        const uniqueTargetKeys = new Set(selectedTargets.map(getTargetKey));
+
+        if (uniqueTargetKeys.size !== resolvedSelectedSpaces.length) {
           throw new HttpError(
             422,
             "DUPLICATE_BOOKING_SPACE",
@@ -511,7 +654,7 @@ export const createBookingForUser = async (
         }
 
         const propertyIds = new Set(
-          resolvedSpaces.map((space) => space.propertyId),
+          resolvedSelectedSpaces.map((space) => space.propertyId),
         );
 
         if (propertyIds.size !== 1) {
@@ -539,15 +682,11 @@ export const createBookingForUser = async (
           );
         }
 
-        const targets = await Promise.all(
-          resolvedSpaces.map((space) =>
-            ensureSpaceAvailable(space, input.from, input.to, tx),
-          ),
-        );
-
         if (
           input.bookingType === "MULTI_ROOM" &&
-          targets.some((target) => target.targetType !== BookingTargetType.ROOM)
+          selectedTargets.some(
+            (target) => target.targetType !== BookingTargetType.ROOM,
+          )
         ) {
           throw new HttpError(
             422,
@@ -556,7 +695,7 @@ export const createBookingForUser = async (
           );
         }
 
-        const selectedCapacity = resolvedSpaces.reduce(
+        const selectedCapacity = resolvedSelectedSpaces.reduce(
           (total, space) => total + getSpaceCapacity(space),
           0,
         );
@@ -569,11 +708,43 @@ export const createBookingForUser = async (
           );
         }
 
-        const itemInputs = resolvedSpaces.map((space, index) =>
+        const guestAllocations =
+          input.bookingType === "MULTI_ROOM"
+            ? allocateGuestsAcrossRooms(resolvedSelectedSpaces, input.guests)
+            : [
+                {
+                  space: getArrayItem(
+                    resolvedSelectedSpaces,
+                    0,
+                    "Missing booking space",
+                  ),
+                  guestCount: input.guests,
+                },
+              ];
+
+        const pricedSpaces = await Promise.all(
+          guestAllocations.map((allocation, index) =>
+            resolvePricedSpace(
+              allocation.space,
+              getArrayItem(selectedTargets, index, "Missing booking target"),
+              allocation.guestCount,
+              input.comfortOption,
+              tenant.id,
+              input.from,
+              input.to,
+              nights,
+              tx,
+            ),
+          ),
+        );
+
+        const itemInputs = pricedSpaces.map((space, index) =>
           buildBookingItemCreateInput(
             space,
-            getArrayItem(targets, index, "Missing booking target"),
+            getArrayItem(selectedTargets, index, "Missing booking target"),
             nights,
+            getArrayItem(guestAllocations, index, "Missing guest allocation")
+              .guestCount,
           ),
         );
         const totalAmount = itemInputs.reduce(
@@ -586,12 +757,12 @@ export const createBookingForUser = async (
           0,
         );
         const firstSpace = getArrayItem(
-          resolvedSpaces,
+          pricedSpaces,
           0,
           "Missing booking space",
         );
         const firstTarget = getArrayItem(
-          targets,
+          selectedTargets,
           0,
           "Missing booking target",
         );
@@ -617,13 +788,14 @@ export const createBookingForUser = async (
             unitId: isMultiRoom ? null : firstTarget.unitId,
             roomId: isMultiRoom ? null : firstTarget.roomId,
             guestCount: input.guests,
+            comfortOption: input.comfortOption,
             guestNameSnapshot: guestSnapshot.fullName,
             guestEmailSnapshot: guestSnapshot.email,
             ...(guestSnapshot.contactNumber !== null && {
               guestContactSnapshot: guestSnapshot.contactNumber,
             }),
             targetLabel: isMultiRoom
-              ? `${multiRoomTitle} (${resolvedSpaces.length} rooms)`
+              ? `${multiRoomTitle} (${pricedSpaces.length} rooms)`
               : firstItemInput.targetLabel,
             productName: isMultiRoom ? multiRoomTitle : firstSpace.product.name,
             pricePerNight,

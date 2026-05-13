@@ -6,6 +6,7 @@ import { prisma } from "@/db/prisma.js";
 import {
   BookingPaymentPolicy,
   BookingStatus,
+  ComfortOption,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -42,6 +43,7 @@ const createBooking = () =>
       from: new Date("2027-03-10T00:00:00.000Z"),
       to: new Date("2027-03-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -121,17 +123,56 @@ before(async () => {
     }),
   ]);
 
-  const product = await prisma.roomProduct.create({
-    data: {
-      propertyId: property.id,
-      name: `${testId} Double Room`,
-      occupancy: 2,
-      hasAC: true,
-      category: RoomProductCategory.NIGHTLY,
-    },
-  });
+  const [singleProduct, product] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Single Room`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Double Room`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
 
-  const [pricing, pricingTwo] = await Promise.all([
+  const pricingRates = await Promise.all([
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: room.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1800,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomTwo.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1700,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
     prisma.roomPricing.create({
       data: {
         propertyId: property.id,
@@ -161,6 +202,11 @@ before(async () => {
       },
     }),
   ]);
+  const pricing = pricingRates[2];
+  const pricingTwo = pricingRates[3];
+  if (!pricing || !pricingTwo) {
+    throw new Error("Payment test pricing invariant failed");
+  }
 
   state = {
     superAdminId: superAdmin.id,
@@ -242,6 +288,7 @@ test("manual payment is idempotent for the same key", async () => {
       from: new Date("2027-04-10T00:00:00.000Z"),
       to: new Date("2027-04-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -277,6 +324,7 @@ test("manual payment confirms a multi-room booking", async () => {
       from: new Date("2027-06-10T00:00:00.000Z"),
       to: new Date("2027-06-12T00:00:00.000Z"),
       guests: 3,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -309,6 +357,7 @@ test("booking is confirmed without payment when token collection is disabled", a
         from: new Date("2027-09-10T00:00:00.000Z"),
         to: new Date("2027-09-12T00:00:00.000Z"),
         guests: 2,
+        comfortOption: ComfortOption.AC,
       },
       { tenantSlug: state.tenantSlug },
     );
@@ -350,6 +399,7 @@ test("dashboard can create a confirmed walk-in booking without payment", async (
       from: new Date("2027-08-10T00:00:00.000Z"),
       to: new Date("2027-08-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
       guestName: "Walk In Guest",
       guestEmail: `${testId}-walk-in@sucasa.test`,
       countryCode: "+91",
@@ -375,6 +425,7 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
       from: new Date("2027-10-10T00:00:00.000Z"),
       to: new Date("2027-10-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -387,6 +438,7 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
       from: new Date("2027-10-10T00:00:00.000Z"),
       to: new Date("2027-10-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
   );
 
@@ -410,6 +462,7 @@ test("manual payment rejects a second successful payment for one booking", async
       from: new Date("2027-05-10T00:00:00.000Z"),
       to: new Date("2027-05-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -445,6 +498,7 @@ test("dashboard booking status updates append audit history and notes", async ()
       from: new Date("2027-07-10T00:00:00.000Z"),
       to: new Date("2027-07-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -491,6 +545,7 @@ test("dashboard booking status update rejects invalid lifecycle jumps", async ()
       from: new Date("2027-07-20T00:00:00.000Z"),
       to: new Date("2027-07-22T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );

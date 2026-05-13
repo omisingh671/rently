@@ -3,6 +3,7 @@ import type {
   BookingType,
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
@@ -193,6 +194,8 @@ export interface DashboardManualBookingAvailabilityItemDTO {
   capacity: number;
   targetType: BookingTargetType;
   reason: string | null;
+  guestCount: number | null;
+  pricePerNight: string | null;
 }
 
 export interface DashboardManualBookingAvailabilityDTO {
@@ -248,6 +251,7 @@ export interface DashboardBookingDTO {
   guestContactSnapshot: string | null;
   bookingType: BookingType;
   guestCount: number;
+  comfortOption: ComfortOption;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -271,6 +275,8 @@ export interface DashboardBookingDTO {
     targetLabel: string;
     productName: string;
     capacity: number;
+    guestCount: number;
+    comfortOption: ComfortOption;
     pricePerNight: string;
     totalAmount: string;
   }>;

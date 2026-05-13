@@ -90,6 +90,7 @@ export default function AvailabilityResultPage() {
                   from: new Date(criteria.checkIn).toISOString(),
                   to: new Date(criteria.checkOut).toISOString(),
                   guests: criteria.guests,
+                  comfortOption: criteria.comfortOption,
                 });
                 navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
               }}

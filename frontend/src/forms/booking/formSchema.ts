@@ -15,6 +15,9 @@ export const BookingFormSchema = z
     occupancyType: z.enum(["single", "double"], {
       message: "Select occupancy type",
     }),
+    comfortOption: z.enum(["NON_AC", "AC"], {
+      message: "Select comfort option",
+    }),
   })
   .superRefine((data, ctx) => {
     const inTs = Date.parse(data.checkIn);

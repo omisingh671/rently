@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ComfortOption } from "@/generated/prisma/enums.js";
 
 const isoDateSchema = z.coerce.date();
 
@@ -12,6 +13,7 @@ export const checkAvailabilitySchema = z
     checkOut: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
     occupancyType: z.enum(["single", "double", "unit", "multi_room"]),
+    comfortOption: z.nativeEnum(ComfortOption),
   })
   .refine((data) => data.checkOut > data.checkIn, {
     message: "Check-out must be after check-in",
@@ -26,6 +28,7 @@ export const createBookingSchema = z
     from: isoDateSchema,
     to: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
+    comfortOption: z.nativeEnum(ComfortOption),
   })
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",

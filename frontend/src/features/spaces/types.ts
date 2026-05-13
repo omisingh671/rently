@@ -5,7 +5,9 @@ export interface Space {
   description?: string;
   pricePerNight: number;
   capacity: number;
+  guestCount: number;
   hasAC: boolean;
+  comfortOption: "AC" | "NON_AC";
   location?: string;
   targetType: "ROOM" | "UNIT";
   unitId: string | null;

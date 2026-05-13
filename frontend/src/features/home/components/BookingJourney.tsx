@@ -57,6 +57,7 @@ export default function BookingJourney() {
       to: values.checkOut,
       guests: String(values.guests),
       occupancy: values.occupancyType,
+      ac: values.comfortOption === "AC" ? "true" : "false",
     });
 
     navigate(`${ROUTES.SPACES}?${searchParams.toString()}`);

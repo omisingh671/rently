@@ -48,6 +48,11 @@ enum RoomProductCategory {
   CORPORATE
 }
 
+enum ComfortOption {
+  AC
+  NON_AC
+}
+
 enum RateType {
   NIGHTLY
   WEEKLY
@@ -284,7 +289,7 @@ model Room {
   number       String
   rent         Float
   hasAC        Boolean    @default(false)
-  maxOccupancy Int        @default(1)
+  maxOccupancy Int        @default(2)
   status       RoomStatus @default(AVAILABLE)
   isActive     Boolean    @default(true)
 
@@ -400,6 +405,7 @@ model Booking {
   unitId     String?
   roomId     String?
   guestCount Int               @default(1)
+  comfortOption ComfortOption
 
   guestNameSnapshot    String
   guestEmailSnapshot   String
@@ -442,6 +448,8 @@ model BookingItem {
   targetType BookingTargetType
   unitId     String?
   roomId     String?
+  guestCount Int               @default(1)
+  comfortOption ComfortOption
 
   targetLabel   String
   productName   String

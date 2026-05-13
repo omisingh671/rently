@@ -1,5 +1,9 @@
 import axiosInstance from "@/api/axios";
-import type { Booking, CreateManualPaymentResponse } from "./types";
+import type {
+  Booking,
+  ComfortOption,
+  CreateManualPaymentResponse,
+} from "./types";
 
 export type CreateBookingPayload =
   | {
@@ -8,6 +12,7 @@ export type CreateBookingPayload =
       from: string;
       to: string;
       guests: number;
+      comfortOption: ComfortOption;
     }
   | {
       bookingType: "MULTI_ROOM";
@@ -15,6 +20,7 @@ export type CreateBookingPayload =
       from: string;
       to: string;
       guests: number;
+      comfortOption: ComfortOption;
     };
 
 export const listBookings = async (): Promise<Booking[]> => {

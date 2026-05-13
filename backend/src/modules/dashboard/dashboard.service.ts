@@ -2,6 +2,7 @@ import {
   BookingPaymentPolicy,
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
   LeadStatus,
   MaintenanceTargetType,
   PricingTier,
@@ -376,6 +377,7 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
   guestContactSnapshot: booking.guestContactSnapshot ?? null,
   bookingType: booking.bookingType,
   guestCount: booking.guestCount,
+  comfortOption: booking.comfortOption,
   productId: booking.productId ?? null,
   targetType: booking.targetType,
   unitId: booking.unitId ?? null,
@@ -399,6 +401,8 @@ const mapBooking = (booking: repo.DashboardBookingRecord): DashboardBookingDTO =
     targetLabel: item.targetLabel,
     productName: item.productName,
     capacity: item.capacity,
+    guestCount: item.guestCount,
+    comfortOption: item.comfortOption,
     pricePerNight: item.pricePerNight.toString(),
     totalAmount: item.totalAmount.toString(),
   })),
@@ -807,6 +811,23 @@ const getManualBookingSpaceTarget = (
 const getManualBookingSpaceCapacity = (space: publicRepo.PublicSpaceRecord) =>
   space.room?.maxOccupancy ?? space.product.occupancy;
 
+const assertManualBookingComfortAvailable = (
+  space: publicRepo.PublicSpaceRecord,
+  comfortOption: ComfortOption,
+) => {
+  if (
+    comfortOption === ComfortOption.AC &&
+    space.roomId !== null &&
+    space.room?.hasAC !== true
+  ) {
+    throw new HttpError(
+      422,
+      "COMFORT_OPTION_NOT_AVAILABLE",
+      "Selected room does not support AC bookings",
+    );
+  }
+};
+
 const ensureAmenityIdsBelongToProperty = async (
   propertyId: string,
   amenityIds: string[],
@@ -897,7 +918,9 @@ const assertValidNightRange = (minNights?: number, maxNights?: number) => {
 };
 
 const ensureRoomProductBelongsToProperty = (
-  product: repo.DashboardRoomProductRecord,
+  product: {
+    propertyId: string;
+  },
   propertyId: string,
 ) => {
   if (product.propertyId !== propertyId) {
@@ -905,6 +928,28 @@ const ensureRoomProductBelongsToProperty = (
       400,
       "INVALID_PRODUCT",
       "Room product does not belong to the selected property",
+    );
+  }
+};
+
+const assertRoomPricingComfortSupported = async (
+  target: {
+    roomId?: string | undefined;
+  },
+  product: {
+    hasAC: boolean;
+  },
+) => {
+  if (!target.roomId || !product.hasAC) {
+    return;
+  }
+
+  const room = await ensureRoomExists(target.roomId);
+  if (!room.hasAC) {
+    throw new HttpError(
+      422,
+      "COMFORT_OPTION_NOT_AVAILABLE",
+      "Selected room does not support AC pricing",
     );
   }
 };
@@ -2082,7 +2127,7 @@ export const createRoom = async (
     number: input.number,
     rent: input.rent,
     hasAC: input.hasAC ?? false,
-    maxOccupancy: input.maxOccupancy ?? 1,
+    maxOccupancy: input.maxOccupancy ?? 2,
     ...(input.status !== undefined && { status: input.status }),
   });
 
@@ -2430,6 +2475,7 @@ export const createRoomPricing = async (
   const product = await ensureRoomProductExists(input.productId);
   ensureRoomProductBelongsToProperty(product, propertyId);
   const target = await resolvePricingTarget(propertyId, input);
+  await assertRoomPricingComfortSupported(target, product);
 
   const pricing = await repo.createRoomPricing({
     property: {
@@ -2486,15 +2532,22 @@ export const updateRoomPricing = async (
     input.maxNights ?? existingPricing.maxNights ?? undefined,
   );
 
-  if (input.productId !== undefined) {
-    const product = await ensureRoomProductExists(input.productId);
-    ensureRoomProductBelongsToProperty(product, existingPricing.propertyId);
-  }
+  const nextProduct =
+    input.productId !== undefined
+      ? await ensureRoomProductExists(input.productId)
+      : existingPricing.product;
+  ensureRoomProductBelongsToProperty(nextProduct, existingPricing.propertyId);
 
   const target =
     input.unitId !== undefined || input.roomId !== undefined
       ? await resolvePricingTarget(existingPricing.propertyId, input)
       : undefined;
+  await assertRoomPricingComfortSupported(
+    target ?? {
+      roomId: existingPricing.roomId ?? undefined,
+    },
+    nextProduct,
+  );
 
   const pricing = await repo.updateRoomPricingById(pricingId, {
     ...(input.productId !== undefined && {
@@ -2767,6 +2820,8 @@ export const checkManualBookingAvailability = async (
           capacity: 0,
           targetType: BookingTargetType.ROOM,
           reason: "No active price for selected dates",
+          guestCount: null,
+          pricePerNight: null,
         };
       }
 
@@ -2777,11 +2832,14 @@ export const checkManualBookingAvailability = async (
           capacity: getManualBookingSpaceCapacity(space),
           targetType: getManualBookingSpaceTarget(space).targetType,
           reason: "Space belongs to another property",
+          guestCount: null,
+          pricePerNight: null,
         };
       }
 
       const target = getManualBookingSpaceTarget(space);
       const capacity = getManualBookingSpaceCapacity(space);
+      const pricingGuestCount = input.guests <= capacity ? input.guests : 1;
       const [hasBooking, hasMaintenance] = await Promise.all([
         publicRepo.hasOverlappingBooking(target, input.from, input.to),
         publicRepo.hasOverlappingMaintenance(
@@ -2799,6 +2857,8 @@ export const checkManualBookingAvailability = async (
           capacity,
           targetType: target.targetType,
           reason: "Already booked for selected dates",
+          guestCount: null,
+          pricePerNight: null,
         };
       }
 
@@ -2809,6 +2869,53 @@ export const checkManualBookingAvailability = async (
           capacity,
           targetType: target.targetType,
           reason: "Blocked for maintenance",
+          guestCount: null,
+          pricePerNight: null,
+        };
+      }
+
+      try {
+        assertManualBookingComfortAvailable(space, input.comfortOption);
+      } catch (error) {
+        if (error instanceof HttpError) {
+          return {
+            spaceId,
+            available: false,
+            capacity,
+            targetType: target.targetType,
+            reason: error.message,
+            guestCount: null,
+            pricePerNight: null,
+          };
+        }
+
+        throw error;
+      }
+
+      const pricedSpace = await publicRepo.findActivePricingForTarget(
+        target,
+        new Date(),
+        property.tenantId,
+        {
+          guestCount: pricingGuestCount,
+          comfortOption: input.comfortOption,
+        },
+        {
+          checkIn: input.from,
+          checkOut: input.to,
+          nights,
+        },
+      );
+
+      if (!pricedSpace) {
+        return {
+          spaceId,
+          available: false,
+          capacity,
+          targetType: target.targetType,
+          reason: `No active ${input.comfortOption === ComfortOption.AC ? "AC" : "Non-AC"} price for ${pricingGuestCount} guest${pricingGuestCount === 1 ? "" : "s"}`,
+          guestCount: null,
+          pricePerNight: null,
         };
       }
 
@@ -2818,6 +2925,8 @@ export const checkManualBookingAvailability = async (
         capacity,
         targetType: target.targetType,
         reason: null,
+        guestCount: pricingGuestCount,
+        pricePerNight: pricedSpace.price.toString(),
       };
     }),
   );
@@ -2852,6 +2961,7 @@ export const createManualBooking = async (
       from: input.from,
       to: input.to,
       guests: input.guests,
+      comfortOption: input.comfortOption,
     },
     {
       tenantId: property.tenantId,

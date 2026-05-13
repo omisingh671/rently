@@ -1,5 +1,6 @@
 import type {
   BookingStatus,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
@@ -353,6 +354,7 @@ export interface CreateDashboardManualBookingInput {
   from: Date;
   to: Date;
   guests: number;
+  comfortOption: ComfortOption;
   guestName: string;
   guestEmail: string;
   countryCode?: string;
@@ -365,6 +367,7 @@ export interface CheckDashboardManualBookingAvailabilityInput {
   from: Date;
   to: Date;
   guests: number;
+  comfortOption: ComfortOption;
 }
 
 export interface UpdateDashboardLeadInput {

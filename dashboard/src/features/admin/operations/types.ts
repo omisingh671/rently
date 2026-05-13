@@ -10,6 +10,7 @@ export type BookingStatus =
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type ComfortOption = "AC" | "NON_AC";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
@@ -27,6 +28,7 @@ export type AdminBooking = {
   guestContactSnapshot: string | null;
   bookingType: BookingType;
   guestCount: number;
+  comfortOption: ComfortOption;
   productId: string | null;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -50,6 +52,8 @@ export type AdminBooking = {
     targetLabel: string;
     productName: string;
     capacity: number;
+    guestCount: number;
+    comfortOption: ComfortOption;
     pricePerNight: string;
     totalAmount: string;
   }>;
@@ -79,6 +83,7 @@ export type CreateManualBookingPayload = {
   from: string;
   to: string;
   guests: number;
+  comfortOption: ComfortOption;
   guestName: string;
   guestEmail: string;
   countryCode?: string;
@@ -91,6 +96,7 @@ export type CheckManualBookingAvailabilityPayload = {
   from: string;
   to: string;
   guests: number;
+  comfortOption: ComfortOption;
 };
 
 export type ManualBookingAvailabilityItem = {
@@ -99,6 +105,8 @@ export type ManualBookingAvailabilityItem = {
   capacity: number;
   targetType: BookingTargetType;
   reason: string | null;
+  guestCount: number | null;
+  pricePerNight: string | null;
 };
 
 export type ManualBookingAvailabilityResponse = {

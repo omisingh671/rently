@@ -101,6 +101,8 @@ export default function BookingsList({ bookings }: BookingsListProps) {
 
               <div className="mt-1 text-sm text-slate-600">
                 Guests: {booking.guestCount}
+                <span className="mx-2 text-slate-300">|</span>
+                {booking.comfortOption === "AC" ? "AC" : "Non-AC"}
               </div>
 
               {booking.items.length > 1 && (
@@ -110,7 +112,8 @@ export default function BookingsList({ bookings }: BookingsListProps) {
                       key={item.id}
                       className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
                     >
-                      {item.targetLabel} ({item.capacity})
+                      {item.targetLabel} ({item.guestCount}/{item.capacity},{" "}
+                      {item.comfortOption === "AC" ? "AC" : "Non-AC"})
                     </span>
                   ))}
                 </div>

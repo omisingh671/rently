@@ -14,6 +14,7 @@ import { ROUTES } from "@/configs/routePaths";
 import { useCreateBooking } from "@/features/bookings/hooks";
 import { useSpace } from "@/features/spaces/hooks";
 import { normalizeApiError } from "@/utils/errors";
+import type { ComfortOption } from "@/features/bookings/types";
 
 function isoDateLocal(dateStr: string) {
   const date = new Date(`${dateStr}T00:00:00`);
@@ -42,6 +43,9 @@ export default function SpaceDetailPage() {
 
   const [from, setFrom] = useState<string>(searchParams.get("from") ?? "");
   const [to, setTo] = useState<string>(searchParams.get("to") ?? "");
+  const [comfortOption, setComfortOption] = useState<ComfortOption>(
+    searchParams.get("ac") === "true" ? "AC" : "NON_AC",
+  );
   const guestsParam = Number(searchParams.get("guests"));
   const guests =
     Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 1;
@@ -90,6 +94,7 @@ export default function SpaceDetailPage() {
         from: fromIso,
         to: toIso,
         guests,
+        comfortOption,
       });
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
@@ -153,7 +158,8 @@ export default function SpaceDetailPage() {
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                 <FiUsers />
-                {space.capacity} guest{space.capacity === 1 ? "" : "s"}
+                Priced for {space.guestCount} guest
+                {space.guestCount === 1 ? "" : "s"}
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 <FiHome />
@@ -161,7 +167,7 @@ export default function SpaceDetailPage() {
               </span>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                 <FiWind />
-                {space.hasAC ? "AC" : "Non-AC"}
+                {space.comfortOption === "AC" ? "AC" : "Non-AC"}
               </span>
             </div>
 
@@ -194,10 +200,10 @@ export default function SpaceDetailPage() {
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Room type
+                  Listed type
                 </div>
                 <div className="mt-2 text-xl font-semibold text-slate-900">
-                  {space.hasAC ? "AC" : "Non-AC"}
+                  {space.comfortOption === "AC" ? "AC" : "Non-AC"}
                 </div>
               </div>
 
@@ -227,6 +233,34 @@ export default function SpaceDetailPage() {
             </div>
 
             <form onSubmit={onSubmit} className="space-y-4">
+              <div>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Comfort
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ["NON_AC", "Non-AC"],
+                    ["AC", "AC"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setComfortOption(value as ComfortOption);
+                        setFormError(null);
+                      }}
+                      className={`h-11 rounded-lg border px-3 text-sm font-semibold transition ${
+                        comfortOption === value
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-800"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">

@@ -26,6 +26,7 @@ type ManualBookingForm = {
   from: string;
   to: string;
   guests: string;
+  comfortOption: "AC" | "NON_AC";
   internalNotes: string;
 };
 
@@ -42,6 +43,7 @@ const emptyForm: ManualBookingForm = {
   from: "",
   to: "",
   guests: "1",
+  comfortOption: "NON_AC",
   internalNotes: "",
 };
 
@@ -144,6 +146,7 @@ export default function WalkInBookingPage() {
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
+        comfortOption: form.comfortOption,
       }),
     onSuccess: (result) => {
       setAvailability(result);
@@ -168,6 +171,7 @@ export default function WalkInBookingPage() {
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
+        comfortOption: form.comfortOption,
         guestName: form.guestName.trim(),
         guestEmail: form.guestEmail.trim().toLowerCase(),
         ...(form.countryCode.trim() &&
@@ -195,7 +199,8 @@ export default function WalkInBookingPage() {
     if (
       patch.from !== undefined ||
       patch.to !== undefined ||
-      patch.guests !== undefined
+      patch.guests !== undefined ||
+      patch.comfortOption !== undefined
     ) {
       setAvailability(null);
       setAvailabilityError("");
@@ -600,6 +605,22 @@ function StayFields({
           className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         />
       </label>
+      <label className="block text-sm">
+        <span className="font-medium text-slate-700">Comfort</span>
+        <select
+          value={form.comfortOption}
+          disabled={disabled}
+          onChange={(event) =>
+            onChange({
+              comfortOption: event.target.value as ManualBookingForm["comfortOption"],
+            })
+          }
+          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        >
+          <option value="NON_AC">Non-AC</option>
+          <option value="AC">AC</option>
+        </select>
+      </label>
     </div>
   );
 }
@@ -724,9 +745,19 @@ function SpaceRow({
         {hasAvailabilityResult && capacity !== null && (
           <span className="mt-1 block text-xs text-slate-500">
             Capacity {capacity}
+            {availability?.guestCount
+              ? ` / priced for ${availability.guestCount} guest${
+                  availability.guestCount === 1 ? "" : "s"
+                }`
+              : ""}
             {isGroupCandidate
               ? ` / needs more rooms for ${requestedGuests} guests`
               : ""}
+          </span>
+        )}
+        {hasAvailabilityResult && availability?.pricePerNight && (
+          <span className="mt-1 block text-xs text-slate-500">
+            Active price INR {availability.pricePerNight}
           </span>
         )}
       </span>

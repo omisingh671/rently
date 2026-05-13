@@ -15,6 +15,7 @@ export type PaymentStatus =
   | "REFUNDED";
 
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
+export type ComfortOption = "AC" | "NON_AC";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
@@ -28,6 +29,8 @@ export interface BookingItem {
   targetLabel: string;
   productName: string;
   capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
   pricePerNight: number;
   totalAmount: number;
 }
@@ -40,6 +43,7 @@ export interface Booking {
   propertyId: string;
   bookingType: BookingType;
   guestCount: number;
+  comfortOption: ComfortOption;
   title: string;
   spaceName: string;
   status: BookingStatus;

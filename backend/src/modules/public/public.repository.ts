@@ -2,6 +2,7 @@ import { prisma } from "@/db/prisma.js";
 import {
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
   Prisma,
   PropertyStatus,
   RoomStatus,
@@ -44,6 +45,11 @@ interface StayPricingScope {
   checkIn: Date;
   checkOut: Date;
   nights: number;
+}
+
+interface PricingSelectionScope {
+  guestCount: number;
+  comfortOption: ComfortOption;
 }
 
 const activePricingWhere = (
@@ -147,14 +153,21 @@ export const listActiveSpaces = (
   tenantId?: string,
   tx?: Prisma.TransactionClient,
   stay?: StayPricingScope,
+  pricing?: PricingSelectionScope,
 ) =>
   client(tx).roomPricing.findMany({
     where: {
       ...activePricingWhere(now, tenantId, stay),
-      ...(minOccupancy !== undefined && {
+      ...((minOccupancy !== undefined || pricing !== undefined) && {
         product: {
           is: {
-            occupancy: { gte: minOccupancy },
+            ...(minOccupancy !== undefined && {
+              occupancy: { gte: minOccupancy },
+            }),
+            ...(pricing !== undefined && {
+              occupancy: pricing.guestCount,
+              hasAC: pricing.comfortOption === ComfortOption.AC,
+            }),
           },
         },
       }),
@@ -176,6 +189,31 @@ export const findActiveSpaceById = (
       OR: [{ id }, { roomId: id }, { unitId: id }],
     },
     include: publicSpaceInclude,
+  });
+
+export const findActivePricingForTarget = (
+  target: PublicSpaceTarget,
+  now: Date,
+  tenantId: string | undefined,
+  pricing: PricingSelectionScope,
+  stay: StayPricingScope,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).roomPricing.findFirst({
+    where: {
+      ...activePricingWhere(now, tenantId, stay),
+      product: {
+        is: {
+          occupancy: pricing.guestCount,
+          hasAC: pricing.comfortOption === ComfortOption.AC,
+        },
+      },
+      ...(target.targetType === BookingTargetType.ROOM
+        ? { roomId: target.roomId }
+        : { roomId: null, unitId: target.unitId }),
+    },
+    include: publicSpaceInclude,
+    orderBy: { price: "asc" },
   });
 
 const targetOverlapWhere = (target: PublicSpaceTarget) =>

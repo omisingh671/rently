@@ -778,6 +778,7 @@ export const createManualBooking = async (req: AuthRequest, res: Response) => {
     from: body.from,
     to: body.to,
     guests: body.guests,
+    comfortOption: body.comfortOption,
     guestName: body.guestName,
     guestEmail: body.guestEmail,
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
@@ -805,6 +806,7 @@ export const checkManualBookingAvailability = async (
       from: body.from,
       to: body.to,
       guests: body.guests,
+      comfortOption: body.comfortOption,
     },
   );
   res.json({ success: true, data });

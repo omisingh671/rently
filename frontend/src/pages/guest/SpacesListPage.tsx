@@ -22,7 +22,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 
 type OccupancyFilter = "all" | "single" | "double" | "unit";
-type ClimateFilter = "all" | "ac" | "non-ac";
+type ClimateFilter = "ac" | "non-ac";
 
 const occupancyOptions: Array<{
   value: OccupancyFilter;
@@ -57,11 +57,6 @@ const climateOptions: Array<{
   description: string;
 }> = [
   {
-    value: "all",
-    label: "All room types",
-    description: "Show AC and non-AC spaces",
-  },
-  {
     value: "ac",
     label: "AC",
     description: "Air-conditioned spaces only",
@@ -81,8 +76,7 @@ const isOccupancyFilter = (value: string | null): value is OccupancyFilter =>
 
 const getClimateFilter = (value: string | null): ClimateFilter => {
   if (value === "true") return "ac";
-  if (value === "false") return "non-ac";
-  return "all";
+  return "non-ac";
 };
 
 const getSpaceOccupancy = (space: Space): OccupancyFilter => {
@@ -119,6 +113,8 @@ export default function SpacesListPage() {
     ? occupancyParam
     : "all";
   const selectedClimate = getClimateFilter(searchParams.get("ac"));
+  const selectedComfortOption =
+    selectedClimate === "ac" ? "AC" : "NON_AC";
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
   const guestsParam = Number(searchParams.get("guests"));
@@ -143,6 +139,7 @@ export default function SpacesListPage() {
         selectedOccupancy === "all" && availabilityGuests === 1
           ? "all"
           : availabilityOccupancyKey,
+      comfort: selectedComfortOption,
     }),
     queryFn: async () => {
       if (selectedOccupancy === "all" && availabilityGuests === 1) {
@@ -152,12 +149,14 @@ export default function SpacesListPage() {
             checkOut: to,
             guests: availabilityGuests,
             occupancyType: "single",
+            comfortOption: selectedComfortOption,
           }),
           checkAvailability({
             checkIn: from,
             checkOut: to,
             guests: availabilityGuests,
             occupancyType: "double",
+            comfortOption: selectedComfortOption,
           }),
         ]);
 
@@ -173,6 +172,7 @@ export default function SpacesListPage() {
         checkOut: to,
         guests: availabilityGuests,
         occupancyType: availabilityOccupancyKey,
+        comfortOption: selectedComfortOption,
       });
     },
     enabled: canCheckAvailability,
@@ -198,11 +198,7 @@ export default function SpacesListPage() {
   const updateClimateFilter = (value: ClimateFilter) => {
     const next = new URLSearchParams(searchParams);
 
-    if (value === "all") {
-      next.delete("ac");
-    } else {
-      next.set("ac", value === "ac" ? "true" : "false");
-    }
+    next.set("ac", value === "ac" ? "true" : "false");
 
     setSearchParams(next, { replace: true });
   };
@@ -246,10 +242,11 @@ export default function SpacesListPage() {
       occupancy === selectedOccupancy ||
       canBeMultiRoomCandidate;
     const matchesClimate =
-      selectedClimate === "all" ||
-      (selectedClimate === "ac" ? space.hasAC : !space.hasAC);
+      selectedClimate === "ac"
+        ? space.comfortOption === "AC"
+        : space.comfortOption === "NON_AC";
     const matchesGuests =
-      guests === 0 || space.capacity >= guests || canBeMultiRoomCandidate;
+      guests === 0 || space.guestCount === guests || canBeMultiRoomCandidate;
 
     return matchesOccupancy && matchesClimate && matchesGuests;
   });
@@ -315,6 +312,7 @@ export default function SpacesListPage() {
         from: new Date(`${from}T00:00:00`).toISOString(),
         to: new Date(`${to}T00:00:00`).toISOString(),
         guests,
+        comfortOption: selectedComfortOption,
       });
 
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
@@ -331,9 +329,7 @@ export default function SpacesListPage() {
     if (selectedOccupancy !== "all") {
       detailParams.set("occupancy", selectedOccupancy);
     }
-    if (selectedClimate !== "all") {
-      detailParams.set("ac", selectedClimate === "ac" ? "true" : "false");
-    }
+    detailParams.set("ac", selectedClimate === "ac" ? "true" : "false");
 
     const suffix = detailParams.toString();
     return suffix ? `/spaces/${spaceId}?${suffix}` : `/spaces/${spaceId}`;
@@ -665,10 +661,10 @@ export default function SpacesListPage() {
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                           <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                             <FiUsers />
-                            {getSpaceOccupancy(space) === "unit"
-                              ? "Full unit"
-                              : `${space.capacity} guest${
-                                  space.capacity === 1 ? "" : "s"
+                              {getSpaceOccupancy(space) === "unit"
+                                ? "Full unit"
+                              : `${space.guestCount} guest${
+                                  space.guestCount === 1 ? "" : "s"
                                 }`}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -677,7 +673,7 @@ export default function SpacesListPage() {
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
                             <FiWind />
-                            {space.hasAC ? "AC" : "Non-AC"}
+                            {space.comfortOption === "AC" ? "AC" : "Non-AC"}
                           </span>
                           {availabilityChecked && (
                             <span

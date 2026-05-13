@@ -5,6 +5,7 @@ import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
   BookingStatus,
+  ComfortOption,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -27,6 +28,8 @@ type TestState = {
   propertyId: string;
   pricingId: string;
   pricingTwoId: string;
+  singlePricingId: string;
+  singlePricingTwoId: string;
   unitPricingId: string;
 };
 
@@ -125,7 +128,16 @@ before(async () => {
     }),
   ]);
 
-  const [product, unitProduct] = await Promise.all([
+  const [singleProduct, product, unitProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Single Room`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
     prisma.roomProduct.create({
       data: {
         propertyId: property.id,
@@ -146,7 +158,36 @@ before(async () => {
     }),
   ]);
 
-  const [pricing, pricingTwo, unitPricing] = await Promise.all([
+  const [singlePricing, singlePricingTwo, pricing, pricingTwo, unitPricing] =
+    await Promise.all([
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: room.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1600,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: roomTwo.id,
+        unitId: unit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
     prisma.roomPricing.create({
       data: {
         propertyId: property.id,
@@ -199,6 +240,8 @@ before(async () => {
     propertyId: property.id,
     pricingId: pricing.id,
     pricingTwoId: pricingTwo.id,
+    singlePricingId: singlePricing.id,
+    singlePricingTwoId: singlePricingTwo.id,
     unitPricingId: unitPricing.id,
   };
 });
@@ -234,6 +277,7 @@ test("public booking creation rejects overlapping dates", async () => {
       from: new Date("2027-01-10T00:00:00.000Z"),
       to: new Date("2027-01-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -261,6 +305,7 @@ test("public booking creation rejects overlapping dates", async () => {
           from: new Date("2027-01-11T00:00:00.000Z"),
           to: new Date("2027-01-13T00:00:00.000Z"),
           guests: 2,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -287,6 +332,7 @@ test("public availability respects pricing stay limits and validity windows", as
       checkOut: new Date("2027-06-12T00:00:00.000Z"),
       guests: 2,
       occupancyType: "double",
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -311,6 +357,7 @@ test("public availability respects pricing stay limits and validity windows", as
       checkOut: new Date("2027-06-12T00:00:00.000Z"),
       guests: 2,
       occupancyType: "double",
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -341,6 +388,7 @@ test("public booking rejects single room when guest count exceeds capacity", asy
           from: new Date("2027-08-10T00:00:00.000Z"),
           to: new Date("2027-08-12T00:00:00.000Z"),
           guests: 3,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -348,6 +396,30 @@ test("public booking rejects single room when guest count exceeds capacity", asy
       assert.ok(error instanceof HttpError);
       assert.equal(error.statusCode, 422);
       assert.equal(error.code, "INSUFFICIENT_CAPACITY");
+      return true;
+    },
+  );
+});
+
+test("public booking rejects comfort option without active price", async () => {
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestOneId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.pricingId,
+          from: new Date("2027-08-20T00:00:00.000Z"),
+          to: new Date("2027-08-22T00:00:00.000Z"),
+          guests: 2,
+          comfortOption: ComfortOption.NON_AC,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "PRICE_NOT_CONFIGURED");
       return true;
     },
   );
@@ -362,14 +434,20 @@ test("public multi-room booking combines available rooms for larger groups", asy
       from: new Date("2027-09-10T00:00:00.000Z"),
       to: new Date("2027-09-12T00:00:00.000Z"),
       guests: 3,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
 
   assert.equal(booking.bookingType, "MULTI_ROOM");
   assert.equal(booking.guestCount, 3);
+  assert.equal(booking.comfortOption, ComfortOption.AC);
   assert.equal(booking.items.length, 2);
-  assert.equal(booking.totalPrice, 9800);
+  assert.deepEqual(
+    booking.items.map((item) => item.guestCount).sort((a, b) => a - b),
+    [1, 2],
+  );
+  assert.equal(booking.totalPrice, 8000);
 });
 
 test("public multi-room booking rejects duplicate or insufficient selections", async () => {
@@ -383,6 +461,7 @@ test("public multi-room booking rejects duplicate or insufficient selections", a
           from: new Date("2027-10-10T00:00:00.000Z"),
           to: new Date("2027-10-12T00:00:00.000Z"),
           guests: 3,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -404,6 +483,7 @@ test("public multi-room booking rejects duplicate or insufficient selections", a
           from: new Date("2027-10-20T00:00:00.000Z"),
           to: new Date("2027-10-22T00:00:00.000Z"),
           guests: 5,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -425,6 +505,7 @@ test("full-unit bookings block child rooms and selected rooms block full unit", 
       from: new Date("2027-11-10T00:00:00.000Z"),
       to: new Date("2027-11-12T00:00:00.000Z"),
       guests: 4,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -439,6 +520,7 @@ test("full-unit bookings block child rooms and selected rooms block full unit", 
           from: new Date("2027-11-11T00:00:00.000Z"),
           to: new Date("2027-11-13T00:00:00.000Z"),
           guests: 3,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -453,6 +535,7 @@ test("full-unit bookings block child rooms and selected rooms block full unit", 
       from: new Date("2027-12-10T00:00:00.000Z"),
       to: new Date("2027-12-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );
@@ -467,6 +550,7 @@ test("full-unit bookings block child rooms and selected rooms block full unit", 
           from: new Date("2027-12-11T00:00:00.000Z"),
           to: new Date("2027-12-13T00:00:00.000Z"),
           guests: 4,
+          comfortOption: ComfortOption.AC,
         },
         { tenantSlug: state.tenantSlug },
       ),
@@ -487,6 +571,7 @@ test("concurrent public booking attempts create only one booking", async () => {
         from: checkIn,
         to: checkOut,
         guests: 2,
+        comfortOption: ComfortOption.AC,
       },
       { tenantSlug: state.tenantSlug },
     ),
@@ -498,6 +583,7 @@ test("concurrent public booking attempts create only one booking", async () => {
         from: checkIn,
         to: checkOut,
         guests: 2,
+        comfortOption: ComfortOption.AC,
       },
       { tenantSlug: state.tenantSlug },
     ),
@@ -532,6 +618,7 @@ test("guest can cancel a pending future booking with audit history", async () =>
       from: new Date("2028-01-10T00:00:00.000Z"),
       to: new Date("2028-01-12T00:00:00.000Z"),
       guests: 2,
+      comfortOption: ComfortOption.AC,
     },
     { tenantSlug: state.tenantSlug },
   );

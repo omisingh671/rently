@@ -66,6 +66,47 @@ function OccupancyToggle() {
   );
 }
 
+function ComfortToggle() {
+  const { register, setValue, control } = useFormContext<BookingFormValues>();
+  const selected = useWatch({ control, name: "comfortOption" });
+
+  const options: { label: string; value: BookingFormValues["comfortOption"] }[] = [
+    { label: "Non-AC", value: "NON_AC" },
+    { label: "AC", value: "AC" },
+  ];
+
+  return (
+    <div className="form-group">
+      <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-200">
+        Comfort
+      </p>
+      <input type="hidden" {...register("comfortOption")} />
+      <div className="flex gap-2">
+        {options.map((opt) => {
+          const active = selected === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() =>
+                setValue("comfortOption", opt.value, { shouldValidate: true })
+              }
+              className={[
+                "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all duration-200 cursor-pointer",
+                active
+                  ? "border-indigo-400 bg-indigo-500/30 text-indigo-100 shadow-[0_0_12px_rgba(99,102,241,0.35)]"
+                  : "border-indigo-300/20 bg-white/5 text-indigo-200/70 hover:bg-white/10 hover:border-indigo-300/40 hover:text-indigo-100",
+              ].join(" ")}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────────────────────────
    Main BookingForm
 ───────────────────────────────────────────── */
@@ -93,6 +134,7 @@ export default function BookingForm({
       checkOut: "",
       guests: 1,
       occupancyType: "single",
+      comfortOption: "NON_AC",
     },
   });
 
@@ -193,6 +235,7 @@ export default function BookingForm({
 
                 {/* Occupancy pill toggle */}
                 <OccupancyToggle />
+                <ComfortToggle />
               </div>
 
               {/* ── Actions ── */}

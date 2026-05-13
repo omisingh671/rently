@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   BookingStatus,
+  ComfortOption,
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
@@ -487,6 +488,7 @@ export const createManualBookingSchema = contactFieldsRefine(
       from: z.coerce.date(),
       to: z.coerce.date(),
       guests: z.coerce.number().int().min(1).max(20),
+      comfortOption: z.nativeEnum(ComfortOption),
       guestName: z.string().trim().min(1).max(120),
       guestEmail: z.string().trim().email().max(190),
       countryCode: countryCodeSchema.optional(),
@@ -525,6 +527,7 @@ export const checkManualBookingAvailabilitySchema = z
     from: z.coerce.date(),
     to: z.coerce.date(),
     guests: z.coerce.number().int().min(1).max(20),
+    comfortOption: z.nativeEnum(ComfortOption),
   })
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",

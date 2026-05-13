@@ -3,6 +3,7 @@ import type {
   BookingType,
   BookingStatus,
   BookingTargetType,
+  ComfortOption,
 } from "@/generated/prisma/client.js";
 
 export interface PublicTenantConfigDTO {
@@ -28,7 +29,9 @@ export interface PublicSpaceDTO {
   description: string;
   pricePerNight: number;
   capacity: number;
+  guestCount: number;
   hasAC: boolean;
+  comfortOption: ComfortOption;
   location: string;
   targetType: BookingTargetType;
   unitId: string | null;
@@ -40,6 +43,7 @@ export interface PublicAvailabilitySpaceDTO {
   title: string;
   location: string;
   capacity: number;
+  comfortOption: ComfortOption;
   pricePerNight: number;
   priceTotal: number;
   targetType: BookingTargetType;
@@ -62,6 +66,8 @@ export interface PublicBookingItemDTO {
   targetLabel: string;
   productName: string;
   capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
   pricePerNight: number;
   totalAmount: number;
 }
@@ -74,6 +80,7 @@ export interface PublicBookingDTO {
   propertyId: string;
   bookingType: BookingType;
   guestCount: number;
+  comfortOption: ComfortOption;
   title: string;
   spaceName: string;
   status: BookingStatus;
