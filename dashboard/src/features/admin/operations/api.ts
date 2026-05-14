@@ -13,6 +13,7 @@ import type {
   LeadStatus,
   ManualBookingAvailabilityResponse,
   QuoteListResponse,
+  RoomBoardResponse,
   UpdateBookingPayload,
 } from "./types";
 
@@ -33,6 +34,16 @@ export const listBookingsApi = async (
   return data.data;
 };
 
+export const getBookingApi = async (
+  bookingId: string,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.get<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingById(bookingId),
+  );
+
+  return data.data;
+};
+
 export const checkManualBookingAvailabilityApi = async (
   propertyId: string,
   payload: CheckManualBookingAvailabilityPayload,
@@ -40,6 +51,18 @@ export const checkManualBookingAvailabilityApi = async (
   const { data } = await axiosInstance.post<
     ApiSuccessResponse<ManualBookingAvailabilityResponse>
   >(API_ENDPOINTS.operations.bookingAvailabilityByProperty(propertyId), payload);
+
+  return data.data;
+};
+
+export const getRoomBoardApi = async (
+  propertyId: string,
+  params: { from: string; to: string },
+): Promise<RoomBoardResponse> => {
+  const { data } = await axiosInstance.get<ApiSuccessResponse<RoomBoardResponse>>(
+    API_ENDPOINTS.operations.roomBoardByProperty(propertyId),
+    { params },
+  );
 
   return data.data;
 };

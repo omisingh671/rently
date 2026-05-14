@@ -12,10 +12,7 @@ export const BookingFormSchema = z
       .number()
       .int({ message: "Guests must be an integer" })
       .min(1, { message: "At least 1 guest is required" }),
-    occupancyType: z.enum(["single", "double"], {
-      message: "Select occupancy type",
-    }),
-    comfortOption: z.enum(["NON_AC", "AC"], {
+    comfortOption: z.enum(["ALL", "NON_AC", "AC"], {
       message: "Select comfort option",
     }),
   })

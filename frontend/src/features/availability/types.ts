@@ -1,6 +1,14 @@
-import type { AvailabilityCriteria, AvailabilityResult } from "./domain";
+import type {
+  AvailabilityCriteria,
+  AvailabilityResult,
+  ComfortOption,
+} from "./domain";
 
-export interface CheckAvailabilityPayload extends AvailabilityCriteria {
+export interface CheckAvailabilityPayload {
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+  comfortOption: ComfortOption;
   name?: string;
   email?: string;
   countryCode?: string;

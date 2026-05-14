@@ -10,12 +10,12 @@ export interface CheckAvailabilityInput {
   checkIn: Date;
   checkOut: Date;
   guests: number;
-  occupancyType: PublicOccupancyType;
   comfortOption: ComfortOption;
 }
 
 export interface CreatePublicBookingInput {
   bookingType: PublicBookingType;
+  bookingOptionId?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: Date;

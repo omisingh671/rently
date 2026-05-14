@@ -59,7 +59,6 @@ export const checkAvailability = async (req: AuthRequest, res: Response) => {
       checkIn: body.checkIn,
       checkOut: body.checkOut,
       guests: body.guests,
-      occupancyType: body.occupancyType,
       comfortOption: body.comfortOption,
     },
     resolveTenantInput(req),
@@ -74,6 +73,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
     getUserId(req),
     {
       bookingType: body.bookingType,
+      ...(body.bookingOptionId !== undefined && {
+        bookingOptionId: body.bookingOptionId,
+      }),
       ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
       ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,

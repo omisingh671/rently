@@ -1,18 +1,17 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { FiArrowLeft, FiCheckCircle, FiSearch } from "react-icons/fi";
+import { FiArrowLeft, FiCheckCircle, FiSearch, FiUsers, FiInfo, FiCheck } from "react-icons/fi";
 import Button from "@/components/ui/Button";
 import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
 import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { listRatesApi } from "@/features/admin/pricing/api";
-import type { AdminRoomPricing } from "@/features/admin/pricing/types";
 import {
   checkManualBookingAvailabilityApi,
   createManualBookingApi,
 } from "@/features/admin/operations/api";
 import type {
+  ConcreteComfortOption,
   ManualBookingAvailabilityResponse,
   ManualBookingAvailabilityItem,
 } from "@/features/admin/operations/types";
@@ -26,7 +25,7 @@ type ManualBookingForm = {
   from: string;
   to: string;
   guests: string;
-  comfortOption: "AC" | "NON_AC";
+  comfortOption: "AC" | "NON_AC" | "ALL";
   internalNotes: string;
 };
 
@@ -43,14 +42,41 @@ const emptyForm: ManualBookingForm = {
   from: "",
   to: "",
   guests: "1",
-  comfortOption: "NON_AC",
+  comfortOption: "ALL",
   internalNotes: "",
 };
 
-const formatRateTarget = (rate: AdminRoomPricing) =>
-  rate.roomLabel ?? (rate.unitNumber ? `Unit ${rate.unitNumber}` : "Space");
+const concreteComfortOptions: ConcreteComfortOption[] = ["AC", "NON_AC"];
 
-const isRoomRate = (rate: AdminRoomPricing) => rate.roomId !== null;
+const mergeAvailabilityResults = (
+  results: ManualBookingAvailabilityResponse[],
+): ManualBookingAvailabilityResponse => {
+  const firstResult = results[0];
+  const itemsById = new Map<string, ManualBookingAvailabilityItem>();
+
+  for (const result of results) {
+    for (const item of result.items) {
+      itemsById.set(item.bookingOptionId, item);
+    }
+  }
+
+  const items = [...itemsById.values()].sort(
+    (left, right) =>
+      left.capacity - right.capacity ||
+      left.itemCount - right.itemCount ||
+      Number(left.stayTotal) - Number(right.stayTotal),
+  );
+
+  return {
+    from: firstResult?.from ?? "",
+    to: firstResult?.to ?? "",
+    guests: firstResult?.guests ?? 0,
+    availableSpaceIds: items
+      .filter((item) => item.available)
+      .map((item) => item.spaceId),
+    items,
+  };
+};
 
 export default function WalkInBookingPage() {
   const navigate = useNavigate();
@@ -81,22 +107,6 @@ export default function WalkInBookingPage() {
     (property) => property.id === selectedPropertyId,
   );
 
-  const { data: ratesData, isFetching: isFetchingRates } = useQuery({
-    queryKey: selectedPropertyId
-      ? [...ADMIN_KEYS.pricing.rates(selectedPropertyId), "walk-in"]
-      : ADMIN_KEYS.pricing.all(),
-    queryFn: () =>
-      listRatesApi(selectedPropertyId, {
-        page: 1,
-        limit: 100,
-      }),
-    enabled: !!selectedPropertyId,
-  });
-
-  const rates = ratesData?.items ?? [];
-  const selectedRates = rates.filter((rate) =>
-    selectedSpaceIds.includes(rate.id),
-  );
   const availabilityBySpaceId = useMemo(
     () =>
       new Map(
@@ -118,8 +128,6 @@ export default function WalkInBookingPage() {
     selectedSpaceIds.every(
       (spaceId) => availabilityBySpaceId.get(spaceId)?.available === true,
     );
-  const selectedSpacesAreMultiRoomReady =
-    selectedRates.length <= 1 || selectedRates.every(isRoomRate);
   const guestFieldErrors = useMemo(() => {
     const errors: GuestFieldErrors = {};
     const guestName = form.guestName.trim();
@@ -140,14 +148,31 @@ export default function WalkInBookingPage() {
   const hasGuestFieldErrors = Object.keys(guestFieldErrors).length > 0;
 
   const checkAvailability = useMutation({
-    mutationFn: () =>
-      checkManualBookingAvailabilityApi(selectedPropertyId, {
-        spaceIds: rates.map((rate) => rate.id),
+    mutationFn: async () => {
+      const basePayload = {
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
+      };
+
+      if (form.comfortOption === "ALL") {
+        const results = await Promise.all(
+          concreteComfortOptions.map((comfortOption) =>
+            checkManualBookingAvailabilityApi(selectedPropertyId, {
+              ...basePayload,
+              comfortOption,
+            }),
+          ),
+        );
+
+        return mergeAvailabilityResults(results);
+      }
+
+      return checkManualBookingAvailabilityApi(selectedPropertyId, {
+        ...basePayload,
         comfortOption: form.comfortOption,
-      }),
+      });
+    },
     onSuccess: (result) => {
       setAvailability(result);
       setAvailabilityError("");
@@ -162,16 +187,18 @@ export default function WalkInBookingPage() {
 
   const createBooking = useMutation({
     mutationFn: () => {
-      const isMultiRoom = selectedSpaceIds.length > 1;
+      const selectedOption = availabilityBySpaceId.get(selectedSpaceIds[0]);
+      if (!selectedOption) {
+        throw new Error("Selected booking option was not found.");
+      }
+
       return createManualBookingApi(selectedPropertyId, {
-        bookingType: isMultiRoom ? "MULTI_ROOM" : "SINGLE_TARGET",
-        ...(isMultiRoom
-          ? { spaceIds: selectedSpaceIds }
-          : { spaceId: selectedSpaceIds[0] }),
+        bookingType: "SINGLE_TARGET",
+        bookingOptionId: selectedSpaceIds[0],
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
-        comfortOption: form.comfortOption,
+        comfortOption: selectedOption.comfortOption,
         guestName: form.guestName.trim(),
         guestEmail: form.guestEmail.trim().toLowerCase(),
         ...(form.countryCode.trim() &&
@@ -224,20 +251,18 @@ export default function WalkInBookingPage() {
     setSelectedSpaceIds((current) =>
       current.includes(spaceId)
         ? current.filter((id) => id !== spaceId)
-        : [...current, spaceId],
+        : [spaceId],
     );
   };
 
   const canCheckAvailability =
     !!selectedPropertyId &&
-    rates.length > 0 &&
     form.from.length > 0 &&
     form.to.length > 0 &&
     Number(form.guests) > 0 &&
     !checkAvailability.isPending;
   const canCreate =
     selectedSpacesAreAvailable &&
-    selectedSpacesAreMultiRoomReady &&
     selectedCapacityCoversGuests &&
     !createBooking.isPending;
 
@@ -256,22 +281,17 @@ export default function WalkInBookingPage() {
     }
 
     if (selectedSpaceIds.length === 0) {
-      setSubmitError("Select at least one available room.");
+      setSubmitError("Select one available booking option.");
       return;
     }
 
     if (!selectedSpacesAreAvailable) {
-      setSubmitError("Remove unavailable rooms before creating the booking.");
-      return;
-    }
-
-    if (!selectedSpacesAreMultiRoomReady) {
-      setSubmitError("Multi-room walk-in bookings can combine rooms only.");
+      setSubmitError("Select an available booking option.");
       return;
     }
 
     if (!selectedCapacityCoversGuests) {
-      setSubmitError(`Selected rooms must cover ${requestedGuests} guests.`);
+      setSubmitError(`Selected option must cover ${requestedGuests} guests.`);
       return;
     }
 
@@ -384,11 +404,11 @@ export default function WalkInBookingPage() {
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">
-                  Available Spaces
+                  Booking Options
                 </h3>
                 <p className="text-xs text-slate-500">
                   {availability
-                    ? `${availableCount} candidates / ${selectedCapacity} of ${requestedGuests} guests covered`
+                    ? `${availableCount} options / ${selectedCapacity} of ${requestedGuests} guests covered`
                     : "Select dates and check availability."}
                 </p>
               </div>
@@ -410,29 +430,23 @@ export default function WalkInBookingPage() {
             )}
 
             <SpaceAvailabilityList
-              rates={rates}
               selectedSpaceIds={selectedSpaceIds}
               availability={availability}
               availabilityBySpaceId={availabilityBySpaceId}
               requestedGuests={requestedGuests}
-              isFetchingRates={isFetchingRates}
+              isChecking={checkAvailability.isPending}
               isSubmitting={createBooking.isPending}
               onToggleSpace={toggleSpace}
             />
 
-            {!selectedSpacesAreMultiRoomReady && (
-              <p className="mt-2 text-xs text-red-600">
-                Multi-room walk-in bookings can combine rooms only.
-              </p>
-            )}
             {availability && availableCount === 0 && (
               <p className="mt-2 text-xs text-amber-700">
-                No spaces are available for these dates.
+                No booking options are available for these dates.
               </p>
             )}
             {availability && selectedSpaceIds.length > 0 && !selectedCapacityCoversGuests && (
               <p className="mt-2 text-xs text-amber-700">
-                Select more rooms until capacity covers {requestedGuests} guests.
+                Select an option that covers {requestedGuests} guests.
               </p>
             )}
           </div>
@@ -617,6 +631,7 @@ function StayFields({
           }
           className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
         >
+          <option value="ALL">All</option>
           <option value="NON_AC">Non-AC</option>
           <option value="AC">AC</option>
         </select>
@@ -626,53 +641,51 @@ function StayFields({
 }
 
 function SpaceAvailabilityList({
-  rates,
   selectedSpaceIds,
   availability,
   availabilityBySpaceId,
   requestedGuests,
-  isFetchingRates,
+  isChecking,
   isSubmitting,
   onToggleSpace,
 }: {
-  rates: AdminRoomPricing[];
   selectedSpaceIds: string[];
   availability: ManualBookingAvailabilityResponse | null;
   availabilityBySpaceId: Map<string, ManualBookingAvailabilityItem>;
   requestedGuests: number;
-  isFetchingRates: boolean;
+  isChecking: boolean;
   isSubmitting: boolean;
   onToggleSpace: (spaceId: string) => void;
 }) {
-  if (isFetchingRates) {
+  if (isChecking) {
     return (
       <div className="rounded-md border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
-        Loading spaces...
+        Checking availability...
       </div>
     );
   }
 
-  if (rates.length === 0) {
+  if (availability === null) {
     return (
       <div className="rounded-md border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
-        No priced spaces found for this property.
+        Check availability to see booking options.
       </div>
     );
   }
 
   return (
-    <div className="max-h-[520px] overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
+    <div className="max-h-[750px] overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
       <div className="grid gap-2 xl:grid-cols-2">
-        {rates.map((rate) => (
+        {availability.items.map((item) => (
           <SpaceRow
-            key={rate.id}
-            rate={rate}
-            checked={selectedSpaceIds.includes(rate.id)}
+            key={item.bookingOptionId}
+            item={item}
+            checked={selectedSpaceIds.includes(item.bookingOptionId)}
             disabled={isSubmitting}
-            availability={availabilityBySpaceId.get(rate.id) ?? null}
+            availability={availabilityBySpaceId.get(item.bookingOptionId) ?? null}
             hasAvailabilityResult={availability !== null}
             requestedGuests={requestedGuests}
-            onToggle={() => onToggleSpace(rate.id)}
+            onToggle={() => onToggleSpace(item.bookingOptionId)}
           />
         ))}
       </div>
@@ -681,7 +694,7 @@ function SpaceAvailabilityList({
 }
 
 function SpaceRow({
-  rate,
+  item,
   checked,
   disabled,
   availability,
@@ -689,7 +702,7 @@ function SpaceRow({
   requestedGuests,
   onToggle,
 }: {
-  rate: AdminRoomPricing;
+  item: ManualBookingAvailabilityItem;
   checked: boolean;
   disabled: boolean;
   availability: ManualBookingAvailabilityItem | null;
@@ -709,58 +722,124 @@ function SpaceRow({
         ? "Group candidate"
         : "Available"
       : availability?.reason ?? "Unavailable";
+
+  const baseCardClass = "relative flex flex-col gap-3 rounded-xl border p-4 transition-all duration-200 cursor-pointer overflow-hidden";
+  const stateClass = checked
+    ? "border-indigo-500 bg-indigo-50/50 shadow-md ring-1 ring-indigo-500"
+    : isAvailable
+      ? "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+      : "border-slate-200 bg-slate-50 opacity-75 cursor-not-allowed";
+
   const statusClass = !hasAvailabilityResult
     ? "bg-slate-100 text-slate-600"
     : isAvailable
-      ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-      : "bg-red-50 text-red-700 ring-1 ring-red-200";
+      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+      : "bg-red-50 text-red-700 border border-red-200";
 
   return (
-    <label
-      className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
-        isAvailable
-          ? "border-green-200 bg-white"
-          : "border-slate-200 bg-white opacity-75"
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={isDisabled}
-        onChange={onToggle}
-        className="mt-1"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="font-medium text-slate-900">
-            {formatRateTarget(rate)}
-          </span>
-          <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
-            {statusText}
-          </span>
-        </span>
-        <span className="mt-1 block text-xs text-slate-500">
-          {rate.productName} / INR {rate.price} / {rate.rateType}
-        </span>
-        {hasAvailabilityResult && capacity !== null && (
-          <span className="mt-1 block text-xs text-slate-500">
-            Capacity {capacity}
-            {availability?.guestCount
-              ? ` / priced for ${availability.guestCount} guest${
-                  availability.guestCount === 1 ? "" : "s"
-                }`
-              : ""}
-            {isGroupCandidate
-              ? ` / needs more rooms for ${requestedGuests} guests`
-              : ""}
-          </span>
-        )}
-        {hasAvailabilityResult && availability?.pricePerNight && (
-          <span className="mt-1 block text-xs text-slate-500">
-            Active price INR {availability.pricePerNight}
-          </span>
-        )}
-      </span>
+    <label className={`${baseCardClass} ${stateClass}`}>
+      <div className="flex items-start gap-4">
+        <div className="pt-1">
+          <div className={`flex h-5 w-5 items-center justify-center rounded border ${checked ? "border-indigo-600 bg-indigo-600" : "border-slate-300 bg-white"}`}>
+            {checked && <FiCheck className="text-white h-3.5 w-3.5" strokeWidth={3} />}
+          </div>
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={isDisabled}
+            onChange={onToggle}
+            className="sr-only"
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-base font-bold text-slate-900">
+              {item.title}
+            </span>
+            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusClass}`}>
+              {statusText}
+            </span>
+          </div>
+
+          <div className="mt-3 space-y-2.5">
+            <div className="flex items-start gap-2.5 text-sm">
+              <FiUsers className="mt-0.5 shrink-0 text-slate-400" />
+              <div>
+                <span className="block font-medium text-slate-700">
+                  Fits up to {item.capacity} guests
+                </span>
+                {item.guestSplit !== "1" && (
+                  <span className="text-xs text-slate-500">
+                    Bed distribution: {item.guestSplit}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5 text-sm">
+              <FiCheckCircle className="mt-0.5 shrink-0 text-emerald-500" />
+              <div>
+                {item.title.toLowerCase().includes("unit") ? (
+                  <>
+                    <span className="block font-medium text-slate-700">
+                      Entire space for full privacy
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      No shared areas, perfect for groups
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="block font-medium text-slate-700">
+                      Best fit for your stay
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Comfortable and well-maintained rooms
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {hasAvailabilityResult && (
+              <div className="flex items-start gap-2.5 text-sm">
+                <FiInfo className="mt-0.5 shrink-0 text-slate-400" />
+                <div className="text-xs text-slate-500 leading-snug">
+                  {availability?.guestCount ? (
+                     <span className="block">Priced based on {availability.guestCount} guest{availability.guestCount === 1 ? "" : "s"} occupancy.</span>
+                  ) : null}
+                  {isGroupCandidate && (
+                    <span className="block mt-1 text-amber-700 font-medium">Needs multiple bookings to cover all {requestedGuests} guests.</span>
+                  )}
+                  {!availability?.guestCount && !isGroupCandidate && (
+                    <span className="block">Standard rate applied.</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {hasAvailabilityResult && availability?.pricePerNight && (
+        <div className={`mt-2 flex items-center justify-between rounded-lg p-3 border ${checked ? 'bg-white border-indigo-100' : 'bg-slate-50 border-slate-100'}`}>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Nightly Rate</div>
+            <div className="mt-0.5 font-bold text-slate-900">
+              {availability.priceBreakup?.length > 1 ? (
+                <span>{availability.priceBreakup.map((p) => `INR ${p}`).join(" + ")}</span>
+              ) : (
+                <span>INR {availability.pricePerNight}</span>
+              )}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Stay</div>
+            <div className="mt-0.5 text-lg font-bold text-indigo-700">INR {item.stayTotal}</div>
+          </div>
+        </div>
+      )}
     </label>
   );
 }

@@ -1,7 +1,32 @@
 import { z } from "zod";
 import { ComfortOption } from "@/generated/prisma/enums.js";
 
-const isoDateSchema = z.coerce.date();
+const businessTimezoneOffsetMinutes = 330;
+
+const toBusinessDate = (value: unknown) => {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00.000Z`);
+  }
+
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) {
+    return date;
+  }
+
+  const localDate = new Date(
+    date.getTime() + businessTimezoneOffsetMinutes * 60 * 1000,
+  );
+
+  return new Date(
+    Date.UTC(
+      localDate.getUTCFullYear(),
+      localDate.getUTCMonth(),
+      localDate.getUTCDate(),
+    ),
+  );
+};
+
+const isoDateSchema = z.preprocess(toBusinessDate, z.date());
 
 export const idParamsSchema = z.object({
   id: z.string().uuid(),
@@ -12,7 +37,6 @@ export const checkAvailabilitySchema = z
     checkIn: isoDateSchema,
     checkOut: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
-    occupancyType: z.enum(["single", "double", "unit", "multi_room"]),
     comfortOption: z.nativeEnum(ComfortOption),
   })
   .refine((data) => data.checkOut > data.checkIn, {
@@ -23,6 +47,7 @@ export const checkAvailabilitySchema = z
 export const createBookingSchema = z
   .object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+    bookingOptionId: z.string().min(16).optional(),
     spaceId: z.string().uuid().optional(),
     spaceIds: z.array(z.string().uuid()).optional(),
     from: isoDateSchema,
@@ -35,6 +60,10 @@ export const createBookingSchema = z
     path: ["to"],
   })
   .superRefine((data, ctx) => {
+    if (data.bookingOptionId) {
+      return;
+    }
+
     if (data.bookingType === "MULTI_ROOM") {
       if (!data.spaceIds || data.spaceIds.length < 2) {
         ctx.addIssue({

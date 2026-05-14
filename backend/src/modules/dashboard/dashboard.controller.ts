@@ -27,6 +27,7 @@ import {
   listRoomProductsQuerySchema,
   listPropertiesQuerySchema,
   listRoomsQuerySchema,
+  roomBoardQuerySchema,
   listTaxesQuerySchema,
   listTenantsQuerySchema,
   listUnitsQuerySchema,
@@ -420,6 +421,16 @@ export const listRooms = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const getRoomBoard = async (req: AuthRequest, res: Response) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const query = roomBoardQuerySchema.parse(req.query);
+  const data = await service.getRoomBoard(getUserId(req), params.propertyId, {
+    from: query.from,
+    to: query.to,
+  });
+  res.json({ success: true, data });
+};
+
 export const getRoomById = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const data = await service.getRoomById(getUserId(req), params.id);
@@ -768,11 +779,20 @@ export const listBookings = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const getBookingById = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.getBookingById(getUserId(req), params.id);
+  res.json({ success: true, data });
+};
+
 export const createManualBooking = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = createManualBookingSchema.parse(req.body);
   const data = await service.createManualBooking(getUserId(req), params.propertyId, {
     bookingType: body.bookingType,
+    ...(body.bookingOptionId !== undefined && {
+      bookingOptionId: body.bookingOptionId,
+    }),
     ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
     ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
     from: body.from,
@@ -802,7 +822,7 @@ export const checkManualBookingAvailability = async (
     getUserId(req),
     params.propertyId,
     {
-      spaceIds: body.spaceIds,
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,
       to: body.to,
       guests: body.guests,
@@ -821,6 +841,10 @@ export const updateBooking = async (req: AuthRequest, res: Response) => {
       internalNotes: body.internalNotes,
     }),
     ...(body.note !== undefined && { note: body.note }),
+    ...(body.roomId !== undefined && { roomId: body.roomId }),
+    ...(body.statusOverride !== undefined && {
+      statusOverride: body.statusOverride,
+    }),
   });
   res.json({ success: true, data });
 };

@@ -1,6 +1,7 @@
 import { prisma } from "@/db/prisma.js";
 import {
   type BookingStatus,
+  BookingStatus as BookingStatusValue,
   type DiscountType,
   type LeadStatus,
   type MaintenanceTargetType,
@@ -162,6 +163,19 @@ export type DashboardEnquiryRecord = Prisma.EnquiryGetPayload<{
 export type DashboardQuoteRecord = Prisma.QuoteRequestGetPayload<{
   include: typeof dashboardQuoteInclude;
 }>;
+export type DashboardRoomBoardRoomRecord = Prisma.RoomGetPayload<{
+  include: {
+    unit: true;
+  };
+}>;
+export type DashboardRoomBoardBookingItemRecord =
+  Prisma.BookingItemGetPayload<{
+    include: {
+      booking: true;
+    };
+  }>;
+export type DashboardRoomBoardMaintenanceRecord =
+  Prisma.MaintenanceBlockGetPayload<Record<string, never>>;
 
 interface UserListFilters {
   page: number;
@@ -995,6 +1009,68 @@ export const countRooms = (propertyIds?: string[]) =>
     },
   });
 
+export const listRoomBoardRooms = (propertyId: string) =>
+  prisma.room.findMany({
+    where: {
+      unit: {
+        is: {
+          propertyId,
+        },
+      },
+    },
+    include: {
+      unit: true,
+    },
+    orderBy: [
+      { unit: { floor: "asc" } },
+      { unit: { unitNumber: "asc" } },
+      { number: "asc" },
+    ],
+  });
+
+export const listRoomBoardBookingItems = (
+  propertyId: string,
+  from: Date,
+  to: Date,
+) =>
+  prisma.bookingItem.findMany({
+    where: {
+      booking: {
+        propertyId,
+        status: {
+          notIn: [
+            BookingStatusValue.CANCELLED,
+            BookingStatusValue.CHECKED_OUT,
+            BookingStatusValue.NO_SHOW,
+          ],
+        },
+        checkIn: { lt: to },
+        checkOut: { gt: from },
+      },
+    },
+    include: {
+      booking: true,
+    },
+    orderBy: [
+      { booking: { checkIn: "asc" } },
+      { booking: { createdAt: "asc" } },
+    ],
+  });
+
+export const listRoomBoardMaintenanceBlocks = (
+  propertyId: string,
+  from: Date,
+  to: Date,
+) =>
+  prisma.maintenanceBlock.findMany({
+    where: {
+      propertyId,
+      startDate: { lt: to },
+      endDate: { gt: from },
+    },
+    orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+  });
+
 export const listMaintenancePaginated = async (
   filters: MaintenanceListFilters,
 ) => {
@@ -1200,6 +1276,39 @@ export const findRoomPricingById = (id: string) =>
     include: dashboardRoomPricingInclude,
   });
 
+export const findOverlappingRoomPricing = (input: {
+  propertyId: string;
+  productId: string;
+  roomId?: string | null;
+  unitId?: string | null;
+  rateType: RateType;
+  validFrom: Date;
+  validTo?: Date | null;
+  excludePricingId?: string;
+}) => {
+  const scopeWhere =
+    input.roomId !== undefined && input.roomId !== null
+      ? { roomId: input.roomId }
+      : input.unitId !== undefined && input.unitId !== null
+        ? { roomId: null, unitId: input.unitId }
+        : { roomId: null, unitId: null };
+
+  return prisma.roomPricing.findFirst({
+    where: {
+      propertyId: input.propertyId,
+      productId: input.productId,
+      rateType: input.rateType,
+      ...scopeWhere,
+      ...(input.excludePricingId !== undefined && {
+        id: { not: input.excludePricingId },
+      }),
+      validFrom: { lte: input.validTo ?? new Date("9999-12-31T00:00:00.000Z") },
+      OR: [{ validTo: null }, { validTo: { gte: input.validFrom } }],
+    },
+    include: dashboardRoomPricingInclude,
+  });
+};
+
 export const createRoomPricing = (data: Prisma.RoomPricingCreateInput) =>
   prisma.roomPricing.create({
     data,
@@ -1329,16 +1438,79 @@ export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =
     include: dashboardBookingInclude,
   });
 
+export const hasOverlappingRoomBooking = (input: {
+  roomId: string;
+  unitId: string;
+  checkIn: Date;
+  checkOut: Date;
+  excludeBookingId: string;
+}) =>
+  prisma.bookingItem
+    .count({
+      where: {
+        OR: [
+          { targetType: "ROOM", roomId: input.roomId },
+          { targetType: "UNIT", unitId: input.unitId },
+        ],
+        booking: {
+          id: { not: input.excludeBookingId },
+          status: {
+            notIn: [
+              BookingStatusValue.CANCELLED,
+              BookingStatusValue.CHECKED_OUT,
+              BookingStatusValue.NO_SHOW,
+            ],
+          },
+          checkIn: { lt: input.checkOut },
+          checkOut: { gt: input.checkIn },
+        },
+      },
+    })
+    .then((count) => count > 0);
+
+export const hasOverlappingRoomMaintenance = (input: {
+  propertyId: string;
+  roomId: string;
+  unitId: string;
+  checkIn: Date;
+  checkOut: Date;
+}) =>
+  prisma.maintenanceBlock
+    .count({
+      where: {
+        propertyId: input.propertyId,
+        startDate: { lt: input.checkOut },
+        endDate: { gt: input.checkIn },
+        OR: [
+          { targetType: "PROPERTY" },
+          { targetType: "UNIT", unitId: input.unitId },
+          { targetType: "ROOM", roomId: input.roomId },
+        ],
+      },
+    })
+    .then((count) => count > 0);
+
 export const updateBookingLifecycleById = (
   id: string,
   data: Prisma.BookingUpdateInput,
   history?: Prisma.BookingStatusHistoryCreateInput,
+  assignment?: {
+    itemId: string;
+    data: Prisma.BookingItemUpdateInput;
+  },
 ) =>
   prisma.$transaction(async (tx) => {
     await tx.booking.update({
       where: { id },
       data,
     });
+
+    if (assignment !== undefined) {
+      await tx.bookingItem.update({
+        where: { id: assignment.itemId },
+        data: assignment.data,
+      });
+    }
 
     if (history !== undefined) {
       await tx.bookingStatusHistory.create({

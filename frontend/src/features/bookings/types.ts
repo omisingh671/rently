@@ -64,6 +64,14 @@ export interface Booking {
   createdAt: string;
 }
 
+export interface CreateOptionBookingPayload {
+  bookingOptionId: string;
+  from: string;
+  to: string;
+  guests: number;
+  comfortOption: ComfortOption;
+}
+
 export interface Payment {
   id: string;
   bookingId: string;

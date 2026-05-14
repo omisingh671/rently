@@ -80,8 +80,8 @@ export type ProductPayload = {
 
 export type RatePayload = {
   productId: string;
-  unitId?: string;
-  roomId?: string;
+  unitId?: string | null;
+  roomId?: string | null;
   rateType: RateType;
   pricingTier: PricingTier;
   minNights: number;

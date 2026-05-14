@@ -15,6 +15,7 @@ import {
   FiMessageSquare,
   FiFileText,
   FiBriefcase,
+  FiClipboard,
 } from "react-icons/fi";
 import { MdMeetingRoom } from "react-icons/md";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
@@ -282,6 +283,15 @@ export default function AdminSidebar({
             }
           >
             <FiCalendar /> Bookings
+          </NavLink>
+
+          <NavLink
+            to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
+            className={({ isActive }) =>
+              `${navBase} ${isActive ? navActive : navInactive}`
+            }
+          >
+            <FiClipboard /> Room Board
           </NavLink>
 
           <NavLink

@@ -355,8 +355,8 @@ export const updateRoomProductSchema = z
 
 const optionalTargetSchema = z
   .object({
-    unitId: idSchema.optional(),
-    roomId: idSchema.optional(),
+    unitId: idSchema.nullable().optional(),
+    roomId: idSchema.nullable().optional(),
   })
   .refine((data) => !(data.unitId && data.roomId), {
     message: "Use either unitId or roomId, not both",
@@ -471,11 +471,16 @@ export const updateBookingStatusSchema = z
     status: z.nativeEnum(BookingStatus).optional(),
     internalNotes: z.string().trim().max(5000).nullable().optional(),
     note: z.string().trim().max(1000).optional(),
+    roomId: idSchema.optional(),
+    statusOverride: z.boolean().optional(),
   })
   .refine(
-    (data) => data.status !== undefined || data.internalNotes !== undefined,
+    (data) =>
+      data.status !== undefined ||
+      data.internalNotes !== undefined ||
+      data.roomId !== undefined,
     {
-      message: "Status or internal notes are required",
+      message: "Status, assignment, or internal notes are required",
     },
   );
 
@@ -483,6 +488,7 @@ export const createManualBookingSchema = contactFieldsRefine(
   z
     .object({
       bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+      bookingOptionId: z.string().trim().min(1).max(128).optional(),
       spaceId: idSchema.optional(),
       spaceIds: z.array(idSchema).optional(),
       from: z.coerce.date(),
@@ -500,6 +506,10 @@ export const createManualBookingSchema = contactFieldsRefine(
       path: ["to"],
     })
     .superRefine((data, ctx) => {
+      if (data.bookingOptionId) {
+        return;
+      }
+
       if (data.bookingType === "MULTI_ROOM") {
         if (!data.spaceIds || data.spaceIds.length < 2) {
           ctx.addIssue({
@@ -523,7 +533,7 @@ export const createManualBookingSchema = contactFieldsRefine(
 
 export const checkManualBookingAvailabilitySchema = z
   .object({
-    spaceIds: z.array(idSchema).min(1),
+    spaceIds: z.array(idSchema).optional(),
     from: z.coerce.date(),
     to: z.coerce.date(),
     guests: z.coerce.number().int().min(1).max(20),
@@ -531,6 +541,16 @@ export const checkManualBookingAvailabilitySchema = z
   })
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",
+    path: ["to"],
+  });
+
+export const roomBoardQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .refine((data) => data.to > data.from, {
+    message: "End date must be after start date",
     path: ["to"],
   });
 

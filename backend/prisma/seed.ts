@@ -52,28 +52,40 @@ const roomSuffixes = ["A", "B", "C"] as const;
 
 const roomProductSeeds = [
   {
-    name: "Single Non-AC Room",
+    name: "Single Non-AC",
     occupancy: 1,
     hasAC: false,
     price: 1500,
   },
   {
-    name: "Single AC Room",
-    occupancy: 1,
-    hasAC: true,
-    price: 1750,
-  },
-  {
-    name: "Double Non-AC Room",
+    name: "Double Non-AC",
     occupancy: 2,
     hasAC: false,
     price: 2000,
   },
   {
-    name: "Double AC Room",
+    name: "Whole Unit Non-AC",
+    occupancy: 6,
+    hasAC: false,
+    price: 5400,
+  },
+  {
+    name: "Single AC",
+    occupancy: 1,
+    hasAC: true,
+    price: 1750,
+  },
+  {
+    name: "Double AC",
     occupancy: 2,
     hasAC: true,
     price: 2250,
+  },
+  {
+    name: "Whole Unit AC",
+    occupancy: 6,
+    hasAC: true,
+    price: 6300,
   },
 ] as const;
 
@@ -257,20 +269,22 @@ async function main() {
     await Promise.all(
       units.map((unit) =>
         Promise.all(
-          roomSuffixes.map((suffix) =>
-            prisma.room.create({
+          roomSuffixes.map((suffix) => {
+            const hasAC = Number(unit.unitNumber) % 2 === 1;
+
+            return prisma.room.create({
               data: {
                 unitId: unit.id,
                 name: "Room",
                 number: `${unit.unitNumber}-${suffix}`,
-                rent: 1500,
-                hasAC: true,
+                rent: hasAC ? 1750 : 1500,
+                hasAC,
                 maxOccupancy: 2,
                 status: RoomStatus.AVAILABLE,
                 isActive: true,
               },
-            }),
-          ),
+            });
+          }),
         ),
       ),
     )
@@ -292,75 +306,89 @@ async function main() {
     throw new Error("Seed inventory invariant failed");
   }
 
-  const [singleNonAcProduct, singleAcProduct, doubleNonAcProduct, doubleAcProduct] =
-    await Promise.all([
+  const roomProducts = await Promise.all(
+    roomProductSeeds.map((product) =>
       prisma.roomProduct.create({
         data: {
           propertyId: property.id,
-          name: roomProductSeeds[0].name,
-          occupancy: 1,
-          hasAC: false,
+          name: product.name,
+          occupancy: product.occupancy,
+          hasAC: product.hasAC,
           category: RoomProductCategory.NIGHTLY,
         },
       }),
-      prisma.roomProduct.create({
-        data: {
-          propertyId: property.id,
-          name: roomProductSeeds[1].name,
-          occupancy: 1,
-          hasAC: true,
-          category: RoomProductCategory.NIGHTLY,
-        },
-      }),
-      prisma.roomProduct.create({
-        data: {
-          propertyId: property.id,
-          name: roomProductSeeds[2].name,
-          occupancy: 2,
-          hasAC: false,
-          category: RoomProductCategory.NIGHTLY,
-        },
-      }),
-      prisma.roomProduct.create({
-        data: {
-          propertyId: property.id,
-          name: roomProductSeeds[3].name,
-          occupancy: 2,
-          hasAC: true,
-          category: RoomProductCategory.NIGHTLY,
-        },
-      }),
-    ]);
-
-  const productRates = [
-    { productId: singleNonAcProduct.id, price: roomProductSeeds[0].price },
-    { productId: singleAcProduct.id, price: roomProductSeeds[1].price },
-    { productId: doubleNonAcProduct.id, price: roomProductSeeds[2].price },
-    { productId: doubleAcProduct.id, price: roomProductSeeds[3].price },
-  ] as const;
-
-  const pricingRates = await Promise.all(
-    rooms.flatMap((seededRoom) =>
-      productRates.map((rate) =>
-        prisma.roomPricing.create({
-          data: {
-            propertyId: property.id,
-            roomId: seededRoom.id,
-            unitId: seededRoom.unitId,
-            productId: rate.productId,
-            rateType: RateType.NIGHTLY,
-            pricingTier: PricingTier.STANDARD,
-            minNights: 1,
-            taxInclusive: false,
-            price: rate.price,
-            validFrom: new Date("2026-01-01T00:00:00.000Z"),
-          },
-        }),
-      ),
     ),
   );
-  const doubleAcPricing = pricingRates.find(
-    (rate) => rate.roomId === room.id && rate.productId === doubleAcProduct.id,
+
+  const getProduct = (name: (typeof roomProductSeeds)[number]["name"]) => {
+    const product = roomProducts.find((item) => item.name === name);
+    if (!product) {
+      throw new Error(`Seed rate product invariant failed: ${name}`);
+    }
+    return product;
+  };
+
+  const doubleAcProduct = getProduct("Double AC");
+  const wholeUnitAcProduct = getProduct("Whole Unit AC");
+
+  const basePricingRates = await Promise.all(
+    roomProductSeeds.map((product) => {
+      const createdProduct = getProduct(product.name);
+
+      return prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          productId: createdProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: product.price,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      });
+    }),
+  );
+
+  const unitOverride = units.find(
+    (seededUnit) => seededUnit.unitNumber === "301",
+  );
+  const roomOverride = rooms.find((seededRoom) => seededRoom.number === "501-C");
+
+  if (!unitOverride || !roomOverride) {
+    throw new Error("Seed pricing override invariant failed");
+  }
+
+  await prisma.roomPricing.createMany({
+    data: [
+      {
+        propertyId: property.id,
+        unitId: unitOverride.id,
+        productId: wholeUnitAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 6600,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: property.id,
+        roomId: roomOverride.id,
+        unitId: roomOverride.unitId,
+        productId: doubleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2700,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const doubleAcPricing = basePricingRates.find(
+    (rate) => rate.productId === doubleAcProduct.id,
   );
   if (!doubleAcPricing) {
     throw new Error("Seed pricing invariant failed");

@@ -10,9 +10,22 @@ import {
   FiTool,
   FiUserCheck,
   FiUsers,
+  FiCheckCircle,
+  FiWind,
 } from "react-icons/fi";
 import { useAuthStore } from "@/stores/authStore";
-import { useDashboardContext, useDashboardSummary } from "@/features/dashboard/hooks";
+import {
+  useDashboardContext,
+  useDashboardSummary,
+} from "@/features/dashboard/hooks";
+import { useQuery } from "@tanstack/react-query";
+import { getRoomBoardApi } from "@/features/admin/operations/api";
+import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
+import {
+  STATUS_BG_COLORS,
+  STATUS_TEXT_COLORS,
+  STATUS_BORDER_DARK_COLORS,
+} from "@/configs/theme";
 import type { IconType } from "react-icons";
 
 type DashboardStat = {
@@ -21,10 +34,32 @@ type DashboardStat = {
   icon: IconType;
 };
 
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const tomorrowStr = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export default function AdminDashboard() {
   const user = useAuthStore((state) => state.user);
   const { data: context } = useDashboardContext();
   const { data: summary, isLoading, isError } = useDashboardSummary();
+
+  const propertyId = context?.properties?.[0]?.id || "";
+  const from = todayStr();
+  const to = tomorrowStr();
+
+  const boardQuery = useQuery({
+    queryKey: propertyId
+      ? ADMIN_KEYS.operations.roomBoard({ propertyId, from, to })
+      : ["skip_board"],
+    queryFn: () => getRoomBoardApi(propertyId, { from, to }),
+    enabled: Boolean(propertyId),
+  });
 
   const role = context?.user.role ?? user?.role;
   const isManager = role === "MANAGER";
@@ -127,8 +162,96 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <section>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+        {/* Left Column: Room Board */}
+        <div className="w-full space-y-8">
+          {/* Quick Room Board Section */}
+          {propertyId && boardQuery.data?.units && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Today's Room Status
+              </h3>
+              <p className="text-xs text-slate-500">
+                {new Intl.DateTimeFormat("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                }).format(new Date())}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {boardQuery.data.units.map((unit) => (
+              <div key={unit.unitId} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4">
+                  <span className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                    Unit {unit.unitNumber}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  {unit.rooms.map((room) => {
+                    const bgClass =
+                      STATUS_BG_COLORS[room.boardStatus] ||
+                      "bg-slate-50 border-slate-100";
+                    const textClass =
+                      STATUS_TEXT_COLORS[room.boardStatus] || "text-slate-700";
+                    const borderClass =
+                      STATUS_BORDER_DARK_COLORS[room.boardStatus] ||
+                      "border-slate-200";
+
+                    let Icon = FiCheckCircle;
+                    if (room.boardStatus === "OCCUPIED") Icon = FiUsers;
+                    if (room.boardStatus === "RESERVED") Icon = FiCalendar;
+                    if (room.boardStatus === "MAINTENANCE") Icon = FiTool;
+                    if (room.boardStatus === "INACTIVE") Icon = FiWind;
+
+                    return (
+                      <div
+                        key={room.roomId}
+                        className={`flex-1 min-w-[100px] flex flex-col items-center justify-center rounded-xl py-6 px-4 border shadow-sm transition-all hover:shadow-md ${bgClass} ${borderClass} ${textClass}`}
+                        title={`${room.roomNumber} - ${room.boardStatus}`}
+                      >
+                        <Icon className="mb-3 text-3xl opacity-90" />
+                        <div className="flex flex-col items-center text-center">
+                          <span className="text-base font-bold tracking-tight">
+                            {room.roomNumber}
+                          </span>
+                          <span className="mt-1 text-[11px] font-medium uppercase tracking-wider opacity-70">
+                            {room.roomName} • {room.hasAC ? "AC" : "Non-AC"}
+                          </span>
+                          <div className="mt-2 text-[10px] font-bold uppercase tracking-widest opacity-80">
+                            {room.boardStatus}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+            </section>
+          )}
+        </div>
+
+        {/* Right Column: Stats and Context */}
+        <div className="w-full space-y-8">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Performance Overview
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Key metrics and analytics
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-4">
           {stats.map((stat) => (
             <div
               key={stat.label}
@@ -158,7 +281,7 @@ export default function AdminDashboard() {
             </h3>
           </div>
 
-          <div className="grid gap-6 px-6 py-5 lg:grid-cols-2">
+          <div className="flex flex-col gap-6 px-6 py-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Role
@@ -194,7 +317,9 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-      </section>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

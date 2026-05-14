@@ -33,12 +33,33 @@ export const publicBookingInclude = {
   },
 } satisfies Prisma.BookingInclude;
 
+const publicAvailabilityRoomInclude = {
+  unit: {
+    include: {
+      property: true,
+    },
+  },
+} satisfies Prisma.RoomInclude;
+
+const publicAvailabilityUnitInclude = {
+  property: true,
+  rooms: true,
+} satisfies Prisma.UnitInclude;
+
 export type PublicSpaceRecord = Prisma.RoomPricingGetPayload<{
   include: typeof publicSpaceInclude;
 }>;
 
 export type PublicBookingRecord = Prisma.BookingGetPayload<{
   include: typeof publicBookingInclude;
+}>;
+
+export type PublicAvailabilityRoomRecord = Prisma.RoomGetPayload<{
+  include: typeof publicAvailabilityRoomInclude;
+}>;
+
+export type PublicAvailabilityUnitRecord = Prisma.UnitGetPayload<{
+  include: typeof publicAvailabilityUnitInclude;
 }>;
 
 interface StayPricingScope {
@@ -52,7 +73,7 @@ interface PricingSelectionScope {
   comfortOption: ComfortOption;
 }
 
-const activePricingWhere = (
+const activePricingBaseWhere = (
   now: Date,
   tenantId?: string,
   stay?: StayPricingScope,
@@ -83,6 +104,20 @@ const activePricingWhere = (
             },
           ]
         : []),
+    ],
+  }) satisfies Prisma.RoomPricingWhereInput;
+
+const activePricingWhere = (
+  now: Date,
+  tenantId?: string,
+  stay?: StayPricingScope,
+) => {
+  const baseWhere = activePricingBaseWhere(now, tenantId, stay);
+
+  return {
+    ...baseWhere,
+    AND: [
+      ...(Array.isArray(baseWhere.AND) ? baseWhere.AND : []),
       {
         OR: [
           {
@@ -113,7 +148,8 @@ const activePricingWhere = (
         ],
       },
     ],
-  }) satisfies Prisma.RoomPricingWhereInput;
+  } satisfies Prisma.RoomPricingWhereInput;
+};
 
 export const findActiveTenantBySlug = (slug: string) =>
   prisma.tenant.findFirst({
@@ -176,6 +212,79 @@ export const listActiveSpaces = (
     orderBy: [{ property: { name: "asc" } }, { price: "asc" }],
   });
 
+export const listAvailabilityRooms = (
+  tenantId: string,
+  comfortOption: ComfortOption,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).room.findMany({
+    where: {
+      isActive: true,
+      status: RoomStatus.AVAILABLE,
+      ...(comfortOption === ComfortOption.AC && { hasAC: true }),
+      unit: {
+        is: {
+          isActive: true,
+          status: UnitStatus.ACTIVE,
+          property: {
+            is: {
+              tenantId,
+              isActive: true,
+              status: PropertyStatus.ACTIVE,
+            },
+          },
+        },
+      },
+    },
+    include: publicAvailabilityRoomInclude,
+    orderBy: [
+      { unit: { property: { name: "asc" } } },
+      { unit: { floor: "asc" } },
+      { unit: { unitNumber: "asc" } },
+      { number: "asc" },
+    ],
+  });
+
+export const listAvailabilityUnits = (
+  tenantId: string,
+  comfortOption: ComfortOption,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).unit.findMany({
+    where: {
+      isActive: true,
+      status: UnitStatus.ACTIVE,
+      property: {
+        is: {
+          tenantId,
+          isActive: true,
+          status: PropertyStatus.ACTIVE,
+        },
+      },
+      rooms: {
+        some: {
+          isActive: true,
+          status: RoomStatus.AVAILABLE,
+        },
+        ...(comfortOption === ComfortOption.AC && {
+          every: {
+            OR: [
+              { isActive: false },
+              { status: { not: RoomStatus.AVAILABLE } },
+              { hasAC: true },
+            ],
+          },
+        }),
+      },
+    },
+    include: publicAvailabilityUnitInclude,
+    orderBy: [
+      { property: { name: "asc" } },
+      { floor: "asc" },
+      { unitNumber: "asc" },
+    ],
+  });
+
 export const findActiveSpaceById = (
   id: string,
   now: Date,
@@ -199,22 +308,46 @@ export const findActivePricingForTarget = (
   stay: StayPricingScope,
   tx?: Prisma.TransactionClient,
 ) =>
-  client(tx).roomPricing.findFirst({
-    where: {
-      ...activePricingWhere(now, tenantId, stay),
-      product: {
-        is: {
-          occupancy: pricing.guestCount,
-          hasAC: pricing.comfortOption === ComfortOption.AC,
+  client(tx)
+    .roomPricing.findMany({
+      where: {
+        ...activePricingBaseWhere(now, tenantId, stay),
+        product: {
+          is: {
+            occupancy: pricing.guestCount,
+            hasAC: pricing.comfortOption === ComfortOption.AC,
+          },
         },
+        OR:
+          target.targetType === BookingTargetType.ROOM
+            ? [
+                { roomId: target.roomId },
+                { roomId: null, unitId: target.unitId },
+                { roomId: null, unitId: null },
+              ]
+            : [
+                { roomId: null, unitId: target.unitId },
+                { roomId: null, unitId: null },
+              ],
       },
-      ...(target.targetType === BookingTargetType.ROOM
-        ? { roomId: target.roomId }
-        : { roomId: null, unitId: target.unitId }),
-    },
-    include: publicSpaceInclude,
-    orderBy: { price: "asc" },
-  });
+      include: publicSpaceInclude,
+    })
+    .then((pricingRows) => {
+      const ranked = pricingRows.sort((left, right) => {
+        const leftRank =
+          left.roomId !== null ? 0 : left.unitId !== null ? 1 : 2;
+        const rightRank =
+          right.roomId !== null ? 0 : right.unitId !== null ? 1 : 2;
+
+        if (leftRank !== rightRank) {
+          return leftRank - rightRank;
+        }
+
+        return Number(left.price) - Number(right.price);
+      });
+
+      return ranked[0] ?? null;
+    });
 
 const targetOverlapWhere = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
@@ -249,7 +382,13 @@ export const hasOverlappingBooking = (
       where: {
         ...targetOverlapWhere(target),
         booking: {
-          status: { not: BookingStatus.CANCELLED },
+          status: {
+            notIn: [
+              BookingStatus.CANCELLED,
+              BookingStatus.CHECKED_OUT,
+              BookingStatus.NO_SHOW,
+            ],
+          },
           checkIn: { lt: checkOut },
           checkOut: { gt: checkIn },
         },
@@ -273,7 +412,17 @@ export const hasOverlappingMaintenance = (
         OR: [
           { targetType: "PROPERTY" },
           ...(target.unitId !== null
-            ? [{ targetType: "UNIT" as const, unitId: target.unitId }]
+            ? [
+                { targetType: "UNIT" as const, unitId: target.unitId },
+                {
+                  targetType: "ROOM" as const,
+                  room: {
+                    is: {
+                      unitId: target.unitId,
+                    },
+                  },
+                },
+              ]
             : []),
           ...(target.roomId !== null
             ? [{ targetType: "ROOM" as const, roomId: target.roomId }]

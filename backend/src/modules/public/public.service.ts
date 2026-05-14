@@ -22,6 +22,11 @@ import type {
   PublicSpaceDTO,
   PublicTenantConfigDTO,
 } from "./public.dto.js";
+import {
+  findAvailabilityOptionById,
+  getPublicAvailabilityOptions,
+  type PublicAvailabilityOptionInternal,
+} from "./public-availability.service.js";
 
 const now = () => new Date();
 const maxBookingTransactionAttempts = 3;
@@ -152,11 +157,11 @@ const getSpaceComfortOption = (space: repo.PublicSpaceRecord) =>
   space.product.hasAC ? ComfortOption.AC : ComfortOption.NON_AC;
 
 const getSpaceTitle = (space: repo.PublicSpaceRecord) => {
-  const targetName = space.room
-    ? `${space.room.name} ${space.room.number}`
-    : `Unit ${space.unit?.unitNumber ?? ""}`.trim();
+  if (space.room) {
+    return `${space.property.name} - Private Room`;
+  }
 
-  return `${space.property.name} - ${space.product.name} - ${targetName}`;
+  return `${space.property.name} - Whole Unit`;
 };
 
 const getSpaceLocation = (space: repo.PublicSpaceRecord) =>
@@ -284,52 +289,9 @@ const ensureSpaceAvailable = async (
   return target;
 };
 
-const mapAvailableSpace = (
-  space: repo.PublicSpaceRecord,
-  nights: number,
-) => {
-  const target = getSpaceTarget(space);
-  const pricePerNight = Number(space.price);
-
-  return {
-    spaceId: space.id,
-    title: getSpaceTitle(space),
-    location: getSpaceLocation(space),
-    capacity: getSpaceCapacity(space),
-    comfortOption: getSpaceComfortOption(space),
-    pricePerNight,
-    priceTotal: pricePerNight * nights,
-    targetType: target.targetType,
-    unitId: target.unitId,
-    roomId: target.roomId,
-  };
-};
-
 const isRetryableBookingTransactionError = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
   (error.code === "P2034" || error.code === "P2002");
-
-const spaceMatchesAvailabilityInput = (
-  space: repo.PublicSpaceRecord,
-  input: CheckAvailabilityInput,
-) => {
-  const target = getSpaceTarget(space);
-  const capacity = getSpaceCapacity(space);
-
-  if (input.guests > capacity) {
-    return false;
-  }
-
-  if (input.occupancyType === "single") {
-    return target.targetType === BookingTargetType.ROOM;
-  }
-
-  if (input.occupancyType === "double") {
-    return target.targetType === BookingTargetType.ROOM;
-  }
-
-  return target.targetType === BookingTargetType.UNIT;
-};
 
 export const listSpaces = async (
   input: TenantResolutionInput = {},
@@ -358,67 +320,11 @@ export const checkAvailability = async (
 ): Promise<PublicAvailabilityDTO> => {
   const tenant = await resolveTenant(tenantInput);
   const nights = getNights(input.checkIn, input.checkOut);
-  const minOccupancy =
-    input.occupancyType === "double" || input.occupancyType === "multi_room"
-      ? 1
-      : input.guests;
-  const pricingGuestCount =
-    input.occupancyType === "multi_room" ? 1 : input.guests;
-  const spaces = await repo.listActiveSpaces(
-    now(),
-    minOccupancy,
-    tenant.id,
-    undefined,
-    {
-      checkIn: input.checkIn,
-      checkOut: input.checkOut,
-      nights,
-    },
-    {
-      guestCount: pricingGuestCount,
-      comfortOption: input.comfortOption,
-    },
-  );
-  const availableSpaces = [];
-  const groupCandidates = [];
-
-  for (const space of spaces) {
-    const target = getSpaceTarget(space);
-    const [hasBooking, hasMaintenance] = await Promise.all([
-      repo.hasOverlappingBooking(target, input.checkIn, input.checkOut),
-      repo.hasOverlappingMaintenance(
-        space.propertyId,
-        target,
-        input.checkIn,
-        input.checkOut,
-      ),
-    ]);
-
-    if (hasBooking || hasMaintenance) {
-      continue;
-    }
-
-    const availableSpace = mapAvailableSpace(space, nights);
-
-    if (
-      input.occupancyType === "multi_room" &&
-      target.targetType === BookingTargetType.ROOM
-    ) {
-      groupCandidates.push(availableSpace);
-    }
-
-    if (spaceMatchesAvailabilityInput(space, input)) {
-      availableSpaces.push(availableSpace);
-    }
-  }
+  const options = await getPublicAvailabilityOptions(input, tenant.id, nights);
 
   return {
-    available:
-      availableSpaces.length > 0 ||
-      groupCandidates.reduce((total, space) => total + space.capacity, 0) >=
-        input.guests,
-    spaces: availableSpaces,
-    groupCandidates,
+    available: options.length > 0,
+    options,
   };
 };
 
@@ -446,6 +352,29 @@ const buildBookingItemCreateInput = (
     totalAmount: pricePerNight * nights,
   };
 };
+
+const buildOptionBookingItemCreateInput = (
+  item: PublicAvailabilityOptionInternal["items"][number],
+  nights: number,
+  comfortOption: ComfortOption,
+): Prisma.BookingItemCreateWithoutBookingInput => ({
+  productId: item.productId,
+  targetType: item.target.targetType,
+  unitId: item.target.unitId,
+  roomId: item.target.roomId,
+  guestCount: item.guestCount,
+  comfortOption,
+  targetLabel: item.publicLabel,
+  productName:
+    item.target.targetType === BookingTargetType.UNIT
+      ? "Whole unit"
+      : item.guestCount === 1
+        ? "Single room"
+        : "Double room",
+  capacity: item.capacity,
+  pricePerNight: item.pricePerNight,
+  totalAmount: item.pricePerNight * nights,
+});
 
 const getTargetKey = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
@@ -603,6 +532,119 @@ export const createBookingForUser = async (
 
         if (!guestSnapshot) {
           throw new HttpError(404, "USER_NOT_FOUND", "User not found");
+        }
+
+        if (input.bookingOptionId !== undefined) {
+          const option = await findAvailabilityOptionById(
+            input.bookingOptionId,
+            {
+              checkIn: input.from,
+              checkOut: input.to,
+              guests: input.guests,
+              comfortOption: input.comfortOption,
+            },
+            tenant.id,
+            nights,
+            tx,
+          );
+
+          if (!option) {
+            throw new HttpError(
+              409,
+              "BOOKING_OPTION_UNAVAILABLE",
+              "Selected booking option is no longer available",
+            );
+          }
+
+          if (
+            options.requiredPropertyId !== undefined &&
+            option.propertyId !== options.requiredPropertyId
+          ) {
+            throw new HttpError(
+              422,
+              "BOOKING_PROPERTY_MISMATCH",
+              "Selected option does not belong to the selected property",
+            );
+          }
+
+          const itemInputs = option.items.map((item) =>
+            buildOptionBookingItemCreateInput(
+              item,
+              nights,
+              input.comfortOption,
+            ),
+          );
+          const totalAmount = option.stayTotal;
+          const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
+          const firstItem = getArrayItem(
+            option.items,
+            0,
+            "Missing booking option item",
+          );
+          const isMultiItem = option.items.length > 1;
+
+          const booking = await repo.createBooking(
+            {
+              bookingRef,
+              property: { connect: { id: option.propertyId } },
+              user: { connect: { id: userId } },
+              ...(isMultiItem ? {} : { productId: firstItem.productId }),
+              bookingType: isMultiItem
+                ? BookingType.MULTI_ROOM
+                : BookingType.SINGLE_TARGET,
+              targetType: firstItem.target.targetType,
+              unitId: isMultiItem ? null : firstItem.target.unitId,
+              roomId: isMultiItem ? null : firstItem.target.roomId,
+              guestCount: input.guests,
+              comfortOption: input.comfortOption,
+              guestNameSnapshot: guestSnapshot.fullName,
+              guestEmailSnapshot: guestSnapshot.email,
+              ...(guestSnapshot.contactNumber !== null && {
+                guestContactSnapshot: guestSnapshot.contactNumber,
+              }),
+              targetLabel: option.title,
+              productName: "Booking option",
+              pricePerNight: option.nightlyTotal,
+              checkIn: input.from,
+              checkOut: input.to,
+              status: initialStatus,
+              totalAmount,
+              paymentPolicy,
+              upfrontAmount: bookingUpfrontAmount,
+              ...(options.internalNotes !== undefined && {
+                internalNotes: options.internalNotes,
+              }),
+              createdAt,
+              items: {
+                create: itemInputs,
+              },
+            },
+            tx,
+          );
+
+          await repo.createBookingStatusHistory(
+            {
+              booking: {
+                connect: {
+                  id: booking.id,
+                },
+              },
+              toStatus: initialStatus,
+              actor: {
+                connect: {
+                  id: options.actorUserId ?? userId,
+                },
+              },
+              note:
+                options.statusHistoryNote ??
+                (tenant.payAtCheckInEnabled
+                  ? "Booking created by guest"
+                  : "Booking created without upfront payment"),
+            },
+            tx,
+          );
+
+          return booking;
         }
 
         const selectedSpaces =

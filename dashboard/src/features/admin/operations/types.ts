@@ -5,12 +5,14 @@ export type BookingStatus =
   | "CONFIRMED"
   | "CHECKED_IN"
   | "CHECKED_OUT"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "NO_SHOW";
 
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
-export type ComfortOption = "AC" | "NON_AC";
+export type ConcreteComfortOption = "AC" | "NON_AC";
+export type ComfortOption = ConcreteComfortOption | "ALL";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
@@ -74,16 +76,19 @@ export type UpdateBookingPayload = {
   status?: BookingStatus;
   note?: string;
   internalNotes?: string | null;
+  roomId?: string;
+  statusOverride?: boolean;
 };
 
 export type CreateManualBookingPayload = {
   bookingType: BookingType;
+  bookingOptionId?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: string;
   to: string;
   guests: number;
-  comfortOption: ComfortOption;
+  comfortOption: ConcreteComfortOption;
   guestName: string;
   guestEmail: string;
   countryCode?: string;
@@ -92,21 +97,29 @@ export type CreateManualBookingPayload = {
 };
 
 export type CheckManualBookingAvailabilityPayload = {
-  spaceIds: string[];
+  spaceIds?: string[];
   from: string;
   to: string;
   guests: number;
-  comfortOption: ComfortOption;
+  comfortOption: ConcreteComfortOption;
 };
 
 export type ManualBookingAvailabilityItem = {
   spaceId: string;
+  bookingOptionId: string;
+  title: string;
+  guestSplit: string;
+  comfortOption: ConcreteComfortOption;
+  itemCount: number;
+  nightlyTotal: string;
+  stayTotal: string;
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;
+  priceBreakup: string[];
 };
 
 export type ManualBookingAvailabilityResponse = {
@@ -115,6 +128,64 @@ export type ManualBookingAvailabilityResponse = {
   guests: number;
   availableSpaceIds: string[];
   items: ManualBookingAvailabilityItem[];
+};
+
+export type RoomBoardStatus =
+  | "AVAILABLE"
+  | "RESERVED"
+  | "OCCUPIED"
+  | "MAINTENANCE"
+  | "INACTIVE";
+
+export type RoomBoardRoom = {
+  roomId: string;
+  roomNumber: string;
+  roomName: string;
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  hasAC: boolean;
+  maxOccupancy: number;
+  inventoryStatus: string;
+  isActive: boolean;
+  boardStatus: RoomBoardStatus;
+  reason: string | null;
+  booking: {
+    id: string;
+    bookingRef: string;
+    status: BookingStatus;
+    bookingType: BookingType;
+    guestName: string;
+    guestCount: number;
+    checkIn: string;
+    checkOut: string;
+    targetLabel: string;
+  } | null;
+  maintenance: {
+    id: string;
+    targetType: "PROPERTY" | "UNIT" | "ROOM";
+    reason: string;
+    startDate: string;
+    endDate: string;
+  } | null;
+};
+
+export type RoomBoardUnit = {
+  unitId: string;
+  unitNumber: string;
+  floor: number;
+  status: string;
+  isActive: boolean;
+  rooms: RoomBoardRoom[];
+};
+
+export type RoomBoardResponse = {
+  propertyId: string;
+  propertyName: string;
+  from: string;
+  to: string;
+  summary: Record<RoomBoardStatus, number>;
+  units: RoomBoardUnit[];
 };
 
 export type AdminEnquiry = {

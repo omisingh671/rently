@@ -273,8 +273,8 @@ export interface UpdateDashboardRoomProductInput {
 
 export interface CreateDashboardRoomPricingInput {
   productId: string;
-  roomId?: string;
-  unitId?: string;
+  roomId?: string | null;
+  unitId?: string | null;
   rateType?: RateType;
   pricingTier?: PricingTier;
   minNights?: number;
@@ -287,8 +287,8 @@ export interface CreateDashboardRoomPricingInput {
 
 export interface UpdateDashboardRoomPricingInput {
   productId?: string;
-  roomId?: string;
-  unitId?: string;
+  roomId?: string | null;
+  unitId?: string | null;
   rateType?: RateType;
   pricingTier?: PricingTier;
   minNights?: number;
@@ -345,10 +345,13 @@ export interface UpdateDashboardBookingInput {
   status?: BookingStatus;
   internalNotes?: string | null;
   note?: string;
+  roomId?: string;
+  statusOverride?: boolean;
 }
 
 export interface CreateDashboardManualBookingInput {
   bookingType: "SINGLE_TARGET" | "MULTI_ROOM";
+  bookingOptionId?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: Date;
@@ -363,11 +366,16 @@ export interface CreateDashboardManualBookingInput {
 }
 
 export interface CheckDashboardManualBookingAvailabilityInput {
-  spaceIds: string[];
+  spaceIds?: string[];
   from: Date;
   to: Date;
   guests: number;
   comfortOption: ComfortOption;
+}
+
+export interface DashboardRoomBoardInput {
+  from: Date;
+  to: Date;
 }
 
 export interface UpdateDashboardLeadInput {

@@ -5,6 +5,7 @@ import {
   checkInBookingApi,
   checkOutBookingApi,
   createManualBookingApi,
+  getBookingApi,
   listBookingsApi,
   listEnquiriesApi,
   listQuotesApi,
@@ -164,6 +165,8 @@ export const useAdminOperations = (
     data: query.data,
     isPending: query.isPending,
     isFetching: query.isFetching,
+    isError: query.isError,
+    error: query.error,
     updateBooking: updateBooking.mutateAsync,
     createManualBooking: createManualBooking.mutateAsync,
     checkManualBookingAvailability:
@@ -180,5 +183,48 @@ export const useAdminOperations = (
       checkOutBooking.isPending ||
       updateEnquiry.isPending ||
       updateQuote.isPending,
+  };
+};
+
+export const useAdminBooking = (bookingId: string | undefined) => {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: bookingId
+      ? ADMIN_KEYS.operations.bookingDetail(bookingId)
+      : ADMIN_KEYS.operations.all(),
+    queryFn: async () => {
+      if (!bookingId) throw new Error("BookingId required");
+      return getBookingApi(bookingId);
+    },
+    enabled: !!bookingId,
+  });
+
+  const invalidateBooking = (propertyId: string) => {
+    if (!bookingId) return;
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.bookingDetail(bookingId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.bookings(propertyId),
+    });
+  };
+
+  const updateBooking = useMutation({
+    mutationFn: (payload: UpdateBookingPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return updateBookingStatusApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  return {
+    data: query.data,
+    isPending: query.isPending,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    error: query.error,
+    updateBooking: updateBooking.mutateAsync,
+    isMutating: updateBooking.isPending,
   };
 };
