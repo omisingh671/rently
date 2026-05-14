@@ -280,6 +280,8 @@ const mapRoom = (room: repo.DashboardRoomRecord): DashboardRoomDTO => ({
   maxOccupancy: room.maxOccupancy,
   status: room.status,
   isActive: room.isActive,
+  unitStatus: room.unit.status,
+  unitIsActive: room.unit.isActive,
   amenityIds: room.amenities.map((amenityLink) => amenityLink.amenityId),
   createdAt: room.createdAt,
   updatedAt: room.updatedAt,
@@ -475,7 +477,11 @@ const getRoomBoardStatus = (
   bookingItem: repo.DashboardRoomBoardBookingItemRecord | null,
   maintenanceBlock: repo.DashboardRoomBoardMaintenanceRecord | null,
 ): { status: DashboardRoomBoardStatus; reason: string | null } => {
-  if (!room.isActive || !room.unit.isActive) {
+  if (
+    !room.isActive ||
+    !room.unit.isActive ||
+    room.unit.status === UnitStatus.INACTIVE
+  ) {
     return { status: "INACTIVE", reason: "Inventory is inactive" };
   }
 

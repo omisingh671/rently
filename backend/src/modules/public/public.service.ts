@@ -5,6 +5,7 @@ import {
   BookingType,
   ComfortOption,
   Prisma,
+  UnitStatus,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import * as repo from "./public.repository.js";
@@ -267,6 +268,16 @@ const ensureSpaceAvailable = async (
   tx?: Prisma.TransactionClient,
 ) => {
   const target = getSpaceTarget(space);
+  const unit = space.unit ?? space.room?.unit;
+
+  if (unit && (!unit.isActive || unit.status !== UnitStatus.ACTIVE)) {
+    throw new HttpError(
+      409,
+      "UNIT_DISABLED",
+      "The parent unit for this space is currently disabled or inactive",
+    );
+  }
+
   const [hasBooking, hasMaintenance] = await Promise.all([
     repo.hasOverlappingBooking(target, checkIn, checkOut, tx),
     repo.hasOverlappingMaintenance(

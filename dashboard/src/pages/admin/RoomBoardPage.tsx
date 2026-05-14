@@ -316,8 +316,14 @@ function UnitSection({ unit }: { unit: RoomBoardUnit }) {
           <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
             <span className="font-medium">Floor {unit.floor}</span>
             <span>•</span>
-            <StatusBadge status={unit.status} />
-            {!unit.isActive && <span className="font-medium text-rose-600">• Inactive</span>}
+            {!unit.isActive ? (
+              <StatusBadge
+                status="DISABLED"
+                variantMap={{ DISABLED: "bg-rose-100 text-rose-700" }}
+              />
+            ) : (
+              <StatusBadge status={unit.status} />
+            )}
           </div>
         </div>
         <div className="text-sm font-medium text-slate-500">
