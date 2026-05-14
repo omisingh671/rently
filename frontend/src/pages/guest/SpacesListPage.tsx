@@ -88,7 +88,7 @@ export default function SpacesListPage() {
   const createBookingMutation = useCreateBooking();
   const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("grid");
+  const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("stack");
 
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
@@ -182,112 +182,123 @@ export default function SpacesListPage() {
   return (
     <section className="section bg-surface">
       <div className="container">
-        <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <span className="badge badge-primary kicker inline-flex items-center gap-2">
-                <FiCalendar /> Stay dates
+        <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
+          {/* Header Part with Background */}
+          <div className="relative bg-slate-900 px-6 py-10 md:px-10">
+            {/* Background Image & Overlay */}
+            <div 
+              className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-60"
+              style={{ backgroundImage: 'url("/assets/images/auth-bg.jpg")' }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/60 to-transparent" />
+
+            <div className="relative z-10">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-md">
+                <FiCalendar className="text-indigo-300" /> Stay dates
               </span>
-              <h1 className="mt-4 text-3xl font-semibold text-slate-900">
+              <h1 className="mt-4 text-3xl font-bold text-white md:text-4xl">
                 Find Your Stay
               </h1>
-              <p className="mt-2 max-w-2xl text-sm text-muted">
+              <p className="mt-2 max-w-xl text-base text-slate-200">
                 Choose dates, guests, and comfort. We will show simple bookable
                 options without room numbers or internal rate names.
               </p>
             </div>
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:w-[50rem] xl:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto_auto]">
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  From
-                </span>
-                <input
-                  type="date"
-                  value={from}
-                  onChange={(event) =>
-                    updateSearchParam("from", event.target.value)
-                  }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              </label>
+          {/* Filters Part */}
+          <div className="p-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:w-full lg:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto_auto] xl:w-full">
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                From
+              </span>
+              <input
+                type="date"
+                value={from}
+                onChange={(event) =>
+                  updateSearchParam("from", event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  To
-                </span>
-                <input
-                  type="date"
-                  value={to}
-                  min={from || undefined}
-                  onChange={(event) =>
-                    updateSearchParam("to", event.target.value)
-                  }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                To
+              </span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(event) =>
+                  updateSearchParam("to", event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
 
-              <label className="block">
-                <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <FiUsers className="h-3 w-3" />
-                  Guests
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={guests}
-                  onChange={(event) =>
-                    updateSearchParam("guests", event.target.value)
-                  }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                />
-              </label>
+            <label className="block">
+              <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <FiUsers className="h-3 w-3" />
+                Guests
+              </span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={guests}
+                onChange={(event) =>
+                  updateSearchParam("guests", event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </label>
 
-              <label className="block">
-                <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <FiWind className="h-3 w-3" />
-                  Comfort
-                </span>
-                <select
-                  value={comfort}
-                  onChange={(event) =>
-                    updateSearchParam("comfort", event.target.value)
-                  }
-                  className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                >
-                  {comfortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <label className="block">
+              <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <FiWind className="h-3 w-3" />
+                Comfort
+              </span>
+              <select
+                value={comfort}
+                onChange={(event) =>
+                  updateSearchParam("comfort", event.target.value)
+                }
+                className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              >
+                {comfortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
+            <button
+              type="button"
+              disabled={!canCheckAvailability || availabilityQuery.isFetching}
+              onClick={() => void availabilityQuery.refetch()}
+              className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-1 lg:col-span-1"
+            >
+              <FiSearch />
+              {availabilityQuery.isFetching ? "Checking..." : "Check"}
+            </button>
+
+            {searchParams.toString() && (
               <button
                 type="button"
-                disabled={!canCheckAvailability || availabilityQuery.isFetching}
-                onClick={() => void availabilityQuery.refetch()}
-                className="inline-flex h-11 items-center justify-center gap-2 self-end rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 xl:col-span-1"
+                onClick={clearFilters}
+                className="inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 sm:col-span-1 lg:col-span-1"
               >
-                <FiSearch />
-                {availabilityQuery.isFetching ? "Checking..." : "Check"}
+                Clear
               </button>
-
-              {searchParams.toString() && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="inline-flex h-11 items-center justify-center gap-1.5 self-end rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 sm:col-span-2 xl:col-span-1"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {bookingError && (
+      {bookingError && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {bookingError}
           </div>
@@ -348,7 +359,7 @@ export default function SpacesListPage() {
               </div>
             </div>
 
-            <div className={layoutMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4"}>
+            <div className={layoutMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-4" : "flex flex-col gap-4"}>
               {options.map((option) =>
                 layoutMode === "grid" ? (
                   <OptionGridCard

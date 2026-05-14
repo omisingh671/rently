@@ -1,4 +1,4 @@
-import { FiCheckCircle, FiUsers } from "react-icons/fi";
+import { FiCheckCircle, FiUsers, FiWind, FiSunrise } from "react-icons/fi";
 import type { AvailabilityOption } from "@/features/availability/domain";
 
 interface OptionGridCardProps {
@@ -19,9 +19,14 @@ export const OptionGridCard = ({ option, onBook, isBooking, formatPrice }: Optio
                 <FiCheckCircle />
                 {option.itemCount} item{option.itemCount === 1 ? "" : "s"}
               </div>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+              <div className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                option.comfortOption === "AC" 
+                  ? "bg-blue-50 text-blue-700" 
+                  : "bg-amber-50 text-amber-700"
+              }`}>
+                {option.comfortOption === "AC" ? <FiWind /> : <FiSunrise />}
                 {option.comfortOption === "AC" ? "AC" : "Non-AC"}
-              </span>
+              </div>
             </div>
             <h2 className="mt-4 text-xl font-semibold text-slate-900">{option.title}</h2>
           </div>
