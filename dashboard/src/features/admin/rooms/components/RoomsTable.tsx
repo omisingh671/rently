@@ -55,8 +55,8 @@ export default function RoomsTable({
             <AdminTableCell as="th">Unit</AdminTableCell>
             <AdminTableCell as="th">Rent</AdminTableCell>
             <AdminTableCell as="th">Capacity</AdminTableCell>
-            <AdminTableCell as="th">Status</AdminTableCell>
-            <AdminTableCell as="th">Active</AdminTableCell>
+            <AdminTableCell as="th">Availability</AdminTableCell>
+            <AdminTableCell as="th">Enabled</AdminTableCell>
             <AdminTableCell as="th">Action</AdminTableCell>
           </tr>
         </AdminTableHeader>
@@ -88,19 +88,40 @@ export default function RoomsTable({
                     {room.maxOccupancy} {room.hasAC ? "AC" : "Non-AC"}
                   </AdminTableCell>
                   <AdminTableCell>
-                    <StatusBadge status={room.status} />
+                    {!room.unitIsActive || room.unitStatus === "INACTIVE" ? (
+                      <StatusBadge
+                        status="UNIT DISABLED"
+                        variantMap={{
+                          "UNIT DISABLED": "bg-rose-100 text-rose-700",
+                        }}
+                      />
+                    ) : (
+                      <StatusBadge status={room.status} />
+                    )}
                   </AdminTableCell>
                   <AdminTableCell>
-                    <ActiveToggle
-                      checked={room.isActive}
-                      disabled={isUpdating}
-                      onChange={(next) =>
-                        onUpdate({
-                          roomId: room.id,
-                          payload: { isActive: next },
-                        })
+                    <div
+                      title={
+                        !room.unitIsActive || room.unitStatus === "INACTIVE"
+                          ? "Parent unit is disabled. Enable the unit first."
+                          : ""
                       }
-                    />
+                    >
+                      <ActiveToggle
+                        checked={room.isActive}
+                        disabled={
+                          isUpdating ||
+                          !room.unitIsActive ||
+                          room.unitStatus === "INACTIVE"
+                        }
+                        onChange={(next) =>
+                          onUpdate({
+                            roomId: room.id,
+                            payload: { isActive: next },
+                          })
+                        }
+                      />
+                    </div>
                   </AdminTableCell>
                   <AdminTableCell>
                     <button

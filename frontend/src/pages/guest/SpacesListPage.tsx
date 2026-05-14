@@ -3,7 +3,6 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiCalendar,
-  FiCheckCircle,
   FiSearch,
   FiUsers,
   FiWind,

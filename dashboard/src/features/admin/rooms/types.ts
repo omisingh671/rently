@@ -1,5 +1,6 @@
 import type { PaginatedResult } from "@/common/types/pagination";
 
+import type { UnitStatus } from "../units/types";
 export type RoomStatus = "AVAILABLE" | "OCCUPIED" | "MAINTENANCE";
 
 export type AdminRoom = {
@@ -15,6 +16,8 @@ export type AdminRoom = {
   maxOccupancy: number;
   status: RoomStatus;
   isActive: boolean;
+  unitStatus: UnitStatus;
+  unitIsActive: boolean;
   amenityIds: string[];
   createdAt: string;
   updatedAt: string;

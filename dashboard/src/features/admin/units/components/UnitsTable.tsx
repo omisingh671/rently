@@ -57,8 +57,8 @@ export default function UnitsTable({
             <AdminTableCell as="th">#</AdminTableCell>
             <AdminTableCell as="th">Unit</AdminTableCell>
             <AdminTableCell as="th">Floor</AdminTableCell>
-            <AdminTableCell as="th">Status</AdminTableCell>
-            <AdminTableCell as="th">Active</AdminTableCell>
+            <AdminTableCell as="th">Availability</AdminTableCell>
+            <AdminTableCell as="th">Enabled</AdminTableCell>
             <AdminTableCell as="th">Action</AdminTableCell>
           </tr>
         </AdminTableHeader>
@@ -87,7 +87,14 @@ export default function UnitsTable({
                   <AdminTableCell>{u.floor}</AdminTableCell>
 
                   <AdminTableCell>
-                    <StatusBadge status={u.status} />
+                    {!u.isActive ? (
+                      <StatusBadge
+                        status="DISABLED"
+                        variantMap={{ DISABLED: "bg-rose-100 text-rose-700" }}
+                      />
+                    ) : (
+                      <StatusBadge status={u.status} />
+                    )}
                   </AdminTableCell>
 
                   <AdminTableCell>

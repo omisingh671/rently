@@ -85,7 +85,7 @@ export default function RoomsFilters({
           }
           className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
         >
-          <option value="">All statuses</option>
+          <option value="">All availability</option>
           <option value="AVAILABLE">Available</option>
           <option value="OCCUPIED">Occupied</option>
           <option value="MAINTENANCE">Maintenance</option>

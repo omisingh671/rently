@@ -132,6 +132,8 @@ export interface DashboardRoomDTO {
   maxOccupancy: number;
   status: RoomStatus;
   isActive: boolean;
+  unitStatus: UnitStatus;
+  unitIsActive: boolean;
   amenityIds: string[];
   createdAt: Date;
   updatedAt: Date;
