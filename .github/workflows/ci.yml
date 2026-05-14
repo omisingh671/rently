@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - main
-      - master
+      - dev
   pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
   backend:
@@ -17,7 +20,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: sucasa
+          MYSQL_DATABASE: rently_db
         ports:
           - 3306:3306
         options: >-
@@ -31,16 +34,16 @@ jobs:
         working-directory: backend
 
     env:
-      DATABASE_URL: mysql://root:root@127.0.0.1:3306/sucasa
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/rently_db
       API_PREFIX: /api/v1
       NODE_ENV: development
       JWT_ACCESS_SECRET: ci_access_secret
       JWT_REFRESH_SECRET: ci_refresh_secret
       JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
-      MAIL_USER: ci@sucasa.test
+      MAIL_USER: ci@rently.test
       MAIL_APP_PASS: ci-mail-app-pass
-      MAIL_FROM: ci@sucasa.test
+      MAIL_FROM: ci@rently.test
       FRONTEND_URL: http://localhost:5173
       DASHBOARD_URL: http://localhost:5174
 
@@ -110,11 +113,11 @@ jobs:
         working-directory: frontend
 
     env:
-      VITE_APP_NAME: Sucasa
-      VITE_TENANT_SLUG: sucasa
+      VITE_APP_NAME: Rently
+      VITE_TENANT_SLUG: rently
       VITE_API_BASE_URL: http://localhost:4000
       VITE_API_PREFIX: /api/v1
-      VITE_SUPPORT_EMAIL: support@sucasahomes.com
+      VITE_SUPPORT_EMAIL: support@rentlyhomes.com
       VITE_SUPPORT_PHONE: "+91 8099480994"
 
     steps:
