@@ -18,6 +18,7 @@ export interface AvailabilityOption {
   stayTotal: number;
   nights: number;
   itemCount: number;
+  priceBreakup: number[];
 }
 
 export interface AvailabilityResult {

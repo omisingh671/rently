@@ -7,6 +7,8 @@ import {
   FiSearch,
   FiUsers,
   FiWind,
+  FiGrid,
+  FiList,
 } from "react-icons/fi";
 
 import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
@@ -21,6 +23,9 @@ import type {
 import { useCreateBooking } from "@/features/bookings/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
+
+import { OptionGridCard } from "@/components/ui/OptionGridCard";
+import { OptionStackCard } from "@/components/ui/OptionStackCard";
 
 const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
   { value: "ALL", label: "All" },
@@ -83,6 +88,7 @@ export default function SpacesListPage() {
   const createBookingMutation = useCreateBooking();
   const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("grid");
 
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
@@ -319,72 +325,50 @@ export default function SpacesListPage() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {options.map((option) => (
-              <article
-                key={option.optionId}
-                className="flex min-h-[18rem] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-                      <FiCheckCircle />
-                      {option.itemCount} item{option.itemCount === 1 ? "" : "s"}
-                    </div>
-                    <h2 className="mt-4 text-xl font-semibold text-slate-900">
-                      {option.title}
-                    </h2>
-                  </div>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {option.comfortOption === "AC" ? "AC" : "Non-AC"}
-                  </span>
-                </div>
-
-                <dl className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Guest split
-                    </dt>
-                    <dd className="mt-1 font-semibold text-slate-900">
-                      {option.guestSplit}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Capacity
-                    </dt>
-                    <dd className="mt-1 font-semibold text-slate-900">
-                      {option.totalCapacity} guests
-                    </dd>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Nightly
-                    </dt>
-                    <dd className="mt-1 font-semibold text-slate-900">
-                      {formatPrice(option.nightlyTotal)}
-                    </dd>
-                  </div>
-                  <div className="rounded-xl bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Stay total
-                    </dt>
-                    <dd className="mt-1 font-semibold text-slate-900">
-                      {formatPrice(option.stayTotal)}
-                    </dd>
-                  </div>
-                </dl>
-
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-lg font-semibold text-slate-900">Available Options</h2>
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 <button
                   type="button"
-                  disabled={createBookingMutation.isPending}
-                  onClick={() => void bookOption(option)}
-                  className="mt-auto inline-flex h-11 items-center justify-center rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setLayoutMode("grid")}
+                  className={`rounded-md p-1.5 transition ${layoutMode === "grid" ? "bg-slate-100 text-indigo-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
+                  aria-label="Grid layout"
                 >
-                  {createBookingMutation.isPending ? "Booking..." : "Continue"}
+                  <FiGrid className="h-4 w-4" />
                 </button>
-              </article>
-            ))}
+                <button
+                  type="button"
+                  onClick={() => setLayoutMode("stack")}
+                  className={`rounded-md p-1.5 transition ${layoutMode === "stack" ? "bg-slate-100 text-indigo-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
+                  aria-label="Stack layout"
+                >
+                  <FiList className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className={layoutMode === "grid" ? "grid gap-4 md:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-4"}>
+              {options.map((option) =>
+                layoutMode === "grid" ? (
+                  <OptionGridCard
+                    key={option.optionId}
+                    option={option}
+                    onBook={bookOption}
+                    isBooking={createBookingMutation.isPending}
+                    formatPrice={formatPrice}
+                  />
+                ) : (
+                  <OptionStackCard
+                    key={option.optionId}
+                    option={option}
+                    onBook={bookOption}
+                    isBooking={createBookingMutation.isPending}
+                    formatPrice={formatPrice}
+                  />
+                )
+              )}
+            </div>
           </div>
         )}
       </div>

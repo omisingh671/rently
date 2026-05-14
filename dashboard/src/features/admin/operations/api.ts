@@ -34,6 +34,16 @@ export const listBookingsApi = async (
   return data.data;
 };
 
+export const getBookingApi = async (
+  bookingId: string,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.get<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingById(bookingId),
+  );
+
+  return data.data;
+};
+
 export const checkManualBookingAvailabilityApi = async (
   propertyId: string,
   payload: CheckManualBookingAvailabilityPayload,

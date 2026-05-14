@@ -93,10 +93,12 @@ const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]>
   [BookingStatus.CONFIRMED]: [
     BookingStatus.CHECKED_IN,
     BookingStatus.CANCELLED,
+    BookingStatus.NO_SHOW,
   ],
-  [BookingStatus.CHECKED_IN]: [BookingStatus.CHECKED_OUT],
+  [BookingStatus.CHECKED_IN]: [BookingStatus.CHECKED_OUT, BookingStatus.CANCELLED],
   [BookingStatus.CHECKED_OUT]: [],
   [BookingStatus.CANCELLED]: [],
+  [BookingStatus.NO_SHOW]: [],
 };
 
 const assertBookingTransitionAllowed = (
@@ -112,6 +114,15 @@ const assertBookingTransitionAllowed = (
     "INVALID_BOOKING_STATUS_TRANSITION",
     `Cannot move booking from ${fromStatus} to ${toStatus}`,
   );
+};
+
+const isAdminOverrideRole = (role: UserRole) =>
+  role === UserRole.SUPER_ADMIN || role === UserRole.ADMIN;
+
+const requireAuditNote = (note: string | undefined, message: string) => {
+  if (!note?.trim()) {
+    throw new HttpError(422, "AUDIT_NOTE_REQUIRED", message);
+  }
 };
 
 type DashboardActor = NonNullable<Awaited<ReturnType<typeof repo.findUserById>>>;
@@ -902,6 +913,134 @@ const ensureRoomBelongsToProperty = (
       "Room does not belong to the selected property",
     );
   }
+};
+
+const getRoomAssignmentLabel = (room: repo.DashboardRoomRecord) =>
+  `Room ${room.number} (${room.name})`;
+
+const assertBookingHasAssignedTarget = (booking: repo.DashboardBookingRecord) => {
+  const hasAssignedItems = booking.items.every(
+    (item) => item.roomId !== null || item.unitId !== null,
+  );
+
+  if (
+    booking.items.length === 0 ||
+    !hasAssignedItems ||
+    (booking.roomId === null && booking.unitId === null)
+  ) {
+    throw new HttpError(
+      422,
+      "BOOKING_ASSIGNMENT_REQUIRED",
+      "Assign a room or unit before check-in",
+    );
+  }
+};
+
+const resolveBookingRoomAssignment = async (
+  actor: DashboardActor,
+  booking: repo.DashboardBookingRecord,
+  roomId: string,
+) => {
+  if (booking.items.length !== 1) {
+    throw new HttpError(
+      422,
+      "MULTI_ROOM_ASSIGNMENT_UNSUPPORTED",
+      "Use the room board to manage multi-room booking assignments",
+    );
+  }
+
+  if (
+    booking.status === BookingStatus.CHECKED_OUT ||
+    booking.status === BookingStatus.CANCELLED
+  ) {
+    throw new HttpError(
+      409,
+      "BOOKING_ASSIGNMENT_CLOSED",
+      "Cannot change assignment after checkout or cancellation",
+    );
+  }
+
+  const existingItem = booking.items[0];
+  if (!existingItem) {
+    throw new HttpError(
+      422,
+      "BOOKING_ASSIGNMENT_REQUIRED",
+      "Booking must have one assignable stay item",
+    );
+  }
+
+  const room = await ensureRoomExists(roomId);
+  ensureRoomBelongsToProperty(room, booking.propertyId);
+
+  const isSameRoom = existingItem.roomId === room.id && booking.roomId === room.id;
+  if (isSameRoom) {
+    return undefined;
+  }
+
+  if (!room.isActive || !room.unit.isActive) {
+    throw new HttpError(
+      409,
+      "ROOM_NOT_AVAILABLE",
+      "Selected room is inactive",
+    );
+  }
+
+  if (
+    room.status === RoomStatus.MAINTENANCE ||
+    room.status === RoomStatus.OCCUPIED ||
+    room.unit.status === UnitStatus.MAINTENANCE ||
+    room.unit.status === UnitStatus.INACTIVE
+  ) {
+    throw new HttpError(
+      409,
+      "ROOM_NOT_AVAILABLE",
+      "Selected room is not available for assignment",
+    );
+  }
+
+  const [hasBooking, hasMaintenance] = await Promise.all([
+    repo.hasOverlappingRoomBooking({
+      roomId: room.id,
+      unitId: room.unitId,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+      excludeBookingId: booking.id,
+    }),
+    repo.hasOverlappingRoomMaintenance({
+      propertyId: booking.propertyId,
+      roomId: room.id,
+      unitId: room.unitId,
+      checkIn: booking.checkIn,
+      checkOut: booking.checkOut,
+    }),
+  ]);
+
+  if (hasBooking || hasMaintenance) {
+    throw new HttpError(
+      409,
+      "ROOM_NOT_AVAILABLE",
+      "Selected room is not available for these dates",
+    );
+  }
+
+  const targetLabel = getRoomAssignmentLabel(room);
+
+  return {
+    itemId: existingItem.id,
+    bookingData: {
+      targetType: BookingTargetType.ROOM,
+      unitId: room.unitId,
+      roomId: room.id,
+      targetLabel,
+    } satisfies Prisma.BookingUpdateInput,
+    itemData: {
+      targetType: BookingTargetType.ROOM,
+      unitId: room.unitId,
+      roomId: room.id,
+      targetLabel,
+      capacity: room.maxOccupancy,
+    } satisfies Prisma.BookingItemUpdateInput,
+  };
 };
 
 const assertValidDateRange = (startDate: Date, endDate: Date) => {
@@ -2969,6 +3108,17 @@ export const listBookings = async (
   );
 };
 
+export const getBookingById = async (
+  userId: string,
+  bookingId: string,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const booking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, booking.propertyId);
+
+  return mapBooking(booking);
+};
+
 export const checkManualBookingAvailability = async (
   userId: string,
   propertyId: string,
@@ -2991,13 +3141,18 @@ export const checkManualBookingAvailability = async (
   const propertyOptions = options.filter(
     (option) => option.propertyId === propertyId,
   );
-  const items = propertyOptions.map((option) => {
+  const availableItems = propertyOptions.map((option) => {
     const firstItem = option.items[0];
+    const spaceId =
+      option.items.length === 1 && firstItem
+        ? firstItem.pricingId
+        : option.optionId;
     return {
-      spaceId: option.optionId,
+      spaceId,
       bookingOptionId: option.optionId,
       title: option.title,
       guestSplit: option.guestSplit,
+      comfortOption: option.comfortOption,
       itemCount: option.itemCount,
       nightlyTotal: option.nightlyTotal.toString(),
       stayTotal: option.stayTotal.toString(),
@@ -3010,8 +3165,36 @@ export const checkManualBookingAvailability = async (
       reason: null,
       guestCount: input.guests,
       pricePerNight: option.nightlyTotal.toString(),
+      priceBreakup: option.items.map((item) => item.pricePerNight.toString()),
     };
   });
+  const requestedSpaceIds = input.spaceIds ?? [];
+  const availableItemsBySpaceId = new Map(
+    availableItems.map((item) => [item.spaceId, item]),
+  );
+  const items =
+    requestedSpaceIds.length > 0
+      ? requestedSpaceIds.map(
+          (spaceId): DashboardManualBookingAvailabilityDTO["items"][number] =>
+            availableItemsBySpaceId.get(spaceId) ?? {
+              spaceId,
+              bookingOptionId: spaceId,
+              title: "Unavailable space",
+              guestSplit: "Unavailable",
+              comfortOption: input.comfortOption,
+              itemCount: 1,
+              nightlyTotal: "0",
+              stayTotal: "0",
+              available: false,
+              capacity: 0,
+              targetType: BookingTargetType.ROOM,
+              reason: "Already booked for selected dates",
+              guestCount: input.guests,
+              pricePerNight: null,
+              priceBreakup: [],
+            },
+        )
+      : availableItems;
 
   return {
     from: input.from.toISOString(),
@@ -3084,17 +3267,88 @@ export const updateBooking = async (
   await assertPropertyInScope(actor, booking.propertyId);
 
   const nextStatus = input.status;
+  const statusOverride = input.statusOverride === true;
   const statusChanged =
     nextStatus !== undefined && nextStatus !== booking.status;
 
   if (statusChanged && nextStatus !== undefined) {
-    assertBookingTransitionAllowed(booking.status, nextStatus);
+    if (statusOverride) {
+      if (!isAdminOverrideRole(actor.role)) {
+        throw new HttpError(
+          403,
+          "FORBIDDEN",
+          "Only Admin or Super Admin can correct booking status",
+        );
+      }
+
+      requireAuditNote(
+        input.note,
+        "Audit note is required for status correction",
+      );
+    } else {
+      if (nextStatus === BookingStatus.CHECKED_IN) {
+        assertBookingHasAssignedTarget(booking);
+      }
+
+      if (nextStatus === BookingStatus.CANCELLED) {
+        if (
+          booking.status === BookingStatus.CHECKED_IN &&
+          !isAdminOverrideRole(actor.role)
+        ) {
+          throw new HttpError(
+            403,
+            "CHECKED_IN_CANCELLATION_RESTRICTED",
+            "Only Admin or Super Admin can cancel after check-in",
+          );
+        }
+
+        if (actor.role === UserRole.MANAGER) {
+          requireAuditNote(
+            input.note,
+            "Cancellation note is required for manager cancellation",
+          );
+        }
+      }
+
+      if (nextStatus === BookingStatus.NO_SHOW) {
+        requireAuditNote(input.note, "No-show note is required");
+      }
+
+      assertBookingTransitionAllowed(booking.status, nextStatus);
+    }
+  }
+
+  const assignment =
+    input.roomId !== undefined
+      ? await resolveBookingRoomAssignment(actor, booking, input.roomId)
+      : undefined;
+
+  if (
+    assignment !== undefined &&
+    booking.status === BookingStatus.CHECKED_IN &&
+    actor.role === UserRole.MANAGER
+  ) {
+    requireAuditNote(
+      input.note,
+      "Room-change note is required after check-in",
+    );
   }
 
   const updatedBooking = await repo.updateBookingLifecycleById(
     bookingId,
     {
       ...(input.status !== undefined && { status: input.status }),
+      ...(input.status === BookingStatus.CANCELLED && {
+        cancellationReason: input.note ?? "Cancelled from dashboard",
+        cancelledAt: new Date(),
+      }),
+      ...(statusOverride &&
+        statusChanged &&
+        input.status !== BookingStatus.CANCELLED && {
+          cancellationReason: null,
+          cancelledAt: null,
+        }),
+      ...(assignment !== undefined && assignment.bookingData),
       ...(input.internalNotes !== undefined && {
         internalNotes: input.internalNotes,
       }),
@@ -3114,6 +3368,12 @@ export const updateBooking = async (
             },
           },
           ...(input.note !== undefined && { note: input.note }),
+        }
+      : undefined,
+    assignment !== undefined
+      ? {
+          itemId: assignment.itemId,
+          data: assignment.itemData,
         }
       : undefined,
   );

@@ -779,6 +779,12 @@ export const listBookings = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const getBookingById = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.getBookingById(getUserId(req), params.id);
+  res.json({ success: true, data });
+};
+
 export const createManualBooking = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = createManualBookingSchema.parse(req.body);
@@ -835,6 +841,10 @@ export const updateBooking = async (req: AuthRequest, res: Response) => {
       internalNotes: body.internalNotes,
     }),
     ...(body.note !== undefined && { note: body.note }),
+    ...(body.roomId !== undefined && { roomId: body.roomId }),
+    ...(body.statusOverride !== undefined && {
+      statusOverride: body.statusOverride,
+    }),
   });
   res.json({ success: true, data });
 };

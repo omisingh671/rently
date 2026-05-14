@@ -23,6 +23,7 @@ interface StayScope {
 
 interface PublicInventoryItem {
   target: PublicSpaceTarget;
+  pricingId: string;
   propertyId: string;
   unitId: string | null;
   floor: number | null;
@@ -114,6 +115,7 @@ const mapOptionDTO = (
   stayTotal: option.stayTotal,
   nights: option.nights,
   itemCount: option.itemCount,
+  priceBreakup: option.items.map((item) => item.pricePerNight),
 });
 
 const optionRank = (
@@ -283,6 +285,7 @@ const toPricedRoomItem = async (
 
   return {
     target,
+    pricingId: pricing.id,
     propertyId: room.unit.propertyId,
     unitId: room.unitId,
     floor: room.unit.floor,
@@ -328,6 +331,7 @@ const toPricedUnitItem = async (
 
   return {
     target,
+    pricingId: pricing.id,
     propertyId: unit.propertyId,
     unitId: unit.id,
     floor: unit.floor,

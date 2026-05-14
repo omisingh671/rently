@@ -193,6 +193,7 @@ export interface DashboardManualBookingAvailabilityItemDTO {
   bookingOptionId: string;
   title: string;
   guestSplit: string;
+  comfortOption: ComfortOption;
   itemCount: number;
   nightlyTotal: string;
   stayTotal: string;
@@ -202,6 +203,7 @@ export interface DashboardManualBookingAvailabilityItemDTO {
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;
+  priceBreakup: string[];
 }
 
 export interface DashboardManualBookingAvailabilityDTO {

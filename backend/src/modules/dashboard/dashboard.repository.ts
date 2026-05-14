@@ -1037,7 +1037,13 @@ export const listRoomBoardBookingItems = (
     where: {
       booking: {
         propertyId,
-        status: { not: BookingStatusValue.CANCELLED },
+        status: {
+          notIn: [
+            BookingStatusValue.CANCELLED,
+            BookingStatusValue.CHECKED_OUT,
+            BookingStatusValue.NO_SHOW,
+          ],
+        },
         checkIn: { lt: to },
         checkOut: { gt: from },
       },
@@ -1432,16 +1438,79 @@ export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =
     include: dashboardBookingInclude,
   });
 
+export const hasOverlappingRoomBooking = (input: {
+  roomId: string;
+  unitId: string;
+  checkIn: Date;
+  checkOut: Date;
+  excludeBookingId: string;
+}) =>
+  prisma.bookingItem
+    .count({
+      where: {
+        OR: [
+          { targetType: "ROOM", roomId: input.roomId },
+          { targetType: "UNIT", unitId: input.unitId },
+        ],
+        booking: {
+          id: { not: input.excludeBookingId },
+          status: {
+            notIn: [
+              BookingStatusValue.CANCELLED,
+              BookingStatusValue.CHECKED_OUT,
+              BookingStatusValue.NO_SHOW,
+            ],
+          },
+          checkIn: { lt: input.checkOut },
+          checkOut: { gt: input.checkIn },
+        },
+      },
+    })
+    .then((count) => count > 0);
+
+export const hasOverlappingRoomMaintenance = (input: {
+  propertyId: string;
+  roomId: string;
+  unitId: string;
+  checkIn: Date;
+  checkOut: Date;
+}) =>
+  prisma.maintenanceBlock
+    .count({
+      where: {
+        propertyId: input.propertyId,
+        startDate: { lt: input.checkOut },
+        endDate: { gt: input.checkIn },
+        OR: [
+          { targetType: "PROPERTY" },
+          { targetType: "UNIT", unitId: input.unitId },
+          { targetType: "ROOM", roomId: input.roomId },
+        ],
+      },
+    })
+    .then((count) => count > 0);
+
 export const updateBookingLifecycleById = (
   id: string,
   data: Prisma.BookingUpdateInput,
   history?: Prisma.BookingStatusHistoryCreateInput,
+  assignment?: {
+    itemId: string;
+    data: Prisma.BookingItemUpdateInput;
+  },
 ) =>
   prisma.$transaction(async (tx) => {
     await tx.booking.update({
       where: { id },
       data,
     });
+
+    if (assignment !== undefined) {
+      await tx.bookingItem.update({
+        where: { id: assignment.itemId },
+        data: assignment.data,
+      });
+    }
 
     if (history !== undefined) {
       await tx.bookingStatusHistory.create({

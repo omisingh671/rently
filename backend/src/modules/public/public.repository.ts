@@ -382,7 +382,13 @@ export const hasOverlappingBooking = (
       where: {
         ...targetOverlapWhere(target),
         booking: {
-          status: { not: BookingStatus.CANCELLED },
+          status: {
+            notIn: [
+              BookingStatus.CANCELLED,
+              BookingStatus.CHECKED_OUT,
+              BookingStatus.NO_SHOW,
+            ],
+          },
           checkIn: { lt: checkOut },
           checkOut: { gt: checkIn },
         },

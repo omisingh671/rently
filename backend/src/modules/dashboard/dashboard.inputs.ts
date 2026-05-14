@@ -345,6 +345,8 @@ export interface UpdateDashboardBookingInput {
   status?: BookingStatus;
   internalNotes?: string | null;
   note?: string;
+  roomId?: string;
+  statusOverride?: boolean;
 }
 
 export interface CreateDashboardManualBookingInput {

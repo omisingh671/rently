@@ -61,6 +61,7 @@ export interface PublicAvailabilityOptionDTO {
   stayTotal: number;
   nights: number;
   itemCount: number;
+  priceBreakup: number[];
 }
 
 export interface PublicAvailabilityDTO {

@@ -471,11 +471,16 @@ export const updateBookingStatusSchema = z
     status: z.nativeEnum(BookingStatus).optional(),
     internalNotes: z.string().trim().max(5000).nullable().optional(),
     note: z.string().trim().max(1000).optional(),
+    roomId: idSchema.optional(),
+    statusOverride: z.boolean().optional(),
   })
   .refine(
-    (data) => data.status !== undefined || data.internalNotes !== undefined,
+    (data) =>
+      data.status !== undefined ||
+      data.internalNotes !== undefined ||
+      data.roomId !== undefined,
     {
-      message: "Status or internal notes are required",
+      message: "Status, assignment, or internal notes are required",
     },
   );
 

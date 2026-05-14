@@ -220,6 +220,9 @@ export const ADMIN_KEYS = {
     bookings: (propertyId: string) =>
       [...ADMIN_KEYS.operations.byProperty(propertyId), "bookings"] as const,
 
+    bookingDetail: (bookingId: string) =>
+      [...ADMIN_KEYS.operations.all(), "bookings", "detail", bookingId] as const,
+
     roomBoard: (params: { propertyId: string; from: string; to: string }) =>
       [
         ...ADMIN_KEYS.operations.byProperty(params.propertyId),

@@ -5,12 +5,14 @@ export type BookingStatus =
   | "CONFIRMED"
   | "CHECKED_IN"
   | "CHECKED_OUT"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "NO_SHOW";
 
 export type LeadStatus = "NEW" | "IN_PROGRESS" | "CLOSED";
 export type BookingTargetType = "ROOM" | "UNIT";
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
-export type ComfortOption = "AC" | "NON_AC";
+export type ConcreteComfortOption = "AC" | "NON_AC";
+export type ComfortOption = ConcreteComfortOption | "ALL";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
@@ -74,6 +76,8 @@ export type UpdateBookingPayload = {
   status?: BookingStatus;
   note?: string;
   internalNotes?: string | null;
+  roomId?: string;
+  statusOverride?: boolean;
 };
 
 export type CreateManualBookingPayload = {
@@ -84,7 +88,7 @@ export type CreateManualBookingPayload = {
   from: string;
   to: string;
   guests: number;
-  comfortOption: ComfortOption;
+  comfortOption: ConcreteComfortOption;
   guestName: string;
   guestEmail: string;
   countryCode?: string;
@@ -97,7 +101,7 @@ export type CheckManualBookingAvailabilityPayload = {
   from: string;
   to: string;
   guests: number;
-  comfortOption: ComfortOption;
+  comfortOption: ConcreteComfortOption;
 };
 
 export type ManualBookingAvailabilityItem = {
@@ -105,6 +109,7 @@ export type ManualBookingAvailabilityItem = {
   bookingOptionId: string;
   title: string;
   guestSplit: string;
+  comfortOption: ConcreteComfortOption;
   itemCount: number;
   nightlyTotal: string;
   stayTotal: string;
@@ -114,6 +119,7 @@ export type ManualBookingAvailabilityItem = {
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;
+  priceBreakup: string[];
 };
 
 export type ManualBookingAvailabilityResponse = {

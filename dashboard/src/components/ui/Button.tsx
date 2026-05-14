@@ -48,26 +48,26 @@ const filled: Record<BaseVariant, string> = {
 
 const outlineMap: Record<BaseVariant, string> = {
   primary:
-    "border border-indigo-500 text-indigo-500 bg-transparent hover:bg-indigo-500 hover:text-white",
+    "border-2 border-indigo-500 text-indigo-500 bg-indigo-50/50 hover:bg-indigo-500 hover:text-white shadow-sm",
 
   secondary:
-    "border border-slate-300 text-slate-900 bg-transparent hover:bg-slate-50",
+    "border-2 border-slate-200 text-slate-900 bg-slate-50/50 hover:bg-slate-50 shadow-sm",
 
   accent:
-    "border border-accent text-accent bg-transparent hover:bg-accent hover:text-white",
+    "border-2 border-accent text-accent bg-accent/5 hover:bg-accent hover:text-white shadow-sm",
 
   success:
-    "border border-green-600 text-green-600 bg-transparent hover:bg-green-600 hover:text-white",
+    "border-2 border-green-600 text-green-600 bg-green-50/50 hover:bg-green-600 hover:text-white shadow-sm",
 
   warning:
-    "border border-amber-500 text-amber-500 bg-transparent hover:bg-amber-500 hover:text-white",
+    "border-2 border-amber-500 text-amber-500 bg-amber-50/50 hover:bg-amber-500 hover:text-white shadow-sm",
 
   danger:
-    "border border-red-600 text-red-600 bg-transparent hover:bg-red-600 hover:text-white",
+    "border-2 border-red-600 text-red-600 bg-red-50/50 hover:bg-red-600 hover:text-white shadow-sm",
 
-  info: "border border-sky-500 text-sky-500 bg-transparent hover:bg-sky-500 hover:text-white",
+  info: "border-2 border-sky-500 text-sky-500 bg-sky-50/50 hover:bg-sky-500 hover:text-white shadow-sm",
 
-  dark: "border border-slate-900 text-slate-900 bg-transparent hover:bg-slate-900 hover:text-white",
+  dark: "border-2 border-slate-900 text-slate-900 bg-slate-50/30 hover:bg-slate-900 hover:text-white shadow-sm",
 };
 
 /* FILLED GLASS */
