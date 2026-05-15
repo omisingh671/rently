@@ -1,5 +1,6 @@
 import { FiCheckCircle, FiUsers, FiWind, FiSunrise } from "react-icons/fi";
 import type { AvailabilityOption } from "@/features/availability/domain";
+import { OptionPricePanel } from "@/components/ui/OptionPricePanel";
 
 interface OptionGridCardProps {
   option: AvailabilityOption;
@@ -66,21 +67,8 @@ export const OptionGridCard = ({ option, onBook, isBooking, formatPrice }: Optio
       </div>
 
       <div className="mt-6">
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 p-4">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Nightly Rate</div>
-            <div className="mt-0.5 text-sm font-bold text-slate-700">
-              {option.priceBreakup?.length > 1 ? (
-                <span>{option.priceBreakup.map(formatPrice).join(" + ")}</span>
-              ) : (
-                <span>{formatPrice(option.nightlyTotal)}</span>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Stay</div>
-            <div className="mt-0.5 text-lg font-bold text-[rgb(var(--primary)/1)]">{formatPrice(option.stayTotal)}</div>
-          </div>
+        <div className="mb-4">
+          <OptionPricePanel option={option} formatPrice={formatPrice} />
         </div>
 
         <button

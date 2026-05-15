@@ -1,5 +1,6 @@
 import { FiCheckCircle, FiUsers, FiWind, FiSunrise } from "react-icons/fi";
 import type { AvailabilityOption } from "@/features/availability/domain";
+import { OptionPricePanel } from "@/components/ui/OptionPricePanel";
 
 interface OptionStackCardProps {
   option: AvailabilityOption;
@@ -56,22 +57,11 @@ export const OptionStackCard = ({ option, onBook, isBooking, formatPrice }: Opti
 
       {/* 3. Pricing */}
       <div className="mt-6 md:mt-0 md:flex-[1.2] md:border-l md:border-slate-100 md:px-8">
-        <div className="flex items-center justify-between rounded-xl bg-slate-50 border border-slate-100 p-4">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Nightly Rate</div>
-            <div className="mt-0.5 text-sm font-bold text-slate-700">
-              {option.priceBreakup?.length > 1 ? (
-                <span>{option.priceBreakup.map(formatPrice).join(" + ")}</span>
-              ) : (
-                <span>{formatPrice(option.nightlyTotal)}</span>
-              )}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Stay</div>
-            <div className="mt-0.5 text-lg font-bold text-indigo-600">{formatPrice(option.stayTotal)}</div>
-          </div>
-        </div>
+        <OptionPricePanel
+          option={option}
+          formatPrice={formatPrice}
+          totalClassName="text-indigo-600"
+        />
       </div>
 
       {/* 4. Actions */}

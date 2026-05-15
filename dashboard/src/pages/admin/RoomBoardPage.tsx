@@ -23,7 +23,12 @@ import type {
   RoomBoardUnit,
 } from "@/features/admin/operations/types";
 import { useAuthStore } from "@/stores/authStore";
-import { STATUS_BG_COLORS, STATUS_BORDER_DARK_COLORS, STATUS_INNER_BORDER_COLORS, STATUS_TEXT_COLORS } from "@/configs/theme";
+import {
+  STATUS_BG_COLORS,
+  STATUS_BORDER_DARK_COLORS,
+  STATUS_INNER_BORDER_COLORS,
+  STATUS_TEXT_COLORS,
+} from "@/configs/theme";
 
 const boardStatuses: Array<{ value: RoomBoardStatus | ""; label: string }> = [
   { value: "", label: "All statuses" },
@@ -34,6 +39,17 @@ const boardStatuses: Array<{ value: RoomBoardStatus | ""; label: string }> = [
   { value: "INACTIVE", label: "Inactive" },
 ];
 
+const summaryStatuses = boardStatuses.filter(
+  (item): item is { value: RoomBoardStatus; label: string } => item.value !== "",
+);
+
+const statusActiveRingColors: Record<RoomBoardStatus, string> = {
+  AVAILABLE: "ring-emerald-200/70",
+  RESERVED: "ring-amber-200/70",
+  OCCUPIED: "ring-indigo-200/70",
+  MAINTENANCE: "ring-rose-200/70",
+  INACTIVE: "ring-slate-200/80",
+};
 
 const toDateInput = (date: Date) => {
   const year = date.getFullYear();
@@ -126,154 +142,276 @@ export default function RoomBoardPage() {
       .filter((unit) => unit.rooms.length > 0);
   }, [boardQuery.data?.units, search, status]);
 
+  const totalRooms = boardQuery.data
+    ? summaryStatuses.reduce(
+        (sum, item) => sum + boardQuery.data.summary[item.value],
+        0,
+      )
+    : 0;
+  const activeFilterCount = (status ? 1 : 0) + (search.trim() ? 1 : 0);
+
+  const setDateRange = (start: string, end: string) => {
+    setFrom(start);
+    setTo(end);
+  };
+  const quickRanges = [
+    {
+      label: "Today",
+      from: toDateInput(today),
+      to: toDateInput(addDays(today, 1)),
+    },
+    {
+      label: "Tomorrow",
+      from: toDateInput(addDays(today, 1)),
+      to: toDateInput(addDays(today, 2)),
+    },
+    {
+      label: "7 days",
+      from: toDateInput(today),
+      to: toDateInput(addDays(today, 7)),
+    },
+  ];
+
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Area */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between rounded-xl bg-white p-5 shadow-sm border border-slate-200">
-        <div>
-          <h2 className="text-xl font-bold text-slate-900">Room Board</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Live availability mapping for operations.
-          </p>
-        </div>
-
-        {/* Top Controls: Property Dropdown + Property Search + Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            value={propertySearch}
-            onChange={(event) => setPropertySearch(event.target.value)}
-            placeholder="Search properties..."
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          />
-          <select
-            value={selectedPropertyId}
-            disabled={isLoadingProperties}
-            onChange={(event) => setPropertyId(event.target.value)}
-            className="h-10 min-w-[200px] rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="">Select property</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
-          {canManageMaintenance && (
-            <Button
-              variant="secondary"
-              icon={<FiTool />}
-              to={adminPath(
-                ADMIN_ROUTES.INVENTORY,
-                ADMIN_ROUTES.INVENTORY_CHILDREN.MAINTENANCE,
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900">Room Board</h2>
+              {boardQuery.isFetching && (
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                  Syncing
+                </span>
               )}
-            >
-              Maintenance
-            </Button>
-          )}
-          <Button
-            variant="dark"
-            icon={<FiPlus />}
-            to={adminPath(ADMIN_ROUTES.WALK_IN_BOOKING)}
-          >
-            Walk-in booking
-          </Button>
-        </div>
-      </div>
-
-      {/* Summary Stats Panel */}
-      {boardQuery.data && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-5">
-          {boardStatuses.slice(1).map((item) => {
-            const count = item.value ? boardQuery.data.summary[item.value] : 0;
-            const bgClass =
-              STATUS_BG_COLORS[item.value as string] || "bg-white";
-            const borderClass =
-              STATUS_BORDER_DARK_COLORS[item.value as string] ||
-              "border-slate-200";
-            const textClass =
-              STATUS_TEXT_COLORS[item.value as string] || "text-slate-700";
-
-            return (
-              <div
-                key={item.value}
-                className={`rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${bgClass} ${borderClass}`}
-              >
-                <div className={`text-xs font-bold uppercase tracking-wider ${textClass} opacity-80`}>
-                  {item.label}
-                </div>
-                <div className={`mt-1 text-2xl font-bold ${textClass}`}>
-                  {count}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Date & Filters Area */}
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-5 shadow-sm">
-        {selectedPropertyId && from && to && (
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-indigo-700">
-            <FiCalendar className="shrink-0 text-indigo-400" />
-            <span className="font-semibold">
-              {selectedProperty?.name ?? ""}
-            </span>
-            <span className="text-indigo-300">•</span>
-            <span>{formatDate(from)} to {formatDate(to)}</span>
-          </div>
-        )}
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4 items-end">
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">From Date</span>
-            <input
-              type="date"
-              value={from}
-              onChange={(event) => setFrom(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">To Date</span>
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(event) => setTo(event.target.value)}
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Room Status</span>
-            <select
-              value={status}
-              onChange={(event) =>
-                setStatus(event.target.value as RoomBoardStatus | "")
-              }
-              className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-            >
-              {boardStatuses.map((item) => (
-                <option key={item.value || "ALL"} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Search Guests / Rooms</span>
-            <div className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
-              <FiSearch className="text-slate-400" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Name, ref, room..."
-                className="min-w-0 flex-1 text-sm outline-none"
-              />
             </div>
-          </label>
-        </div>
-      </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+              <span>Live availability operations</span>
+              {selectedPropertyId && from && to && (
+                <>
+                  <span className="text-slate-300">/</span>
+                  <FiCalendar className="text-indigo-500" />
+                  <span className="font-semibold text-slate-700">
+                    {selectedProperty?.name ?? "Selected property"}
+                  </span>
+                  <span className="text-slate-300">/</span>
+                  <span>
+                    {formatDate(from)} to {formatDate(to)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
 
-      {/* Main Board Area */}
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageMaintenance && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<FiTool />}
+                className="h-10"
+                to={adminPath(
+                  ADMIN_ROUTES.INVENTORY,
+                  ADMIN_ROUTES.INVENTORY_CHILDREN.MAINTENANCE,
+                )}
+              >
+                Maintenance
+              </Button>
+            )}
+            <Button
+              variant="dark"
+              size="sm"
+              icon={<FiPlus />}
+              className="h-10"
+              to={adminPath(ADMIN_ROUTES.WALK_IN_BOOKING)}
+            >
+              Walk-in booking
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-6">
+          <div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">
+                Find property
+              </span>
+              <div className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
+                <FiSearch className="shrink-0 text-slate-400" />
+                <input
+                  value={propertySearch}
+                  onChange={(event) => setPropertySearch(event.target.value)}
+                  placeholder="Search properties..."
+                  className="min-w-0 flex-1 text-sm outline-none"
+                />
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">
+                Property
+              </span>
+              <select
+                value={selectedPropertyId}
+                disabled={isLoadingProperties}
+                onChange={(event) => setPropertyId(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value="">Select property</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">
+                From
+              </span>
+              <input
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">To</span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(event) => setTo(event.target.value)}
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              />
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm">
+              <span className="mb-1 block font-semibold text-slate-700">
+                Search rooms
+              </span>
+              <div className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
+                <FiSearch className="shrink-0 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Guest, ref, room..."
+                  className="min-w-0 flex-1 text-sm outline-none"
+                />
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <span className="mb-1 block text-sm font-semibold text-slate-700">
+              Quick range
+            </span>
+            <div className="flex h-10 items-center gap-2">
+              {quickRanges.map((range) => {
+                const isActiveRange = from === range.from && to === range.to;
+
+                return (
+                  <button
+                    key={range.label}
+                    type="button"
+                    onClick={() => setDateRange(range.from, range.to)}
+                    className={`h-10 flex-1 rounded-md border px-2 text-sm font-semibold transition-all duration-200 active:translate-y-0 ${
+                      isActiveRange
+                        ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm ring-2 ring-indigo-100"
+                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700 hover:shadow-sm"
+                    }`}
+                  >
+                    {range.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+            <button
+              type="button"
+              onClick={() => setStatus("")}
+              className={`rounded-lg border px-3 py-2 text-left transition-all duration-200 active:translate-y-0 ${
+                status === ""
+                  ? "border-slate-300 bg-white shadow-md ring-2 ring-slate-200/80"
+                  : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+              }`}
+            >
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Total
+              </span>
+              <span className="mt-0.5 block text-lg font-bold text-slate-900">
+                {totalRooms}
+              </span>
+            </button>
+            {summaryStatuses.map((item) => {
+              const count = boardQuery.data?.summary[item.value] ?? 0;
+              const bgClass = STATUS_BG_COLORS[item.value] || "bg-white";
+              const borderClass =
+                STATUS_BORDER_DARK_COLORS[item.value] || "border-slate-200";
+              const textClass =
+                STATUS_TEXT_COLORS[item.value] || "text-slate-700";
+              const ringClass = statusActiveRingColors[item.value];
+              const isActive = status === item.value;
+
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatus(isActive ? "" : item.value)}
+                  className={`rounded-lg border px-3 py-2 text-left transition-all duration-200 active:translate-y-0 ${bgClass} ${
+                    isActive
+                      ? `${borderClass} shadow-md ring-2 ${ringClass}`
+                      : `${borderClass} hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md`
+                  }`}
+                >
+                  <span
+                    className={`block truncate text-[10px] font-bold uppercase tracking-wider ${textClass}`}
+                  >
+                    {item.label}
+                  </span>
+                  <span className={`mt-0.5 block text-lg font-bold ${textClass}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("");
+                  setSearch("");
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md active:translate-y-0"
+              >
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Reset
+                </span>
+                <span className="mt-0.5 block text-sm font-bold text-slate-700">
+                  Clear filters ({activeFilterCount})
+                </span>
+              </button>
+            )}
+          </div>
+
+        </div>
+      </section>
+
       {!selectedPropertyId ? (
         <EmptyState
           icon={<FiSearch className="mx-auto mb-2 h-6 w-6 text-slate-400" />}
@@ -282,7 +420,9 @@ export default function RoomBoardPage() {
       ) : boardQuery.isPending ? (
         <div className="flex h-40 flex-col items-center justify-center space-y-3 rounded-xl border border-dashed border-slate-300 bg-white">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-600"></div>
-          <p className="text-sm font-medium text-slate-500">Loading live availability...</p>
+          <p className="text-sm font-medium text-slate-500">
+            Loading live availability...
+          </p>
         </div>
       ) : boardQuery.isError ? (
         <EmptyState
@@ -295,7 +435,7 @@ export default function RoomBoardPage() {
           message="No rooms match the selected filters."
         />
       ) : (
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {filteredUnits.map((unit) => (
             <UnitSection key={unit.unitId} unit={unit} />
           ))}
@@ -304,7 +444,6 @@ export default function RoomBoardPage() {
     </div>
   );
 }
-
 function UnitSection({ unit }: { unit: RoomBoardUnit }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -345,7 +484,7 @@ function RoomTile({ room }: { room: RoomBoardRoom }) {
   const textTheme = STATUS_TEXT_COLORS[room.boardStatus] || "text-slate-700";
 
   return (
-    <article className={`flex flex-1 min-w-[300px] min-h-[160px] flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}>
+    <article className={`flex flex-1 min-w-[250px] min-h-[160px] flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-bold text-slate-900">
