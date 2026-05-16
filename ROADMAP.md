@@ -76,14 +76,17 @@ Already implemented:
   - Tax calculation and coupon validation services implemented.
   - Final quote calculation integrated into booking creation.
   - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
+  - Coupon management and validation integrated across dashboard and frontend.
 - Phase 5 public frontend refinements completed:
   - Modernized BookingForm with occupancy toggles and grid layout.
   - High-end Booking Payment and Account UI (Sucasa theme).
   - MVP cancellation flow and booking history integrated into guest account.
+  - Detailed Guest Booking Page with stay breakdown, price summary, and coupon visibility.
 - Phase 6 dashboard operations completed:
   - High-density Room Board with live status filtering and unit-based grouping.
   - Walk-in booking module with pricing and availability checks.
   - Manager check-in/check-out workflow with status history.
+  - Synchronized availability logic between dashboard and public frontend using shared identifiers.
 
 ## Phase 1: Stabilize Current MVP
 
@@ -334,15 +337,15 @@ Already implemented:
 
 ### Reporting
 
-- Add dashboard reports:
-  - occupancy
-  - revenue
-  - booking source
-  - enquiry conversion
-  - property performance
-  - manager activity
-- Add export to CSV.
-- Add date range filters.
+- [ ] Add dashboard reports:
+  - [ ] occupancy
+  - [ ] revenue
+  - [ ] booking source
+  - [ ] enquiry conversion
+  - [ ] property performance
+  - [ ] manager activity
+- [ ] Add export to CSV.
+- [ ] Add date range filters.
 
 ## Phase 7: Security And Reliability
 
@@ -646,9 +649,8 @@ Target dashboard behavior:
 
 ## Immediate Next Tasks
 
-1. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
-2. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity.
-3. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
-4. **Multi-room/Group Bookings (Phase 5 Strategy)**: Implement capacity selection logic for larger groups across multiple units.
-5. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
-6. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
+1. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity to provide operational insights.
+2. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
+3. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
+4. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
+5. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
