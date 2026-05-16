@@ -120,13 +120,14 @@ async function clearExistingSeedData() {
 async function main() {
   await clearExistingSeedData();
 
-  const [superAdminHash, adminHash, managerHash, guestHash] =
-    await Promise.all([
+  const [superAdminHash, adminHash, managerHash, guestHash] = await Promise.all(
+    [
       hashPassword(credentials.superAdmin.password),
       hashPassword(credentials.admin.password),
       hashPassword(credentials.manager.password),
       hashPassword(credentials.guest.password),
-    ]);
+    ],
+  );
 
   const superAdmin = await prisma.user.create({
     data: {
@@ -353,7 +354,9 @@ async function main() {
   const unitOverride = units.find(
     (seededUnit) => seededUnit.unitNumber === "301",
   );
-  const roomOverride = rooms.find((seededRoom) => seededRoom.number === "501-C");
+  const roomOverride = rooms.find(
+    (seededRoom) => seededRoom.number === "501-C",
+  );
 
   if (!unitOverride || !roomOverride) {
     throw new Error("Seed pricing override invariant failed");

@@ -1,8 +1,8 @@
-# Sucasa Engineering Rules
+# Rently Engineering Rules
 
 ## Project Context
 
-Sucasa is a modular monolith fullstack application.
+Rently is a modular monolith fullstack application.
 
 Frontend:
 

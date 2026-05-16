@@ -4,13 +4,13 @@ import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
-import RoomsFilters from "@/features/admin/rooms/components/RoomsFilters";
-import RoomForm from "@/features/admin/rooms/components/RoomForm/RoomForm";
-import RoomsTable from "@/features/admin/rooms/components/RoomsTable";
-import { useAdminRooms } from "@/features/admin/rooms/hooks/useAdminRooms";
-import type { AdminRoom, RoomStatus } from "@/features/admin/rooms/types";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import RoomsFilters from "@/features/rooms/components/RoomsFilters";
+import RoomForm from "@/features/rooms/components/RoomForm/RoomForm";
+import RoomsTable from "@/features/rooms/components/RoomsTable";
+import { useAdminRooms } from "@/features/rooms/hooks/useAdminRooms";
+import type { AdminRoom, RoomStatus } from "@/features/rooms/types";
 
 type Filters = {
   propertyId: string;

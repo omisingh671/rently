@@ -3,10 +3,11 @@ import { useAuthStore } from "@/stores/authStore";
 import type { UserProfile, ChangePasswordPayload } from "./types";
 import * as usersApi from "./api";
 
-export const useProfile = () => {
+export const useProfile = (enabled = true) => {
   return useQuery<UserProfile>({
     queryKey: ["users", "me"],
     queryFn: usersApi.getProfile,
+    enabled,
     staleTime: 1000 * 60,
   });
 };

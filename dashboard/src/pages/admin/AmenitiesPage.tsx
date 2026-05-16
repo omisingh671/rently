@@ -2,19 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 
 import Button from "@/components/ui/Button";
 
-import AmenitiesTable from "@/features/admin/amenities/components/AmenitiesTable";
-import AmenitiesFilters from "@/features/admin/amenities/components/AmenitiesFilters";
-import AmenityForm from "@/features/admin/amenities/components/AmenityForm/AmenityForm";
+import AmenitiesTable from "@/features/amenities/components/AmenitiesTable";
+import AmenitiesFilters from "@/features/amenities/components/AmenitiesFilters";
+import AmenityForm from "@/features/amenities/components/AmenityForm/AmenityForm";
 
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Pagination from "@/components/common/Pagination";
 
-import { useAdminAmenities } from "@/features/admin/amenities/hooks/useAdminAmenities";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
+import { useAdminAmenities } from "@/features/amenities/hooks/useAdminAmenities";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 
-import type { Amenity } from "@/features/admin/amenities/types";
+import type { Amenity } from "@/features/amenities/types";
 
 type Filters = {
   propertyId: string;

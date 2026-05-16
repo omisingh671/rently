@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import Button from "@/components/ui/Button";
 import { InputField } from "@/components/inputs/InputField/InputField";
@@ -11,23 +11,12 @@ import { useLogin } from "@/features/auth/hooks";
 import type { LoginPayload } from "@/features/auth/types";
 import { loginSchema, type LoginFormValues } from "./login.schema";
 
-import { useAuthStore } from "@/stores/authStore";
 import { ROUTES } from "@/configs/routePaths";
-
-type LocationState = {
-  from?: {
-    pathname?: string;
-    state?: unknown;
-  };
-};
 
 export default function LoginForm() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const locationState = location.state as LocationState | null;
 
   const loginMutation = useLogin();
-  const user = useAuthStore((s) => s.user);
 
   const methods = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -59,24 +48,6 @@ export default function LoginForm() {
   useEffect(() => {
     clearErrors("root.server");
   }, [email, password, clearErrors]);
-
-  useEffect(() => {
-    if (!loginMutation.isSuccess || !user) return;
-
-    const fromPath = locationState?.from?.pathname;
-
-    // Restore intended route if allowed
-    if (fromPath) {
-      navigate(fromPath, {
-        replace: true,
-        state: locationState?.from?.state,
-      });
-      return;
-    }
-
-    // Role-based default
-    navigate(ROUTES.HOME, { replace: true });
-  }, [loginMutation.isSuccess, user, navigate, locationState]);
 
   if (loginMutation.isSuccess) {
     return (

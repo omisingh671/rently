@@ -1,20 +1,28 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { FiArrowLeft, FiCheckCircle, FiSearch, FiUsers, FiInfo, FiCheck } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const {
+  FiArrowLeft,
+  FiCheckCircle,
+  FiSearch,
+  FiUsers,
+  FiInfo,
+  FiCheck,
+} = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
-import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 import {
   checkManualBookingAvailabilityApi,
   createManualBookingApi,
-} from "@/features/admin/operations/api";
+} from "@/features/operations/api";
 import type {
   ConcreteComfortOption,
   ManualBookingAvailabilityResponse,
   ManualBookingAvailabilityItem,
-} from "@/features/admin/operations/types";
+} from "@/features/operations/types";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 
 type ManualBookingForm = {

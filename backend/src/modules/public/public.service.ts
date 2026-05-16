@@ -1,18 +1,24 @@
 import {
   BookingPaymentPolicy,
+  BookingPaymentStatus,
   BookingStatus,
   BookingTargetType,
   BookingType,
   ComfortOption,
   Prisma,
+  PaymentStatus,
   UnitStatus,
+  UserRole,
 } from "@/generated/prisma/client.js";
+import { randomUUID } from "node:crypto";
 import { HttpError } from "@/common/errors/http-error.js";
+import { hashPassword } from "@/common/utils/password.js";
 import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
   CreatePublicBookingInput,
   CreatePublicEnquiryInput,
+  PublicBookingGuestDetailsInput,
   PublicSpaceTarget,
   TenantResolutionInput,
 } from "./public.inputs.js";
@@ -43,6 +49,13 @@ interface CreateBookingOptions {
   initialStatus?: BookingStatus;
   statusHistoryNote?: string;
   internalNotes?: string | null;
+}
+
+interface BookingGuestSnapshot {
+  userId: string;
+  fullName: string;
+  email: string;
+  contactNumber: string | null;
 }
 
 const mapTenantConfig = (
@@ -207,6 +220,16 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     booking.bookingType === BookingType.MULTI_ROOM
       ? `${multiRoomTitle} (${items.length} rooms)`
       : `${booking.productName} - ${booking.targetLabel}`;
+  const paidAmount = booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce((total, payment) => total + Number(payment.amount), 0);
+  const balanceAmount = Math.max(0, Number(booking.totalAmount) - paidAmount);
+  const paymentStatus =
+    paidAmount <= 0
+      ? BookingPaymentStatus.PENDING
+      : paidAmount < Number(booking.totalAmount)
+        ? BookingPaymentStatus.PARTIALLY_PAID
+        : BookingPaymentStatus.PAID;
 
   return {
     id: booking.id,
@@ -221,6 +244,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     spaceName: booking.targetLabel,
     status: booking.status,
     paymentPolicy: booking.paymentPolicy,
+    paymentStatus,
     upfrontAmount: Number(booking.upfrontAmount),
     guestName: booking.guestNameSnapshot,
     guestEmail: booking.guestEmailSnapshot,
@@ -229,10 +253,9 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     to: booking.checkOut.toISOString(),
     pricePerNight: Number(booking.pricePerNight),
     totalPrice: Number(booking.totalAmount),
-    remainingPayAtCheckIn: Math.max(
-      0,
-      Number(booking.totalAmount) - Number(booking.upfrontAmount),
-    ),
+    paidAmount,
+    balanceAmount,
+    remainingPayAtCheckIn: balanceAmount,
     items,
     internalNotes: booking.internalNotes ?? null,
     cancellationReason: booking.cancellationReason ?? null,
@@ -514,8 +537,93 @@ const getArrayItem = <T>(items: T[], index: number, message: string): T => {
   return item;
 };
 
+const resolveBookingGuestSnapshot = async (
+  userId: string | undefined,
+  guestDetails: PublicBookingGuestDetailsInput | undefined,
+  tx: Prisma.TransactionClient,
+): Promise<BookingGuestSnapshot> => {
+  if (userId !== undefined) {
+    if (guestDetails !== undefined) {
+      return {
+        userId,
+        fullName: guestDetails.name,
+        email: guestDetails.email,
+        contactNumber: guestDetails.contactNumber,
+      };
+    }
+
+    const user = await repo.findUserSnapshotById(userId, tx);
+    if (!user) {
+      throw new HttpError(404, "USER_NOT_FOUND", "User not found");
+    }
+
+    return {
+      userId,
+      fullName: user.fullName,
+      email: user.email,
+      contactNumber: user.contactNumber,
+    };
+  }
+
+  if (guestDetails === undefined) {
+    throw new HttpError(
+      422,
+      "GUEST_DETAILS_REQUIRED",
+      "Guest name, email, and mobile number are required",
+    );
+  }
+
+  const email = guestDetails.email.trim().toLowerCase();
+  const existingUser = await repo.findUserByEmail(email, tx);
+
+  if (existingUser) {
+    if (existingUser.role !== UserRole.GUEST) {
+      throw new HttpError(
+        409,
+        "GUEST_EMAIL_REQUIRES_LOGIN",
+        "This email is already registered. Please log in to continue.",
+      );
+    }
+
+    const user = await repo.updateUserById(
+      existingUser.id,
+      {
+        fullName: guestDetails.name,
+        contactNumber: guestDetails.contactNumber,
+      },
+      tx,
+    );
+
+    return {
+      userId: user.id,
+      fullName: guestDetails.name,
+      email: user.email,
+      contactNumber: guestDetails.contactNumber,
+    };
+  }
+
+  const passwordHash = await hashPassword(randomUUID());
+  const user = await repo.createUser(
+    {
+      fullName: guestDetails.name,
+      email,
+      passwordHash,
+      role: UserRole.GUEST,
+      contactNumber: guestDetails.contactNumber,
+    },
+    tx,
+  );
+
+  return {
+    userId: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    contactNumber: user.contactNumber,
+  };
+};
+
 export const createBookingForUser = async (
-  userId: string,
+  userId: string | undefined,
   input: CreatePublicBookingInput,
   tenantInput: TenantResolutionInput = {},
   options: CreateBookingOptions = {},
@@ -539,11 +647,11 @@ export const createBookingForUser = async (
       const booking = await repo.runSerializableTransaction(async (tx) => {
         const createdAt = now();
         const bookingRef = await generateBookingRef(createdAt, tx);
-        const guestSnapshot = await repo.findUserSnapshotById(userId, tx);
-
-        if (!guestSnapshot) {
-          throw new HttpError(404, "USER_NOT_FOUND", "User not found");
-        }
+        const guestSnapshot = await resolveBookingGuestSnapshot(
+          userId,
+          input.guestDetails,
+          tx,
+        );
 
         if (input.bookingOptionId !== undefined) {
           const option = await findAvailabilityOptionById(
@@ -598,7 +706,7 @@ export const createBookingForUser = async (
             {
               bookingRef,
               property: { connect: { id: option.propertyId } },
-              user: { connect: { id: userId } },
+              user: { connect: { id: guestSnapshot.userId } },
               ...(isMultiItem ? {} : { productId: firstItem.productId }),
               bookingType: isMultiItem
                 ? BookingType.MULTI_ROOM
@@ -643,7 +751,7 @@ export const createBookingForUser = async (
               toStatus: initialStatus,
               actor: {
                 connect: {
-                  id: options.actorUserId ?? userId,
+                  id: options.actorUserId ?? guestSnapshot.userId,
                 },
               },
               note:
@@ -830,7 +938,7 @@ export const createBookingForUser = async (
           {
             bookingRef,
             property: { connect: { id: firstSpace.propertyId } },
-            user: { connect: { id: userId } },
+            user: { connect: { id: guestSnapshot.userId } },
             ...(isMultiRoom ? {} : { productId: firstSpace.productId }),
             bookingType: isMultiRoom
               ? BookingType.MULTI_ROOM
@@ -879,7 +987,7 @@ export const createBookingForUser = async (
             toStatus: initialStatus,
             actor: {
               connect: {
-                id: options.actorUserId ?? userId,
+                id: options.actorUserId ?? guestSnapshot.userId,
               },
             },
             note:
@@ -923,7 +1031,7 @@ export const createBookingForUser = async (
 };
 
 export const createBooking = async (
-  userId: string,
+  userId: string | undefined,
   input: CreatePublicBookingInput,
   tenantInput: TenantResolutionInput = {},
 ): Promise<PublicBookingDTO> =>
@@ -941,6 +1049,17 @@ export const getBookingById = async (
   bookingId: string,
 ): Promise<PublicBookingDTO> => {
   const booking = await repo.findBookingByUser(bookingId, userId);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return mapBooking(booking);
+};
+
+export const getBookingByIdPublic = async (
+  bookingId: string,
+): Promise<PublicBookingDTO> => {
+  const booking = await repo.findBookingById(bookingId);
   if (!booking) {
     throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   }

@@ -1,5 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   FiArrowLeft,
   FiCalendar,
@@ -11,9 +17,12 @@ import {
 } from "react-icons/fi";
 
 import { ROUTES } from "@/configs/routePaths";
-import { useCreateBooking } from "@/features/bookings/hooks";
+import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  saveBookingCheckoutDraft,
+  toBookingCheckoutDraftLocation,
+} from "@/features/bookings/bookingCheckoutDraft";
 import { useSpace } from "@/features/spaces/hooks";
-import { normalizeApiError } from "@/utils/errors";
 import type { ComfortOption } from "@/features/bookings/types";
 
 function isoDateLocal(dateStr: string) {
@@ -26,6 +35,18 @@ function daysBetween(startIso: string, endIso: string) {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
+const isComfortOption = (value: string | null): value is ComfortOption =>
+  value === "AC" || value === "NON_AC";
+
+const getInitialComfortOption = (
+  searchParams: URLSearchParams,
+): ComfortOption => {
+  const comfort = searchParams.get("comfort");
+  if (isComfortOption(comfort)) return comfort;
+
+  return searchParams.get("ac") === "true" ? "AC" : "NON_AC";
+};
+
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -36,15 +57,15 @@ const formatPrice = (price: number) =>
 export default function SpaceDetailPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
   const spaceQuery = useSpace(id);
-  const createBookingMutation = useCreateBooking();
 
   const [from, setFrom] = useState<string>(searchParams.get("from") ?? "");
   const [to, setTo] = useState<string>(searchParams.get("to") ?? "");
   const [comfortOption, setComfortOption] = useState<ComfortOption>(
-    searchParams.get("ac") === "true" ? "AC" : "NON_AC",
+    getInitialComfortOption(searchParams),
   );
   const guestsParam = Number(searchParams.get("guests"));
   const guests =
@@ -71,7 +92,7 @@ export default function SpaceDetailPage() {
 
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!id) return;
+    if (!id || !space) return;
 
     if (!from || !to) {
       setFormError("Please select check-in and check-out dates.");
@@ -86,22 +107,37 @@ export default function SpaceDetailPage() {
       return;
     }
 
-    try {
-      setFormError(null);
-      const booking = await createBookingMutation.mutateAsync({
-        bookingType: "SINGLE_TARGET",
-        spaceId: id,
-        from: fromIso,
-        to: toIso,
-        guests,
+    const payload = {
+      bookingType: "SINGLE_TARGET",
+      spaceId: id,
+      from: fromIso,
+      to: toIso,
+      guests,
+      comfortOption,
+    } satisfies CreateBookingPayload;
+
+    const saved = saveBookingCheckoutDraft({
+      payload,
+      returnTo: toBookingCheckoutDraftLocation(location),
+      summary: {
+        title: space.title,
+        spaceName: space.title,
+        from,
+        to,
+        guestCount: guests,
         comfortOption,
-      });
-      navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
-    } catch (error: unknown) {
-      const appError = normalizeApiError(error);
-      setFormError(appError.message);
-      console.error("Create booking failed:", appError.message);
+        nightlyTotal: space.pricePerNight,
+        stayTotal: computedTotalPrice,
+      },
+    });
+
+    if (!saved) {
+      setFormError("Could not start checkout. Please try again.");
+      return;
     }
+
+    setFormError(null);
+    navigate(ROUTES.BOOKING_CHECKOUT);
   };
 
   if (spaceQuery.status === "pending") {
@@ -328,15 +364,10 @@ export default function SpaceDetailPage() {
               <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
                 <button
                   type="submit"
-                  disabled={createBookingMutation.isPending}
-                  className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 ${
-                    createBookingMutation.isPending
-                      ? "cursor-wait opacity-70"
-                      : ""
-                  }`}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95"
                 >
                   <FiCreditCard />
-                  {createBookingMutation.isPending ? "Booking..." : "Book now"}
+                  Continue
                 </button>
 
                 <button

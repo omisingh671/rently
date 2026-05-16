@@ -31,6 +31,11 @@ export const publicBookingInclude = {
       createdAt: "asc",
     },
   },
+  payments: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
 } satisfies Prisma.BookingInclude;
 
 const publicAvailabilityRoomInclude = {
@@ -449,6 +454,53 @@ export const createBookingStatusHistory = (
     data,
   });
 
+export const findUserByEmail = (
+  email: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      contactNumber: true,
+    },
+  });
+
+export const createUser = (
+  data: Prisma.UserCreateInput,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).user.create({
+    data,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      contactNumber: true,
+    },
+  });
+
+export const updateUserById = (
+  id: string,
+  data: Prisma.UserUpdateInput,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).user.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      contactNumber: true,
+    },
+  });
+
 export const findUserSnapshotById = (
   userId: string,
   tx?: Prisma.TransactionClient,
@@ -501,6 +553,12 @@ export const findBookingByUser = (id: string, userId: string) =>
       id,
       userId,
     },
+    include: publicBookingInclude,
+  });
+
+export const findBookingById = (id: string) =>
+  prisma.booking.findUnique({
+    where: { id },
     include: publicBookingInclude,
   });
 

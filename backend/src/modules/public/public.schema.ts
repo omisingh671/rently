@@ -28,6 +28,12 @@ const toBusinessDate = (value: unknown) => {
 
 const isoDateSchema = z.preprocess(toBusinessDate, z.date());
 
+const bookingGuestDetailsSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().max(190).toLowerCase(),
+  contactNumber: z.string().trim().min(5).max(40),
+});
+
 export const idParamsSchema = z.object({
   id: z.string().uuid(),
 });
@@ -54,6 +60,7 @@ export const createBookingSchema = z
     to: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
     comfortOption: z.nativeEnum(ComfortOption),
+    guestDetails: bookingGuestDetailsSchema.optional(),
   })
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",

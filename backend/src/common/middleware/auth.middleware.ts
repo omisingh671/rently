@@ -34,3 +34,34 @@ export const authenticate = (
 
   next();
 };
+
+export const optionalAuthenticate = (
+  req: AuthRequest,
+  _res: Response,
+  next: NextFunction,
+) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    next();
+    return;
+  }
+
+  if (!authHeader.startsWith("Bearer ")) {
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid access token");
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid access token");
+  }
+
+  const payload = verifyAccessToken(token);
+
+  req.user = {
+    userId: payload.sub,
+    role: payload.role,
+  };
+
+  next();
+};

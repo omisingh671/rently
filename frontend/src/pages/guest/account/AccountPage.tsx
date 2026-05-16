@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import AccountLayout from "@/features/account/components/AccountLayout";
 import MyBookings from "@/features/account/components/AccountBookings";
@@ -15,8 +16,34 @@ export type AccountTab =
   | "settings"
   | "changePassword";
 
+const VALID_TABS: AccountTab[] = [
+  "profile",
+  "bookings",
+  "payments",
+  "settings",
+  "changePassword",
+];
+
 export default function AccountProfilePage() {
-  const [activeTab, setActiveTab] = useState<AccountTab>("profile");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab") as AccountTab;
+
+  const [activeTab, setActiveTab] = useState<AccountTab>(() => {
+    if (VALID_TABS.includes(tabFromUrl)) return tabFromUrl;
+    return "profile";
+  });
+
+  // Sync state with URL when it changes externally (e.g. back button)
+  useEffect(() => {
+    if (VALID_TABS.includes(tabFromUrl) && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl, activeTab]);
+
+  const handleTabChange = (tab: AccountTab) => {
+    setActiveTab(tab);
+    setSearchParams({ tab }, { replace: true });
+  };
 
   /** Inline wrappers (local-only) */
   const MyProfile = (
@@ -46,7 +73,7 @@ export default function AccountProfilePage() {
   );
 
   return (
-    <AccountLayout activeTab={activeTab} onChangeTab={setActiveTab}>
+    <AccountLayout activeTab={activeTab} onChangeTab={handleTabChange}>
       {activeTab === "profile" && MyProfile}
       {activeTab === "bookings" && <MyBookings />}
       {activeTab === "payments" && <Payments />}

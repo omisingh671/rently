@@ -1,6 +1,9 @@
 import type {
   BookingStatus,
+  BookingPaymentStatus,
+  PaymentMethod,
   PaymentProvider,
+  PaymentPurpose,
   PaymentStatus,
 } from "@/generated/prisma/client.js";
 
@@ -11,11 +14,15 @@ export interface PaymentDTO {
   userId: string;
   provider: PaymentProvider;
   status: PaymentStatus;
+  purpose: PaymentPurpose;
+  method: PaymentMethod;
   amount: number;
   currency: string;
   idempotencyKey: string;
   providerOrderId: string | null;
   providerPaymentId: string | null;
+  note: string | null;
+  receivedByUserId: string | null;
   paidAt: string | null;
   createdAt: string;
 }
@@ -26,5 +33,8 @@ export interface CreateManualPaymentDTO {
     id: string;
     status: BookingStatus;
     totalAmount: number;
+    paymentStatus: BookingPaymentStatus;
+    paidAmount: number;
+    balanceAmount: number;
   };
 }

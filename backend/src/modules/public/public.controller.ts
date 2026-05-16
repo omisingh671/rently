@@ -70,7 +70,7 @@ export const checkAvailability = async (req: AuthRequest, res: Response) => {
 export const createBooking = async (req: AuthRequest, res: Response) => {
   const body = createBookingSchema.parse(req.body);
   const data = await service.createBooking(
-    getUserId(req),
+    req.user?.userId,
     {
       bookingType: body.bookingType,
       ...(body.bookingOptionId !== undefined && {
@@ -82,6 +82,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       to: body.to,
       guests: body.guests,
       comfortOption: body.comfortOption,
+      ...(body.guestDetails !== undefined && {
+        guestDetails: body.guestDetails,
+      }),
     },
     resolveTenantInput(req),
   );
@@ -96,7 +99,10 @@ export const listBookings = async (req: AuthRequest, res: Response) => {
 
 export const getBookingById = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
-  const data = await service.getBookingById(getUserId(req), params.id);
+  const data =
+    req.user?.userId !== undefined
+      ? await service.getBookingById(req.user.userId, params.id)
+      : await service.getBookingByIdPublic(params.id);
   res.json({ success: true, data });
 };
 

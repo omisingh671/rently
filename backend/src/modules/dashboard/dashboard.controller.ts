@@ -33,6 +33,7 @@ import {
   listUnitsQuerySchema,
   listUsersQuerySchema,
   propertyIdParamsSchema,
+  recordBookingPaymentSchema,
   checkManualBookingAvailabilitySchema,
   updateAmenitySchema,
   updateBookingStatusSchema,
@@ -845,8 +846,33 @@ export const updateBooking = async (req: AuthRequest, res: Response) => {
     ...(body.statusOverride !== undefined && {
       statusOverride: body.statusOverride,
     }),
+    ...(body.allowBalanceDueCheckIn !== undefined && {
+      allowBalanceDueCheckIn: body.allowBalanceDueCheckIn,
+    }),
   });
   res.json({ success: true, data });
+};
+
+export const recordBookingPayment = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = recordBookingPaymentSchema.parse(req.body);
+  const data = await service.recordBookingBalancePayment(
+    getUserId(req),
+    params.id,
+    {
+      amount: body.amount,
+      method: body.method,
+      ...(body.note !== undefined && { note: body.note }),
+      ...(body.paidAt !== undefined && { paidAt: body.paidAt }),
+      ...(body.idempotencyKey !== undefined && {
+        idempotencyKey: body.idempotencyKey,
+      }),
+    },
+  );
+  res.status(201).json({ success: true, data });
 };
 
 export const listEnquiries = async (req: AuthRequest, res: Response) => {

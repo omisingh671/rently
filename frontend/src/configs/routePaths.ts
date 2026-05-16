@@ -17,6 +17,7 @@ export const ROUTES = {
 
   ACCOUNT: "/account",
   BOOKINGS: "/bookings",
+  BOOKING_CHECKOUT: "/bookings/checkout",
   BOOKING_PAYMENT: (id = ":id") => `/bookings/${id}/payment`,
 
   SPACES: "/spaces",

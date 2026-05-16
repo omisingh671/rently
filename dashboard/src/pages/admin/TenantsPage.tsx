@@ -13,12 +13,12 @@ import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Button from "@/components/ui/Button";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { useAdminTenants } from "@/features/admin/tenants/hooks/useAdminTenants";
+import { useAdminTenants } from "@/features/tenants/hooks/useAdminTenants";
 import type {
   AdminTenant,
   TenantFormPayload,
   TenantStatus,
-} from "@/features/admin/tenants/types";
+} from "@/features/tenants/types";
 import { highlightText } from "@/utils/highlightText";
 
 type Filters = {

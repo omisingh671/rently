@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import {
   fetchDashboardContext,
   fetchDashboardSummary,

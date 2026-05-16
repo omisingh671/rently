@@ -31,6 +31,9 @@ const AvailabilityResultPage = lazy(
   () => import("@/pages/guest/AvailabilityResultPage"),
 );
 const BookingsPage = lazy(() => import("@/pages/guest/BookingsPage"));
+const BookingCheckoutPage = lazy(
+  () => import("@/pages/guest/BookingCheckoutPage"),
+);
 const BookingPaymentPage = lazy(
   () => import("@/pages/guest/BookingPaymentPage"),
 );
@@ -71,12 +74,13 @@ const routes: RouteObject[] = [
       { path: ROUTES.SPACES, element: <SpacesListPage /> },
       { path: ROUTES.SPACE_DETAIL(), element: <SpaceDetailPage /> },
       { path: ROUTES.AVAILABILITY_RESULT, element: <AvailabilityResultPage /> },
+      { path: ROUTES.BOOKING_CHECKOUT, element: <BookingCheckoutPage /> },
+      { path: ROUTES.BOOKING_PAYMENT(), element: <BookingPaymentPage /> },
       {
         element: <RequireAuth />,
         children: [
           { path: ROUTES.ACCOUNT, element: <AccountPage /> },
           { path: ROUTES.BOOKINGS, element: <BookingsPage /> },
-          { path: ROUTES.BOOKING_PAYMENT(), element: <BookingPaymentPage /> },
         ],
       },
       { path: ROUTES.PRIVACY, element: <PrivacyPage /> },

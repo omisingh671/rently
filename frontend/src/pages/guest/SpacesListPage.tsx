@@ -19,9 +19,11 @@ import type {
   ComfortFilter,
   ComfortOption,
 } from "@/features/availability/domain";
-import { useCreateBooking } from "@/features/bookings/hooks";
-import { useAuthStore } from "@/stores/authStore";
-import { normalizeApiError } from "@/utils/errors";
+import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  saveBookingCheckoutDraft,
+  toBookingCheckoutDraftLocation,
+} from "@/features/bookings/bookingCheckoutDraft";
 
 import { OptionGridCard } from "@/components/ui/OptionGridCard";
 import { OptionStackCard } from "@/components/ui/OptionStackCard";
@@ -84,8 +86,6 @@ export default function SpacesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const createBookingMutation = useCreateBooking();
-  const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("stack");
 
@@ -152,28 +152,36 @@ export default function SpacesListPage() {
   const bookOption = async (option: AvailabilityOption) => {
     if (!canCheckAvailability) return;
 
-    if (!isAuthenticated) {
-      navigate(ROUTES.LOGIN, {
-        state: { from: location },
-        replace: true,
-      });
+    const payload = {
+      bookingOptionId: option.optionId,
+      from,
+      to,
+      guests,
+      comfortOption: option.comfortOption,
+    } satisfies CreateBookingPayload;
+
+    const saved = saveBookingCheckoutDraft({
+      payload,
+      returnTo: toBookingCheckoutDraftLocation(location),
+      summary: {
+        title: option.title,
+        spaceName: option.title,
+        from,
+        to,
+        guestCount: guests,
+        comfortOption: option.comfortOption,
+        nightlyTotal: option.nightlyTotal,
+        stayTotal: option.stayTotal,
+      },
+    });
+
+    if (!saved) {
+      setBookingError("Could not start checkout. Please try again.");
       return;
     }
 
-    try {
-      setBookingError(null);
-      const booking = await createBookingMutation.mutateAsync({
-        bookingOptionId: option.optionId,
-        from,
-        to,
-        guests,
-        comfortOption: option.comfortOption,
-      });
-
-      navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
-    } catch (error: unknown) {
-      setBookingError(normalizeApiError(error).message);
-    }
+    setBookingError(null);
+    navigate(ROUTES.BOOKING_CHECKOUT);
   };
 
   const options = availabilityQuery.data?.options ?? [];
@@ -297,7 +305,7 @@ export default function SpacesListPage() {
         </div>
       </div>
 
-      {bookingError && (
+        {bookingError && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {bookingError}
           </div>
@@ -365,7 +373,7 @@ export default function SpacesListPage() {
                     key={option.optionId}
                     option={option}
                     onBook={bookOption}
-                    isBooking={createBookingMutation.isPending}
+                    isBooking={false}
                     formatPrice={formatPrice}
                   />
                 ) : (
@@ -373,7 +381,7 @@ export default function SpacesListPage() {
                     key={option.optionId}
                     option={option}
                     onBook={bookOption}
-                    isBooking={createBookingMutation.isPending}
+                    isBooking={false}
                     formatPrice={formatPrice}
                   />
                 )

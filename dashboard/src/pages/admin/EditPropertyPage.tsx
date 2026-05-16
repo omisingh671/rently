@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import EditPropertyForm from "@/features/admin/properties/components/EditPropertyForm";
+import EditPropertyForm from "@/features/properties/components/EditPropertyForm";
 
 export default function EditPropertyPage() {
   const { id } = useParams<{ id: string }>();

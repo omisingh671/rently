@@ -1,7 +1,10 @@
 import { prisma } from "@/db/prisma.js";
 import {
+  BookingPaymentStatus,
   BookingStatus,
+  PaymentMethod,
   PaymentProvider,
+  PaymentPurpose,
   PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
@@ -20,13 +23,13 @@ export type PaymentRecord = Prisma.PaymentGetPayload<{
 
 export const findBookingForPayment = (
   bookingId: string,
-  userId: string,
+  userId?: string,
   tx?: Prisma.TransactionClient,
 ) =>
   client(tx).booking.findFirst({
     where: {
       id: bookingId,
-      userId,
+      ...(userId !== undefined && { userId }),
     },
     include: {
       property: {
@@ -46,13 +49,32 @@ export const findPaymentByIdempotencyKey = (
     include: paymentInclude,
   });
 
-export const findSucceededPaymentByBooking = (
+export const sumSucceededPaymentsByBooking = async (
   bookingId: string,
+  tx?: Prisma.TransactionClient,
+) => {
+  const result = await client(tx).payment.aggregate({
+    where: {
+      bookingId,
+      status: PaymentStatus.SUCCEEDED,
+    },
+    _sum: {
+      amount: true,
+    },
+  });
+
+  return result._sum.amount ?? new Prisma.Decimal(0);
+};
+
+export const findSucceededPaymentByBookingPurpose = (
+  bookingId: string,
+  purpose: PaymentPurpose,
   tx?: Prisma.TransactionClient,
 ) =>
   client(tx).payment.findFirst({
     where: {
       bookingId,
+      purpose,
       status: PaymentStatus.SUCCEEDED,
     },
     include: paymentInclude,
@@ -63,10 +85,15 @@ export const createManualSucceededPayment = (
     bookingId: string;
     propertyId: string;
     userId: string;
+    actorUserId?: string;
     amount: Prisma.Decimal | number | string;
     currency: string;
     idempotencyKey: string;
+    purpose: PaymentPurpose;
+    method: PaymentMethod;
+    note?: string;
     paidAt: Date;
+    metadataSource: string;
   },
   tx?: Prisma.TransactionClient,
 ) =>
@@ -77,25 +104,45 @@ export const createManualSucceededPayment = (
       userId: data.userId,
       provider: PaymentProvider.MANUAL,
       status: PaymentStatus.SUCCEEDED,
+      purpose: data.purpose,
+      method: data.method,
       amount: data.amount,
       currency: data.currency,
       idempotencyKey: data.idempotencyKey,
+      ...(data.actorUserId !== undefined && {
+        receivedByUserId: data.actorUserId,
+      }),
+      ...(data.note !== undefined && { note: data.note }),
       paidAt: data.paidAt,
       metadata: {
-        source: "PUBLIC_MANUAL_PAYMENT",
+        source: data.metadataSource,
       },
     },
     include: paymentInclude,
   });
 
+export const updateBookingPaymentState = (
+  bookingId: string,
+  paymentStatus: BookingPaymentStatus,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).booking.update({
+    where: { id: bookingId },
+    data: {
+      paymentStatus,
+    },
+  });
+
 export const confirmBooking = (
   bookingId: string,
+  paymentStatus: BookingPaymentStatus,
   tx?: Prisma.TransactionClient,
 ) =>
   client(tx).booking.update({
     where: { id: bookingId },
     data: {
       status: BookingStatus.CONFIRMED,
+      paymentStatus,
     },
   });
 

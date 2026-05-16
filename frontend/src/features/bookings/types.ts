@@ -72,6 +72,12 @@ export interface CreateOptionBookingPayload {
   comfortOption: ComfortOption;
 }
 
+export interface BookingGuestDetails {
+  name: string;
+  email: string;
+  contactNumber: string;
+}
+
 export interface Payment {
   id: string;
   bookingId: string;
