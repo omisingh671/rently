@@ -505,6 +505,7 @@ export const createManualBookingSchema = contactFieldsRefine(
       to: z.coerce.date(),
       guests: z.coerce.number().int().min(1).max(20),
       comfortOption: z.nativeEnum(ComfortOption),
+      couponCode: z.string().trim().min(1).max(20).optional(),
       guestName: z.string().trim().min(1).max(120),
       guestEmail: z.string().trim().email().max(190),
       countryCode: countryCodeSchema.optional(),

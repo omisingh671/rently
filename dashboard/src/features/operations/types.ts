@@ -60,6 +60,7 @@ export type AdminBooking = {
   checkOut: string;
   status: BookingStatus;
   totalAmount: string;
+  discountAmount: string;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
   balanceAmount: string;
@@ -67,6 +68,7 @@ export type AdminBooking = {
   upfrontAmount: string;
   noShowEligible: boolean;
   internalNotes: string | null;
+  couponCode: string | null;
   payments: Array<{
     id: string;
     status: PaymentStatus;
@@ -136,6 +138,7 @@ export type CreateManualBookingPayload = {
   guestEmail: string;
   countryCode?: string;
   contactNumber?: string;
+  couponCode?: string;
   internalNotes?: string | null;
 };
 

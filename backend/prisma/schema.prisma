@@ -444,6 +444,8 @@ model Booking {
   paymentStatus BookingPaymentStatus @default(PENDING)
   paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount Decimal              @default(10)
+  couponId      String?
+  discountAmount Decimal             @default(0)
   internalNotes       String?   @db.Text
   cancellationReason  String?   @db.Text
   cancelledAt         DateTime?
@@ -452,6 +454,7 @@ model Booking {
 
   property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  coupon        Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items         BookingItem[]
   payments      Payment[]
   statusHistory BookingStatusHistory[]
@@ -706,7 +709,8 @@ model Coupon {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings Booking[]
 
   @@unique([propertyId, code])
   @@index([propertyId])

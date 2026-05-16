@@ -800,6 +800,7 @@ export const createManualBooking = async (req: AuthRequest, res: Response) => {
     to: body.to,
     guests: body.guests,
     comfortOption: body.comfortOption,
+    couponCode: body.couponCode,
     guestName: body.guestName,
     guestEmail: body.guestEmail,
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),

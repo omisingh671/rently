@@ -378,6 +378,7 @@ export const mapBooking = (
     checkOut: booking.checkOut,
     status: booking.status,
     totalAmount: booking.totalAmount.toString(),
+    discountAmount: booking.discountAmount.toString(),
     paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
     paidAmount: paidAmount.toString(),
     balanceAmount: balanceAmount.toString(),
@@ -385,6 +386,7 @@ export const mapBooking = (
     upfrontAmount: booking.upfrontAmount.toString(),
     noShowEligible: isBookingNoShowEligible(booking),
     internalNotes: booking.internalNotes ?? null,
+    couponCode: booking.coupon?.code ?? null,
     payments: booking.payments.map((payment) => ({
       id: payment.id,
       status: payment.status,

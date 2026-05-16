@@ -36,6 +36,7 @@ export const publicBookingInclude = {
       createdAt: "asc",
     },
   },
+  coupon: true,
 } satisfies Prisma.BookingInclude;
 
 const publicAvailabilityRoomInclude = {
@@ -606,4 +607,31 @@ export const findActivePropertyById = (id: string, tenantId?: string) =>
 export const createEnquiry = (data: Prisma.EnquiryCreateInput) =>
   prisma.enquiry.create({
     data,
+  });
+
+export const findActiveCouponByCode = (
+  propertyId: string,
+  code: string,
+  now: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).coupon.findFirst({
+    where: {
+      propertyId,
+      code: code.toUpperCase(),
+      isActive: true,
+      validFrom: { lte: now },
+      OR: [{ validTo: null }, { validTo: { gte: now } }],
+    },
+  });
+
+export const incrementCouponUsage = (
+  id: string,
+  tx: Prisma.TransactionClient,
+) =>
+  tx.coupon.update({
+    where: { id },
+    data: {
+      usedCount: { increment: 1 },
+    },
   });

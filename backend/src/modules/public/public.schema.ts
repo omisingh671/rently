@@ -60,6 +60,7 @@ export const createBookingSchema = z
     to: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
     comfortOption: z.nativeEnum(ComfortOption),
+    couponCode: z.string().trim().min(1).max(20).optional(),
     guestDetails: bookingGuestDetailsSchema.optional(),
   })
   .refine((data) => data.to > data.from, {

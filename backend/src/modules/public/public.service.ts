@@ -253,6 +253,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     to: booking.checkOut.toISOString(),
     pricePerNight: Number(booking.pricePerNight),
     totalPrice: Number(booking.totalAmount),
+    discountAmount: Number(booking.discountAmount),
     paidAmount,
     balanceAmount,
     remainingPayAtCheckIn: balanceAmount,
@@ -260,6 +261,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     internalNotes: booking.internalNotes ?? null,
     cancellationReason: booking.cancellationReason ?? null,
     cancelledAt: booking.cancelledAt?.toISOString() ?? null,
+    couponCode: booking.coupon?.code ?? null,
     createdAt: booking.createdAt.toISOString(),
   };
 };
@@ -622,6 +624,60 @@ const resolveBookingGuestSnapshot = async (
   };
 };
 
+const validateAndApplyCoupon = async (
+  propertyId: string,
+  code: string | undefined,
+  nights: number,
+  totalBeforeDiscount: number,
+  tx: Prisma.TransactionClient,
+) => {
+  if (!code) return { couponId: undefined, discountAmount: 0 };
+
+  const coupon = await repo.findActiveCouponByCode(propertyId, code, now(), tx);
+
+  if (!coupon) {
+    throw new HttpError(422, "INVALID_COUPON", "Invalid or expired coupon code");
+  }
+
+  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+    throw new HttpError(422, "COUPON_EXHAUSTED", "Coupon usage limit reached");
+  }
+
+  if (coupon.minNights !== null && nights < coupon.minNights) {
+    throw new HttpError(
+      422,
+      "COUPON_MIN_NIGHTS",
+      `Coupon requires a minimum of ${coupon.minNights} nights`,
+    );
+  }
+
+  if (
+    coupon.minAmount !== null &&
+    totalBeforeDiscount < Number(coupon.minAmount)
+  ) {
+    throw new HttpError(
+      422,
+      "COUPON_MIN_AMOUNT",
+      `Coupon requires a minimum booking amount of ${Number(coupon.minAmount)}`,
+    );
+  }
+
+  let discountAmount = 0;
+  if (coupon.discountType === "PERCENTAGE") {
+    discountAmount = (totalBeforeDiscount * Number(coupon.discountValue)) / 100;
+  } else {
+    discountAmount = Number(coupon.discountValue);
+  }
+
+  // Cap discount at total amount
+  discountAmount = Math.min(discountAmount, totalBeforeDiscount);
+
+  return {
+    couponId: coupon.id,
+    discountAmount,
+  };
+};
+
 export const createBookingForUser = async (
   userId: string | undefined,
   input: CreatePublicBookingInput,
@@ -693,7 +749,17 @@ export const createBookingForUser = async (
               input.comfortOption,
             ),
           );
-          const totalAmount = option.stayTotal;
+
+          const totalBeforeDiscount = option.stayTotal;
+          const { couponId, discountAmount } = await validateAndApplyCoupon(
+            option.propertyId,
+            input.couponCode,
+            nights,
+            totalBeforeDiscount,
+            tx,
+          );
+
+          const totalAmount = totalBeforeDiscount - discountAmount;
           const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
           const firstItem = getArrayItem(
             option.items,
@@ -728,6 +794,8 @@ export const createBookingForUser = async (
               checkOut: input.to,
               status: initialStatus,
               totalAmount,
+              discountAmount,
+              ...(couponId && { coupon: { connect: { id: couponId } } }),
               paymentPolicy,
               upfrontAmount: bookingUpfrontAmount,
               ...(options.internalNotes !== undefined && {
@@ -740,6 +808,10 @@ export const createBookingForUser = async (
             },
             tx,
           );
+
+          if (couponId) {
+            await repo.incrementCouponUsage(couponId, tx);
+          }
 
           await repo.createBookingStatusHistory(
             {
@@ -908,16 +980,17 @@ export const createBookingForUser = async (
               .guestCount,
           ),
         );
-        const totalAmount = itemInputs.reduce(
+        const totalBeforeDiscount = itemInputs.reduce(
           (total, item) => total + Number(item.totalAmount),
           0,
         );
-        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
+
         const pricePerNight = itemInputs.reduce(
           (total, item) => total + Number(item.pricePerNight),
           0,
         );
-        const firstSpace = getArrayItem(
+
+        const firstSpaceRec = getArrayItem(
           pricedSpaces,
           0,
           "Missing booking space",
@@ -932,14 +1005,25 @@ export const createBookingForUser = async (
           0,
           "Missing booking item",
         );
+
+        const { couponId, discountAmount } = await validateAndApplyCoupon(
+          firstSpaceRec.propertyId,
+          input.couponCode,
+          nights,
+          totalBeforeDiscount,
+          tx,
+        );
+
+        const totalAmount = totalBeforeDiscount - discountAmount;
+        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
         const isMultiRoom = input.bookingType === "MULTI_ROOM";
 
         const booking = await repo.createBooking(
           {
             bookingRef,
-            property: { connect: { id: firstSpace.propertyId } },
+            property: { connect: { id: firstSpaceRec.propertyId } },
             user: { connect: { id: guestSnapshot.userId } },
-            ...(isMultiRoom ? {} : { productId: firstSpace.productId }),
+            ...(isMultiRoom ? {} : { productId: firstSpaceRec.productId }),
             bookingType: isMultiRoom
               ? BookingType.MULTI_ROOM
               : BookingType.SINGLE_TARGET,
@@ -958,12 +1042,14 @@ export const createBookingForUser = async (
             targetLabel: isMultiRoom
               ? `${multiRoomTitle} (${pricedSpaces.length} rooms)`
               : firstItemInput.targetLabel,
-            productName: isMultiRoom ? multiRoomTitle : firstSpace.product.name,
+            productName: isMultiRoom ? multiRoomTitle : firstSpaceRec.product.name,
             pricePerNight,
             checkIn: input.from,
             checkOut: input.to,
             status: initialStatus,
             totalAmount,
+            discountAmount,
+            ...(couponId && { coupon: { connect: { id: couponId } } }),
             paymentPolicy,
             upfrontAmount: bookingUpfrontAmount,
             ...(options.internalNotes !== undefined && {
@@ -976,6 +1062,10 @@ export const createBookingForUser = async (
           },
           tx,
         );
+
+        if (couponId) {
+          await repo.incrementCouponUsage(couponId, tx);
+        }
 
         await repo.createBookingStatusHistory(
           {

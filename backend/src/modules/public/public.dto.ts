@@ -107,6 +107,7 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  discountAmount: number;
   paidAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
@@ -114,6 +115,7 @@ export interface PublicBookingDTO {
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;
+  couponCode: string | null;
   createdAt: string;
 }
 

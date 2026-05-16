@@ -9,6 +9,7 @@ import type {
 
 type GuestDetailsPayload = {
   guestDetails?: BookingGuestDetails;
+  couponCode?: string;
 };
 
 export type CreateBookingPayload =

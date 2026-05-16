@@ -2814,7 +2814,7 @@ export const checkManualBookingAvailability = async (
     guests: input.guests,
     availableSpaceIds: items
       .filter((item) => item.available)
-      .map((item) => item.spaceId),
+      .map((item) => item.bookingOptionId),
     items,
   };
 };
@@ -2842,6 +2842,7 @@ export const createManualBooking = async (
       to: input.to,
       guests: input.guests,
       comfortOption: input.comfortOption,
+      couponCode: input.couponCode,
     },
     {
       tenantId: property.tenantId,

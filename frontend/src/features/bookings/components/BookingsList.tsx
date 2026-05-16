@@ -183,6 +183,16 @@ export default function BookingsList({ bookings }: BookingsListProps) {
               </div>
 
               <div className="flex flex-col gap-2 mt-0 lg:mt-4">
+                <Button
+                  to={ROUTES.BOOKING_DETAIL(booking.id)}
+                  size="sm"
+                  variant="secondary"
+                  outline
+                  className="h-9 px-4 shadow-sm"
+                >
+                  View Details
+                </Button>
+
                 {booking.status === "PENDING" && (
                   <Button
                     to={ROUTES.BOOKING_PAYMENT(booking.id)}

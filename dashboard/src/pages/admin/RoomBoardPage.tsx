@@ -152,7 +152,6 @@ export default function RoomBoardPage() {
         0,
       )
     : 0;
-  const activeFilterCount = (status ? 1 : 0) + (search.trim() ? 1 : 0);
 
   const setDateRange = (start: string, end: string) => {
     setFrom(start);
@@ -457,6 +456,7 @@ export default function RoomBoardPage() {
     </div>
   );
 }
+
 function UnitSection({ unit }: { unit: RoomBoardUnit }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">

@@ -35,6 +35,7 @@ type ManualBookingForm = {
   guests: string;
   comfortOption: "AC" | "NON_AC" | "ALL";
   internalNotes: string;
+  couponCode: string;
 };
 
 type GuestFieldErrors = {
@@ -52,6 +53,7 @@ const emptyForm: ManualBookingForm = {
   guests: "1",
   comfortOption: "ALL",
   internalNotes: "",
+  couponCode: "",
 };
 
 const concreteComfortOptions: ConcreteComfortOption[] = ["AC", "NON_AC"];
@@ -81,7 +83,7 @@ const mergeAvailabilityResults = (
     guests: firstResult?.guests ?? 0,
     availableSpaceIds: items
       .filter((item) => item.available)
-      .map((item) => item.spaceId),
+      .map((item) => item.bookingOptionId),
     items,
   };
 };
@@ -115,10 +117,10 @@ export default function WalkInBookingPage() {
     (property) => property.id === selectedPropertyId,
   );
 
-  const availabilityBySpaceId = useMemo(
+  const availabilityByOptionId = useMemo(
     () =>
       new Map(
-        availability?.items.map((item) => [item.spaceId, item]) ?? [],
+        availability?.items.map((item) => [item.bookingOptionId, item]) ?? [],
       ),
     [availability],
   );
@@ -126,7 +128,7 @@ export default function WalkInBookingPage() {
   const requestedGuests = Number(form.guests);
   const selectedCapacity = selectedSpaceIds.reduce(
     (total, spaceId) =>
-      total + (availabilityBySpaceId.get(spaceId)?.capacity ?? 0),
+      total + (availabilityByOptionId.get(spaceId)?.capacity ?? 0),
     0,
   );
   const selectedCapacityCoversGuests =
@@ -134,7 +136,7 @@ export default function WalkInBookingPage() {
   const selectedSpacesAreAvailable =
     availability !== null &&
     selectedSpaceIds.every(
-      (spaceId) => availabilityBySpaceId.get(spaceId)?.available === true,
+      (spaceId) => availabilityByOptionId.get(spaceId)?.available === true,
     );
   const guestFieldErrors = useMemo(() => {
     const errors: GuestFieldErrors = {};
@@ -195,7 +197,7 @@ export default function WalkInBookingPage() {
 
   const createBooking = useMutation({
     mutationFn: () => {
-      const selectedOption = availabilityBySpaceId.get(selectedSpaceIds[0]);
+      const selectedOption = availabilityByOptionId.get(selectedSpaceIds[0]);
       if (!selectedOption) {
         throw new Error("Selected booking option was not found.");
       }
@@ -214,6 +216,7 @@ export default function WalkInBookingPage() {
             countryCode: form.countryCode.trim(),
             contactNumber: form.contactNumber.trim(),
           }),
+        couponCode: form.couponCode.trim() || undefined,
         internalNotes: form.internalNotes.trim() || null,
       });
     },
@@ -252,7 +255,7 @@ export default function WalkInBookingPage() {
   };
 
   const toggleSpace = (spaceId: string) => {
-    const rowAvailability = availabilityBySpaceId.get(spaceId);
+    const rowAvailability = availabilityByOptionId.get(spaceId);
     if (availability === null || rowAvailability?.available !== true) return;
     setSubmitError("");
 
@@ -440,7 +443,7 @@ export default function WalkInBookingPage() {
             <SpaceAvailabilityList
               selectedSpaceIds={selectedSpaceIds}
               availability={availability}
-              availabilityBySpaceId={availabilityBySpaceId}
+              availabilityByOptionId={availabilityByOptionId}
               requestedGuests={requestedGuests}
               isChecking={checkAvailability.isPending}
               isSubmitting={createBooking.isPending}
@@ -644,6 +647,19 @@ function StayFields({
           <option value="AC">AC</option>
         </select>
       </label>
+      <label className="block text-sm">
+        <span className="font-medium text-slate-700">Coupon code</span>
+        <input
+          type="text"
+          value={form.couponCode}
+          disabled={disabled}
+          placeholder="DISCOUNT20"
+          onChange={(event) =>
+            onChange({ couponCode: event.target.value.toUpperCase() })
+          }
+          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        />
+      </label>
     </div>
   );
 }
@@ -651,7 +667,7 @@ function StayFields({
 function SpaceAvailabilityList({
   selectedSpaceIds,
   availability,
-  availabilityBySpaceId,
+  availabilityByOptionId,
   requestedGuests,
   isChecking,
   isSubmitting,
@@ -659,7 +675,7 @@ function SpaceAvailabilityList({
 }: {
   selectedSpaceIds: string[];
   availability: ManualBookingAvailabilityResponse | null;
-  availabilityBySpaceId: Map<string, ManualBookingAvailabilityItem>;
+  availabilityByOptionId: Map<string, ManualBookingAvailabilityItem>;
   requestedGuests: number;
   isChecking: boolean;
   isSubmitting: boolean;
@@ -690,7 +706,7 @@ function SpaceAvailabilityList({
             item={item}
             checked={selectedSpaceIds.includes(item.bookingOptionId)}
             disabled={isSubmitting}
-            availability={availabilityBySpaceId.get(item.bookingOptionId) ?? null}
+            availability={availabilityByOptionId.get(item.bookingOptionId) ?? null}
             hasAvailabilityResult={availability !== null}
             requestedGuests={requestedGuests}
             onToggle={() => onToggleSpace(item.bookingOptionId)}

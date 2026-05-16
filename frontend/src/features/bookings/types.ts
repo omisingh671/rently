@@ -56,11 +56,13 @@ export interface Booking {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  discountAmount: number;
   remainingPayAtCheckIn: number;
   items: BookingItem[];
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;
+  couponCode: string | null;
   createdAt: string;
 }
 

@@ -118,6 +118,7 @@ const dashboardBookingInclude = {
       createdAt: "asc",
     },
   },
+  coupon: true,
 } satisfies Prisma.BookingInclude;
 
 const dashboardEnquiryInclude = {

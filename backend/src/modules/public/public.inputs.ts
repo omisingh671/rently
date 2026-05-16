@@ -22,6 +22,7 @@ export interface CreatePublicBookingInput {
   to: Date;
   guests: number;
   comfortOption: ComfortOption;
+  couponCode?: string | undefined;
   guestDetails?: PublicBookingGuestDetailsInput;
 }
 

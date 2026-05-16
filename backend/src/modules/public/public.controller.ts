@@ -82,6 +82,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       to: body.to,
       guests: body.guests,
       comfortOption: body.comfortOption,
+      couponCode: body.couponCode,
       ...(body.guestDetails !== undefined && {
         guestDetails: body.guestDetails,
       }),
