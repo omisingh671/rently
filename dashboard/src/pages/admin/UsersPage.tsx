@@ -4,20 +4,20 @@ import { useState } from "react";
 
 import Modal from "@/components/ui/Modal";
 import Button from "@/components/ui/Button";
-import UsersTable from "@/features/admin/users/components/UsersTable";
-import UsersFilters from "@/features/admin/users/components/UsersFilters";
-import { useAdminUsers } from "@/features/admin/users/hooks/useAdminUsers";
-import UserForm from "@/features/admin/users/components/UserForm/UserForm";
+import UsersTable from "@/features/users/components/UsersTable";
+import UsersFilters from "@/features/users/components/UsersFilters";
+import { useAdminUsers } from "@/features/users/hooks/useAdminUsers";
+import UserForm from "@/features/users/components/UserForm/UserForm";
 
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Pagination from "@/components/common/Pagination";
 
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import type { AdminUserScope } from "@/features/admin/users/types";
+import type { AdminUserScope } from "@/features/users/types";
 import { ADMIN_ROUTES } from "@/configs/routePathsAdmin";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
-import type { AdminUser } from "@/features/admin/users/types";
+import type { AdminUser } from "@/features/users/types";
 
 type Filters = {
   search: string;

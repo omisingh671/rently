@@ -3,20 +3,20 @@ import { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 
-import UnitsTable from "@/features/admin/units/components/UnitsTable";
-import UnitsFilters from "@/features/admin/units/components/UnitsFilters";
-import UnitForm from "@/features/admin/units/components/UnitForm/UnitForm";
+import UnitsTable from "@/features/units/components/UnitsTable";
+import UnitsFilters from "@/features/units/components/UnitsFilters";
+import UnitForm from "@/features/units/components/UnitForm/UnitForm";
 
 import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 
-import { useAdminUnits } from "@/features/admin/units/hooks/useAdminUnits";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
+import { useAdminUnits } from "@/features/units/hooks/useAdminUnits";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 
-import type { AdminUnit, UnitStatus } from "@/features/admin/units/types";
+import type { AdminUnit, UnitStatus } from "@/features/units/types";
 
 type Filters = {
   propertyId: string;

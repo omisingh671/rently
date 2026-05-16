@@ -1,4 +1,4 @@
-import BookingDetailsPage from "@/features/admin/operations/components/BookingDetailsPage";
+import BookingDetailsPage from "@/features/operations/components/BookingDetailsPage";
 
 export default function AdminBookingDetailsPage() {
   return <BookingDetailsPage />;

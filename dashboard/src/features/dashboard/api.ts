@@ -1,7 +1,7 @@
 import axiosInstance from "@/api/axios";
-import { API_ENDPOINTS } from "@/configs/apiEndpoints";
-import type { UserRole } from "@/configs/appConfig";
 import type { ApiSuccessResponse } from "@/common/types/api";
+import type { UserRole } from "@/configs/appConfig";
+import { API_ENDPOINTS } from "@/configs/apiEndpoints";
 
 export type DashboardContext = {
   user: {

@@ -5,9 +5,9 @@ import Button from "@/components/ui/Button";
 
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import PropertiesTable from "@/features/admin/properties/components/PropertiesTable";
-import PropertiesFilters from "@/features/admin/properties/components/PropertiesFilters";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import PropertiesTable from "@/features/properties/components/PropertiesTable";
+import PropertiesFilters from "@/features/properties/components/PropertiesFilters";
 
 import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
@@ -15,7 +15,7 @@ import PageSizeSelector from "@/components/common/PageSizeSelector";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
 import { useAuthStore } from "@/stores/authStore";
 
-import type { PropertyStatus } from "@/features/admin/properties/types";
+import type { PropertyStatus } from "@/features/properties/types";
 
 type Filters = {
   search: string;

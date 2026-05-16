@@ -7,19 +7,19 @@ import Pagination from "@/components/common/Pagination";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { useAdminUsers } from "@/features/admin/users/hooks/useAdminUsers";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { useAdminUsers } from "@/features/users/hooks/useAdminUsers";
 import { useDashboardContext } from "@/features/dashboard/hooks";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
-import AssignmentForm from "@/features/admin/assignments/components/AssignmentForm/AssignmentForm";
-import AssignmentsFilters from "@/features/admin/assignments/components/AssignmentsFilters";
-import AssignmentsTable from "@/features/admin/assignments/components/AssignmentsTable";
-import { usePropertyAssignments } from "@/features/admin/assignments/hooks/usePropertyAssignments";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import AssignmentForm from "@/features/assignments/components/AssignmentForm/AssignmentForm";
+import AssignmentsFilters from "@/features/assignments/components/AssignmentsFilters";
+import AssignmentsTable from "@/features/assignments/components/AssignmentsTable";
+import { usePropertyAssignments } from "@/features/assignments/hooks/usePropertyAssignments";
 import type {
   AdminPropertyAssignment,
   PropertyAssignmentRole,
-} from "@/features/admin/assignments/types";
-import type { AssignmentPropertyOption } from "@/features/admin/assignments/components/AssignmentForm/AssignmentForm";
+} from "@/features/assignments/types";
+import type { AssignmentPropertyOption } from "@/features/assignments/components/AssignmentForm/AssignmentForm";
 
 type Filters = {
   search?: string;

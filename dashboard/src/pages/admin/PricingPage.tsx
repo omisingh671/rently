@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import ActiveToggle from "@/components/common/ActiveToggle";
 import StatusBadge from "@/components/common/StatusBadge";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { useAdminRooms } from "@/features/admin/rooms/hooks/useAdminRooms";
-import { useAdminUnits } from "@/features/admin/units/hooks/useAdminUnits";
-import { useAdminPricing } from "@/features/admin/pricing/hooks/useAdminPricing";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { useAdminRooms } from "@/features/rooms/hooks/useAdminRooms";
+import { useAdminUnits } from "@/features/units/hooks/useAdminUnits";
+import { useAdminPricing } from "@/features/pricing/hooks/useAdminPricing";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 import { normalizeApiError } from "@/utils/errors";
-import PricingTable from "@/features/admin/pricing/components/PricingTable";
+import PricingTable from "@/features/pricing/components/PricingTable";
 import {
   couponSchema,
   dateInput,
@@ -27,7 +27,7 @@ import {
   type RateForm,
   type Tab,
   type TaxForm,
-} from "@/features/admin/pricing/pricingPage.helpers";
+} from "@/features/pricing/pricingPage.helpers";
 import type {
   AdminCoupon,
   AdminRoomPricing,
@@ -42,7 +42,7 @@ import type {
   RoomProductCategory,
   TaxPayload,
   TaxType,
-} from "@/features/admin/pricing/types";
+} from "@/features/pricing/types";
 
 export default function PricingPage() {
   const [propertyId, setPropertyId] = useState("");

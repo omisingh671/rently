@@ -13,15 +13,15 @@ import {
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
-import { ADMIN_KEYS } from "@/features/admin/config/adminKeys";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { getRoomBoardApi } from "@/features/admin/operations/api";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { getRoomBoardApi } from "@/features/operations/api";
 import type {
   RoomBoardRoom,
   RoomBoardStatus,
   RoomBoardUnit,
-} from "@/features/admin/operations/types";
+} from "@/features/operations/types";
 import { useAuthStore } from "@/stores/authStore";
 import {
   STATUS_BG_COLORS,

@@ -4,16 +4,16 @@ import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { useAdminProperties } from "@/features/admin/properties/hooks/useAdminProperties";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/admin/config/queryLimits";
-import MaintenanceFilters from "@/features/admin/maintenance/components/MaintenanceFilters";
-import MaintenanceForm from "@/features/admin/maintenance/components/MaintenanceForm/MaintenanceForm";
-import MaintenanceTable from "@/features/admin/maintenance/components/MaintenanceTable";
-import { useAdminMaintenance } from "@/features/admin/maintenance/hooks/useAdminMaintenance";
+import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import MaintenanceFilters from "@/features/maintenance/components/MaintenanceFilters";
+import MaintenanceForm from "@/features/maintenance/components/MaintenanceForm/MaintenanceForm";
+import MaintenanceTable from "@/features/maintenance/components/MaintenanceTable";
+import { useAdminMaintenance } from "@/features/maintenance/hooks/useAdminMaintenance";
 import type {
   AdminMaintenanceBlock,
   MaintenanceTargetType,
-} from "@/features/admin/maintenance/types";
+} from "@/features/maintenance/types";
 
 type Filters = {
   propertyId: string;
