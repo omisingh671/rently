@@ -16,6 +16,24 @@ export type ComfortOption = ConcreteComfortOption | "ALL";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
+export type BookingPaymentStatus =
+  | "PENDING"
+  | "PARTIALLY_PAID"
+  | "PAID"
+  | "REFUNDED";
+export type PaymentStatus =
+  | "PENDING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED"
+  | "REFUNDED";
+export type PaymentPurpose = "TOKEN" | "BALANCE" | "FULL_PAYMENT";
+export type PaymentMethod =
+  | "CASH"
+  | "UPI_MANUAL"
+  | "BANK_TRANSFER"
+  | "MANUAL"
+  | "ONLINE_GATEWAY";
 
 export type AdminBooking = {
   id: string;
@@ -42,9 +60,25 @@ export type AdminBooking = {
   checkOut: string;
   status: BookingStatus;
   totalAmount: string;
+  paymentStatus: BookingPaymentStatus;
+  paidAmount: string;
+  balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  noShowEligible: boolean;
   internalNotes: string | null;
+  payments: Array<{
+    id: string;
+    status: PaymentStatus;
+    purpose: PaymentPurpose;
+    method: PaymentMethod;
+    amount: string;
+    currency: string;
+    note: string | null;
+    receivedByUserId: string | null;
+    paidAt: string | null;
+    createdAt: string;
+  }>;
   items: Array<{
     id: string;
     targetType: BookingTargetType;
@@ -78,6 +112,15 @@ export type UpdateBookingPayload = {
   internalNotes?: string | null;
   roomId?: string;
   statusOverride?: boolean;
+  allowBalanceDueCheckIn?: boolean;
+};
+
+export type RecordBalancePaymentPayload = {
+  amount: number;
+  method: PaymentMethod;
+  note?: string;
+  paidAt?: string;
+  idempotencyKey?: string;
 };
 
 export type CreateManualBookingPayload = {

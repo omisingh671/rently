@@ -104,6 +104,7 @@ router.post(
 router.post("/properties/:propertyId/bookings", controller.createManualBooking);
 router.get("/bookings/:id", controller.getBookingById);
 router.patch("/bookings/:id", controller.updateBooking);
+router.post("/bookings/:id/payments", controller.recordBookingPayment);
 
 router.get("/properties/:propertyId/enquiries", controller.listEnquiries);
 router.patch("/enquiries/:id", controller.updateEnquiry);

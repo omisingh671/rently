@@ -4,6 +4,7 @@ import type {
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
+  PaymentMethod,
   PricingTier,
   PropertyAssignmentRole,
   PropertyStatus,
@@ -347,6 +348,15 @@ export interface UpdateDashboardBookingInput {
   note?: string;
   roomId?: string;
   statusOverride?: boolean;
+  allowBalanceDueCheckIn?: boolean;
+}
+
+export interface RecordDashboardBookingPaymentInput {
+  amount: number;
+  method: PaymentMethod;
+  note?: string;
+  paidAt?: Date;
+  idempotencyKey?: string;
 }
 
 export interface CreateDashboardManualBookingInput {

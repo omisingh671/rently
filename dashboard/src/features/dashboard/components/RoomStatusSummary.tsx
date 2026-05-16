@@ -54,10 +54,11 @@ export function RoomStatusSummary({ board }: RoomStatusSummaryProps) {
           return (
             <article
               key={status}
-              className={`rounded-xl border px-4 py-3 ${bgClass} ${borderClass}`}
+              className={`rounded-xl border px-3 py-3 ${bgClass} ${borderClass}`}
             >
               <p
-                className={`text-[11px] font-bold uppercase tracking-wider ${textClass}`}
+                title={statusLabel(status)}
+                className={`truncate text-[10px] font-bold uppercase tracking-wide ${textClass}`}
               >
                 {statusLabel(status)}
               </p>

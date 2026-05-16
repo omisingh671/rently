@@ -22,6 +22,13 @@ export interface CreatePublicBookingInput {
   to: Date;
   guests: number;
   comfortOption: ComfortOption;
+  guestDetails?: PublicBookingGuestDetailsInput;
+}
+
+export interface PublicBookingGuestDetailsInput {
+  name: string;
+  email: string;
+  contactNumber: string;
 }
 
 export interface CreatePublicEnquiryInput {

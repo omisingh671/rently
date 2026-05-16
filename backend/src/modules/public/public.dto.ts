@@ -1,5 +1,6 @@
 import type {
   BookingPaymentPolicy,
+  BookingPaymentStatus,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -97,6 +98,7 @@ export interface PublicBookingDTO {
   spaceName: string;
   status: BookingStatus;
   paymentPolicy: BookingPaymentPolicy;
+  paymentStatus: BookingPaymentStatus;
   upfrontAmount: number;
   guestName: string;
   guestEmail: string;
@@ -105,6 +107,8 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  paidAmount: number;
+  balanceAmount: number;
   remainingPayAtCheckIn: number;
   items: PublicBookingItemDTO[];
   internalNotes: string | null;

@@ -99,6 +99,13 @@ enum BookingPaymentPolicy {
   NO_UPFRONT_PAYMENT
 }
 
+enum BookingPaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  REFUNDED
+}
+
 enum PaymentProvider {
   MANUAL
   RAZORPAY
@@ -111,6 +118,20 @@ enum PaymentStatus {
   FAILED
   CANCELLED
   REFUNDED
+}
+
+enum PaymentPurpose {
+  TOKEN
+  BALANCE
+  FULL_PAYMENT
+}
+
+enum PaymentMethod {
+  CASH
+  UPI_MANUAL
+  BANK_TRANSFER
+  MANUAL
+  ONLINE_GATEWAY
 }
 
 enum LeadStatus {
@@ -149,6 +170,7 @@ model User {
   resetTokens                PasswordResetToken[]
   bookings                   Booking[]
   payments                   Payment[]
+  paymentsReceived           Payment[]             @relation("PaymentReceivedBy")
   bookingStatusHistory       BookingStatusHistory[] @relation("BookingStatusActor")
   quotes                     QuoteRequest[]
   propertyAssignments        PropertyAssignment[] @relation("AssignedUser")
@@ -419,6 +441,7 @@ model Booking {
   checkOut    DateTime
   status      BookingStatus @default(PENDING)
   totalAmount Decimal
+  paymentStatus BookingPaymentStatus @default(PENDING)
   paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount Decimal              @default(10)
   internalNotes       String?   @db.Text
@@ -492,6 +515,8 @@ model Payment {
   userId            String
   provider          PaymentProvider
   status            PaymentStatus   @default(PENDING)
+  purpose           PaymentPurpose   @default(TOKEN)
+  method            PaymentMethod    @default(MANUAL)
   amount            Decimal
   currency          String          @default("INR") @db.VarChar(3)
   idempotencyKey    String          @unique
@@ -501,6 +526,8 @@ model Payment {
   failureCode       String?
   failureMessage    String?
   metadata          Json?
+  note              String?         @db.Text
+  receivedByUserId  String?
   paidAt            DateTime?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -508,11 +535,13 @@ model Payment {
   booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receivedBy User?  @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([provider, providerPaymentId])
   @@index([bookingId])
   @@index([propertyId])
   @@index([userId])
+  @@index([receivedByUserId])
   @@index([status, createdAt])
   @@map("payments")
 }

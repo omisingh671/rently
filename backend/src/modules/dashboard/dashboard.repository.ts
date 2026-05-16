@@ -94,9 +94,18 @@ const dashboardCouponInclude = {
 } satisfies Prisma.CouponInclude;
 
 const dashboardBookingInclude = {
-  property: true,
+  property: {
+    include: {
+      tenant: true,
+    },
+  },
   user: true,
   items: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  payments: {
     orderBy: {
       createdAt: "asc",
     },

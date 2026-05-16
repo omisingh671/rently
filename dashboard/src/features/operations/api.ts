@@ -12,6 +12,7 @@ import type {
   EnquiryListResponse,
   LeadStatus,
   ManualBookingAvailabilityResponse,
+  RecordBalancePaymentPayload,
   QuoteListResponse,
   RoomBoardResponse,
   UpdateBookingPayload,
@@ -85,6 +86,18 @@ export const updateBookingStatusApi = async (
 ): Promise<AdminBooking> => {
   const { data } = await axiosInstance.patch<ApiSuccessResponse<AdminBooking>>(
     API_ENDPOINTS.operations.bookingById(bookingId),
+    payload,
+  );
+
+  return data.data;
+};
+
+export const recordBalancePaymentApi = async (
+  bookingId: string,
+  payload: RecordBalancePaymentPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingPaymentsById(bookingId),
     payload,
   );
 

@@ -4,6 +4,8 @@ import {
   BookingTargetType,
   LeadStatus,
   MaintenanceTargetType,
+  PaymentPurpose,
+  PaymentStatus,
   PricingTier,
   Prisma,
   PropertyAssignmentRole,
@@ -35,6 +37,7 @@ import {
   mapTenant,
   mapUnit,
   mapUser,
+  isBookingNoShowEligible,
   normalizePaginationResult,
 } from "./dashboard.mapper.js";
 import type {
@@ -79,6 +82,7 @@ import type {
   UpdateDashboardTenantInput,
   UpdateDashboardUnitInput,
   UpdateDashboardBookingInput,
+  RecordDashboardBookingPaymentInput,
   UpdateDashboardLeadInput,
   UpdateDashboardUserInput,
 } from "./dashboard.inputs.js";
@@ -104,6 +108,7 @@ import type {
   DashboardUserDTO,
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
+import { createManualPayment } from "@/modules/payments/payments.service.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -570,6 +575,47 @@ const assertBookingHasAssignedTarget = (booking: repo.DashboardBookingRecord) =>
       422,
       "BOOKING_ASSIGNMENT_REQUIRED",
       "Assign a room or unit before check-in",
+    );
+  }
+};
+
+const getBookingPaidAmount = (booking: repo.DashboardBookingRecord) =>
+  booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce(
+      (total, payment) => total.plus(payment.amount),
+      new Prisma.Decimal(0),
+    );
+
+const getBookingBalanceAmount = (booking: repo.DashboardBookingRecord) => {
+  const balance = booking.totalAmount.minus(getBookingPaidAmount(booking));
+  return balance.lessThan(0) ? new Prisma.Decimal(0) : balance;
+};
+
+const assertBookingCanAcceptPayment = (
+  booking: repo.DashboardBookingRecord,
+) => {
+  if (booking.status === BookingStatus.CANCELLED) {
+    throw new HttpError(
+      409,
+      "BOOKING_CANCELLED",
+      "Cancelled bookings cannot accept payments",
+    );
+  }
+
+  if (booking.status === BookingStatus.NO_SHOW) {
+    throw new HttpError(
+      409,
+      "BOOKING_NO_SHOW",
+      "No-show bookings cannot accept payments",
+    );
+  }
+
+  if (booking.status === BookingStatus.CHECKED_OUT) {
+    throw new HttpError(
+      409,
+      "BOOKING_PAYMENT_CLOSED",
+      "Checked-out bookings cannot accept payments",
     );
   }
 };
@@ -2854,6 +2900,21 @@ export const updateBooking = async (
     } else {
       if (nextStatus === BookingStatus.CHECKED_IN) {
         assertBookingHasAssignedTarget(booking);
+        const balanceAmount = getBookingBalanceAmount(booking);
+        if (balanceAmount.greaterThan(0)) {
+          if (input.allowBalanceDueCheckIn !== true) {
+            throw new HttpError(
+              409,
+              "CHECK_IN_BALANCE_DUE",
+              "Record balance payment before check-in or add an override note",
+            );
+          }
+
+          requireAuditNote(
+            input.note,
+            "Override note is required to check in with balance due",
+          );
+        }
       }
 
       if (nextStatus === BookingStatus.CANCELLED) {
@@ -2878,6 +2939,13 @@ export const updateBooking = async (
 
       if (nextStatus === BookingStatus.NO_SHOW) {
         requireAuditNote(input.note, "No-show note is required");
+        if (!isBookingNoShowEligible(booking)) {
+          throw new HttpError(
+            409,
+            "NO_SHOW_NOT_ELIGIBLE",
+            "Booking is not eligible for no-show yet",
+          );
+        }
       }
 
       assertBookingTransitionAllowed(booking.status, nextStatus);
@@ -2943,6 +3011,57 @@ export const updateBooking = async (
         }
       : undefined,
   );
+
+  return mapBooking(updatedBooking);
+};
+
+export const recordBookingBalancePayment = async (
+  userId: string,
+  bookingId: string,
+  input: RecordDashboardBookingPaymentInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+
+  const booking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, booking.propertyId);
+  assertBookingCanAcceptPayment(booking);
+
+  const balanceAmount = getBookingBalanceAmount(booking);
+  const amount = new Prisma.Decimal(input.amount);
+
+  if (balanceAmount.lessThanOrEqualTo(0)) {
+    throw new HttpError(
+      409,
+      "BOOKING_ALREADY_PAID",
+      "Booking is already fully paid",
+    );
+  }
+
+  if (amount.greaterThan(balanceAmount)) {
+    throw new HttpError(
+      422,
+      "PAYMENT_OVERPAYMENT",
+      "Payment amount cannot exceed the booking balance",
+    );
+  }
+
+  await createManualPayment({
+    actorUserId: actor.id,
+    bookingId,
+    idempotencyKey:
+      input.idempotencyKey ?? `dashboard-balance-${bookingId}-${randomUUID()}`,
+    amount: input.amount,
+    purpose: PaymentPurpose.BALANCE,
+    method: input.method,
+    ...(input.note !== undefined && { note: input.note }),
+    ...(input.paidAt !== undefined && { paidAt: input.paidAt }),
+  });
+
+  const updatedBooking = await repo.findBookingById(bookingId);
+  if (!updatedBooking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
 
   return mapBooking(updatedBooking);
 };

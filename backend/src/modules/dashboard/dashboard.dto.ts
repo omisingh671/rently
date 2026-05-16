@@ -1,5 +1,6 @@
 import type {
   BookingPaymentPolicy,
+  BookingPaymentStatus,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -7,6 +8,9 @@ import type {
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
+  PaymentMethod,
+  PaymentPurpose,
+  PaymentStatus,
   PricingTier,
   PropertyAssignmentRole,
   PropertyStatus,
@@ -331,9 +335,25 @@ export interface DashboardBookingDTO {
   checkOut: Date;
   status: BookingStatus;
   totalAmount: string;
+  paymentStatus: BookingPaymentStatus;
+  paidAmount: string;
+  balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  noShowEligible: boolean;
   internalNotes: string | null;
+  payments: Array<{
+    id: string;
+    status: PaymentStatus;
+    purpose: PaymentPurpose;
+    method: PaymentMethod;
+    amount: string;
+    currency: string;
+    note: string | null;
+    receivedByUserId: string | null;
+    paidAt: Date | null;
+    createdAt: Date;
+  }>;
   items: Array<{
     id: string;
     targetType: BookingTargetType;

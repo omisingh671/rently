@@ -22,6 +22,7 @@ import type {
   Booking,
   CreateManualPaymentResponse,
 } from "@/features/bookings/types";
+import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 
 const paymentKeyPrefix = "sucasa:manual-payment";
@@ -178,6 +179,9 @@ export default function BookingPaymentPage() {
   const { id } = useParams();
   const bookingQuery = useBooking(id);
   const paymentMutation = useCreateManualPayment();
+  const isAuthenticated = useAuthStore(
+    (state) => state.status === "authenticated" && !!state.user,
+  );
   const [paymentResult, setPaymentResult] =
     useState<CreateManualPaymentResponse | null>(null);
 
@@ -256,7 +260,7 @@ export default function BookingPaymentPage() {
                   </div>
                   <h2 className="text-lg font-bold text-slate-900">Guest Information</h2>
                 </div>
-                <div className="grid gap-6 sm:grid-cols-2">
+                <div className="grid gap-6 sm:grid-cols-3">
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact Name</div>
                     <div className="text-sm font-semibold text-slate-800 mt-1">{booking.guestName}</div>
@@ -264,6 +268,10 @@ export default function BookingPaymentPage() {
                   <div>
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Email Address</div>
                     <div className="text-sm font-semibold text-slate-800 mt-1">{booking.guestEmail}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Mobile Number</div>
+                    <div className="text-sm font-semibold text-slate-800 mt-1">{booking.guestContactNumber ?? "-"}</div>
                   </div>
                 </div>
               </div>
@@ -283,12 +291,35 @@ export default function BookingPaymentPage() {
                     A confirmation email has been sent to {booking.guestEmail}.
                   </p>
                   <div className="mt-8 pt-6 border-t border-emerald-200/50">
-                    <p className="text-sm font-medium text-emerald-800">
-                      Want to manage your stay?
-                    </p>
-                    <p className="text-xs text-emerald-700/70 mt-1">
-                      You can find all your booking details and status under the <span className="font-bold">Account &gt; Bookings</span> tab in your profile.
-                    </p>
+                    {isAuthenticated ? (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-medium text-emerald-800">
+                            Want to manage your stay?
+                          </p>
+                          <p className="text-xs text-emerald-700/70 mt-1">
+                            You can find all your booking details and status under the <span className="font-bold">Account &gt; Bookings</span> tab in your profile.
+                          </p>
+                        </div>
+                        <Button
+                          to={`${ROUTES.ACCOUNT}?tab=bookings`}
+                          variant="secondary"
+                          size="sm"
+                          className="bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200"
+                        >
+                          View My Booking
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm font-medium text-emerald-800">
+                          Save your booking reference.
+                        </p>
+                        <p className="text-xs text-emerald-700/70 mt-1">
+                          Use booking ref <span className="font-bold">{booking.bookingRef}</span> for support or front-desk follow-up.
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : booking.status === "PENDING" ? (

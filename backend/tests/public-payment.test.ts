@@ -7,7 +7,10 @@ import {
   BookingPaymentPolicy,
   BookingStatus,
   ComfortOption,
+  PaymentMethod,
+  PaymentPurpose,
   PricingTier,
+  PropertyAssignmentRole,
   PropertyStatus,
   RateType,
   RoomProductCategory,
@@ -24,6 +27,8 @@ const passwordHash = "not-used-by-service-tests";
 
 type TestState = {
   superAdminId: string;
+  managerId: string;
+  otherManagerId: string;
   guestId: string;
   tenantId: string;
   tenantSlug: string;
@@ -34,14 +39,17 @@ type TestState = {
 
 let state: TestState;
 
-const createBooking = () =>
+const createBooking = (
+  from = new Date("2027-03-10T00:00:00.000Z"),
+  to = new Date("2027-03-12T00:00:00.000Z"),
+) =>
   publicService.createBooking(
     state.guestId,
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
-      from: new Date("2027-03-10T00:00:00.000Z"),
-      to: new Date("2027-03-12T00:00:00.000Z"),
+      from,
+      to,
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -64,6 +72,26 @@ before(async () => {
       email: `${testId}-guest@sucasa.test`,
       passwordHash,
       role: UserRole.GUEST,
+    },
+  });
+
+  const manager = await prisma.user.create({
+    data: {
+      fullName: "Payment Test Manager",
+      email: `${testId}-manager@sucasa.test`,
+      passwordHash,
+      role: UserRole.MANAGER,
+      createdByUserId: superAdmin.id,
+    },
+  });
+
+  const otherManager = await prisma.user.create({
+    data: {
+      fullName: "Payment Test Other Manager",
+      email: `${testId}-other-manager@sucasa.test`,
+      passwordHash,
+      role: UserRole.MANAGER,
+      createdByUserId: superAdmin.id,
     },
   });
 
@@ -95,6 +123,15 @@ before(async () => {
       unitNumber: `${testId}-101`,
       floor: 1,
       status: UnitStatus.ACTIVE,
+    },
+  });
+
+  await prisma.propertyAssignment.create({
+    data: {
+      propertyId: property.id,
+      userId: manager.id,
+      role: PropertyAssignmentRole.MANAGER,
+      assignedByUserId: superAdmin.id,
     },
   });
 
@@ -210,6 +247,8 @@ before(async () => {
 
   state = {
     superAdminId: superAdmin.id,
+    managerId: manager.id,
+    otherManagerId: otherManager.id,
     guestId: guest.id,
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
@@ -228,7 +267,12 @@ after(async () => {
     await prisma.user.deleteMany({
       where: {
         id: {
-          in: [state.guestId, state.superAdminId],
+          in: [
+            state.guestId,
+            state.managerId,
+            state.otherManagerId,
+            state.superAdminId,
+          ],
         },
       },
     });
@@ -242,7 +286,10 @@ after(async () => {
 });
 
 test("manual payment confirms a pending booking", async () => {
-  const booking = await createBooking();
+  const booking = await createBooking(
+    new Date("2027-03-10T00:00:00.000Z"),
+    new Date("2027-03-12T00:00:00.000Z"),
+  );
   assert.equal(booking.status, BookingStatus.PENDING);
 
   const result = await paymentsService.createManualPayment({
@@ -253,15 +300,21 @@ test("manual payment confirms a pending booking", async () => {
 
   assert.equal(result.payment.status, "SUCCEEDED");
   assert.equal(result.payment.provider, "MANUAL");
+  assert.equal(result.payment.purpose, PaymentPurpose.TOKEN);
+  assert.equal(result.payment.method, PaymentMethod.MANUAL);
   assert.equal(result.payment.amount, 10);
   assert.equal(result.payment.currency, "INR");
   assert.equal(result.booking.status, BookingStatus.CONFIRMED);
+  assert.equal(result.booking.paymentStatus, "PARTIALLY_PAID");
+  assert.equal(result.booking.paidAmount, 10);
+  assert.equal(result.booking.balanceAmount, 5990);
 
   const confirmedBooking = await prisma.booking.findUniqueOrThrow({
     where: { id: booking.id },
   });
 
   assert.equal(confirmedBooking.status, BookingStatus.CONFIRMED);
+  assert.equal(confirmedBooking.paymentStatus, "PARTIALLY_PAID");
 
   const history = await prisma.bookingStatusHistory.findMany({
     where: {
@@ -453,7 +506,7 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
   assert.deepEqual(result.availableSpaceIds, [state.pricingTwoId]);
 });
 
-test("manual payment rejects a second successful payment for one booking", async () => {
+test("manual token payment rejects a second token for one booking", async () => {
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -483,7 +536,229 @@ test("manual payment rejects a second successful payment for one booking", async
     (error: unknown) => {
       assert.ok(error instanceof HttpError);
       assert.equal(error.statusCode, 409);
-      assert.equal(error.code, "BOOKING_ALREADY_PAID");
+      assert.equal(error.code, "BOOKING_TOKEN_ALREADY_PAID");
+      return true;
+    },
+  );
+});
+
+test("dashboard records remaining balance payment and marks booking paid", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-05-20T00:00:00.000Z"),
+      to: new Date("2027-05-22T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-balance-token`,
+  });
+
+  const updated = await dashboardService.recordBookingBalancePayment(
+    state.managerId,
+    booking.id,
+    {
+      amount: 5590,
+      method: PaymentMethod.CASH,
+      note: "Collected at reception",
+      paidAt: new Date("2027-05-20T10:00:00.000Z"),
+      idempotencyKey: `${testId}-balance-payment`,
+    },
+  );
+
+  assert.equal(updated.paymentStatus, "PAID");
+  assert.equal(updated.paidAmount, "5600");
+  assert.equal(updated.balanceAmount, "0");
+  assert.equal(updated.payments.length, 2);
+  assert.equal(updated.payments[1]?.purpose, PaymentPurpose.BALANCE);
+  assert.equal(updated.payments[1]?.method, PaymentMethod.CASH);
+});
+
+test("dashboard rejects balance overpayment", async () => {
+  const booking = await createBooking(
+    new Date("2027-05-24T00:00:00.000Z"),
+    new Date("2027-05-26T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-overpayment-token`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingBalancePayment(state.superAdminId, booking.id, {
+        amount: 5991,
+        method: PaymentMethod.UPI_MANUAL,
+        idempotencyKey: `${testId}-overpayment-balance`,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "PAYMENT_OVERPAYMENT");
+      return true;
+    },
+  );
+});
+
+test("dashboard rejects balance payment for cancelled and no-show bookings", async () => {
+  const cancelledBooking = await createBooking(
+    new Date("2027-05-28T00:00:00.000Z"),
+    new Date("2027-05-30T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: cancelledBooking.id,
+    idempotencyKey: `${testId}-cancelled-payment-token`,
+  });
+  await dashboardService.updateBooking(state.superAdminId, cancelledBooking.id, {
+    status: BookingStatus.CANCELLED,
+    note: "Guest cancelled before arrival",
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingBalancePayment(
+        state.superAdminId,
+        cancelledBooking.id,
+        {
+          amount: 100,
+          method: PaymentMethod.BANK_TRANSFER,
+          idempotencyKey: `${testId}-cancelled-balance`,
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_CANCELLED");
+      return true;
+    },
+  );
+
+  const noShowBooking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2026-01-10T00:00:00.000Z"),
+      to: new Date("2026-01-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: noShowBooking.id,
+    idempotencyKey: `${testId}-no-show-token`,
+  });
+  const markedNoShow = await dashboardService.updateBooking(
+    state.superAdminId,
+    noShowBooking.id,
+    {
+      status: BookingStatus.NO_SHOW,
+      note: "Guest did not arrive after cutoff",
+    },
+  );
+
+  assert.equal(markedNoShow.status, BookingStatus.NO_SHOW);
+  assert.equal(markedNoShow.statusHistory.at(-1)?.toStatus, BookingStatus.NO_SHOW);
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingBalancePayment(
+        state.superAdminId,
+        noShowBooking.id,
+        {
+          amount: 100,
+          method: PaymentMethod.CASH,
+          idempotencyKey: `${testId}-no-show-balance`,
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_NO_SHOW");
+      return true;
+    },
+  );
+
+  const replacementBooking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2026-01-10T00:00:00.000Z"),
+      to: new Date("2026-01-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(replacementBooking.status, BookingStatus.PENDING);
+});
+
+test("dashboard rejects no-show before cutoff eligibility", async () => {
+  const booking = await createBooking(
+    new Date("2027-06-20T00:00:00.000Z"),
+    new Date("2027-06-22T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-early-no-show-token`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        status: BookingStatus.NO_SHOW,
+        note: "Too early",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "NO_SHOW_NOT_ELIGIBLE");
+      return true;
+    },
+  );
+});
+
+test("manager payment actions are property scoped", async () => {
+  const booking = await createBooking(
+    new Date("2027-06-24T00:00:00.000Z"),
+    new Date("2027-06-26T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-rbac-token`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingBalancePayment(
+        state.otherManagerId,
+        booking.id,
+        {
+          amount: 100,
+          method: PaymentMethod.CASH,
+          idempotencyKey: `${testId}-rbac-balance`,
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 404);
+      assert.equal(error.code, "PROPERTY_NOT_FOUND");
       return true;
     },
   );
@@ -509,13 +784,28 @@ test("dashboard booking status updates append audit history and notes", async ()
     idempotencyKey: `${testId}-dashboard-history-payment`,
   });
 
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        status: BookingStatus.CHECKED_IN,
+        note: "Tried check-in before balance collection.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "CHECK_IN_BALANCE_DUE");
+      return true;
+    },
+  );
+
   const updated = await dashboardService.updateBooking(
     state.superAdminId,
     booking.id,
     {
       status: BookingStatus.CHECKED_IN,
       internalNotes: "Guest arrived with verified ID.",
-      note: "Front desk checked in guest.",
+      note: "Manager approved check-in with balance due.",
+      allowBalanceDueCheckIn: true,
     },
   );
 
@@ -532,7 +822,7 @@ test("dashboard booking status updates append audit history and notes", async ()
   );
   assert.equal(
     updated.statusHistory[updated.statusHistory.length - 1]?.note,
-    "Front desk checked in guest.",
+    "Manager approved check-in with balance due.",
   );
 });
 

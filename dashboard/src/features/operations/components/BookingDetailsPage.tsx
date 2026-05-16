@@ -16,6 +16,7 @@ import {
   FiArrowLeft,
   FiCalendar,
   FiCheckCircle,
+  FiCreditCard,
   FiEdit3,
   FiHome,
   FiLogIn,
@@ -30,7 +31,8 @@ type RiskAction =
   | "checkOut"
   | "cancel"
   | "noShow"
-  | "statusOverride";
+  | "statusOverride"
+  | "recordPayment";
 
 type PendingAction = {
   type: RiskAction;
@@ -58,6 +60,13 @@ const bookingStatuses: BookingStatus[] = [
   "CANCELLED",
   "NO_SHOW",
 ];
+
+const paymentMethods = [
+  "CASH",
+  "UPI_MANUAL",
+  "BANK_TRANSFER",
+  "MANUAL",
+] as const;
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat("en-IN", {
@@ -162,6 +171,16 @@ const getActionDefaults = (action: RiskAction): PendingAction => {
     };
   }
 
+  if (action === "recordPayment") {
+    return {
+      type: action,
+      title: "Record Balance Payment",
+      message:
+        "This will add a successful balance payment and update the booking payment status.",
+      confirmLabel: "Record Payment",
+    };
+  }
+
   return {
     type: action,
     title: "Change Assigned Room",
@@ -187,6 +206,10 @@ export default function BookingDetailsPage() {
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [selectedStatus, setSelectedStatus] =
     useState<BookingStatus>("PENDING");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] =
+    useState<(typeof paymentMethods)[number]>("CASH");
+  const [paymentPaidAt, setPaymentPaidAt] = useState("");
   const [actionError, setActionError] = useState("");
 
   const {
@@ -196,6 +219,7 @@ export default function BookingDetailsPage() {
     isError,
     error,
     updateBooking,
+    recordBalancePayment,
     isMutating,
   } = useAdminBooking(id);
 
@@ -240,6 +264,11 @@ export default function BookingDetailsPage() {
       nextAction.message =
         "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
     }
+    if (type === "checkIn" && booking && Number(booking.balanceAmount) > 0) {
+      nextAction.requiresNote = true;
+      nextAction.message =
+        "This booking still has balance due. Add an override note to continue check-in.";
+    }
     setPendingAction(nextAction);
     setNote("");
     if (type === "assignRoom" && booking) {
@@ -253,11 +282,19 @@ export default function BookingDetailsPage() {
     if (type === "statusOverride" && booking) {
       setSelectedStatus(booking.status);
     }
+    if (type === "recordPayment" && booking) {
+      setPaymentAmount(booking.balanceAmount);
+      setPaymentMethod("CASH");
+      setPaymentPaidAt(new Date().toISOString().slice(0, 16));
+    }
   };
 
   const closeAction = () => {
     setPendingAction(null);
     setNote("");
+    setPaymentAmount("");
+    setPaymentMethod("CASH");
+    setPaymentPaidAt("");
     setActionError("");
   };
 
@@ -283,6 +320,21 @@ export default function BookingDetailsPage() {
           roomId: selectedRoomId,
           ...(note.trim() && { note: note.trim() }),
         });
+      } else if (pendingAction.type === "recordPayment") {
+        const amount = Number(paymentAmount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          setActionError("Enter a valid payment amount.");
+          return;
+        }
+
+        await recordBalancePayment({
+          amount,
+          method: paymentMethod,
+          ...(note.trim() && { note: note.trim() }),
+          ...(paymentPaidAt && {
+            paidAt: new Date(paymentPaidAt).toISOString(),
+          }),
+        });
       } else if (pendingAction.type === "statusOverride") {
         if (!note.trim()) {
           setActionError("Audit note is required for status correction.");
@@ -302,6 +354,10 @@ export default function BookingDetailsPage() {
 
         await updateBooking({
           status: pendingAction.status,
+          ...(pendingAction.type === "checkIn" &&
+            Number(booking.balanceAmount) > 0 && {
+              allowBalanceDueCheckIn: true,
+            }),
           ...(note.trim() && { note: note.trim() }),
         });
       }
@@ -323,7 +379,14 @@ export default function BookingDetailsPage() {
     booking?.status === "PENDING" ||
     booking?.status === "CONFIRMED" ||
     canAdminCancelAfterCheckIn;
-  const canMarkNoShow = booking?.status === "CONFIRMED";
+  const canMarkNoShow =
+    booking?.status === "CONFIRMED" && booking.noShowEligible;
+  const canRecordBalance =
+    booking !== undefined &&
+    Number(booking.balanceAmount) > 0 &&
+    booking.status !== "CANCELLED" &&
+    booking.status !== "NO_SHOW" &&
+    booking.status !== "CHECKED_OUT";
   const canAssignRoom =
     booking !== undefined &&
     booking.bookingType !== "MULTI_ROOM" &&
@@ -417,7 +480,7 @@ export default function BookingDetailsPage() {
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">
-              Amount & Payment
+              Payment Summary
             </h3>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <InfoItem
@@ -425,13 +488,54 @@ export default function BookingDetailsPage() {
                 value={formatMoney(booking.totalAmount)}
               />
               <InfoItem
-                label="Upfront/token"
+                label="Paid amount"
+                value={formatMoney(booking.paidAmount)}
+              />
+              <InfoItem
+                label="Balance due"
+                value={formatMoney(booking.balanceAmount)}
+              />
+              <InfoItem
+                label="Token expected"
                 value={formatMoney(booking.upfrontAmount)}
+              />
+              <InfoItem
+                label="Payment status"
+                value={booking.paymentStatus.replaceAll("_", " ")}
               />
               <InfoItem
                 label="Payment policy"
                 value={booking.paymentPolicy.replaceAll("_", " ")}
               />
+            </div>
+            <div className="mt-5 space-y-3">
+              {booking.payments.length === 0 ? (
+                <p className="text-sm text-slate-500">No payments recorded.</p>
+              ) : (
+                booking.payments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-900">
+                        {formatMoney(payment.amount)}
+                      </div>
+                      <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                        {payment.status.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {payment.purpose.replaceAll("_", " ")} /{" "}
+                      {payment.method.replaceAll("_", " ")} /{" "}
+                      {formatDateTime(payment.paidAt ?? payment.createdAt)}
+                    </div>
+                    {payment.note && (
+                      <p className="mt-2 text-slate-700">{payment.note}</p>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </section>
 
@@ -487,6 +591,19 @@ export default function BookingDetailsPage() {
               Operational Actions
             </h3>
             <div className="mt-4 grid gap-3">
+              {canRecordBalance && (
+                <Button
+                  type="button"
+                  size="md"
+                  variant="primary"
+                  icon={<FiCreditCard />}
+                  disabled={isMutating}
+                  onClick={() => openAction("recordPayment")}
+                  fullWidth
+                >
+                  Record Balance Payment
+                </Button>
+              )}
               {canAssignRoom && (
                 <Button
                   type="button"
@@ -587,6 +704,18 @@ export default function BookingDetailsPage() {
                 board.
               </p>
             )}
+            {booking.status === "CONFIRMED" && booking.noShowEligible && (
+              <p className="mt-3 text-xs font-semibold text-amber-700">
+                No-show eligible
+              </p>
+            )}
+            {booking.status === "CONFIRMED" &&
+              Number(booking.balanceAmount) > 0 && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Balance due before check-in:{" "}
+                  {formatMoney(booking.balanceAmount)}
+                </p>
+              )}
             {booking.status === "CHECKED_IN" && !canOverrideCheckedInRoom && (
               <p className="mt-3 text-xs text-slate-500">
                 Room changes after check-in require confirmation and an audit
@@ -614,12 +743,18 @@ export default function BookingDetailsPage() {
         note={note}
         selectedRoomId={selectedRoomId}
         selectedStatus={selectedStatus}
+        paymentAmount={paymentAmount}
+        paymentMethod={paymentMethod}
+        paymentPaidAt={paymentPaidAt}
         rooms={rooms}
         isSubmitting={isMutating}
         errorMessage={actionError}
         onNoteChange={setNote}
         onRoomChange={setSelectedRoomId}
         onStatusChange={setSelectedStatus}
+        onPaymentAmountChange={setPaymentAmount}
+        onPaymentMethodChange={setPaymentMethod}
+        onPaymentPaidAtChange={setPaymentPaidAt}
         onClose={closeAction}
         onSubmit={submitAction}
       />
@@ -721,12 +856,18 @@ function ConfirmationModal({
   note,
   selectedRoomId,
   selectedStatus,
+  paymentAmount,
+  paymentMethod,
+  paymentPaidAt,
   rooms,
   isSubmitting,
   errorMessage,
   onNoteChange,
   onRoomChange,
   onStatusChange,
+  onPaymentAmountChange,
+  onPaymentMethodChange,
+  onPaymentPaidAtChange,
   onClose,
   onSubmit,
 }: {
@@ -734,18 +875,25 @@ function ConfirmationModal({
   note: string;
   selectedRoomId: string;
   selectedStatus: BookingStatus;
+  paymentAmount: string;
+  paymentMethod: (typeof paymentMethods)[number];
+  paymentPaidAt: string;
   rooms: AssignmentRoom[];
   isSubmitting: boolean;
   errorMessage: string;
   onNoteChange: (value: string) => void;
   onRoomChange: (value: string) => void;
   onStatusChange: (value: BookingStatus) => void;
+  onPaymentAmountChange: (value: string) => void;
+  onPaymentMethodChange: (value: (typeof paymentMethods)[number]) => void;
+  onPaymentPaidAtChange: (value: string) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const canSubmit =
     !isSubmitting &&
     (action?.type !== "assignRoom" || selectedRoomId !== "") &&
+    (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
     (action?.type === "assignRoom" || !action?.requiresNote || note.trim().length > 0);
 
   return (
@@ -802,6 +950,56 @@ function ConfirmationModal({
                 ))}
               </select>
             </label>
+          )}
+
+          {action.type === "recordPayment" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">Amount</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={paymentAmount}
+                  disabled={isSubmitting}
+                  onChange={(event) =>
+                    onPaymentAmountChange(event.target.value)
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">Method</span>
+                <select
+                  value={paymentMethod}
+                  disabled={isSubmitting}
+                  onChange={(event) =>
+                    onPaymentMethodChange(
+                      event.target.value as (typeof paymentMethods)[number],
+                    )
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                >
+                  {paymentMethods.map((method) => (
+                    <option key={method} value={method}>
+                      {method.replaceAll("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="font-medium text-slate-700">Paid at</span>
+                <input
+                  type="datetime-local"
+                  value={paymentPaidAt}
+                  disabled={isSubmitting}
+                  onChange={(event) =>
+                    onPaymentPaidAtChange(event.target.value)
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                />
+              </label>
+            </div>
           )}
 
           <label className="block text-sm">

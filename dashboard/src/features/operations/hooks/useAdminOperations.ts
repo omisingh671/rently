@@ -9,6 +9,7 @@ import {
   listBookingsApi,
   listEnquiriesApi,
   listQuotesApi,
+  recordBalancePaymentApi,
   updateBookingStatusApi,
   updateEnquiryStatusApi,
   updateQuoteStatusApi,
@@ -18,6 +19,7 @@ import type {
   CheckManualBookingAvailabilityPayload,
   CreateManualBookingPayload,
   LeadStatus,
+  RecordBalancePaymentPayload,
   UpdateBookingPayload,
 } from "../types";
 
@@ -218,6 +220,14 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     onSuccess: (booking) => invalidateBooking(booking.propertyId),
   });
 
+  const recordBalancePayment = useMutation({
+    mutationFn: (payload: RecordBalancePaymentPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return recordBalancePaymentApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
   return {
     data: query.data,
     isPending: query.isPending,
@@ -225,6 +235,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     isError: query.isError,
     error: query.error,
     updateBooking: updateBooking.mutateAsync,
-    isMutating: updateBooking.isPending,
+    recordBalancePayment: recordBalancePayment.mutateAsync,
+    isMutating: updateBooking.isPending || recordBalancePayment.isPending,
   };
 };

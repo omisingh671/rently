@@ -5,6 +5,7 @@ import {
   DiscountType,
   LeadStatus,
   MaintenanceTargetType,
+  PaymentMethod,
   PricingTier,
   PropertyAssignmentRole,
   PropertyStatus,
@@ -473,6 +474,7 @@ export const updateBookingStatusSchema = z
     note: z.string().trim().max(1000).optional(),
     roomId: idSchema.optional(),
     statusOverride: z.boolean().optional(),
+    allowBalanceDueCheckIn: z.boolean().optional(),
   })
   .refine(
     (data) =>
@@ -483,6 +485,14 @@ export const updateBookingStatusSchema = z
       message: "Status, assignment, or internal notes are required",
     },
   );
+
+export const recordBookingPaymentSchema = z.object({
+  amount: z.coerce.number().positive(),
+  method: z.nativeEnum(PaymentMethod),
+  note: z.string().trim().max(1000).optional(),
+  paidAt: z.coerce.date().optional(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
+});
 
 export const createManualBookingSchema = contactFieldsRefine(
   z

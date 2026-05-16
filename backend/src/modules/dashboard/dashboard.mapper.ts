@@ -1,5 +1,11 @@
 import type { PaginatedResult } from "@/common/types/pagination.js";
-import { PropertyAssignmentRole } from "@/generated/prisma/client.js";
+import {
+  BookingPaymentStatus,
+  BookingStatus,
+  PaymentStatus,
+  PropertyAssignmentRole,
+  Prisma,
+} from "@/generated/prisma/client.js";
 import type {
   DashboardAmenityDTO,
   DashboardBookingDTO,
@@ -258,62 +264,166 @@ export const mapCoupon = (
   updatedAt: coupon.updatedAt,
 });
 
+const zeroDecimal = new Prisma.Decimal(0);
+
+const maxDecimal = (left: Prisma.Decimal, right: Prisma.Decimal) =>
+  left.greaterThan(right) ? left : right;
+
+const getBookingPaidAmount = (booking: repo.DashboardBookingRecord) =>
+  booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce(
+      (total, payment) => total.plus(payment.amount),
+      new Prisma.Decimal(0),
+    );
+
+const getBookingPaymentStatus = (
+  totalAmount: Prisma.Decimal,
+  paidAmount: Prisma.Decimal,
+) => {
+  if (paidAmount.lessThanOrEqualTo(0)) {
+    return BookingPaymentStatus.PENDING;
+  }
+
+  if (paidAmount.lessThan(totalAmount)) {
+    return BookingPaymentStatus.PARTIALLY_PAID;
+  }
+
+  return BookingPaymentStatus.PAID;
+};
+
+const getDateParts = (date: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const getPart = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+
+  return {
+    year: getPart("year"),
+    month: getPart("month"),
+    day: getPart("day"),
+    hour: getPart("hour"),
+    minute: getPart("minute"),
+  };
+};
+
+const compareLocalDate = (
+  left: ReturnType<typeof getDateParts>,
+  right: ReturnType<typeof getDateParts>,
+) => {
+  const leftValue = left.year * 10_000 + left.month * 100 + left.day;
+  const rightValue = right.year * 10_000 + right.month * 100 + right.day;
+  return leftValue - rightValue;
+};
+
+export const isBookingNoShowEligible = (
+  booking: repo.DashboardBookingRecord,
+  now = new Date(),
+) => {
+  if (booking.status !== BookingStatus.CONFIRMED) {
+    return false;
+  }
+
+  const timeZone = booking.property.tenant.timezone;
+  const currentLocal = getDateParts(now, timeZone);
+  const checkInLocal = getDateParts(booking.checkIn, timeZone);
+  const dateCompare = compareLocalDate(currentLocal, checkInLocal);
+
+  if (dateCompare > 0) {
+    return true;
+  }
+
+  return dateCompare === 0 && (currentLocal.hour > 20 ||
+    (currentLocal.hour === 20 && currentLocal.minute >= 0));
+};
+
 export const mapBooking = (
   booking: repo.DashboardBookingRecord,
-): DashboardBookingDTO => ({
-  id: booking.id,
-  bookingRef: booking.bookingRef,
-  propertyId: booking.propertyId,
-  propertyName: booking.property.name,
-  userId: booking.userId,
-  guestName: booking.guestNameSnapshot,
-  guestEmail: booking.guestEmailSnapshot,
-  guestNameSnapshot: booking.guestNameSnapshot,
-  guestEmailSnapshot: booking.guestEmailSnapshot,
-  guestContactSnapshot: booking.guestContactSnapshot ?? null,
-  bookingType: booking.bookingType,
-  guestCount: booking.guestCount,
-  comfortOption: booking.comfortOption,
-  productId: booking.productId ?? null,
-  targetType: booking.targetType,
-  unitId: booking.unitId ?? null,
-  roomId: booking.roomId ?? null,
-  targetLabel: booking.targetLabel,
-  productName: booking.productName,
-  pricePerNight: booking.pricePerNight.toString(),
-  checkIn: booking.checkIn,
-  checkOut: booking.checkOut,
-  status: booking.status,
-  totalAmount: booking.totalAmount.toString(),
-  paymentPolicy: booking.paymentPolicy,
-  upfrontAmount: booking.upfrontAmount.toString(),
-  internalNotes: booking.internalNotes ?? null,
-  items: booking.items.map((item) => ({
-    id: item.id,
-    targetType: item.targetType,
-    unitId: item.unitId ?? null,
-    roomId: item.roomId ?? null,
-    productId: item.productId ?? null,
-    targetLabel: item.targetLabel,
-    productName: item.productName,
-    capacity: item.capacity,
-    guestCount: item.guestCount,
-    comfortOption: item.comfortOption,
-    pricePerNight: item.pricePerNight.toString(),
-    totalAmount: item.totalAmount.toString(),
-  })),
-  statusHistory: booking.statusHistory.map((event) => ({
-    id: event.id,
-    fromStatus: event.fromStatus ?? null,
-    toStatus: event.toStatus,
-    actorUserId: event.actorUserId ?? null,
-    actorName: event.actor?.fullName ?? null,
-    note: event.note ?? null,
-    createdAt: event.createdAt,
-  })),
-  createdAt: booking.createdAt,
-  updatedAt: booking.updatedAt,
-});
+): DashboardBookingDTO => {
+  const paidAmount = getBookingPaidAmount(booking);
+  const balanceAmount = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.minus(paidAmount),
+  );
+
+  return {
+    id: booking.id,
+    bookingRef: booking.bookingRef,
+    propertyId: booking.propertyId,
+    propertyName: booking.property.name,
+    userId: booking.userId,
+    guestName: booking.guestNameSnapshot,
+    guestEmail: booking.guestEmailSnapshot,
+    guestNameSnapshot: booking.guestNameSnapshot,
+    guestEmailSnapshot: booking.guestEmailSnapshot,
+    guestContactSnapshot: booking.guestContactSnapshot ?? null,
+    bookingType: booking.bookingType,
+    guestCount: booking.guestCount,
+    comfortOption: booking.comfortOption,
+    productId: booking.productId ?? null,
+    targetType: booking.targetType,
+    unitId: booking.unitId ?? null,
+    roomId: booking.roomId ?? null,
+    targetLabel: booking.targetLabel,
+    productName: booking.productName,
+    pricePerNight: booking.pricePerNight.toString(),
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    status: booking.status,
+    totalAmount: booking.totalAmount.toString(),
+    paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
+    paidAmount: paidAmount.toString(),
+    balanceAmount: balanceAmount.toString(),
+    paymentPolicy: booking.paymentPolicy,
+    upfrontAmount: booking.upfrontAmount.toString(),
+    noShowEligible: isBookingNoShowEligible(booking),
+    internalNotes: booking.internalNotes ?? null,
+    payments: booking.payments.map((payment) => ({
+      id: payment.id,
+      status: payment.status,
+      purpose: payment.purpose,
+      method: payment.method,
+      amount: payment.amount.toString(),
+      currency: payment.currency,
+      note: payment.note ?? null,
+      receivedByUserId: payment.receivedByUserId ?? null,
+      paidAt: payment.paidAt ?? null,
+      createdAt: payment.createdAt,
+    })),
+    items: booking.items.map((item) => ({
+      id: item.id,
+      targetType: item.targetType,
+      unitId: item.unitId ?? null,
+      roomId: item.roomId ?? null,
+      productId: item.productId ?? null,
+      targetLabel: item.targetLabel,
+      productName: item.productName,
+      capacity: item.capacity,
+      guestCount: item.guestCount,
+      comfortOption: item.comfortOption,
+      pricePerNight: item.pricePerNight.toString(),
+      totalAmount: item.totalAmount.toString(),
+    })),
+    statusHistory: booking.statusHistory.map((event) => ({
+      id: event.id,
+      fromStatus: event.fromStatus ?? null,
+      toStatus: event.toStatus,
+      actorUserId: event.actorUserId ?? null,
+      actorName: event.actor?.fullName ?? null,
+      note: event.note ?? null,
+      createdAt: event.createdAt,
+    })),
+    createdAt: booking.createdAt,
+    updatedAt: booking.updatedAt,
+  };
+};
 
 export const mapEnquiry = (
   enquiry: repo.DashboardEnquiryRecord,

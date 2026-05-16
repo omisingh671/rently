@@ -1,29 +1,34 @@
 import axiosInstance from "@/api/axios";
 import type {
   Booking,
+  BookingGuestDetails,
   ComfortOption,
   CreateOptionBookingPayload,
   CreateManualPaymentResponse,
 } from "./types";
 
+type GuestDetailsPayload = {
+  guestDetails?: BookingGuestDetails;
+};
+
 export type CreateBookingPayload =
-  | CreateOptionBookingPayload
-  | {
+  | (CreateOptionBookingPayload & GuestDetailsPayload)
+  | ({
       bookingType?: "SINGLE_TARGET";
       spaceId: string;
       from: string;
       to: string;
       guests: number;
       comfortOption: ComfortOption;
-    }
-  | {
+    } & GuestDetailsPayload)
+  | ({
       bookingType: "MULTI_ROOM";
       spaceIds: string[];
       from: string;
       to: string;
       guests: number;
       comfortOption: ComfortOption;
-    };
+    } & GuestDetailsPayload);
 
 export const listBookings = async (): Promise<Booking[]> => {
   const res = await axiosInstance.get("/public/bookings");
