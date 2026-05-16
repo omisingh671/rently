@@ -70,13 +70,20 @@ Already implemented:
   - Public frontend sends explicit tenant slug headers and uses tenant-aware spaces, availability, and bookings query keys.
   - Dashboard tenant management is available for `SUPER_ADMIN`.
   - Dashboard property create/edit/list now includes tenant ownership.
-- Phase 3 booking core completed for the current single room/unit MVP scope:
-  - Public booking creation uses transaction-safe availability recheck and serializable retry.
-  - Booking lifecycle includes readable references, guest snapshots, internal notes, and status history.
-  - Manual payment API confirms bookings atomically with idempotency protection.
-  - Public frontend sends pending bookings into the manual payment/confirmation flow.
-  - Dashboard operations support status updates, manager check-in, manager check-out, audit notes, and internal notes.
-  - Guest cancellation flow stores cancellation reason/time and writes booking status history.
+- Phase 4 pricing engine completed:
+  - Nightly, weekly, and monthly rates supported.
+  - Date-range conflict validation for pricing rules.
+  - Tax calculation and coupon validation services implemented.
+  - Final quote calculation integrated into booking creation.
+  - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
+- Phase 5 public frontend refinements completed:
+  - Modernized BookingForm with occupancy toggles and grid layout.
+  - High-end Booking Payment and Account UI (Sucasa theme).
+  - MVP cancellation flow and booking history integrated into guest account.
+- Phase 6 dashboard operations completed:
+  - High-density Room Board with live status filtering and unit-based grouping.
+  - Walk-in booking module with pricing and availability checks.
+  - Manager check-in/check-out workflow with status history.
 
 ## Phase 1: Stabilize Current MVP
 
@@ -250,34 +257,27 @@ Already implemented:
 
 ### Pricing Rules
 
-- Expand pricing support for:
-  - nightly
-  - weekly
-  - monthly
-  - long stay
-  - corporate
-  - seasonal
-  - occupancy-based pricing
-- Add date-range conflict validation for pricing.
-- Add tax calculation service.
-- Add coupon validation service.
-- Add final quote calculation API.
+- Completed: add nightly, weekly, and monthly rate support.
+- Completed: add date-range conflict validation for pricing.
+- Completed: add tax calculation service.
+- Completed: add coupon validation service.
+- Completed: add final quote calculation API.
 
 ### Dashboard Pricing UX
 
-- Improve pricing page ergonomics:
+- Completed: improve pricing page ergonomics:
   - better filters
   - inline validation
   - conflict warnings
   - bulk rate creation
   - clear active/inactive states
-- Add read-only preview of public price calculation.
+- Completed: add read-only preview of public price calculation.
 
 ## Phase 5: Public Frontend Platform
 
 ### Sucasa Frontend
 
-- Polish public booking flow:
+- Completed: polish public booking flow:
   - search
   - availability
   - detail
@@ -285,9 +285,9 @@ Already implemented:
   - payment
   - confirmation
 - Add loading and error states everywhere.
-- Completed for MVP manual flow: public pending bookings can continue to manual payment and display confirmation state.
+- Completed: public pending bookings can continue to manual payment and display confirmation state.
 - Replace visual placeholders with real assets or tenant-managed media.
-- Improve account pages:
+- Completed: improve account pages:
   - bookings
   - profile
   - payments
@@ -323,14 +323,14 @@ Already implemented:
 
 ### Manager Workflows
 
-- Add manager-focused operations view:
-  - today check-ins
-  - today check-outs
+- Completed: add manager-focused operations view:
+  - Room Board for live status monitoring
+  - Walk-in booking for quick reservations
   - pending enquiries
   - pending quotes
   - active bookings
-- Add quick status updates.
-- Add notes and follow-up reminders.
+- Completed: add quick status updates.
+- Completed: add notes and follow-up reminders.
 
 ### Reporting
 
@@ -646,6 +646,9 @@ Target dashboard behavior:
 
 ## Immediate Next Tasks
 
-1. Document local and deployment workflows.
-2. Add client-specific frontend env examples and tenant deployment checklist.
-3. Add real gateway integration and webhook event storage only after the core app workflows are stable.
+1. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
+2. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity.
+3. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
+4. **Multi-room/Group Bookings (Phase 5 Strategy)**: Implement capacity selection logic for larger groups across multiple units.
+5. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
+6. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
