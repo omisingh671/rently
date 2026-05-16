@@ -1,4 +1,5 @@
-import { FiArrowRight } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiArrowRight } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
 import {
   STATUS_BG_COLORS,

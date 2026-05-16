@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { FiActivity, FiCalendar, FiLogIn, FiLogOut } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+
+const { FiActivity, FiCalendar, FiLogIn, FiLogOut } = ICON_REGISTRY;
 
 type DashboardStatsProps = {
   occupancyRate: number;
@@ -36,7 +38,7 @@ export function DashboardStats({
       icon: <FiActivity />,
       iconTone: "bg-gradient-to-br from-[#33365b] to-[#45497a] text-white",
       valueTone: "text-[#33365b]",
-      railTone: "bg-gradient-to-r from-[#33365b] to-[#45497a]",
+      railTone: "bg-gradient-to-b from-[#33365b] to-[#45497a]",
       chipTone: "bg-[#33365b]/10 text-[#33365b]",
       bgGradient: "from-slate-50/50 to-white",
     },
@@ -47,7 +49,7 @@ export function DashboardStats({
       icon: <FiLogIn />,
       iconTone: "bg-gradient-to-br from-emerald-500 to-emerald-700 text-white",
       valueTone: "text-emerald-700",
-      railTone: "bg-gradient-to-r from-emerald-400 to-emerald-600",
+      railTone: "bg-gradient-to-b from-emerald-400 to-emerald-600",
       chipTone: "bg-emerald-50 text-emerald-700",
       bgGradient: "from-emerald-50/40 to-white",
     },
@@ -58,7 +60,7 @@ export function DashboardStats({
       icon: <FiLogOut />,
       iconTone: "bg-gradient-to-br from-sky-500 to-sky-700 text-white",
       valueTone: "text-sky-700",
-      railTone: "bg-gradient-to-r from-sky-400 to-sky-600",
+      railTone: "bg-gradient-to-b from-sky-400 to-sky-600",
       chipTone: "bg-sky-50 text-sky-700",
       bgGradient: "from-sky-50/40 to-white",
     },
@@ -74,8 +76,8 @@ export function DashboardStats({
       valueTone: healthIssues > 0 ? "text-rose-700" : "text-[#33365b]",
       railTone:
         healthIssues > 0
-          ? "bg-gradient-to-r from-rose-400 to-rose-600"
-          : "bg-gradient-to-r from-amber-300 to-amber-500",
+          ? "bg-gradient-to-b from-rose-400 to-rose-600"
+          : "bg-gradient-to-b from-amber-300 to-amber-500",
       chipTone:
         healthIssues > 0
           ? "bg-rose-50 text-rose-700"
@@ -89,9 +91,9 @@ export function DashboardStats({
       {stats.map((stat) => (
         <article
           key={stat.label}
-          className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br ${stat.bgGradient} p-5 shadow-sm transition-all hover:-translate-y-1 hover:border-[#45497a]/30 hover:shadow-lg`}
+          className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br ${stat.bgGradient} p-5 pl-8 shadow-sm transition-all hover:-translate-y-1 hover:border-[#45497a]/30 hover:shadow-lg`}
         >
-          <div className={`absolute inset-x-0 top-0 h-1 ${stat.railTone}`} />
+          <div className={`absolute inset-y-0 left-0 w-3 ${stat.railTone}`} />
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">

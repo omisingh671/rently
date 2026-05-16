@@ -1,4 +1,5 @@
-import { FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiAlertTriangle, FiCheckCircle } = ICON_REGISTRY;
 import type { AttentionItem } from "../dashboard.helpers";
 import { DashboardWidgetCard } from "./DashboardWidgetCard";
 

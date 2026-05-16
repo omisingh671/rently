@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { FiKey, FiUser } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiKey, FiUser } = ICON_REGISTRY;
 
 import { adminPath, ADMIN_ROUTES } from "@/configs/routePathsAdmin";
 import { useDashboardContext } from "@/features/dashboard/hooks";

@@ -1,15 +1,19 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+
+const {
   FiCalendar,
   FiCheckCircle,
   FiClock,
+  FiGrid,
   FiPlus,
   FiSearch,
+  FiSlash,
   FiTool,
   FiUsers,
   FiWind,
-} from "react-icons/fi";
+} = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
@@ -230,8 +234,8 @@ export default function RoomBoardPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-6">
-          <div>
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">
                 Find property
@@ -248,7 +252,7 @@ export default function RoomBoardPage() {
             </label>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">
                 Property
@@ -269,7 +273,7 @@ export default function RoomBoardPage() {
             </label>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">
                 From
@@ -283,7 +287,7 @@ export default function RoomBoardPage() {
             </label>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">To</span>
               <input
@@ -296,7 +300,7 @@ export default function RoomBoardPage() {
             </label>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">
                 Search rooms
@@ -313,11 +317,11 @@ export default function RoomBoardPage() {
             </label>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <span className="mb-1 block text-sm font-semibold text-slate-700">
               Quick range
             </span>
-            <div className="flex h-10 items-center gap-2">
+            <div className="flex h-10 items-center gap-1.5">
               {quickRanges.map((range) => {
                 const isActiveRange = from === range.from && to === range.to;
 
@@ -326,7 +330,7 @@ export default function RoomBoardPage() {
                     key={range.label}
                     type="button"
                     onClick={() => setDateRange(range.from, range.to)}
-                    className={`h-10 flex-1 rounded-md border px-2 text-sm font-semibold transition-all duration-200 active:translate-y-0 ${
+                    className={`h-10 flex-1 rounded-md border px-1.5 text-xs font-bold transition-all duration-200 active:translate-y-0 ${
                       isActiveRange
                         ? "border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm ring-2 ring-indigo-100"
                         : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700 hover:shadow-sm"
@@ -341,22 +345,28 @@ export default function RoomBoardPage() {
         </div>
 
         <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <button
               type="button"
-              onClick={() => setStatus("")}
-              className={`rounded-lg border px-3 py-2 text-left transition-all duration-200 active:translate-y-0 ${
+              onClick={() => {
+                setStatus("");
+                setSearch("");
+              }}
+              className={`flex items-center justify-between rounded-lg border px-5 py-4 text-left transition-all duration-200 active:translate-y-0 ${
                 status === ""
-                  ? "border-slate-300 bg-white shadow-md ring-2 ring-slate-200/80"
-                  : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+                  ? "border-slate-800 bg-slate-800 text-white shadow-md ring-2 ring-slate-200"
+                  : "border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
               }`}
             >
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                Total
-              </span>
-              <span className="mt-0.5 block text-lg font-bold text-slate-900">
-                {totalRooms}
-              </span>
+              <div className="min-w-0 flex-1">
+                <span className={`block text-[10px] font-bold uppercase tracking-wider ${status === "" ? "text-slate-300" : "text-slate-500"}`}>
+                  Total
+                </span>
+                <span className="mt-0.5 block text-2xl font-bold leading-tight">
+                  {totalRooms}
+                </span>
+              </div>
+              <FiGrid className={status === "" ? "text-white/40" : "text-slate-200"} size={32} />
             </button>
             {summaryStatuses.map((item) => {
               const count = boardQuery.data?.summary[item.value] ?? 0;
@@ -368,47 +378,50 @@ export default function RoomBoardPage() {
               const ringClass = statusActiveRingColors[item.value];
               const isActive = status === item.value;
 
+              const activeStyles: Record<RoomBoardStatus, string> = {
+                AVAILABLE: "bg-emerald-600 border-emerald-600 text-white shadow-emerald-200/50",
+                RESERVED: "bg-amber-600 border-amber-600 text-white shadow-amber-200/50",
+                OCCUPIED: "bg-indigo-600 border-indigo-600 text-white shadow-indigo-200/50",
+                MAINTENANCE: "bg-rose-600 border-rose-600 text-white shadow-rose-200/50",
+                INACTIVE: "bg-slate-700 border-slate-700 text-white shadow-slate-200/50",
+              };
+
+              const statusIconMap: Record<RoomBoardStatus, React.ReactNode> = {
+                AVAILABLE: <FiCheckCircle size={32} />,
+                RESERVED: <FiClock size={32} />,
+                OCCUPIED: <FiUsers size={32} />,
+                MAINTENANCE: <FiTool size={32} />,
+                INACTIVE: <FiSlash size={32} />,
+              };
+
               return (
                 <button
                   key={item.value}
                   type="button"
                   onClick={() => setStatus(isActive ? "" : item.value)}
-                  className={`rounded-lg border px-3 py-2 text-left transition-all duration-200 active:translate-y-0 ${bgClass} ${
+                  className={`flex items-center justify-between rounded-lg border px-5 py-4 text-left transition-all duration-200 active:translate-y-0 ${
                     isActive
-                      ? `${borderClass} shadow-md ring-2 ${ringClass}`
-                      : `${borderClass} hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md`
+                      ? `${activeStyles[item.value]} shadow-lg ring-2 ${ringClass}`
+                      : `${bgClass} ${borderClass} ${textClass} hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md`
                   }`}
                 >
-                  <span
-                    className={`block truncate text-[10px] font-bold uppercase tracking-wider ${textClass}`}
-                  >
-                    {item.label}
-                  </span>
-                  <span className={`mt-0.5 block text-lg font-bold ${textClass}`}>
-                    {count}
+                  <div className="min-w-0 flex-1">
+                    <span
+                      className={`block truncate text-[10px] font-bold uppercase tracking-wider ${isActive ? "text-white/80" : ""}`}
+                    >
+                      {item.label}
+                    </span>
+                    <span className="mt-0.5 block text-2xl font-bold leading-tight">
+                      {count}
+                    </span>
+                  </div>
+                  <span className={isActive ? "text-white/40" : "opacity-10"}>
+                    {statusIconMap[item.value]}
                   </span>
                 </button>
               );
             })}
-            {activeFilterCount > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setStatus("");
-                  setSearch("");
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md active:translate-y-0"
-              >
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Reset
-                </span>
-                <span className="mt-0.5 block text-sm font-bold text-slate-700">
-                  Clear filters ({activeFilterCount})
-                </span>
-              </button>
-            )}
           </div>
-
         </div>
       </section>
 

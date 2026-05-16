@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { FiBell } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiBell } = ICON_REGISTRY;
 
 const notifications = [
   {

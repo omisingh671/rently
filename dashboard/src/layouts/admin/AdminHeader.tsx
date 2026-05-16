@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { FiMenu, FiSettings } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiMenu, FiSettings } = ICON_REGISTRY;
 import AdminNotifications from "./AdminNotifications";
 import { adminPath, ADMIN_ROUTES } from "@/configs/routePathsAdmin";
 

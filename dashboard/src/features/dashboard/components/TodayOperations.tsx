@@ -1,4 +1,5 @@
-import { FiActivity } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiActivity } = ICON_REGISTRY;
 import type { TodayOperationItem } from "../dashboard.helpers";
 import { DashboardWidgetCard } from "./DashboardWidgetCard";
 

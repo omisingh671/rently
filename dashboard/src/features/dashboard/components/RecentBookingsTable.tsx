@@ -1,4 +1,5 @@
-import { FiArrowRight } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiArrowRight } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";

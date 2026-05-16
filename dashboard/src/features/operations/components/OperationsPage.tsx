@@ -13,7 +13,9 @@ import type {
   LeadStatus,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
-import {
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+
+const {
   FiCalendar,
   FiClipboard,
   FiFilter,
@@ -22,7 +24,7 @@ import {
   FiPlus,
   FiSearch,
   FiUser,
-} from "react-icons/fi";
+} = ICON_REGISTRY;
 import { normalizeApiError } from "@/utils/errors";
 
 type Module = "bookings" | "enquiries" | "quotes";

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { FiInbox } from "react-icons/fi";
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+const { FiInbox } = ICON_REGISTRY;
 
 type DashboardEmptyStateProps = {
   title: string;

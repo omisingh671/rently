@@ -1,5 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import {
+import { ICON_REGISTRY } from "@/configs/iconRegistry";
+
+const {
   FiGrid,
   FiUsers,
   FiLink,
@@ -16,8 +18,8 @@ import {
   FiFileText,
   FiBriefcase,
   FiClipboard,
-} from "react-icons/fi";
-import { MdMeetingRoom } from "react-icons/md";
+  MdMeetingRoom,
+} = ICON_REGISTRY;
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import AdminUserDropdown from "./AdminUserDropdown";
 
