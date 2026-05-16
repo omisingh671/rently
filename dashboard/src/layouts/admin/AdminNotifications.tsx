@@ -49,7 +49,7 @@ export default function AdminNotifications() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded-md p-2 text-white hover:bg-[#3f4270] md:text-slate-600 md:hover:bg-slate-100 cursor-pointer"
+        className="relative rounded-md p-2 hover:bg-[#3f4270] md:hover:bg-slate-100 cursor-pointer"
       >
         <FiBell size={20} />
         {hasUnread && (

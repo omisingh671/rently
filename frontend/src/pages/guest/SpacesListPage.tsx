@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -19,6 +19,14 @@ import type {
   ComfortFilter,
   ComfortOption,
 } from "@/features/availability/domain";
+import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  clearBookingResumeIntent,
+  getBookingResumeIntent,
+  sameBookingResumeLocation,
+  saveBookingResumeIntent,
+  toBookingResumeLocation,
+} from "@/features/bookings/bookingResume";
 import { useCreateBooking } from "@/features/bookings/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
@@ -85,9 +93,13 @@ export default function SpacesListPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const createBookingMutation = useCreateBooking();
+  const createBooking = createBookingMutation.mutateAsync;
   const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  const [isResumingBooking, setIsResumingBooking] = useState(false);
   const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("stack");
+  const hasAttemptedResumeRef = useRef(false);
+  const isMountedRef = useRef(false);
 
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
@@ -149,10 +161,60 @@ export default function SpacesListPage() {
     setSearchParams({}, { replace: true });
   };
 
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || hasAttemptedResumeRef.current) return;
+
+    const currentLocation = toBookingResumeLocation(location);
+    const intent = getBookingResumeIntent();
+
+    if (!intent || !sameBookingResumeLocation(intent.returnTo, currentLocation)) {
+      return;
+    }
+
+    hasAttemptedResumeRef.current = true;
+    clearBookingResumeIntent();
+
+    const resumeBooking = async () => {
+      setBookingError(null);
+      setIsResumingBooking(true);
+
+      try {
+        const booking = await createBooking(intent.payload);
+        if (!isMountedRef.current) return;
+
+        navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
+      } catch (error: unknown) {
+        if (!isMountedRef.current) return;
+
+        setBookingError(normalizeApiError(error).message);
+        setIsResumingBooking(false);
+      }
+    };
+
+    void resumeBooking();
+  }, [createBooking, isAuthenticated, location, navigate]);
+
   const bookOption = async (option: AvailabilityOption) => {
     if (!canCheckAvailability) return;
 
+    const payload = {
+      bookingOptionId: option.optionId,
+      from,
+      to,
+      guests,
+      comfortOption: option.comfortOption,
+    } satisfies CreateBookingPayload;
+
     if (!isAuthenticated) {
+      saveBookingResumeIntent(payload, toBookingResumeLocation(location));
       navigate(ROUTES.LOGIN, {
         state: { from: location },
         replace: true,
@@ -162,13 +224,7 @@ export default function SpacesListPage() {
 
     try {
       setBookingError(null);
-      const booking = await createBookingMutation.mutateAsync({
-        bookingOptionId: option.optionId,
-        from,
-        to,
-        guests,
-        comfortOption: option.comfortOption,
-      });
+      const booking = await createBooking(payload);
 
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
@@ -177,6 +233,7 @@ export default function SpacesListPage() {
   };
 
   const options = availabilityQuery.data?.options ?? [];
+  const isBooking = createBookingMutation.isPending || isResumingBooking;
 
   return (
     <section className="section bg-surface">
@@ -297,7 +354,13 @@ export default function SpacesListPage() {
         </div>
       </div>
 
-      {bookingError && (
+      {isResumingBooking && (
+          <div className="mb-5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+            Continuing your booking...
+          </div>
+        )}
+
+        {bookingError && (
           <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {bookingError}
           </div>
@@ -365,7 +428,7 @@ export default function SpacesListPage() {
                     key={option.optionId}
                     option={option}
                     onBook={bookOption}
-                    isBooking={createBookingMutation.isPending}
+                    isBooking={isBooking}
                     formatPrice={formatPrice}
                   />
                 ) : (
@@ -373,7 +436,7 @@ export default function SpacesListPage() {
                     key={option.optionId}
                     option={option}
                     onBook={bookOption}
-                    isBooking={createBookingMutation.isPending}
+                    isBooking={isBooking}
                     formatPrice={formatPrice}
                   />
                 )

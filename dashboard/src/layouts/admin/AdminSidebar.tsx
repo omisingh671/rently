@@ -34,9 +34,9 @@ interface AdminSidebarProps {
 }
 
 const navBase =
-  "flex items-center gap-3 rounded-md px-4 py-3 text-base font-medium transition-colors";
-const navActive = "bg-[#3f4270] text-white";
-const navInactive = "text-[#c7c9f1] hover:bg-[#3f4270]";
+  "group relative flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200";
+const navActive = "bg-white/10 text-white shadow-sm";
+const navInactive = "text-slate-400 hover:bg-white/5 hover:text-white";
 const sectionLabel =
   "px-4 pt-4 pb-1 text-xs font-semibold uppercase tracking-widest text-[#7a7daa]";
 
@@ -70,18 +70,17 @@ export default function AdminSidebar({
       )}
 
       <aside
-        className={`fixed z-50 flex h-screen w-64 flex-col bg-[#33365b] text-white transition-transform md:static md:translate-x-0 ${
+        className={`fixed z-50 flex h-screen w-64 flex-col bg-[#0f172a] text-white transition-transform md:static md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Header */}
-        <div className="shrink-0 border-b border-[#45497a] px-5 py-4 flex justify-between">
-          <div>
-            <h1 className="text-lg text-indigo-100 font-semibold">
-              Admin Panel
-            </h1>
-            <p className="text-xs text-[#a9acd9]">Sucasa Homes</p>
-          </div>
+        <div className="flex h-20 shrink-0 items-center justify-between border-b border-white/10 px-5">
+          <img
+            src="/assets/images/logo-rently.png"
+            alt="Rently"
+            className="h-11 w-full max-w-[180px] object-contain object-left"
+          />
           <button
             onClick={onClose}
             className="rounded-md p-2 text-[#c7c9f1] hover:bg-[#3f4270] md:hidden"
@@ -90,35 +89,22 @@ export default function AdminSidebar({
           </button>
         </div>
 
-        {/* Admin Card */}
-        <div className="px-3 py-4">
-          <div className="rounded-lg bg-[#4d5075] p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-400 text-sm font-semibold text-black">
-                {initials}
-              </div>
-              <div>
-                <p className="text-sm font-semibold">{admin.name}</p>
-                <p className="text-xs text-[#c7c9f1]">
-                  {admin.roleLabel ?? "Property Manager"}
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 truncate text-xs text-[#a9acd9]">
-              {admin.email}
-            </p>
-          </div>
-        </div>
-
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 space-y-2">
+        <nav className="flex-1 overflow-y-auto px-3 pt-4 space-y-2">
           <NavLink
             to={adminPath(ADMIN_ROUTES.DASHBOARD)}
             className={({ isActive }) =>
               `${navBase} ${isActive ? navActive : navInactive}`
             }
           >
-            <FiGrid /> Dashboard
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                )}
+                <FiGrid className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Dashboard
+              </>
+            )}
           </NavLink>
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
@@ -131,7 +117,14 @@ export default function AdminSidebar({
                       `${navBase} ${isActive ? navActive : navInactive}`
                     }
                   >
-                    <FiBriefcase /> Tenants
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                )}
+                <FiBriefcase className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Tenants
+              </>
+            )}
                   </NavLink>
                   <NavLink
                     to={adminPath(ADMIN_ROUTES.ADMINS)}
@@ -139,7 +132,14 @@ export default function AdminSidebar({
                       `${navBase} ${isActive ? navActive : navInactive}`
                     }
                   >
-                    <FiUsers /> Admins
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                )}
+                <FiUsers className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Admins
+              </>
+            )}
                   </NavLink>
                 </>
               )}
@@ -305,7 +305,7 @@ export default function AdminSidebar({
         </nav>
 
         {/* Footer */}
-        <div className="border-t border-[#45497a] px-3 py-4">
+        <div className="px-3 py-6 mt-auto">
           <AdminUserDropdown
             name={admin.name}
             initials={initials}

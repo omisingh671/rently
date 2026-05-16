@@ -473,6 +473,9 @@ const buildBookingWhere = (
       OR: [
         { targetLabel: { contains: filters.search } },
         { productName: { contains: filters.search } },
+        { guestNameSnapshot: { contains: filters.search } },
+        { guestEmailSnapshot: { contains: filters.search } },
+        { guestContactSnapshot: { contains: filters.search } },
         {
           user: {
             is: {

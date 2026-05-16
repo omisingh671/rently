@@ -7,6 +7,7 @@ interface AdminHeaderProps {
   title?: string;
   subtitle?: string;
   onMenuClick: () => void;
+  variant?: "default" | "dark";
 }
 
 export default function AdminHeader({
@@ -15,26 +16,26 @@ export default function AdminHeader({
   onMenuClick,
 }: AdminHeaderProps) {
   return (
-    <header className="flex h-20 items-center justify-between px-4 md:px-6 border-b bg-[#33365b] text-white border-[#45497a] md:bg-white md:text-slate-900 md:border-slate-100">
+    <header className="flex h-20 items-center justify-between bg-white px-4 shadow-sm md:px-6">
       <div className="flex items-center gap-3">
         {/* Hamburger (mobile only) */}
         <button
           onClick={onMenuClick}
-          className="rounded-md p-2 text-white hover:bg-[#3f4270] md:text-slate-600 md:hover:bg-slate-100 md:hidden"
+          className="rounded-md p-2 text-slate-600 hover:bg-slate-100 md:hidden"
         >
           <FiMenu size={20} />
         </button>
 
         {/* Mobile brand ONLY */}
         <div className="md:hidden leading-tight">
-          <h1 className="text-base font-semibold text-white">Admin Panel</h1>
-          <p className="text-xs text-white/70">Sucasa Homes</p>
+          <h1 className="text-base font-semibold text-slate-900">Admin Panel</h1>
+          <p className="text-xs text-slate-500">Sucasa Homes</p>
         </div>
 
         {/* Desktop page title ONLY */}
         <div className="hidden md:block">
           {title && (
-            <h2 className="text-lg font-semibold text-slate-900 leading-tight">
+            <h2 className="text-lg font-semibold leading-tight text-slate-900">
               {title}
             </h2>
           )}
@@ -42,12 +43,12 @@ export default function AdminHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-white md:text-slate-600">
+      <div className="flex items-center gap-2 text-slate-600">
         <Link
           to={adminPath(ADMIN_ROUTES.SETTINGS)}
           aria-label="Open settings"
           title="Settings"
-          className="rounded-md p-2 transition hover:bg-[#3f4270] md:hover:bg-slate-100"
+          className="rounded-md p-2 transition hover:bg-slate-100"
         >
           <FiSettings size={20} />
         </Link>

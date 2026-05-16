@@ -1,5 +1,11 @@
-import React, { useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   FiArrowLeft,
   FiCalendar,
@@ -11,8 +17,17 @@ import {
 } from "react-icons/fi";
 
 import { ROUTES } from "@/configs/routePaths";
+import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  clearBookingResumeIntent,
+  getBookingResumeIntent,
+  sameBookingResumeLocation,
+  saveBookingResumeIntent,
+  toBookingResumeLocation,
+} from "@/features/bookings/bookingResume";
 import { useCreateBooking } from "@/features/bookings/hooks";
 import { useSpace } from "@/features/spaces/hooks";
+import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import type { ComfortOption } from "@/features/bookings/types";
 
@@ -26,6 +41,20 @@ function daysBetween(startIso: string, endIso: string) {
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
 }
 
+const isComfortOption = (value: string | null): value is ComfortOption =>
+  value === "AC" || value === "NON_AC";
+
+const getInitialComfortOption = (
+  searchParams: URLSearchParams,
+): ComfortOption => {
+  const comfort = searchParams.get("comfort");
+  if (isComfortOption(comfort)) return comfort;
+
+  return searchParams.get("ac") === "true" ? "AC" : "NON_AC";
+};
+
+const toDateInputValue = (value: string) => value.slice(0, 10);
+
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -36,20 +65,26 @@ const formatPrice = (price: number) =>
 export default function SpaceDetailPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
 
   const spaceQuery = useSpace(id);
   const createBookingMutation = useCreateBooking();
+  const createBooking = createBookingMutation.mutateAsync;
+  const isAuthenticated = useAuthStore((state) => !!state.accessToken && !!state.user);
 
   const [from, setFrom] = useState<string>(searchParams.get("from") ?? "");
   const [to, setTo] = useState<string>(searchParams.get("to") ?? "");
   const [comfortOption, setComfortOption] = useState<ComfortOption>(
-    searchParams.get("ac") === "true" ? "AC" : "NON_AC",
+    getInitialComfortOption(searchParams),
   );
   const guestsParam = Number(searchParams.get("guests"));
   const guests =
     Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 1;
   const [formError, setFormError] = useState<string | null>(null);
+  const [isResumingBooking, setIsResumingBooking] = useState(false);
+  const hasAttemptedResumeRef = useRef(false);
+  const isMountedRef = useRef(false);
   const space = spaceQuery.data;
   const backToSpacesHref = searchParams.toString()
     ? `${ROUTES.SPACES}?${searchParams.toString()}`
@@ -69,6 +104,56 @@ export default function SpaceDetailPage() {
 
   const computedTotalPrice = space ? computedNights * space.pricePerNight : 0;
 
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!id || !isAuthenticated || hasAttemptedResumeRef.current) return;
+
+    const currentLocation = toBookingResumeLocation(location);
+    const intent = getBookingResumeIntent();
+
+    if (!intent || !sameBookingResumeLocation(intent.returnTo, currentLocation)) {
+      return;
+    }
+
+    const payload = intent.payload;
+    if (!("spaceId" in payload) || payload.spaceId !== id) {
+      return;
+    }
+
+    hasAttemptedResumeRef.current = true;
+    clearBookingResumeIntent();
+
+    const resumeBooking = async () => {
+      setFormError(null);
+      setFrom(toDateInputValue(payload.from));
+      setTo(toDateInputValue(payload.to));
+      setComfortOption(payload.comfortOption);
+      setIsResumingBooking(true);
+
+      try {
+        const booking = await createBooking(payload);
+        if (!isMountedRef.current) return;
+
+        navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
+      } catch (error: unknown) {
+        if (!isMountedRef.current) return;
+
+        const appError = normalizeApiError(error);
+        setFormError(appError.message);
+        setIsResumingBooking(false);
+      }
+    };
+
+    void resumeBooking();
+  }, [createBooking, id, isAuthenticated, location, navigate]);
+
   const onSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!id) return;
@@ -86,16 +171,27 @@ export default function SpaceDetailPage() {
       return;
     }
 
+    const payload = {
+      bookingType: "SINGLE_TARGET",
+      spaceId: id,
+      from: fromIso,
+      to: toIso,
+      guests,
+      comfortOption,
+    } satisfies CreateBookingPayload;
+
+    if (!isAuthenticated) {
+      saveBookingResumeIntent(payload, toBookingResumeLocation(location));
+      navigate(ROUTES.LOGIN, {
+        state: { from: location },
+        replace: true,
+      });
+      return;
+    }
+
     try {
       setFormError(null);
-      const booking = await createBookingMutation.mutateAsync({
-        bookingType: "SINGLE_TARGET",
-        spaceId: id,
-        from: fromIso,
-        to: toIso,
-        guests,
-        comfortOption,
-      });
+      const booking = await createBooking(payload);
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
       const appError = normalizeApiError(error);
@@ -325,18 +421,26 @@ export default function SpaceDetailPage() {
                 </div>
               )}
 
+              {isResumingBooking && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+                  Continuing your booking...
+                </div>
+              )}
+
               <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
                 <button
                   type="submit"
-                  disabled={createBookingMutation.isPending}
+                  disabled={createBookingMutation.isPending || isResumingBooking}
                   className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 ${
-                    createBookingMutation.isPending
+                    createBookingMutation.isPending || isResumingBooking
                       ? "cursor-wait opacity-70"
                       : ""
                   }`}
                 >
                   <FiCreditCard />
-                  {createBookingMutation.isPending ? "Booking..." : "Book now"}
+                  {createBookingMutation.isPending || isResumingBooking
+                    ? "Booking..."
+                    : "Book now"}
                 </button>
 
                 <button
