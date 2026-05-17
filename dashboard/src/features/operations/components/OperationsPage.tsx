@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { useAdminOperations } from "../hooks/useAdminOperations";
 import Button from "@/components/ui/Button";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
@@ -136,7 +135,6 @@ function GuestAvatar({ name }: { name: string }) {
 }
 
 export default function OperationsPage({ module }: Props) {
-  const [propertyId, setPropertyId] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(5);
   const [filters, setFilters] = useState({
@@ -146,16 +144,8 @@ export default function OperationsPage({ module }: Props) {
   });
   const [actionError, setActionError] = useState("");
 
-  const { data: propertiesData } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-    search: "",
-    status: "",
-    isActive: "true",
-  });
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
-  const selectedPropertyId = propertyId || properties[0]?.id || "";
+  const { properties, selectedPropertyId, setSelectedPropertyId } =
+    useCurrentProperty();
   const activeFilters = useMemo(
     () => ({
       ...filters,
@@ -233,7 +223,7 @@ export default function OperationsPage({ module }: Props) {
               value={selectedPropertyId}
               onChange={(event) => {
                 setActionError("");
-                setPropertyId(event.target.value);
+                setSelectedPropertyId(event.target.value || null);
                 setPage(1);
               }}
               className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-8 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-72"
@@ -316,7 +306,7 @@ export default function OperationsPage({ module }: Props) {
           </div>
           <h3 className="mt-4 text-base font-semibold text-slate-900">No Property Selected</h3>
           <p className="mt-1 max-w-[200px] text-sm text-slate-500">
-            Select a property from the toolbar to view its {module}.
+            No accessible properties found for this account.
           </p>
         </div>
       ) : (

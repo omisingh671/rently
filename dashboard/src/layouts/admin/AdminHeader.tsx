@@ -3,6 +3,7 @@ import { ICON_REGISTRY } from "@/configs/iconRegistry";
 const { FiMenu, FiSettings } = ICON_REGISTRY;
 import AdminNotifications from "./AdminNotifications";
 import { adminPath, ADMIN_ROUTES } from "@/configs/routePathsAdmin";
+import CurrentPropertySwitcher from "@/features/properties/components/CurrentPropertySwitcher";
 
 interface AdminHeaderProps {
   title?: string;
@@ -44,7 +45,8 @@ export default function AdminHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-slate-600">
+      <div className="flex min-w-0 items-center gap-2 text-slate-600">
+        <CurrentPropertySwitcher />
         <Link
           to={adminPath(ADMIN_ROUTES.SETTINGS)}
           aria-label="Open settings"

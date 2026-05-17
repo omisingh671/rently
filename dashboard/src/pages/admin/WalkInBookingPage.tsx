@@ -5,15 +5,13 @@ import { ICON_REGISTRY } from "@/configs/iconRegistry";
 const {
   FiArrowLeft,
   FiCheckCircle,
-  FiSearch,
   FiUsers,
   FiInfo,
   FiCheck,
 } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import {
   checkManualBookingAvailabilityApi,
   createManualBookingApi,
@@ -91,8 +89,6 @@ const mergeAvailabilityResults = (
 export default function WalkInBookingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [propertyId, setPropertyId] = useState("");
-  const [propertySearch, setPropertySearch] = useState("");
   const [form, setForm] = useState<ManualBookingForm>(emptyForm);
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<string[]>([]);
   const [availability, setAvailability] =
@@ -101,21 +97,13 @@ export default function WalkInBookingPage() {
   const [submitError, setSubmitError] = useState("");
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
 
-  const { data: propertiesData, isPending: isLoadingProperties } =
-    useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-      search: propertySearch,
-      status: "",
-      isActive: "true",
-    });
-
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
-  const selectedPropertyId = propertyId || properties[0]?.id || "";
-  const selectedProperty = properties.find(
-    (property) => property.id === selectedPropertyId,
-  );
+  const {
+    properties,
+    selectedPropertyId,
+    selectedProperty,
+    setSelectedPropertyId,
+    isLoading: isLoadingProperties,
+  } = useCurrentProperty();
 
   const availabilityByOptionId = useMemo(
     () =>
@@ -247,7 +235,7 @@ export default function WalkInBookingPage() {
   };
 
   const selectProperty = (nextPropertyId: string) => {
-    setPropertyId(nextPropertyId);
+    setSelectedPropertyId(nextPropertyId);
     setAvailability(null);
     setAvailabilityError("");
     setSubmitError("");
@@ -349,14 +337,8 @@ export default function WalkInBookingPage() {
         <aside className="rounded-md border border-slate-200 bg-white p-4">
           <label className="block text-sm">
             <span className="font-medium text-slate-700">Properties</span>
-            <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3">
-              <FiSearch className="text-slate-400" />
-              <input
-                value={propertySearch}
-                onChange={(event) => setPropertySearch(event.target.value)}
-                placeholder="Search property"
-                className="min-w-0 flex-1 text-sm outline-none"
-              />
+            <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
+              Available properties
             </div>
           </label>
 

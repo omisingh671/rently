@@ -1,7 +1,9 @@
 import { useRouteError, isRouteErrorResponse, Link } from "react-router-dom";
+import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 
 export default function RouteError() {
   const error = useRouteError();
+  const homePath = adminPath(ADMIN_ROUTES.DASHBOARD);
 
   let status: number | undefined;
 
@@ -61,7 +63,8 @@ export default function RouteError() {
           </button>
 
           <Link
-            to="/"
+            to={homePath}
+            reloadDocument
             className={[
               "badge hover:opacity-90",
               isForbidden ? "badge-danger" : "badge-primary",
