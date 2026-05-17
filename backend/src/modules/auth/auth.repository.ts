@@ -62,6 +62,23 @@ export const deleteSessionByToken = (refreshToken: string) =>
 export const deleteSessionsForUser = (userId: string) =>
   prisma.session.deleteMany({ where: { userId } });
 
+export const rotateSessionToken = (
+  currentRefreshToken: string,
+  nextRefreshToken: string,
+  expiresAt: Date,
+  ip?: string,
+  userAgent?: string,
+) =>
+  prisma.session.update({
+    where: { refreshToken: currentRefreshToken },
+    data: {
+      refreshToken: nextRefreshToken,
+      expiresAt,
+      ip: ip ?? null,
+      userAgent: userAgent ?? null,
+    },
+  });
+
 /**
  * Password reset
  */

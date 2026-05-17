@@ -507,6 +507,14 @@ export default function BookingDetailsPage() {
                 label="Payment policy"
                 value={booking.paymentPolicy.replaceAll("_", " ")}
               />
+              <InfoItem
+                label="Discount"
+                value={formatMoney(booking.discountAmount)}
+              />
+              <InfoItem
+                label="Coupon used"
+                value={booking.couponCode ?? "None"}
+              />
             </div>
             <div className="mt-5 space-y-3">
               {booking.payments.length === 0 ? (

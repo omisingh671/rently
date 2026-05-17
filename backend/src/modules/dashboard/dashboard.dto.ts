@@ -335,6 +335,7 @@ export interface DashboardBookingDTO {
   checkOut: Date;
   status: BookingStatus;
   totalAmount: string;
+  discountAmount: string;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
   balanceAmount: string;
@@ -342,6 +343,7 @@ export interface DashboardBookingDTO {
   upfrontAmount: string;
   noShowEligible: boolean;
   internalNotes: string | null;
+  couponCode: string | null;
   payments: Array<{
     id: string;
     status: PaymentStatus;

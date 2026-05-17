@@ -6,6 +6,7 @@ import {
   login,
   refresh,
   logout,
+  logoutAll,
   me,
   forgotPassword,
   resetPassword,
@@ -18,6 +19,7 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/refresh", refresh);
 router.post("/logout", logout);
+router.post("/logout-all", authenticate, logoutAll);
 
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);

@@ -16,6 +16,7 @@ import { hashPassword } from "@/common/utils/password.js";
 import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
+  CreateInventoryLockInput,
   CreatePublicBookingInput,
   CreatePublicEnquiryInput,
   PublicBookingGuestDetailsInput,
@@ -26,6 +27,7 @@ import type {
   PublicAvailabilityDTO,
   PublicBookingDTO,
   PublicEnquiryDTO,
+  PublicInventoryLockDTO,
   PublicSpaceDTO,
   PublicTenantConfigDTO,
 } from "./public.dto.js";
@@ -37,6 +39,7 @@ import {
 
 const now = () => new Date();
 const maxBookingTransactionAttempts = 3;
+const inventoryLockTtlMs = 10 * 60 * 1000;
 const multiRoomTitle = "Multi-room stay";
 
 const normalizeHost = (host?: string) => host?.split(":")[0]?.toLowerCase();
@@ -253,6 +256,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     to: booking.checkOut.toISOString(),
     pricePerNight: Number(booking.pricePerNight),
     totalPrice: Number(booking.totalAmount),
+    discountAmount: Number(booking.discountAmount),
     paidAmount,
     balanceAmount,
     remainingPayAtCheckIn: balanceAmount,
@@ -260,6 +264,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     internalNotes: booking.internalNotes ?? null,
     cancellationReason: booking.cancellationReason ?? null,
     cancelledAt: booking.cancelledAt?.toISOString() ?? null,
+    couponCode: booking.coupon?.code ?? null,
     createdAt: booking.createdAt.toISOString(),
   };
 };
@@ -289,6 +294,7 @@ const ensureSpaceAvailable = async (
   checkIn: Date,
   checkOut: Date,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ) => {
   const target = getSpaceTarget(space);
   const unit = space.unit ?? space.room?.unit;
@@ -301,7 +307,8 @@ const ensureSpaceAvailable = async (
     );
   }
 
-  const [hasBooking, hasMaintenance] = await Promise.all([
+  const at = now();
+  const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
     repo.hasOverlappingBooking(target, checkIn, checkOut, tx),
     repo.hasOverlappingMaintenance(
       space.propertyId,
@@ -310,9 +317,17 @@ const ensureSpaceAvailable = async (
       checkOut,
       tx,
     ),
+    repo.hasOverlappingInventoryLock(
+      target,
+      checkIn,
+      checkOut,
+      at,
+      tx,
+      ignoreLockToken,
+    ),
   ]);
 
-  if (hasBooking || hasMaintenance) {
+  if (hasBooking || hasMaintenance || hasLock) {
     throw new HttpError(
       409,
       "SPACE_NOT_AVAILABLE",
@@ -414,6 +429,60 @@ const getTargetKey = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
     ? `ROOM:${target.roomId ?? ""}`
     : `UNIT:${target.unitId ?? ""}`;
+
+const assertInventoryLockCoversTargets = async (
+  lockToken: string | undefined,
+  targets: PublicSpaceTarget[],
+  checkIn: Date,
+  checkOut: Date,
+  tx: Prisma.TransactionClient,
+) => {
+  if (lockToken === undefined) {
+    return;
+  }
+
+  const locks = await repo.findActiveInventoryLocksByToken(lockToken, now(), tx);
+  const expectedKeys = new Set(targets.map(getTargetKey));
+  const matchingKeys = new Set(
+    locks
+      .filter(
+        (lock) =>
+          lock.checkIn.getTime() === checkIn.getTime() &&
+          lock.checkOut.getTime() === checkOut.getTime(),
+      )
+      .map((lock) =>
+        getTargetKey({
+          targetType: lock.targetType,
+          unitId: lock.unitId,
+          roomId: lock.roomId,
+        }),
+      ),
+  );
+
+  if (
+    expectedKeys.size !== targets.length ||
+    expectedKeys.size !== matchingKeys.size ||
+    [...expectedKeys].some((key) => !matchingKeys.has(key))
+  ) {
+    throw new HttpError(
+      409,
+      "INVENTORY_LOCK_INVALID",
+      "Checkout hold is expired or does not match the selected spaces",
+    );
+  }
+};
+
+const releaseBookingLock = async (
+  lockToken: string | undefined,
+  bookingId: string,
+  tx: Prisma.TransactionClient,
+) => {
+  if (lockToken === undefined) {
+    return;
+  }
+
+  await repo.releaseInventoryLocksByToken(lockToken, now(), bookingId, tx);
+};
 
 const allocateGuestsAcrossRooms = (
   spaces: repo.PublicSpaceRecord[],
@@ -622,6 +691,252 @@ const resolveBookingGuestSnapshot = async (
   };
 };
 
+const validateAndApplyCoupon = async (
+  propertyId: string,
+  code: string | undefined,
+  nights: number,
+  totalBeforeDiscount: number,
+  tx: Prisma.TransactionClient,
+) => {
+  if (!code) return { couponId: undefined, discountAmount: 0 };
+
+  const coupon = await repo.findActiveCouponByCode(propertyId, code, now(), tx);
+
+  if (!coupon) {
+    throw new HttpError(422, "INVALID_COUPON", "Invalid or expired coupon code");
+  }
+
+  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+    throw new HttpError(422, "COUPON_EXHAUSTED", "Coupon usage limit reached");
+  }
+
+  if (coupon.minNights !== null && nights < coupon.minNights) {
+    throw new HttpError(
+      422,
+      "COUPON_MIN_NIGHTS",
+      `Coupon requires a minimum of ${coupon.minNights} nights`,
+    );
+  }
+
+  if (
+    coupon.minAmount !== null &&
+    totalBeforeDiscount < Number(coupon.minAmount)
+  ) {
+    throw new HttpError(
+      422,
+      "COUPON_MIN_AMOUNT",
+      `Coupon requires a minimum booking amount of ${Number(coupon.minAmount)}`,
+    );
+  }
+
+  let discountAmount = 0;
+  if (coupon.discountType === "PERCENTAGE") {
+    discountAmount = (totalBeforeDiscount * Number(coupon.discountValue)) / 100;
+  } else {
+    discountAmount = Number(coupon.discountValue);
+  }
+
+  // Cap discount at total amount
+  discountAmount = Math.min(discountAmount, totalBeforeDiscount);
+
+  return {
+    couponId: coupon.id,
+    discountAmount,
+  };
+};
+
+const resolveInventoryLockTargets = async (
+  input: CreateInventoryLockInput,
+  tenantId: string,
+  nights: number,
+  tx: Prisma.TransactionClient,
+) => {
+  if (input.bookingOptionId !== undefined) {
+    const option = await findAvailabilityOptionById(
+      input.bookingOptionId,
+      {
+        checkIn: input.from,
+        checkOut: input.to,
+        guests: input.guests,
+        comfortOption: input.comfortOption,
+      },
+      tenantId,
+      nights,
+      tx,
+    );
+
+    if (!option) {
+      throw new HttpError(
+        409,
+        "BOOKING_OPTION_UNAVAILABLE",
+        "Selected booking option is no longer available",
+      );
+    }
+
+    return {
+      propertyId: option.propertyId,
+      targets: option.items.map((item) => item.target),
+    };
+  }
+
+  const selectedSpaces =
+    input.bookingType === "MULTI_ROOM"
+      ? await Promise.all(
+          (input.spaceIds ?? []).map((spaceId) =>
+            repo.findActiveSpaceById(spaceId, now(), tenantId, tx, {
+              checkIn: input.from,
+              checkOut: input.to,
+              nights,
+            }),
+          ),
+        )
+      : [
+          await repo.findActiveSpaceById(input.spaceId ?? "", now(), tenantId, tx, {
+            checkIn: input.from,
+            checkOut: input.to,
+            nights,
+          }),
+        ];
+
+  if (selectedSpaces.some((space) => !space)) {
+    throw new HttpError(404, "SPACE_NOT_FOUND", "Space not found");
+  }
+
+  const resolvedSelectedSpaces = selectedSpaces.filter(
+    (space): space is repo.PublicSpaceRecord => space !== null,
+  );
+  const targets = await Promise.all(
+    resolvedSelectedSpaces.map((space) =>
+      ensureSpaceAvailable(space, input.from, input.to, tx),
+    ),
+  );
+  const uniqueTargetKeys = new Set(targets.map(getTargetKey));
+
+  if (uniqueTargetKeys.size !== resolvedSelectedSpaces.length) {
+    throw new HttpError(
+      422,
+      "DUPLICATE_BOOKING_SPACE",
+      "Each selected space can only be held once",
+    );
+  }
+
+  const propertyIds = new Set(
+    resolvedSelectedSpaces.map((space) => space.propertyId),
+  );
+
+  if (propertyIds.size !== 1) {
+    throw new HttpError(
+      422,
+      "MULTI_ROOM_PROPERTY_MISMATCH",
+      "Multi-room holds must stay within one property",
+    );
+  }
+
+  if (
+    input.bookingType === "MULTI_ROOM" &&
+    targets.some((target) => target.targetType !== BookingTargetType.ROOM)
+  ) {
+    throw new HttpError(
+      422,
+      "MULTI_ROOM_REQUIRES_ROOMS",
+      "Multi-room bookings can only combine rooms",
+    );
+  }
+
+  const selectedCapacity = resolvedSelectedSpaces.reduce(
+    (total, space) => total + getSpaceCapacity(space),
+    0,
+  );
+
+  if (input.guests > selectedCapacity) {
+    throw new HttpError(
+      422,
+      "INSUFFICIENT_CAPACITY",
+      "Selected spaces do not cover the requested guest count",
+    );
+  }
+
+  return {
+    propertyId: getArrayItem(
+      Array.from(propertyIds),
+      0,
+      "Missing lock property",
+    ),
+    targets,
+  };
+};
+
+export const createInventoryLock = async (
+  userId: string | undefined,
+  input: CreateInventoryLockInput,
+  tenantInput: TenantResolutionInput = {},
+): Promise<PublicInventoryLockDTO> => {
+  const tenant = await resolveTenant(tenantInput);
+  const nights = getNights(input.from, input.to);
+  const lockToken = randomUUID();
+  const createdAt = now();
+  const expiresAt = new Date(createdAt.getTime() + inventoryLockTtlMs);
+
+  for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
+    try {
+      await repo.runSerializableTransaction(async (tx) => {
+        await repo.cleanupExpiredInventoryLocks(createdAt, tx);
+        const { propertyId, targets } = await resolveInventoryLockTargets(
+          input,
+          tenant.id,
+          nights,
+          tx,
+        );
+
+        await repo.createInventoryLocks(
+          targets.map((target) => ({
+            lockToken,
+            propertyId,
+            targetType: target.targetType,
+            unitId: target.unitId,
+            roomId: target.roomId,
+            checkIn: input.from,
+            checkOut: input.to,
+            expiresAt,
+            createdByUserId: userId ?? null,
+            createdAt,
+          })),
+          tx,
+        );
+      });
+
+      return {
+        lockToken,
+        expiresAt: expiresAt.toISOString(),
+        ttlSeconds: inventoryLockTtlMs / 1000,
+      };
+    } catch (error) {
+      if (
+        attempt < maxBookingTransactionAttempts &&
+        isRetryableBookingTransactionError(error)
+      ) {
+        continue;
+      }
+
+      if (isRetryableBookingTransactionError(error)) {
+        throw new HttpError(
+          409,
+          "INVENTORY_LOCK_CONFLICT",
+          "Selected space is no longer available for checkout",
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  throw new HttpError(
+    409,
+    "INVENTORY_LOCK_CONFLICT",
+    "Selected space is no longer available for checkout",
+  );
+};
+
 export const createBookingForUser = async (
   userId: string | undefined,
   input: CreatePublicBookingInput,
@@ -665,6 +980,7 @@ export const createBookingForUser = async (
             tenant.id,
             nights,
             tx,
+            input.inventoryLockToken,
           );
 
           if (!option) {
@@ -693,7 +1009,26 @@ export const createBookingForUser = async (
               input.comfortOption,
             ),
           );
-          const totalAmount = option.stayTotal;
+          const optionTargets = option.items.map((item) => item.target);
+
+          await assertInventoryLockCoversTargets(
+            input.inventoryLockToken,
+            optionTargets,
+            input.from,
+            input.to,
+            tx,
+          );
+
+          const totalBeforeDiscount = option.stayTotal;
+          const { couponId, discountAmount } = await validateAndApplyCoupon(
+            option.propertyId,
+            input.couponCode,
+            nights,
+            totalBeforeDiscount,
+            tx,
+          );
+
+          const totalAmount = totalBeforeDiscount - discountAmount;
           const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
           const firstItem = getArrayItem(
             option.items,
@@ -728,6 +1063,8 @@ export const createBookingForUser = async (
               checkOut: input.to,
               status: initialStatus,
               totalAmount,
+              discountAmount,
+              ...(couponId && { coupon: { connect: { id: couponId } } }),
               paymentPolicy,
               upfrontAmount: bookingUpfrontAmount,
               ...(options.internalNotes !== undefined && {
@@ -740,6 +1077,10 @@ export const createBookingForUser = async (
             },
             tx,
           );
+
+          if (couponId) {
+            await repo.incrementCouponUsage(couponId, tx);
+          }
 
           await repo.createBookingStatusHistory(
             {
@@ -762,6 +1103,8 @@ export const createBookingForUser = async (
             },
             tx,
           );
+
+          await releaseBookingLock(input.inventoryLockToken, booking.id, tx);
 
           return booking;
         }
@@ -801,8 +1144,21 @@ export const createBookingForUser = async (
 
         const selectedTargets = await Promise.all(
           resolvedSelectedSpaces.map((space) =>
-            ensureSpaceAvailable(space, input.from, input.to, tx),
+            ensureSpaceAvailable(
+              space,
+              input.from,
+              input.to,
+              tx,
+              input.inventoryLockToken,
+            ),
           ),
+        );
+        await assertInventoryLockCoversTargets(
+          input.inventoryLockToken,
+          selectedTargets,
+          input.from,
+          input.to,
+          tx,
         );
         const uniqueTargetKeys = new Set(selectedTargets.map(getTargetKey));
 
@@ -908,16 +1264,17 @@ export const createBookingForUser = async (
               .guestCount,
           ),
         );
-        const totalAmount = itemInputs.reduce(
+        const totalBeforeDiscount = itemInputs.reduce(
           (total, item) => total + Number(item.totalAmount),
           0,
         );
-        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
+
         const pricePerNight = itemInputs.reduce(
           (total, item) => total + Number(item.pricePerNight),
           0,
         );
-        const firstSpace = getArrayItem(
+
+        const firstSpaceRec = getArrayItem(
           pricedSpaces,
           0,
           "Missing booking space",
@@ -932,14 +1289,25 @@ export const createBookingForUser = async (
           0,
           "Missing booking item",
         );
+
+        const { couponId, discountAmount } = await validateAndApplyCoupon(
+          firstSpaceRec.propertyId,
+          input.couponCode,
+          nights,
+          totalBeforeDiscount,
+          tx,
+        );
+
+        const totalAmount = totalBeforeDiscount - discountAmount;
+        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
         const isMultiRoom = input.bookingType === "MULTI_ROOM";
 
         const booking = await repo.createBooking(
           {
             bookingRef,
-            property: { connect: { id: firstSpace.propertyId } },
+            property: { connect: { id: firstSpaceRec.propertyId } },
             user: { connect: { id: guestSnapshot.userId } },
-            ...(isMultiRoom ? {} : { productId: firstSpace.productId }),
+            ...(isMultiRoom ? {} : { productId: firstSpaceRec.productId }),
             bookingType: isMultiRoom
               ? BookingType.MULTI_ROOM
               : BookingType.SINGLE_TARGET,
@@ -958,12 +1326,14 @@ export const createBookingForUser = async (
             targetLabel: isMultiRoom
               ? `${multiRoomTitle} (${pricedSpaces.length} rooms)`
               : firstItemInput.targetLabel,
-            productName: isMultiRoom ? multiRoomTitle : firstSpace.product.name,
+            productName: isMultiRoom ? multiRoomTitle : firstSpaceRec.product.name,
             pricePerNight,
             checkIn: input.from,
             checkOut: input.to,
             status: initialStatus,
             totalAmount,
+            discountAmount,
+            ...(couponId && { coupon: { connect: { id: couponId } } }),
             paymentPolicy,
             upfrontAmount: bookingUpfrontAmount,
             ...(options.internalNotes !== undefined && {
@@ -976,6 +1346,10 @@ export const createBookingForUser = async (
           },
           tx,
         );
+
+        if (couponId) {
+          await repo.incrementCouponUsage(couponId, tx);
+        }
 
         await repo.createBookingStatusHistory(
           {
@@ -998,6 +1372,8 @@ export const createBookingForUser = async (
           },
           tx,
         );
+
+        await releaseBookingLock(input.inventoryLockToken, booking.id, tx);
 
         return booking;
       });
@@ -1120,6 +1496,7 @@ export const cancelBooking = async (
       note: cancellationReason,
     },
   );
+  await repo.releaseInventoryLocksByBooking(booking.id, now());
 
   return mapBooking(updatedBooking);
 };

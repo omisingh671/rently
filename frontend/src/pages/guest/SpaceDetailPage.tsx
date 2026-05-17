@@ -17,7 +17,10 @@ import {
 } from "react-icons/fi";
 
 import { ROUTES } from "@/configs/routePaths";
-import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  createInventoryLock,
+  type CreateBookingPayload,
+} from "@/features/bookings/api";
 import {
   saveBookingCheckoutDraft,
   toBookingCheckoutDraftLocation,
@@ -116,28 +119,36 @@ export default function SpaceDetailPage() {
       comfortOption,
     } satisfies CreateBookingPayload;
 
-    const saved = saveBookingCheckoutDraft({
-      payload,
-      returnTo: toBookingCheckoutDraftLocation(location),
-      summary: {
-        title: space.title,
-        spaceName: space.title,
-        from,
-        to,
-        guestCount: guests,
-        comfortOption,
-        nightlyTotal: space.pricePerNight,
-        stayTotal: computedTotalPrice,
-      },
-    });
+    try {
+      const lock = await createInventoryLock(payload);
+      const saved = saveBookingCheckoutDraft({
+        payload: {
+          ...payload,
+          inventoryLockToken: lock.lockToken,
+        },
+        returnTo: toBookingCheckoutDraftLocation(location),
+        summary: {
+          title: space.title,
+          spaceName: space.title,
+          from,
+          to,
+          guestCount: guests,
+          comfortOption,
+          nightlyTotal: space.pricePerNight,
+          stayTotal: computedTotalPrice,
+        },
+      });
 
-    if (!saved) {
-      setFormError("Could not start checkout. Please try again.");
-      return;
+      if (!saved) {
+        setFormError("Could not start checkout. Please try again.");
+        return;
+      }
+
+      setFormError(null);
+      navigate(ROUTES.BOOKING_CHECKOUT);
+    } catch {
+      setFormError("Selected stay is no longer available. Please refresh.");
     }
-
-    setFormError(null);
-    navigate(ROUTES.BOOKING_CHECKOUT);
   };
 
   if (spaceQuery.status === "pending") {

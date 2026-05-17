@@ -302,7 +302,7 @@ export const createMaintenanceSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["endDate"],
-        message: "endDate must be on or after startDate",
+        message: "endDate cannot be before startDate",
       });
     }
 
@@ -505,6 +505,7 @@ export const createManualBookingSchema = contactFieldsRefine(
       to: z.coerce.date(),
       guests: z.coerce.number().int().min(1).max(20),
       comfortOption: z.nativeEnum(ComfortOption),
+      couponCode: z.string().trim().min(1).max(20).optional(),
       guestName: z.string().trim().min(1).max(120),
       guestEmail: z.string().trim().email().max(190),
       countryCode: countryCodeSchema.optional(),

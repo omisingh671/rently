@@ -54,12 +54,14 @@ export const createBookingSchema = z
   .object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
     bookingOptionId: z.string().min(16).optional(),
+    inventoryLockToken: z.string().uuid().optional(),
     spaceId: z.string().uuid().optional(),
     spaceIds: z.array(z.string().uuid()).optional(),
     from: isoDateSchema,
     to: isoDateSchema,
     guests: z.coerce.number().int().min(1).max(20),
     comfortOption: z.nativeEnum(ComfortOption),
+    couponCode: z.string().trim().min(1).max(20).optional(),
     guestDetails: bookingGuestDetailsSchema.optional(),
   })
   .refine((data) => data.to > data.from, {
@@ -76,6 +78,46 @@ export const createBookingSchema = z
         ctx.addIssue({
           code: "custom",
           message: "At least two spaces are required for a multi-room booking",
+          path: ["spaceIds"],
+        });
+      }
+      return;
+    }
+
+    if (!data.spaceId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "spaceId is required",
+        path: ["spaceId"],
+      });
+    }
+  });
+
+export const createInventoryLockSchema = z
+  .object({
+    bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+    bookingOptionId: z.string().min(16).optional(),
+    spaceId: z.string().uuid().optional(),
+    spaceIds: z.array(z.string().uuid()).optional(),
+    from: isoDateSchema,
+    to: isoDateSchema,
+    guests: z.coerce.number().int().min(1).max(20),
+    comfortOption: z.nativeEnum(ComfortOption),
+  })
+  .refine((data) => data.to > data.from, {
+    message: "Check-out must be after check-in",
+    path: ["to"],
+  })
+  .superRefine((data, ctx) => {
+    if (data.bookingOptionId) {
+      return;
+    }
+
+    if (data.bookingType === "MULTI_ROOM") {
+      if (!data.spaceIds || data.spaceIds.length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          message: "At least two spaces are required for a multi-room lock",
           path: ["spaceIds"],
         });
       }

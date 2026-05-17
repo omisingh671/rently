@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Button from "@/components/ui/Button";
@@ -51,6 +51,7 @@ export default function MaintenanceForm({
     control: methods.control,
     name: "targetType",
   });
+  const previousPropertyIdRef = useRef<string | undefined>(propertyId);
 
   const { data: unitsData } = useAdminUnits(propertyId, 1, ADMIN_OPTION_LIST_LIMIT, {
     search: "",
@@ -69,6 +70,7 @@ export default function MaintenanceForm({
   useEffect(() => {
     if (defaultValues) {
       reset(defaultValues);
+      previousPropertyIdRef.current = defaultValues.propertyId;
     }
   }, [defaultValues, reset]);
 
@@ -76,12 +78,23 @@ export default function MaintenanceForm({
     if (targetType === "PROPERTY") {
       setValue("unitId", "");
       setValue("roomId", "");
+      clearErrors(["unitId", "roomId"]);
     }
 
     if (targetType === "UNIT") {
       setValue("roomId", "");
+      clearErrors("roomId");
     }
-  }, [setValue, targetType]);
+  }, [clearErrors, setValue, targetType]);
+
+  useEffect(() => {
+    if (previousPropertyIdRef.current !== propertyId) {
+      setValue("unitId", "");
+      setValue("roomId", "");
+      clearErrors(["unitId", "roomId"]);
+      previousPropertyIdRef.current = propertyId;
+    }
+  }, [clearErrors, propertyId, setValue]);
 
   const submitHandler = (values: MaintenanceFormValues) => {
     clearErrors("root.server");
@@ -102,7 +115,7 @@ export default function MaintenanceForm({
       >
         <ErrorSummary />
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-6 ${targetType === "PROPERTY" ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
           <SelectField name="propertyId" label="Property" disabled={isEditing}>
             <option value="">Select property</option>
             {properties.map((property) => (
@@ -139,12 +152,20 @@ export default function MaintenanceForm({
               ))}
             </SelectField>
           )}
-
-          <InputField name="startDate" label="Start Date" type="date" />
-          <InputField name="endDate" label="End Date" type="date" />
         </div>
 
-        <TextareaField name="reason" label="Reason" rows={4} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Left Column: Start Date and End Date stacked */}
+          <div className="flex flex-col gap-4 [&_.form-group]:mb-0">
+            <InputField name="startDate" label="Start Date" type="date" />
+            <InputField name="endDate" label="End Date" type="date" />
+          </div>
+
+          {/* Right Column: Reason with matching height */}
+          <div className="flex flex-col [&_.form-group]:mb-0 [&_.form-group]:h-full [&_.form-group]:flex [&_.form-group]:flex-col [&_.form-control]:flex-1 [&_.form-control]:flex [&_textarea]:flex-1 [&_textarea]:resize-none">
+            <TextareaField name="reason" label="Reason" rows={4} />
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-200 py-4 sm:flex-row">
           {onCancel && (

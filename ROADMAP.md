@@ -76,14 +76,17 @@ Already implemented:
   - Tax calculation and coupon validation services implemented.
   - Final quote calculation integrated into booking creation.
   - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
+  - Coupon management and validation integrated across dashboard and frontend.
 - Phase 5 public frontend refinements completed:
   - Modernized BookingForm with occupancy toggles and grid layout.
   - High-end Booking Payment and Account UI (Sucasa theme).
   - MVP cancellation flow and booking history integrated into guest account.
+  - Detailed Guest Booking Page with stay breakdown, price summary, and coupon visibility.
 - Phase 6 dashboard operations completed:
   - High-density Room Board with live status filtering and unit-based grouping.
   - Walk-in booking module with pricing and availability checks.
   - Manager check-in/check-out workflow with status history.
+  - Synchronized availability logic between dashboard and public frontend using shared identifiers.
 
 ## Phase 1: Stabilize Current MVP
 
@@ -199,7 +202,8 @@ Already implemented:
 - Completed: add transaction-safe booking creation for public bookings.
 - Completed: prevent overlapping public booking races with an in-transaction availability recheck and serializable transaction retry.
 - Completed: add booking overlap indexes for room/date, unit/date, and status/date lookups.
-- Deferred to group booking work: multi-room capacity selection and lock rollback.
+- Completed: multi-room capacity selection with atomic checkout inventory lock rollback.
+- Completed: 10-minute checkout inventory locks are included in availability/booking conflict checks and released after booking creation/confirmation/cancellation.
 
 ### Booking Lifecycle
 
@@ -334,39 +338,38 @@ Already implemented:
 
 ### Reporting
 
-- Add dashboard reports:
-  - occupancy
-  - revenue
-  - booking source
-  - enquiry conversion
-  - property performance
-  - manager activity
-- Add export to CSV.
-- Add date range filters.
+- [ ] Add dashboard reports:
+  - [ ] occupancy
+  - [ ] revenue
+  - [ ] booking source
+  - [ ] enquiry conversion
+  - [ ] property performance
+  - [ ] manager activity
+- [ ] Add export to CSV.
+- [ ] Add date range filters.
 
 ## Phase 7: Security And Reliability
 
 ### Authentication
 
-- Review refresh token lifecycle.
-- Add refresh token rotation if needed.
-- Add session list and revoke sessions.
-- Add password policy.
-- Add rate limiting for:
+- Completed: refresh token rotation on session refresh.
+- Completed: revoke-all-sessions support.
+- Completed: password policy for register/reset/change password.
+- Completed: targeted rate limiting for:
   - login
   - register
   - forgot password
   - public enquiry
   - booking creation
-- Add account lockout or throttling.
+- Completed: lightweight login throttling/account lockout.
 
 ### API Security
 
-- Add Helmet/security headers.
-- Tighten CORS by environment.
-- Add request size limits.
-- Add structured error responses everywhere.
-- Ensure no Prisma/internal errors leak to clients.
+- Completed: add Helmet/security headers.
+- Completed: tighten CORS by environment.
+- Completed: add request size limits.
+- Completed: safe structured validation/database error responses.
+- Completed: ensure Prisma/internal errors do not leak to clients.
 - Add input sanitization where needed.
 
 ### Observability
@@ -515,18 +518,15 @@ Target rules:
 - Room booking blocks its parent unit for overlapping dates.
 - Maintenance blocks remove matching properties, units, or rooms from availability.
 
-### Inventory Locking Future Spec
+### Inventory Locking
 
-Inventory locking is not yet fully implemented and should be treated as future work.
-
-Target behavior:
-
-- Create short-lived inventory locks during checkout.
-- Use a 10-minute TTL.
-- For group bookings, create one lock per selected item.
-- If any group lock fails, rollback all locks acquired in the attempt.
-- Release locks after successful booking confirmation.
-- Expire stale locks automatically.
+- Implemented for checkout: create short-lived inventory locks during public checkout.
+- Uses a 10-minute TTL.
+- Creates one lock per selected room/unit.
+- Acquires group locks atomically; if any selected item conflicts, the attempt rolls back.
+- Ignores expired locks during availability and booking checks.
+- Releases locks after booking creation/confirmation/cancellation.
+- Cleans up stale expired locks during lock acquisition.
 
 ### Pricing Rules
 
@@ -646,9 +646,8 @@ Target dashboard behavior:
 
 ## Immediate Next Tasks
 
-1. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
-2. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity.
-3. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
-4. **Multi-room/Group Bookings (Phase 5 Strategy)**: Implement capacity selection logic for larger groups across multiple units.
-5. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
-6. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
+1. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity to provide operational insights.
+2. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
+3. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
+4. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
+5. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.

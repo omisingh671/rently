@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 import { useAdminOperations } from "../hooks/useAdminOperations";
@@ -13,10 +12,10 @@ import type {
   LeadStatus,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
+import Pagination from "@/components/common/Pagination";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 
 const {
-  FiCalendar,
   FiClipboard,
   FiFilter,
   FiHome,
@@ -54,11 +53,7 @@ const formatEnquirySource = (source: string | null) =>
   source ??
   "Website";
 
-const titles: Record<Module, string> = {
-  bookings: "Bookings",
-  enquiries: "Enquiries",
-  quotes: "Quotes",
-};
+
 
 const isStatusAllowedForModule = (module: Module, status: string) =>
   module === "bookings"
@@ -141,8 +136,9 @@ function GuestAvatar({ name }: { name: string }) {
 }
 
 export default function OperationsPage({ module }: Props) {
-  const navigate = useNavigate();
   const [propertyId, setPropertyId] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(5);
   const [filters, setFilters] = useState({
     search: "",
     status: "",
@@ -180,7 +176,7 @@ export default function OperationsPage({ module }: Props) {
     updateEnquiry,
     updateQuote,
     isMutating,
-  } = useAdminOperations(module, selectedPropertyId, activeFilters);
+  } = useAdminOperations(module, selectedPropertyId, page, limit, activeFilters);
 
   const items = data?.items ?? [];
   const statuses = module === "bookings" ? bookingStatuses : leadStatuses;
@@ -188,6 +184,7 @@ export default function OperationsPage({ module }: Props) {
   const setFilterValue = (key: keyof typeof filters, value: string) => {
     setActionError("");
     setFilters((prev) => ({ ...prev, [key]: value }));
+    setPage(1);
   };
 
   const updateLeadStatus = async (
@@ -210,22 +207,9 @@ export default function OperationsPage({ module }: Props) {
     }
   };
 
-  const openBookingDetails = (bookingId: string) => {
-    navigate(adminPath(ADMIN_ROUTES.BOOKING_DETAIL(bookingId)));
-  };
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">
-            {titles[module]}
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {isPending ? "Loading data..." : `${items.length} records found in the selected property`}
-          </p>
-        </div>
-      </div>
+
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center">
         <div className="relative flex-1 lg:max-w-md">
@@ -250,6 +234,7 @@ export default function OperationsPage({ module }: Props) {
               onChange={(event) => {
                 setActionError("");
                 setPropertyId(event.target.value);
+                setPage(1);
               }}
               className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-8 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-72"
             >
@@ -331,7 +316,7 @@ export default function OperationsPage({ module }: Props) {
           </div>
           <h3 className="mt-4 text-base font-semibold text-slate-900">No Property Selected</h3>
           <p className="mt-1 max-w-[200px] text-sm text-slate-500">
-            Select a property from the toolbar to view its {titles[module].toLowerCase()}.
+            Select a property from the toolbar to view its {module}.
           </p>
         </div>
       ) : (
@@ -344,10 +329,11 @@ export default function OperationsPage({ module }: Props) {
             </div>
           )}
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-100 text-sm">
-              <thead className="sticky top-0 z-10 bg-slate-50/90 text-left text-xs font-bold uppercase tracking-wider text-slate-500 backdrop-blur-sm">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-200 text-left text-xs font-bold uppercase tracking-wider text-slate-700 backdrop-blur-sm border-b border-slate-300">
                 {module === "bookings" ? (
                   <tr>
+                    <th className="whitespace-nowrap px-6 py-4 w-16 text-center">#SN</th>
                     <th className="whitespace-nowrap px-6 py-4">Guest</th>
                     <th className="whitespace-nowrap px-6 py-4">Stay & Product</th>
                     <th className="whitespace-nowrap px-6 py-4">Assigned Room/Unit</th>
@@ -358,6 +344,7 @@ export default function OperationsPage({ module }: Props) {
                   </tr>
                 ) : module === "enquiries" ? (
                   <tr>
+                    <th className="whitespace-nowrap px-6 py-4 w-16 text-center">#SN</th>
                     <th className="whitespace-nowrap px-6 py-4">Guest</th>
                     <th className="whitespace-nowrap px-6 py-4">Message</th>
                     <th className="whitespace-nowrap px-6 py-4">Source</th>
@@ -366,6 +353,7 @@ export default function OperationsPage({ module }: Props) {
                   </tr>
                 ) : (
                   <tr>
+                    <th className="whitespace-nowrap px-6 py-4 w-16 text-center">#SN</th>
                     <th className="whitespace-nowrap px-6 py-4">Guest</th>
                     <th className="whitespace-nowrap px-6 py-4">Product</th>
                     <th className="whitespace-nowrap px-6 py-4">Dates</th>
@@ -374,37 +362,31 @@ export default function OperationsPage({ module }: Props) {
                   </tr>
                 )}
               </thead>
-            <tbody className={`divide-y divide-slate-100 ${isFetching ? "opacity-70" : ""}`}>
+            <tbody className={`divide-y divide-slate-200 ${isFetching ? "opacity-70" : ""}`}>
               {isPending && items.length === 0 ? (
                 <EmptyRow
                   message="Loading records..."
-                  colSpan={module === "bookings" ? 7 : 5}
+                  colSpan={module === "bookings" ? 8 : 6}
                 />
               ) : isError ? (
                 <EmptyRow
                   message="Could not load records."
-                  colSpan={module === "bookings" ? 7 : 5}
+                  colSpan={module === "bookings" ? 8 : 6}
                 />
               ) : items.length === 0 ? (
                 <EmptyRow
                   message="No records found."
-                  colSpan={module === "bookings" ? 7 : 5}
+                  colSpan={module === "bookings" ? 8 : 6}
                 />
               ) : module === "bookings" ? (
-                (items as AdminBooking[]).map((booking) => (
+                (items as AdminBooking[]).map((booking, index) => (
                   <tr
                     key={booking.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openBookingDetails(booking.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openBookingDetails(booking.id);
-                      }
-                    }}
-                    className="cursor-pointer transition-colors hover:bg-slate-50/80 focus:bg-slate-50 focus:outline-none"
+                    className="transition-colors hover:bg-slate-50/80"
                   >
+                    <td className="px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap">
+                      {(page - 1) * limit + index + 1}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <GuestAvatar name={booking.guestName} />
@@ -437,12 +419,10 @@ export default function OperationsPage({ module }: Props) {
                     <td className="px-6 py-4 text-sm font-medium text-slate-700">
                       {getBookingAssignedSummary(booking)}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                        <FiCalendar className="h-3.5 w-3.5 text-slate-400" />
-                        <span>
-                          {formatDate(booking.checkIn)} - {formatDate(booking.checkOut)}
-                        </span>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex flex-col text-sm text-slate-600">
+                        <span>{formatDate(booking.checkIn)}</span>
+                        <span>{formatDate(booking.checkOut)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -463,11 +443,12 @@ export default function OperationsPage({ module }: Props) {
                     <td className="px-6 py-4">
                       <StatusBadge status={booking.status} />
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right whitespace-nowrap">
                       <Button
                         size="sm"
                         variant="secondary"
                         to={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
+                        className="whitespace-nowrap"
                       >
                         View Details
                       </Button>
@@ -475,8 +456,11 @@ export default function OperationsPage({ module }: Props) {
                   </tr>
                 ))
               ) : module === "enquiries" ? (
-                (items as AdminEnquiry[]).map((enquiry) => (
+                (items as AdminEnquiry[]).map((enquiry, index) => (
                   <tr key={enquiry.id} className="transition-colors hover:bg-slate-50/80">
+                    <td className="px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap">
+                      {(page - 1) * limit + index + 1}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <GuestAvatar name={enquiry.name} />
@@ -521,8 +505,11 @@ export default function OperationsPage({ module }: Props) {
                   </tr>
                 ))
               ) : (
-                (items as AdminQuote[]).map((quote) => (
+                (items as AdminQuote[]).map((quote, index) => (
                   <tr key={quote.id} className="transition-colors hover:bg-slate-50/80">
+                    <td className="px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap">
+                      {(page - 1) * limit + index + 1}
+                    </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <GuestAvatar name={quote.guestName ?? "Guest"} />
@@ -568,6 +555,43 @@ export default function OperationsPage({ module }: Props) {
             </tbody>
             </table>
           </div>
+          {data && data.pagination.total > 0 && (
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              {/* Left Side: Page Size Selector */}
+              <div className="flex flex-wrap items-center gap-2.5 text-sm text-slate-600">
+                <span>Show</span>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50/50 cursor-pointer transition-all"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span>entries</span>
+                <span className="text-xs text-slate-400 font-medium sm:ml-2">
+                  (Showing {Math.min((page - 1) * limit + 1, data.pagination.total)} to {Math.min(page * limit, data.pagination.total)} of {data.pagination.total})
+                </span>
+              </div>
+
+              {/* Right Side: Pagination navigation */}
+              {data.pagination.totalPages > 1 && (
+                <div className="shrink-0">
+                  <Pagination
+                    page={page}
+                    totalPages={data.pagination.totalPages}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

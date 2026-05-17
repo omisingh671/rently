@@ -80,6 +80,7 @@ export default function BookingCheckoutPage() {
   const profileQuery = useProfile(isAuthenticated);
   const createBookingMutation = useCreateBooking();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState("");
 
   const profile = profileQuery.data;
   const profileDefaults = useMemo<GuestInfoFormValues>(() => {
@@ -118,6 +119,7 @@ export default function BookingCheckoutPage() {
         email: values.email,
         contactNumber: `${values.countryCode}-${values.contactNumber}`,
       },
+      couponCode: couponCode.trim() || undefined,
     };
 
     try {
@@ -293,6 +295,23 @@ export default function BookingCheckoutPage() {
               </div>
             </div>
             <div className="mt-auto pt-6 border-t border-slate-100">
+              <div className="mb-6">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Coupon Code
+                  </span>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="ENTER CODE"
+                      className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold uppercase tracking-wider text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </label>
+              </div>
+
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Nightly rate</span>
                 <span className="font-semibold text-slate-900">

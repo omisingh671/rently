@@ -15,19 +15,19 @@ export const STATUS_BADGE_COLORS: Record<string, string> = {
 };
 
 export const STATUS_BG_COLORS: Record<string, string> = {
-  AVAILABLE: "bg-emerald-50/60 border-emerald-100",
-  RESERVED: "bg-amber-50/60 border-amber-100",
-  OCCUPIED: "bg-indigo-50/60 border-indigo-100",
-  MAINTENANCE: "bg-rose-50/60 border-rose-100",
-  INACTIVE: "bg-slate-50/60 border-slate-200",
+  AVAILABLE: "bg-emerald-50/60 border-emerald-300",
+  RESERVED: "bg-amber-50/60 border-amber-300",
+  OCCUPIED: "bg-indigo-50/60 border-indigo-300",
+  MAINTENANCE: "bg-rose-50/60 border-rose-300",
+  INACTIVE: "bg-slate-50/60 border-slate-300",
 };
 
 export const STATUS_INNER_BORDER_COLORS: Record<string, string> = {
-  AVAILABLE: "border-emerald-500/30",
-  RESERVED: "border-amber-500/30",
-  OCCUPIED: "border-indigo-500/30",
-  MAINTENANCE: "border-rose-500/30",
-  INACTIVE: "border-slate-500/30",
+  AVAILABLE: "border-emerald-500/50",
+  RESERVED: "border-amber-500/50",
+  OCCUPIED: "border-indigo-500/50",
+  MAINTENANCE: "border-rose-500/50",
+  INACTIVE: "border-slate-500/50",
 };
 
 export const STATUS_TEXT_COLORS: Record<string, string> = {

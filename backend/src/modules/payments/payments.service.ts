@@ -253,6 +253,7 @@ export const createManualPayment = async (
         },
         tx,
       );
+      await repo.releaseInventoryLocksByBooking(booking.id, new Date(), tx);
     } else {
       await repo.updateBookingPaymentState(booking.id, nextPaymentStatus, tx);
     }

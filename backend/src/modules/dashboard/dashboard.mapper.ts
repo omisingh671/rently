@@ -292,6 +292,38 @@ const getBookingPaymentStatus = (
   return BookingPaymentStatus.PAID;
 };
 
+export interface DashboardBookingAssignmentLabels {
+  roomsById: ReadonlyMap<string, string>;
+  unitsById: ReadonlyMap<string, string>;
+}
+
+export const formatBookingRoomAssignmentLabel = (
+  room: repo.DashboardBookingRoomAssignmentRecord,
+) => `Unit ${room.unit.unitNumber} / Room ${room.number} (${room.name})`;
+
+export const formatBookingUnitAssignmentLabel = (
+  unit: repo.DashboardBookingUnitAssignmentRecord,
+) => `Unit ${unit.unitNumber}`;
+
+const getBookingAssignmentLabel = (
+  input: {
+    unitId: string | null;
+    roomId: string | null;
+    targetLabel: string;
+  },
+  labels?: DashboardBookingAssignmentLabels,
+) => {
+  if (input.roomId !== null) {
+    return labels?.roomsById.get(input.roomId) ?? input.targetLabel;
+  }
+
+  if (input.unitId !== null) {
+    return labels?.unitsById.get(input.unitId) ?? input.targetLabel;
+  }
+
+  return input.targetLabel;
+};
+
 const getDateParts = (date: Date, timeZone: string) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -346,6 +378,7 @@ export const isBookingNoShowEligible = (
 
 export const mapBooking = (
   booking: repo.DashboardBookingRecord,
+  assignmentLabels?: DashboardBookingAssignmentLabels,
 ): DashboardBookingDTO => {
   const paidAmount = getBookingPaidAmount(booking);
   const balanceAmount = maxDecimal(
@@ -371,13 +404,21 @@ export const mapBooking = (
     targetType: booking.targetType,
     unitId: booking.unitId ?? null,
     roomId: booking.roomId ?? null,
-    targetLabel: booking.targetLabel,
+    targetLabel: getBookingAssignmentLabel(
+      {
+        unitId: booking.unitId ?? null,
+        roomId: booking.roomId ?? null,
+        targetLabel: booking.targetLabel,
+      },
+      assignmentLabels,
+    ),
     productName: booking.productName,
     pricePerNight: booking.pricePerNight.toString(),
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
     status: booking.status,
     totalAmount: booking.totalAmount.toString(),
+    discountAmount: booking.discountAmount.toString(),
     paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
     paidAmount: paidAmount.toString(),
     balanceAmount: balanceAmount.toString(),
@@ -385,6 +426,7 @@ export const mapBooking = (
     upfrontAmount: booking.upfrontAmount.toString(),
     noShowEligible: isBookingNoShowEligible(booking),
     internalNotes: booking.internalNotes ?? null,
+    couponCode: booking.coupon?.code ?? null,
     payments: booking.payments.map((payment) => ({
       id: payment.id,
       status: payment.status,
@@ -403,7 +445,14 @@ export const mapBooking = (
       unitId: item.unitId ?? null,
       roomId: item.roomId ?? null,
       productId: item.productId ?? null,
-      targetLabel: item.targetLabel,
+      targetLabel: getBookingAssignmentLabel(
+        {
+          unitId: item.unitId ?? null,
+          roomId: item.roomId ?? null,
+          targetLabel: item.targetLabel,
+        },
+        assignmentLabels,
+      ),
       productName: item.productName,
       capacity: item.capacity,
       guestCount: item.guestCount,

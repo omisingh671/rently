@@ -368,6 +368,7 @@ export interface CreateDashboardManualBookingInput {
   to: Date;
   guests: number;
   comfortOption: ComfortOption;
+  couponCode?: string | undefined;
   guestName: string;
   guestEmail: string;
   countryCode?: string;

@@ -154,6 +154,21 @@ export const createBookingStatusHistory = (
     data,
   });
 
+export const releaseInventoryLocksByBooking = (
+  bookingId: string,
+  releasedAt: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.updateMany({
+    where: {
+      bookingId,
+      releasedAt: null,
+    },
+    data: {
+      releasedAt,
+    },
+  });
+
 export const runPaymentTransaction = <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
 ) =>

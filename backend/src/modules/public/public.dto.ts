@@ -70,6 +70,12 @@ export interface PublicAvailabilityDTO {
   options: PublicAvailabilityOptionDTO[];
 }
 
+export interface PublicInventoryLockDTO {
+  lockToken: string;
+  expiresAt: string;
+  ttlSeconds: number;
+}
+
 export interface PublicBookingItemDTO {
   id: string;
   targetType: BookingTargetType;
@@ -107,6 +113,7 @@ export interface PublicBookingDTO {
   to: string;
   pricePerNight: number;
   totalPrice: number;
+  discountAmount: number;
   paidAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
@@ -114,6 +121,7 @@ export interface PublicBookingDTO {
   internalNotes: string | null;
   cancellationReason: string | null;
   cancelledAt: string | null;
+  couponCode: string | null;
   createdAt: string;
 }
 

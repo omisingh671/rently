@@ -85,6 +85,10 @@ const dashboardRoomPricingInclude = {
   },
 } satisfies Prisma.RoomPricingInclude;
 
+const dashboardBookingRoomAssignmentInclude = {
+  unit: true,
+} satisfies Prisma.RoomInclude;
+
 const dashboardTaxInclude = {
   property: true,
 } satisfies Prisma.TaxInclude;
@@ -118,6 +122,7 @@ const dashboardBookingInclude = {
       createdAt: "asc",
     },
   },
+  coupon: true,
 } satisfies Prisma.BookingInclude;
 
 const dashboardEnquiryInclude = {
@@ -157,6 +162,11 @@ export type DashboardRoomProductRecord = Prisma.RoomProductGetPayload<{
 export type DashboardRoomPricingRecord = Prisma.RoomPricingGetPayload<{
   include: typeof dashboardRoomPricingInclude;
 }>;
+export type DashboardBookingRoomAssignmentRecord = Prisma.RoomGetPayload<{
+  include: typeof dashboardBookingRoomAssignmentInclude;
+}>;
+export type DashboardBookingUnitAssignmentRecord =
+  Prisma.UnitGetPayload<Record<string, never>>;
 export type DashboardTaxRecord = Prisma.TaxGetPayload<{
   include: typeof dashboardTaxInclude;
 }>;
@@ -966,6 +976,31 @@ export const findRoomByUnitAndNumber = (unitId: string, number: string) =>
     include: dashboardRoomInclude,
   });
 
+export const listBookingAssignmentRoomsByIds = async (
+  ids: string[],
+): Promise<DashboardBookingRoomAssignmentRecord[]> => {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  return prisma.room.findMany({
+    where: { id: { in: ids } },
+    include: dashboardBookingRoomAssignmentInclude,
+  });
+};
+
+export const listBookingAssignmentUnitsByIds = async (
+  ids: string[],
+): Promise<DashboardBookingUnitAssignmentRecord[]> => {
+  if (ids.length === 0) {
+    return [];
+  }
+
+  return prisma.unit.findMany({
+    where: { id: { in: ids } },
+  });
+};
+
 export const createRoom = (data: Prisma.RoomCreateInput) =>
   prisma.room.create({
     data,
@@ -1534,6 +1569,20 @@ export const updateBookingLifecycleById = (
       where: { id },
       include: dashboardBookingInclude,
     });
+  });
+
+export const releaseInventoryLocksByBooking = (
+  bookingId: string,
+  releasedAt: Date,
+) =>
+  prisma.inventoryLock.updateMany({
+    where: {
+      bookingId,
+      releasedAt: null,
+    },
+    data: {
+      releasedAt,
+    },
   });
 
 export const listEnquiriesPaginated = async (filters: LeadListFilters) => {

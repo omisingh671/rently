@@ -269,6 +269,7 @@ model Property {
   roomProducts      RoomProduct[]
   roomPricing       RoomPricing[]
   bookings          Booking[]
+  inventoryLocks    InventoryLock[]
   payments          Payment[]
   quoteRequests     QuoteRequest[]
   enquiries         Enquiry[]
@@ -444,6 +445,8 @@ model Booking {
   paymentStatus BookingPaymentStatus @default(PENDING)
   paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount Decimal              @default(10)
+  couponId      String?
+  discountAmount Decimal             @default(0)
   internalNotes       String?   @db.Text
   cancellationReason  String?   @db.Text
   cancelledAt         DateTime?
@@ -452,9 +455,11 @@ model Booking {
 
   property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  coupon        Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items         BookingItem[]
   payments      Payment[]
   statusHistory BookingStatusHistory[]
+  inventoryLocks InventoryLock[]
 
   @@index([propertyId])
   @@index([userId])
@@ -463,6 +468,31 @@ model Booking {
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
   @@map("bookings")
+}
+
+model InventoryLock {
+  id         String            @id @default(uuid())
+  lockToken  String
+  propertyId String
+  targetType BookingTargetType
+  unitId     String?
+  roomId     String?
+  checkIn    DateTime
+  checkOut   DateTime
+  expiresAt  DateTime
+  releasedAt DateTime?
+  bookingId  String?
+  createdByUserId String?
+  createdAt  DateTime          @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([lockToken])
+  @@index([propertyId, expiresAt, releasedAt])
+  @@index([roomId, checkIn, checkOut])
+  @@index([unitId, checkIn, checkOut])
+  @@map("inventory_locks")
 }
 
 model BookingItem {
@@ -706,7 +736,8 @@ model Coupon {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings Booking[]
 
   @@unique([propertyId, code])
   @@index([propertyId])

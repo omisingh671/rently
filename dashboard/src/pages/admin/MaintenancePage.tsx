@@ -8,6 +8,7 @@ import { useAdminProperties } from "@/features/properties/hooks/useAdminProperti
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 import MaintenanceFilters from "@/features/maintenance/components/MaintenanceFilters";
 import MaintenanceForm from "@/features/maintenance/components/MaintenanceForm/MaintenanceForm";
+import type { MaintenanceFormValues } from "@/features/maintenance/components/MaintenanceForm/maintenance.schema";
 import MaintenanceTable from "@/features/maintenance/components/MaintenanceTable";
 import { useAdminMaintenance } from "@/features/maintenance/hooks/useAdminMaintenance";
 import type {
@@ -22,6 +23,18 @@ type Filters = {
 };
 
 const toDateInputValue = (value: string) => value.slice(0, 10);
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+};
+
+const toInclusiveEndDateInputValue = (value: string) =>
+  addDays(new Date(value), -1).toISOString().slice(0, 10);
+
+const toExclusiveEndDateValue = (value: string) =>
+  addDays(new Date(`${value}T00:00:00.000Z`), 1).toISOString().slice(0, 10);
 
 export default function MaintenancePage() {
   const {
@@ -89,6 +102,30 @@ export default function MaintenancePage() {
     setIsModalOpen(false);
     setEditingBlock(null);
   };
+
+  const maintenanceFormDefaults = useMemo<MaintenanceFormValues>(
+    () =>
+      editingBlock
+        ? {
+            propertyId: editingBlock.propertyId,
+            targetType: editingBlock.targetType,
+            unitId: editingBlock.unitId ?? "",
+            roomId: editingBlock.roomId ?? "",
+            reason: editingBlock.reason ?? "",
+            startDate: toDateInputValue(editingBlock.startDate),
+            endDate: toInclusiveEndDateInputValue(editingBlock.endDate),
+          }
+        : {
+            propertyId: filters.propertyId,
+            targetType: "PROPERTY",
+            unitId: "",
+            roomId: "",
+            reason: "",
+            startDate: "",
+            endDate: "",
+          },
+    [editingBlock, filters.propertyId],
+  );
 
   return (
     <div className="space-y-4">
@@ -158,31 +195,12 @@ export default function MaintenancePage() {
           properties={properties}
           submitLabel={editingBlock ? "Save Changes" : "Create Block"}
           isEditing={!!editingBlock}
-          defaultValues={
-            editingBlock
-              ? {
-                  propertyId: editingBlock.propertyId,
-                  targetType: editingBlock.targetType,
-                  unitId: editingBlock.unitId ?? "",
-                  roomId: editingBlock.roomId ?? "",
-                  reason: editingBlock.reason ?? "",
-                  startDate: toDateInputValue(editingBlock.startDate),
-                  endDate: toDateInputValue(editingBlock.endDate),
-                }
-              : {
-                  propertyId: filters.propertyId,
-                  targetType: "PROPERTY",
-                  unitId: "",
-                  roomId: "",
-                  reason: "",
-                  startDate: "",
-                  endDate: "",
-                }
-          }
+          defaultValues={maintenanceFormDefaults}
           isSubmitting={isCreating || isUpdating}
           onSubmit={(values, setServerError) => {
             const payload = {
               ...values,
+              endDate: toExclusiveEndDateValue(values.endDate),
               reason: values.reason || undefined,
               unitId:
                 values.targetType === "UNIT" ? values.unitId || undefined : undefined,

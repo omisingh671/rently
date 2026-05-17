@@ -25,6 +25,47 @@ import type {
 import type { AuthResponseDTO } from "./auth.dto.js";
 
 const RESET_TOKEN_TTL_MINUTES = 15;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+
+const failedLoginAttempts = new Map<
+  string,
+  { count: number; lockedUntil?: number }
+>();
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const assertLoginNotLocked = (email: string) => {
+  const attempt = failedLoginAttempts.get(email);
+  if (!attempt?.lockedUntil) {
+    return;
+  }
+
+  if (attempt.lockedUntil > Date.now()) {
+    throw new HttpError(
+      429,
+      "LOGIN_LOCKED",
+      "Too many failed login attempts. Please try again later.",
+    );
+  }
+
+  failedLoginAttempts.delete(email);
+};
+
+const recordFailedLogin = (email: string) => {
+  const current = failedLoginAttempts.get(email);
+  const count = (current?.count ?? 0) + 1;
+  failedLoginAttempts.set(email, {
+    count,
+    ...(count >= MAX_FAILED_LOGIN_ATTEMPTS && {
+      lockedUntil: Date.now() + LOGIN_LOCK_MS,
+    }),
+  });
+};
+
+const clearFailedLogin = (email: string) => {
+  failedLoginAttempts.delete(email);
+};
 
 const createRefreshSession = async (
   userId: string,
@@ -57,25 +98,34 @@ export const loginUser = async (
   ip?: string,
   userAgent?: string,
 ): Promise<{ auth: AuthResponseDTO; refreshToken: string }> => {
-  const user = await repo.findUserByEmail(input.email);
-  if (!user)
+  const email = normalizeEmail(input.email);
+  assertLoginNotLocked(email);
+
+  const user = await repo.findUserByEmail(email);
+  if (!user) {
+    recordFailedLogin(email);
     throw new HttpError(
       401,
       "INVALID_CREDENTIALS",
       "Invalid email or password",
     );
+  }
 
   const ok = await verifyPassword(input.password, user.passwordHash);
-  if (!ok)
+  if (!ok) {
+    recordFailedLogin(email);
     throw new HttpError(
       401,
       "INVALID_CREDENTIALS",
       "Invalid email or password",
     );
+  }
 
   if (!user.isActive) {
     throw new HttpError(403, "USER_DISABLED", "User account is disabled");
   }
+
+  clearFailedLogin(email);
 
   const accessToken = signAccessToken({
     sub: user.id,
@@ -110,7 +160,8 @@ export const loginUser = async (
  * REGISTER (public)
  **/
 export const registerUser = async (input: RegisterUserInput): Promise<void> => {
-  const existing = await repo.findUserByEmail(input.email);
+  const email = normalizeEmail(input.email);
+  const existing = await repo.findUserByEmail(email);
   if (existing) {
     throw new HttpError(409, "EMAIL_EXISTS", "Email already registered");
   }
@@ -119,7 +170,7 @@ export const registerUser = async (input: RegisterUserInput): Promise<void> => {
 
   await repo.createUser({
     fullName: input.fullName,
-    email: input.email,
+    email,
     passwordHash,
     role: "GUEST",
     ...(input.countryCode !== undefined &&
@@ -135,7 +186,9 @@ export const registerUser = async (input: RegisterUserInput): Promise<void> => {
  **/
 export const refreshSession = async (
   refreshToken: string,
-): Promise<AuthResponseDTO> => {
+  ip?: string,
+  userAgent?: string,
+): Promise<{ auth: AuthResponseDTO; refreshToken: string }> => {
   const payload = verifyRefreshToken(refreshToken);
 
   const session = await repo.findSessionByToken(refreshToken);
@@ -143,24 +196,67 @@ export const refreshSession = async (
     throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
   }
 
+  if (session.expiresAt <= new Date()) {
+    await repo.deleteSessionByToken(refreshToken);
+    throw new HttpError(401, "UNAUTHORIZED", "Refresh token expired");
+  }
+
   const user = await repo.findUserById(payload.sub);
   if (!user) {
     throw new HttpError(401, "UNAUTHORIZED", "User not found");
+  }
+
+  if (!user.isActive) {
+    await repo.deleteSessionsForUser(user.id);
+    throw new HttpError(403, "USER_DISABLED", "User account is disabled");
   }
 
   const accessToken = signAccessToken({
     sub: user.id,
     role: user.role,
   });
+  const nextRefreshToken = signRefreshToken({ sub: user.id });
+  const nextRefreshExpiresAt = new Date(
+    Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000,
+  );
+
+  try {
+    await repo.rotateSessionToken(
+      refreshToken,
+      nextRefreshToken,
+      nextRefreshExpiresAt,
+      ip,
+      userAgent,
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      await repo.deleteSessionByToken(nextRefreshToken);
+      await repo.rotateSessionToken(
+        refreshToken,
+        nextRefreshToken,
+        nextRefreshExpiresAt,
+        ip,
+        userAgent,
+      );
+    } else {
+      throw error;
+    }
+  }
 
   return {
-    user: {
-      id: user.id,
-      fullName: user.fullName,
-      email: user.email,
-      role: user.role,
+    refreshToken: nextRefreshToken,
+    auth: {
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+      },
+      accessToken,
     },
-    accessToken,
   };
 };
 
@@ -169,6 +265,10 @@ export const refreshSession = async (
  **/
 export const logoutUser = async (refreshToken: string) => {
   await repo.deleteSessionByToken(refreshToken);
+};
+
+export const revokeUserSessions = async (userId: string) => {
+  await repo.deleteSessionsForUser(userId);
 };
 
 /**
