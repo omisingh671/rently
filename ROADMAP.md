@@ -86,7 +86,9 @@ Already implemented:
   - High-density Room Board with live status filtering and unit-based grouping.
   - Walk-in booking module with pricing and availability checks.
   - Manager check-in/check-out workflow with status history.
-  - Synchronized availability logic between dashboard and public frontend using shared identifiers.
+- Synchronized availability logic between dashboard and public frontend using shared identifiers.
+- Dashboard sidebar navigation reordered to the exact sequence: Dashboard, Tenants, Properties, Admins, Assignments (followed by Managers for the ADMIN role), with unified visual active-state indicator pills.
+- Visual contrast and layout refinements applied across Room Board card headers (softer solid backgrounds, slate-300 borders, flat border layouts with removed shadow, and high-legibility bold text weights).
 
 ## Phase 1: Stabilize Current MVP
 
@@ -647,7 +649,5 @@ Target dashboard behavior:
 ## Immediate Next Tasks
 
 1. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity to provide operational insights.
-2. **Inventory Locking (Phase 3 Deferred)**: Implement TTL-based inventory locks to prevent double bookings during high-traffic checkouts.
-3. **Security & Reliability (Phase 7)**: Implement rate limiting, password policy, and session management.
-4. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
-5. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
+2. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
+3. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
