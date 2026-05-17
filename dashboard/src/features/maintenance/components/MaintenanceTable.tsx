@@ -30,6 +30,12 @@ const formatDate = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
+const formatInclusiveEndDate = (value: string) => {
+  const date = new Date(value);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return formatDate(date.toISOString());
+};
+
 const getTargetLabel = (block: AdminMaintenanceBlock) => {
   if (block.targetType === "ROOM") {
     return block.roomLabel ?? "Room";
@@ -92,22 +98,25 @@ export default function MaintenanceTable({
                   <AdminTableCell className="font-medium text-slate-700">
                     {serial}
                   </AdminTableCell>
-                  <AdminTableCell>
-                    <div className="font-medium text-slate-900">
-                      {getTargetLabel(block)}
+                  <AdminTableCell className="whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">
+                        {getTargetLabel(block)}
+                      </span>
+                      <StatusBadge status={block.targetType} />
                     </div>
-                    <StatusBadge status={block.targetType} />
                   </AdminTableCell>
                   <AdminTableCell>
                     {block.reason
                       ? highlightText(block.reason, search)
                       : "Scheduled maintenance"}
                   </AdminTableCell>
-                  <AdminTableCell>
-                    {formatDate(block.startDate)} - {formatDate(block.endDate)}
+                  <AdminTableCell className="whitespace-nowrap">
+                    {formatDate(block.startDate)} -{" "}
+                    {formatInclusiveEndDate(block.endDate)}
                   </AdminTableCell>
-                  <AdminTableCell>{block.createdByName}</AdminTableCell>
-                  <AdminTableCell>
+                  <AdminTableCell className="whitespace-nowrap">{block.createdByName}</AdminTableCell>
+                  <AdminTableCell className="whitespace-nowrap">
                     <div className="flex gap-3">
                       <button
                         onClick={() => onEdit(block)}

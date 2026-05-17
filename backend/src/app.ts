@@ -5,10 +5,13 @@ import express, {
 } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 import { env } from "@/config/env.js";
 
 import { ZodError } from "zod";
+import { Prisma } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 
 // Routers
@@ -18,13 +21,62 @@ import { dashboardRouter } from "@/modules/dashboard/index.js";
 import { publicRouter } from "@/modules/public/index.js";
 
 const API_PREFIX = env.API_PREFIX;
-const allowedOrigins = [
-  env.FRONTEND_URL,
-  env.DASHBOARD_URL,
-  ...(env.NODE_ENV === "development"
-    ? ["http://localhost:5173", "http://localhost:5174"]
-    : []),
-].filter((origin): origin is string => Boolean(origin));
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      env.FRONTEND_URL,
+      env.DASHBOARD_URL,
+      ...(env.NODE_ENV === "development"
+        ? ["http://localhost:5173", "http://localhost:5174"]
+        : []),
+    ].filter((origin): origin is string => Boolean(origin)),
+  ),
+);
+
+const validateAllowedOrigins = (origins: string[]) => {
+  if (env.NODE_ENV === "production") {
+    const unsafeOrigin = origins.find((origin) => {
+      const parsed = new URL(origin);
+      return (
+        parsed.protocol !== "https:" ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1"
+      );
+    });
+
+    if (unsafeOrigin) {
+      throw new Error(`Unsafe production CORS origin: ${unsafeOrigin}`);
+    }
+  }
+};
+
+validateAllowedOrigins(allowedOrigins);
+
+const buildRateLimit = (windowMs: number, max: number, code: string) =>
+  rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: {
+        code,
+        message: "Too many requests. Please try again later.",
+      },
+    },
+  });
+
+const authRateLimit = buildRateLimit(15 * 60 * 1000, 20, "AUTH_RATE_LIMITED");
+const publicEnquiryRateLimit = buildRateLimit(
+  15 * 60 * 1000,
+  8,
+  "ENQUIRY_RATE_LIMITED",
+);
+const publicBookingRateLimit = buildRateLimit(
+  10 * 60 * 1000,
+  12,
+  "BOOKING_RATE_LIMITED",
+);
 
 export const app = express();
 
@@ -35,7 +87,14 @@ export const app = express();
  */
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (origin === undefined || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
@@ -53,8 +112,16 @@ app.use(
  * Global Middlewares
  * --------------------------------------------------
  */
-app.use(express.json());
+app.use(helmet());
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(cookieParser());
+
+app.use(`${API_PREFIX}/auth/login`, authRateLimit);
+app.use(`${API_PREFIX}/auth/register`, authRateLimit);
+app.use(`${API_PREFIX}/auth/forgot-password`, authRateLimit);
+app.use(`${API_PREFIX}/public/enquiries`, publicEnquiryRateLimit);
+app.use(`${API_PREFIX}/public/bookings`, publicBookingRateLimit);
 
 /**
  * --------------------------------------------------
@@ -111,7 +178,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
-        details: err.issues,
+        details: err.issues.map((issue) => ({
+          code: issue.code,
+          path: issue.path,
+          message: issue.message,
+        })),
+      },
+    });
+  }
+
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    return res.status(500).json({
+      error: {
+        code: "DATABASE_ERROR",
+        message: "Something went wrong",
       },
     });
   }

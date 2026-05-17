@@ -159,8 +159,10 @@ const hasInventoryOverlap = async (
   target: PublicSpaceTarget,
   stay: StayScope,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ) => {
-  const [hasBooking, hasMaintenance] = await Promise.all([
+  const at = new Date();
+  const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
     repo.hasOverlappingBooking(target, stay.checkIn, stay.checkOut, tx),
     repo.hasOverlappingMaintenance(
       propertyId,
@@ -169,9 +171,17 @@ const hasInventoryOverlap = async (
       stay.checkOut,
       tx,
     ),
+    repo.hasOverlappingInventoryLock(
+      target,
+      stay.checkIn,
+      stay.checkOut,
+      at,
+      tx,
+      ignoreLockToken,
+    ),
   ]);
 
-  return hasBooking || hasMaintenance;
+  return hasBooking || hasMaintenance || hasLock;
 };
 
 const loadAvailableRooms = async (
@@ -179,6 +189,7 @@ const loadAvailableRooms = async (
   comfortOption: ComfortOption,
   stay: StayScope,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ) => {
   const rooms = await repo.listAvailabilityRooms(tenantId, comfortOption, tx);
   const availableRooms = [];
@@ -191,7 +202,13 @@ const loadAvailableRooms = async (
     };
 
     if (
-      !(await hasInventoryOverlap(room.unit.propertyId, target, stay, tx))
+      !(await hasInventoryOverlap(
+        room.unit.propertyId,
+        target,
+        stay,
+        tx,
+        ignoreLockToken,
+      ))
     ) {
       availableRooms.push(room);
     }
@@ -205,6 +222,7 @@ const loadAvailableUnits = async (
   comfortOption: ComfortOption,
   stay: StayScope,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ) => {
   const units = await repo.listAvailabilityUnits(tenantId, comfortOption, tx);
   const availableUnits = [];
@@ -218,7 +236,13 @@ const loadAvailableUnits = async (
 
     if (
       getUnitCapacity(unit) > 0 &&
-      !(await hasInventoryOverlap(unit.propertyId, target, stay, tx))
+      !(await hasInventoryOverlap(
+        unit.propertyId,
+        target,
+        stay,
+        tx,
+        ignoreLockToken,
+      ))
     ) {
       availableUnits.push(unit);
     }
@@ -449,6 +473,7 @@ export const generateAvailabilityOptions = async (
   tenantId: string,
   nights: number,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ): Promise<PublicAvailabilityOptionInternal[]> => {
   const stay = {
     checkIn: input.checkIn,
@@ -456,8 +481,20 @@ export const generateAvailabilityOptions = async (
     nights,
   };
   const [rooms, units] = await Promise.all([
-    loadAvailableRooms(tenantId, input.comfortOption, stay, tx),
-    loadAvailableUnits(tenantId, input.comfortOption, stay, tx),
+    loadAvailableRooms(
+      tenantId,
+      input.comfortOption,
+      stay,
+      tx,
+      ignoreLockToken,
+    ),
+    loadAvailableUnits(
+      tenantId,
+      input.comfortOption,
+      stay,
+      tx,
+      ignoreLockToken,
+    ),
   ]);
   const options: PublicAvailabilityOptionInternal[] = [];
 
@@ -615,7 +652,14 @@ export const findAvailabilityOptionById = async (
   tenantId: string,
   nights: number,
   tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
 ) => {
-  const options = await generateAvailabilityOptions(input, tenantId, nights, tx);
+  const options = await generateAvailabilityOptions(
+    input,
+    tenantId,
+    nights,
+    tx,
+    ignoreLockToken,
+  );
   return options.find((option) => option.optionId === optionId) ?? null;
 };

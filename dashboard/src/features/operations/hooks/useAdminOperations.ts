@@ -39,6 +39,8 @@ const moduleKey = (module: Module, propertyId: string) => {
 export const useAdminOperations = (
   module: Module,
   propertyId: string | undefined,
+  page: number,
+  limit: number,
   filters: Filters,
 ) => {
   const queryClient = useQueryClient();
@@ -46,14 +48,14 @@ export const useAdminOperations = (
 
   const query = useQuery({
     queryKey: propertyId
-      ? [...moduleKey(module, propertyId), filters] as const
+      ? [...moduleKey(module, propertyId), page, limit, filters] as const
       : ADMIN_KEYS.operations.all(),
     queryFn: async () => {
       if (!propertyId) throw new Error("PropertyId required");
 
       const params = {
-        page: 1,
-        limit: 100,
+        page,
+        limit,
         search: filters.search || undefined,
         status: filters.status || undefined,
         source: filters.source || undefined,

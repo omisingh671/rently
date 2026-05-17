@@ -5,6 +5,7 @@ import * as service from "./public.service.js";
 import {
   cancelBookingSchema,
   checkAvailabilitySchema,
+  createInventoryLockSchema,
   createBookingSchema,
   createEnquirySchema,
   idParamsSchema,
@@ -76,6 +77,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       ...(body.bookingOptionId !== undefined && {
         bookingOptionId: body.bookingOptionId,
       }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
       ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
       ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,
@@ -86,6 +90,31 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       ...(body.guestDetails !== undefined && {
         guestDetails: body.guestDetails,
       }),
+    },
+    resolveTenantInput(req),
+  );
+
+  res.status(201).json({ success: true, data });
+};
+
+export const createInventoryLock = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const body = createInventoryLockSchema.parse(req.body);
+  const data = await service.createInventoryLock(
+    req.user?.userId,
+    {
+      bookingType: body.bookingType,
+      ...(body.bookingOptionId !== undefined && {
+        bookingOptionId: body.bookingOptionId,
+      }),
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      from: body.from,
+      to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
     },
     resolveTenantInput(req),
   );

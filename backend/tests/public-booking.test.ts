@@ -7,6 +7,7 @@ import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
 import {
   BookingStatus,
   ComfortOption,
+  MaintenanceTargetType,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -743,7 +744,193 @@ test("full-unit bookings block child rooms and selected rooms block full unit", 
   );
 });
 
-test("concurrent public booking attempts create only one booking", async () => {
+test("same unit overlap is rejected inside booking transaction", async () => {
+  await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.unitPricingId,
+      from: new Date("2028-02-10T00:00:00.000Z"),
+      to: new Date("2028-02-12T00:00:00.000Z"),
+      guests: 4,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestTwoId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.unitPricingId,
+          from: new Date("2028-02-11T00:00:00.000Z"),
+          to: new Date("2028-02-13T00:00:00.000Z"),
+          guests: 4,
+          comfortOption: ComfortOption.AC,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
+});
+
+test("maintenance overlap blocks booking and checkout locks", async () => {
+  const checkIn = new Date("2028-03-10T00:00:00.000Z");
+  const checkOut = new Date("2028-03-12T00:00:00.000Z");
+  const block = await prisma.maintenanceBlock.create({
+    data: {
+      propertyId: state.propertyId,
+      roomId: state.roomId,
+      targetType: MaintenanceTargetType.ROOM,
+      startDate: new Date("2028-03-09T00:00:00.000Z"),
+      endDate: new Date("2028-03-11T00:00:00.000Z"),
+      reason: "Race test maintenance",
+      createdByUserId: state.superAdminId,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      publicService.createInventoryLock(
+        state.guestOneId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.pricingId,
+          from: checkIn,
+          to: checkOut,
+          guests: 2,
+          comfortOption: ComfortOption.AC,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createBooking(
+        state.guestOneId,
+        {
+          bookingType: "SINGLE_TARGET",
+          spaceId: state.pricingId,
+          from: checkIn,
+          to: checkOut,
+          guests: 2,
+          comfortOption: ComfortOption.AC,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
+
+  await prisma.maintenanceBlock.delete({ where: { id: block.id } });
+});
+
+test("checkout inventory locks are atomic, expire, and release after booking", async () => {
+  const checkIn = new Date("2028-04-10T00:00:00.000Z");
+  const checkOut = new Date("2028-04-12T00:00:00.000Z");
+  const firstLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(firstLock.ttlSeconds, 600);
+  assert.ok(new Date(firstLock.expiresAt).getTime() > Date.now());
+
+  await assert.rejects(
+    () =>
+      publicService.createInventoryLock(
+        state.guestTwoId,
+        {
+          bookingType: "MULTI_ROOM",
+          spaceIds: [state.pricingId, state.pricingTwoId],
+          from: checkIn,
+          to: checkOut,
+          guests: 3,
+          comfortOption: ComfortOption.AC,
+        },
+        { tenantSlug: state.tenantSlug },
+      ),
+    assertBookingConflict,
+  );
+
+  const leakedSecondRoomLock = await prisma.inventoryLock.count({
+    where: {
+      roomId: state.roomTwoId,
+      checkIn,
+      checkOut,
+      releasedAt: null,
+    },
+  });
+  assert.equal(leakedSecondRoomLock, 0);
+
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      inventoryLockToken: firstLock.lockToken,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const releasedLocks = await prisma.inventoryLock.count({
+    where: {
+      lockToken: firstLock.lockToken,
+      bookingId: booking.id,
+      releasedAt: { not: null },
+    },
+  });
+  assert.equal(releasedLocks, 1);
+
+  const expiringLock = await publicService.createInventoryLock(
+    state.guestTwoId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingThreeId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await prisma.inventoryLock.updateMany({
+    where: { lockToken: expiringLock.lockToken },
+    data: { expiresAt: new Date("2026-01-01T00:00:00.000Z") },
+  });
+
+  const replacementLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingThreeId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.notEqual(replacementLock.lockToken, expiringLock.lockToken);
+});
+
+test("concurrent public booking attempts rely on retry and create only one booking", async () => {
   const checkIn = new Date("2027-02-10T00:00:00.000Z");
   const checkOut = new Date("2027-02-12T00:00:00.000Z");
 

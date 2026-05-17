@@ -13,6 +13,11 @@ router.get("/tenant-config", controller.getTenantConfig);
 router.get("/spaces/:id", controller.getSpaceById);
 router.post("/availability/check", controller.checkAvailability);
 router.post("/enquiries", controller.createEnquiry);
+router.post(
+  "/inventory-locks",
+  optionalAuthenticate,
+  controller.createInventoryLock,
+);
 
 router.get("/bookings", authenticate, controller.listBookings);
 router.post("/bookings", optionalAuthenticate, controller.createBooking);

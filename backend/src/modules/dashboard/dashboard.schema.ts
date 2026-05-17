@@ -302,7 +302,7 @@ export const createMaintenanceSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["endDate"],
-        message: "endDate must be on or after startDate",
+        message: "endDate cannot be before startDate",
       });
     }
 

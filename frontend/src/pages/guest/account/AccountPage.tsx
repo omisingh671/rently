@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import AccountLayout from "@/features/account/components/AccountLayout";
@@ -27,21 +26,9 @@ const VALID_TABS: AccountTab[] = [
 export default function AccountProfilePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get("tab") as AccountTab;
-
-  const [activeTab, setActiveTab] = useState<AccountTab>(() => {
-    if (VALID_TABS.includes(tabFromUrl)) return tabFromUrl;
-    return "profile";
-  });
-
-  // Sync state with URL when it changes externally (e.g. back button)
-  useEffect(() => {
-    if (VALID_TABS.includes(tabFromUrl) && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
-    }
-  }, [tabFromUrl, activeTab]);
+  const activeTab = VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "profile";
 
   const handleTabChange = (tab: AccountTab) => {
-    setActiveTab(tab);
     setSearchParams({ tab }, { replace: true });
   };
 

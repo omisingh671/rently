@@ -202,7 +202,8 @@ Already implemented:
 - Completed: add transaction-safe booking creation for public bookings.
 - Completed: prevent overlapping public booking races with an in-transaction availability recheck and serializable transaction retry.
 - Completed: add booking overlap indexes for room/date, unit/date, and status/date lookups.
-- Deferred to group booking work: multi-room capacity selection and lock rollback.
+- Completed: multi-room capacity selection with atomic checkout inventory lock rollback.
+- Completed: 10-minute checkout inventory locks are included in availability/booking conflict checks and released after booking creation/confirmation/cancellation.
 
 ### Booking Lifecycle
 
@@ -351,25 +352,24 @@ Already implemented:
 
 ### Authentication
 
-- Review refresh token lifecycle.
-- Add refresh token rotation if needed.
-- Add session list and revoke sessions.
-- Add password policy.
-- Add rate limiting for:
+- Completed: refresh token rotation on session refresh.
+- Completed: revoke-all-sessions support.
+- Completed: password policy for register/reset/change password.
+- Completed: targeted rate limiting for:
   - login
   - register
   - forgot password
   - public enquiry
   - booking creation
-- Add account lockout or throttling.
+- Completed: lightweight login throttling/account lockout.
 
 ### API Security
 
-- Add Helmet/security headers.
-- Tighten CORS by environment.
-- Add request size limits.
-- Add structured error responses everywhere.
-- Ensure no Prisma/internal errors leak to clients.
+- Completed: add Helmet/security headers.
+- Completed: tighten CORS by environment.
+- Completed: add request size limits.
+- Completed: safe structured validation/database error responses.
+- Completed: ensure Prisma/internal errors do not leak to clients.
 - Add input sanitization where needed.
 
 ### Observability
@@ -518,18 +518,15 @@ Target rules:
 - Room booking blocks its parent unit for overlapping dates.
 - Maintenance blocks remove matching properties, units, or rooms from availability.
 
-### Inventory Locking Future Spec
+### Inventory Locking
 
-Inventory locking is not yet fully implemented and should be treated as future work.
-
-Target behavior:
-
-- Create short-lived inventory locks during checkout.
-- Use a 10-minute TTL.
-- For group bookings, create one lock per selected item.
-- If any group lock fails, rollback all locks acquired in the attempt.
-- Release locks after successful booking confirmation.
-- Expire stale locks automatically.
+- Implemented for checkout: create short-lived inventory locks during public checkout.
+- Uses a 10-minute TTL.
+- Creates one lock per selected room/unit.
+- Acquires group locks atomically; if any selected item conflicts, the attempt rolls back.
+- Ignores expired locks during availability and booking checks.
+- Releases locks after booking creation/confirmation/cancellation.
+- Cleans up stale expired locks during lock acquisition.
 
 ### Pricing Rules
 

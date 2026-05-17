@@ -19,7 +19,10 @@ import type {
   ComfortFilter,
   ComfortOption,
 } from "@/features/availability/domain";
-import type { CreateBookingPayload } from "@/features/bookings/api";
+import {
+  createInventoryLock,
+  type CreateBookingPayload,
+} from "@/features/bookings/api";
 import {
   saveBookingCheckoutDraft,
   toBookingCheckoutDraftLocation,
@@ -160,28 +163,36 @@ export default function SpacesListPage() {
       comfortOption: option.comfortOption,
     } satisfies CreateBookingPayload;
 
-    const saved = saveBookingCheckoutDraft({
-      payload,
-      returnTo: toBookingCheckoutDraftLocation(location),
-      summary: {
-        title: option.title,
-        spaceName: option.title,
-        from,
-        to,
-        guestCount: guests,
-        comfortOption: option.comfortOption,
-        nightlyTotal: option.nightlyTotal,
-        stayTotal: option.stayTotal,
-      },
-    });
+    try {
+      const lock = await createInventoryLock(payload);
+      const saved = saveBookingCheckoutDraft({
+        payload: {
+          ...payload,
+          inventoryLockToken: lock.lockToken,
+        },
+        returnTo: toBookingCheckoutDraftLocation(location),
+        summary: {
+          title: option.title,
+          spaceName: option.title,
+          from,
+          to,
+          guestCount: guests,
+          comfortOption: option.comfortOption,
+          nightlyTotal: option.nightlyTotal,
+          stayTotal: option.stayTotal,
+        },
+      });
 
-    if (!saved) {
-      setBookingError("Could not start checkout. Please try again.");
-      return;
+      if (!saved) {
+        setBookingError("Could not start checkout. Please try again.");
+        return;
+      }
+
+      setBookingError(null);
+      navigate(ROUTES.BOOKING_CHECKOUT);
+    } catch {
+      setBookingError("Selected stay is no longer available. Please refresh.");
     }
-
-    setBookingError(null);
-    navigate(ROUTES.BOOKING_CHECKOUT);
   };
 
   const options = availabilityQuery.data?.options ?? [];

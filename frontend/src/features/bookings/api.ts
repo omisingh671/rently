@@ -4,6 +4,7 @@ import type {
   BookingGuestDetails,
   ComfortOption,
   CreateOptionBookingPayload,
+  InventoryLock,
   CreateManualPaymentResponse,
 } from "./types";
 
@@ -17,6 +18,7 @@ export type CreateBookingPayload =
   | ({
       bookingType?: "SINGLE_TARGET";
       spaceId: string;
+      inventoryLockToken?: string;
       from: string;
       to: string;
       guests: number;
@@ -25,6 +27,7 @@ export type CreateBookingPayload =
   | ({
       bookingType: "MULTI_ROOM";
       spaceIds: string[];
+      inventoryLockToken?: string;
       from: string;
       to: string;
       guests: number;
@@ -40,6 +43,16 @@ export const createBooking = async (
   payload: CreateBookingPayload,
 ): Promise<Booking> => {
   const res = await axiosInstance.post("/public/bookings", payload);
+  return res.data?.data;
+};
+
+export const createInventoryLock = async (
+  payload: CreateBookingPayload,
+): Promise<InventoryLock> => {
+  const lockPayload = { ...payload };
+  delete lockPayload.guestDetails;
+  delete lockPayload.couponCode;
+  const res = await axiosInstance.post("/public/inventory-locks", lockPayload);
   return res.data?.data;
 };
 

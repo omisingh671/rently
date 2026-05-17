@@ -40,13 +40,13 @@ export default function Pagination({ page, totalPages, onPageChange }: Props) {
   };
 
   const navBtn =
-    "h-8 w-9 rounded-full flex items-center justify-center text-sm font-medium transition cursor-pointer";
-  const navBtnActive = "border-slate-300 text-slate-700 hover:bg-slate-100";
-  const navBtnDisabled = "text-slate-400 cursor-not-allowed";
+    "h-8 w-8 rounded-lg flex items-center justify-center text-sm font-medium transition cursor-pointer";
+  const navBtnActive = "text-slate-600 hover:bg-slate-50 hover:text-slate-900";
+  const navBtnDisabled = "text-slate-300 cursor-not-allowed";
 
   return (
     <div className="flex items-center justify-center">
-      <div className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white p-1">
+      <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
         <button
           disabled={isFirst}
           onClick={() => onPageChange(1)}
@@ -65,7 +65,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Props) {
           <HiChevronLeft className="h-4 w-4" />
         </button>
 
-        <div className="mx-2 flex items-center gap-2 text-sm text-slate-600">
+        <div className="mx-2 flex items-center gap-2 text-sm text-slate-600 font-medium">
           <span>Page</span>
 
           <input
@@ -81,7 +81,7 @@ export default function Pagination({ page, totalPages, onPageChange }: Props) {
                 e.currentTarget.blur();
               }
             }}
-            className="h-8 w-14 rounded-full border border-slate-300 bg-slate-100 focus:bg-white text-center font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+            className="h-8 w-12 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white text-center font-bold text-slate-700 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-50/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
 
           <span>of {totalPages}</span>

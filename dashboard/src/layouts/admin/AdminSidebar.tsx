@@ -109,44 +109,22 @@ export default function AdminSidebar({
             )}
           </NavLink>
 
-          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <>
-              {admin.role === "SUPER_ADMIN" && (
+          {admin.role === "SUPER_ADMIN" && (
+            <NavLink
+              to={adminPath(ADMIN_ROUTES.TENANTS)}
+              className={({ isActive }) =>
+                `${navBase} ${isActive ? navActive : navInactive}`
+              }
+            >
+              {({ isActive }) => (
                 <>
-                  <NavLink
-                    to={adminPath(ADMIN_ROUTES.TENANTS)}
-                    className={({ isActive }) =>
-                      `${navBase} ${isActive ? navActive : navInactive}`
-                    }
-                  >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                )}
-                <FiBriefcase className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Tenants
-              </>
-            )}
-                  </NavLink>
-                  <NavLink
-                    to={adminPath(ADMIN_ROUTES.ADMINS)}
-                    className={({ isActive }) =>
-                      `${navBase} ${isActive ? navActive : navInactive}`
-                    }
-                  >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                )}
-                <FiUsers className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Admins
-              </>
-            )}
-                  </NavLink>
+                  {isActive && (
+                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                  )}
+                  <FiBriefcase className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Tenants
                 </>
               )}
-
-            </>
+            </NavLink>
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
@@ -156,7 +134,32 @@ export default function AdminSidebar({
                 `${navBase} ${isActive ? navActive : navInactive}`
               }
             >
-              <FiHome /> Properties
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                  )}
+                  <FiHome className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Properties
+                </>
+              )}
+            </NavLink>
+          )}
+
+          {admin.role === "SUPER_ADMIN" && (
+            <NavLink
+              to={adminPath(ADMIN_ROUTES.ADMINS)}
+              className={({ isActive }) =>
+                `${navBase} ${isActive ? navActive : navInactive}`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                  )}
+                  <FiUsers className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Admins
+                </>
+              )}
             </NavLink>
           )}
 
@@ -167,7 +170,14 @@ export default function AdminSidebar({
                 `${navBase} ${isActive ? navActive : navInactive}`
               }
             >
-              <FiLink /> Assignments
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
+                  )}
+                  <FiLink className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Assignments
+                </>
+              )}
             </NavLink>
           )}
 

@@ -326,7 +326,7 @@ function DetailItem({
   );
 }
 
-function FiXCircle(props: any) {
+function FiXCircle(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       stroke="currentColor"

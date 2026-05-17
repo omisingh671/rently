@@ -68,10 +68,17 @@ export interface Booking {
 
 export interface CreateOptionBookingPayload {
   bookingOptionId: string;
+  inventoryLockToken?: string;
   from: string;
   to: string;
   guests: number;
   comfortOption: ComfortOption;
+}
+
+export interface InventoryLock {
+  lockToken: string;
+  expiresAt: string;
+  ttlSeconds: number;
 }
 
 export interface BookingGuestDetails {

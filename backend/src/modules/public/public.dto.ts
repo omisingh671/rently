@@ -70,6 +70,12 @@ export interface PublicAvailabilityDTO {
   options: PublicAvailabilityOptionDTO[];
 }
 
+export interface PublicInventoryLockDTO {
+  lockToken: string;
+  expiresAt: string;
+  ttlSeconds: number;
+}
+
 export interface PublicBookingItemDTO {
   id: string;
   targetType: BookingTargetType;

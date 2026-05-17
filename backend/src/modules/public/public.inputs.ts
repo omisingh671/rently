@@ -16,6 +16,7 @@ export interface CheckAvailabilityInput {
 export interface CreatePublicBookingInput {
   bookingType: PublicBookingType;
   bookingOptionId?: string;
+  inventoryLockToken?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: Date;
@@ -24,6 +25,17 @@ export interface CreatePublicBookingInput {
   comfortOption: ComfortOption;
   couponCode?: string | undefined;
   guestDetails?: PublicBookingGuestDetailsInput;
+}
+
+export interface CreateInventoryLockInput {
+  bookingType: PublicBookingType;
+  bookingOptionId?: string;
+  spaceId?: string;
+  spaceIds?: string[];
+  from: Date;
+  to: Date;
+  guests: number;
+  comfortOption: ComfortOption;
 }
 
 export interface PublicBookingGuestDetailsInput {

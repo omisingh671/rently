@@ -82,8 +82,14 @@ export const refresh = async (req: AuthRequest, res: Response) => {
     throw new HttpError(401, "UNAUTHORIZED", "Missing refresh token");
   }
 
-  const auth = await service.refreshSession(refreshToken);
-  res.json({ success: true, data: auth });
+  const { auth, refreshToken: nextRefreshToken } = await service.refreshSession(
+    refreshToken,
+    req.ip,
+    req.headers["user-agent"],
+  );
+  res
+    .cookie("refreshToken", nextRefreshToken, cookieOptions)
+    .json({ success: true, data: auth });
 };
 
 /**
@@ -95,6 +101,11 @@ export const logout = async (req: AuthRequest, res: Response) => {
     await service.logoutUser(refreshToken);
   }
 
+  res.clearCookie("refreshToken", cookieOptions).status(204).send();
+};
+
+export const logoutAll = async (req: AuthRequest, res: Response) => {
+  await service.revokeUserSessions(req.user!.userId);
   res.clearCookie("refreshToken", cookieOptions).status(204).send();
 };
 

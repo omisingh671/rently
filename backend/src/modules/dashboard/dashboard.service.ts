@@ -38,6 +38,8 @@ import {
   mapUnit,
   mapUser,
   isBookingNoShowEligible,
+  formatBookingRoomAssignmentLabel,
+  formatBookingUnitAssignmentLabel,
   normalizePaginationResult,
 } from "./dashboard.mapper.js";
 import type {
@@ -732,9 +734,27 @@ const assertValidDateRange = (startDate: Date, endDate: Date) => {
     throw new HttpError(
       400,
       "INVALID_DATE_RANGE",
-      "End date must be on or after start date",
+      "End date cannot be before start date",
     );
   }
+};
+
+const normalizeMaintenanceDateRange = (startDate: Date, endDate: Date) => {
+  assertValidDateRange(startDate, endDate);
+
+  if (endDate.getTime() === startDate.getTime()) {
+    const nextEndDate = new Date(endDate);
+    nextEndDate.setUTCDate(nextEndDate.getUTCDate() + 1);
+    return {
+      startDate,
+      endDate: nextEndDate,
+    };
+  }
+
+  return {
+    startDate,
+    endDate,
+  };
 };
 
 const assertValidOptionalDateRange = (
@@ -2158,7 +2178,10 @@ export const createMaintenanceBlock = async (
   const actor = await getActor(userId);
   await assertCanManageInventory(actor, propertyId);
   await ensurePropertyExists(propertyId);
-  assertValidDateRange(input.startDate, input.endDate);
+  const dateRange = normalizeMaintenanceDateRange(
+    input.startDate,
+    input.endDate,
+  );
 
   const target = await resolveMaintenanceTarget(propertyId, input);
 
@@ -2174,8 +2197,8 @@ export const createMaintenanceBlock = async (
       },
     },
     targetType: input.targetType,
-    startDate: input.startDate,
-    endDate: input.endDate,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
     ...(input.reason !== undefined && { reason: input.reason }),
     ...(target.unitId !== undefined && {
       unit: {
@@ -2208,7 +2231,7 @@ export const updateMaintenanceBlock = async (
   const nextTargetType = input.targetType ?? existingBlock.targetType;
   const nextStartDate = input.startDate ?? existingBlock.startDate;
   const nextEndDate = input.endDate ?? existingBlock.endDate;
-  assertValidDateRange(nextStartDate, nextEndDate);
+  const dateRange = normalizeMaintenanceDateRange(nextStartDate, nextEndDate);
 
   const target = await resolveMaintenanceTarget(existingBlock.propertyId, {
     targetType: nextTargetType,
@@ -2218,8 +2241,8 @@ export const updateMaintenanceBlock = async (
 
   const block = await repo.updateMaintenanceBlockById(maintenanceBlockId, {
     targetType: nextTargetType,
-    startDate: nextStartDate,
-    endDate: nextEndDate,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
     ...(input.reason !== undefined && { reason: input.reason }),
     unit:
       target.unitId !== undefined
@@ -2703,6 +2726,64 @@ export const updateCoupon = async (
   }
 };
 
+const uniqueIds = (ids: Array<string | null | undefined>) =>
+  Array.from(
+    new Set(ids.filter((id): id is string => id !== null && id !== undefined)),
+  );
+
+const getBookingAssignmentLabels = async (
+  bookings: repo.DashboardBookingRecord[],
+) => {
+  const roomIds = uniqueIds(
+    bookings.flatMap((booking) => [
+      booking.roomId,
+      ...booking.items.map((item) => item.roomId),
+    ]),
+  );
+  const unitIds = uniqueIds(
+    bookings.flatMap((booking) => [
+      booking.unitId,
+      ...booking.items.map((item) => item.unitId),
+    ]),
+  );
+
+  const [rooms, units] = await Promise.all([
+    repo.listBookingAssignmentRoomsByIds(roomIds),
+    repo.listBookingAssignmentUnitsByIds(unitIds),
+  ]);
+
+  return {
+    roomsById: new Map(
+      rooms.map((room) => [room.id, formatBookingRoomAssignmentLabel(room)]),
+    ),
+    unitsById: new Map(
+      units.map((unit) => [unit.id, formatBookingUnitAssignmentLabel(unit)]),
+    ),
+  };
+};
+
+const mapDashboardBookings = async (
+  bookings: repo.DashboardBookingRecord[],
+) => {
+  const assignmentLabels = await getBookingAssignmentLabels(bookings);
+  return bookings.map((booking) => mapBooking(booking, assignmentLabels));
+};
+
+const mapDashboardBooking = async (booking: repo.DashboardBookingRecord) => {
+  const mapped = await mapDashboardBookings([booking]);
+  const firstBooking = mapped[0];
+
+  if (!firstBooking) {
+    throw new HttpError(
+      500,
+      "BOOKING_MAP_FAILED",
+      "Booking could not be mapped",
+    );
+  }
+
+  return firstBooking;
+};
+
 export const listBookings = async (
   userId: string,
   filters: DashboardBookingListInput,
@@ -2716,7 +2797,7 @@ export const listBookings = async (
     filters.page,
     filters.limit,
     total,
-    items.map(mapBooking),
+    await mapDashboardBookings(items),
   );
 };
 
@@ -2728,7 +2809,7 @@ export const getBookingById = async (
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
 
-  return mapBooking(booking);
+  return mapDashboardBooking(booking);
 };
 
 export const checkManualBookingAvailability = async (
@@ -2814,7 +2895,7 @@ export const checkManualBookingAvailability = async (
     guests: input.guests,
     availableSpaceIds: items
       .filter((item) => item.available)
-      .map((item) => item.bookingOptionId),
+      .map((item) => item.spaceId),
     items,
   };
 };
@@ -2867,7 +2948,7 @@ export const createManualBooking = async (
     );
   }
 
-  return mapBooking(booking);
+  return mapDashboardBooking(booking);
 };
 
 export const updateBooking = async (
@@ -3013,7 +3094,14 @@ export const updateBooking = async (
       : undefined,
   );
 
-  return mapBooking(updatedBooking);
+  if (
+    nextStatus === BookingStatus.CONFIRMED ||
+    nextStatus === BookingStatus.CANCELLED
+  ) {
+    await repo.releaseInventoryLocksByBooking(updatedBooking.id, new Date());
+  }
+
+  return mapDashboardBooking(updatedBooking);
 };
 
 export const recordBookingBalancePayment = async (
@@ -3064,7 +3152,7 @@ export const recordBookingBalancePayment = async (
     throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   }
 
-  return mapBooking(updatedBooking);
+  return mapDashboardBooking(updatedBooking);
 };
 
 export const listEnquiries = async (

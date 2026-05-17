@@ -438,6 +438,93 @@ export const hasOverlappingMaintenance = (
     })
     .then((count) => count > 0);
 
+export const hasOverlappingInventoryLock = (
+  target: PublicSpaceTarget,
+  checkIn: Date,
+  checkOut: Date,
+  at: Date,
+  tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
+) =>
+  client(tx).inventoryLock
+    .count({
+      where: {
+        ...targetOverlapWhere(target),
+        releasedAt: null,
+        expiresAt: { gt: at },
+        checkIn: { lt: checkOut },
+        checkOut: { gt: checkIn },
+        ...(ignoreLockToken !== undefined && {
+          NOT: { lockToken: ignoreLockToken },
+        }),
+      },
+    })
+    .then((count) => count > 0);
+
+export const createInventoryLocks = (
+  data: Prisma.InventoryLockCreateManyInput[],
+  tx: Prisma.TransactionClient,
+) =>
+  tx.inventoryLock.createMany({
+    data,
+  });
+
+export const findActiveInventoryLocksByToken = (
+  lockToken: string,
+  at: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.findMany({
+    where: {
+      lockToken,
+      releasedAt: null,
+      expiresAt: { gt: at },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+export const releaseInventoryLocksByToken = (
+  lockToken: string,
+  releasedAt: Date,
+  bookingId?: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.updateMany({
+    where: {
+      lockToken,
+      releasedAt: null,
+    },
+    data: {
+      releasedAt,
+      ...(bookingId !== undefined && { bookingId }),
+    },
+  });
+
+export const releaseInventoryLocksByBooking = (
+  bookingId: string,
+  releasedAt: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.updateMany({
+    where: {
+      bookingId,
+      releasedAt: null,
+    },
+    data: {
+      releasedAt,
+    },
+  });
+
+export const cleanupExpiredInventoryLocks = (
+  cutoff: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.deleteMany({
+    where: {
+      expiresAt: { lte: cutoff },
+    },
+  });
+
 export const createBooking = (
   data: Prisma.BookingCreateInput,
   tx?: Prisma.TransactionClient,

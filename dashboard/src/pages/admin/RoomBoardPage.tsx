@@ -44,7 +44,8 @@ const boardStatuses: Array<{ value: RoomBoardStatus | ""; label: string }> = [
 ];
 
 const summaryStatuses = boardStatuses.filter(
-  (item): item is { value: RoomBoardStatus; label: string } => item.value !== "",
+  (item): item is { value: RoomBoardStatus; label: string } =>
+    item.value !== "",
 );
 
 const statusActiveRingColors: Record<RoomBoardStatus, string> = {
@@ -74,6 +75,12 @@ const formatDate = (value: string) =>
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+
+const formatInclusiveEndDate = (value: string) => {
+  const date = new Date(value);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return formatDate(date.toISOString());
+};
 
 const roomMatchesSearch = (room: RoomBoardRoom, query: string) => {
   const normalized = query.trim().toLowerCase();
@@ -178,27 +185,24 @@ export default function RoomBoardPage() {
   return (
     <div className="space-y-6 pb-12">
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-100 px-5 py-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
+        <div className="flex flex-col gap-4 border-b border-slate-200 bg-slate-200 rounded-t-lg px-5 py-4 2xl:flex-row 2xl:items-center 2xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">Room Board</h2>
               {boardQuery.isFetching && (
                 <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700">
                   Syncing
                 </span>
               )}
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span>Live availability operations</span>
+            <div className="mt-1 flex flex-wrap items-center gap-2.5 text-lg text-slate-600">
               {selectedPropertyId && from && to && (
                 <>
-                  <span className="text-slate-300">/</span>
-                  <FiCalendar className="text-indigo-500" />
-                  <span className="font-semibold text-slate-700">
+                  <FiCalendar className="text-indigo-600" size={20} />
+                  <span className="font-bold text-slate-900">
                     {selectedProperty?.name ?? "Selected property"}
                   </span>
-                  <span className="text-slate-300">/</span>
-                  <span>
+                  <span className="text-slate-400">/</span>
+                  <span className="font-medium text-slate-700">
                     {formatDate(from)} to {formatDate(to)}
                   </span>
                 </>
@@ -288,7 +292,9 @@ export default function RoomBoardPage() {
 
           <div className="min-w-0">
             <label className="block text-sm">
-              <span className="mb-1 block font-semibold text-slate-700">To</span>
+              <span className="mb-1 block font-semibold text-slate-700">
+                To
+              </span>
               <input
                 type="date"
                 value={to}
@@ -343,7 +349,7 @@ export default function RoomBoardPage() {
           </div>
         </div>
 
-        <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4">
+        <div className="border-t border-slate-100 bg-white rounded-b-xl px-5 py-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <button
               type="button"
@@ -358,14 +364,19 @@ export default function RoomBoardPage() {
               }`}
             >
               <div className="min-w-0 flex-1">
-                <span className={`block text-[10px] font-bold uppercase tracking-wider ${status === "" ? "text-slate-300" : "text-slate-500"}`}>
+                <span
+                  className={`block text-[10px] font-bold uppercase tracking-wider ${status === "" ? "text-slate-300" : "text-slate-500"}`}
+                >
                   Total
                 </span>
                 <span className="mt-0.5 block text-2xl font-bold leading-tight">
                   {totalRooms}
                 </span>
               </div>
-              <FiGrid className={status === "" ? "text-white/40" : "text-slate-200"} size={32} />
+              <FiGrid
+                className={status === "" ? "text-white/40" : "text-slate-200"}
+                size={32}
+              />
             </button>
             {summaryStatuses.map((item) => {
               const count = boardQuery.data?.summary[item.value] ?? 0;
@@ -378,11 +389,16 @@ export default function RoomBoardPage() {
               const isActive = status === item.value;
 
               const activeStyles: Record<RoomBoardStatus, string> = {
-                AVAILABLE: "bg-emerald-600 border-emerald-600 text-white shadow-emerald-200/50",
-                RESERVED: "bg-amber-600 border-amber-600 text-white shadow-amber-200/50",
-                OCCUPIED: "bg-indigo-600 border-indigo-600 text-white shadow-indigo-200/50",
-                MAINTENANCE: "bg-rose-600 border-rose-600 text-white shadow-rose-200/50",
-                INACTIVE: "bg-slate-700 border-slate-700 text-white shadow-slate-200/50",
+                AVAILABLE:
+                  "bg-emerald-600 border-emerald-600 text-white shadow-emerald-200/50",
+                RESERVED:
+                  "bg-amber-600 border-amber-600 text-white shadow-amber-200/50",
+                OCCUPIED:
+                  "bg-indigo-600 border-indigo-600 text-white shadow-indigo-200/50",
+                MAINTENANCE:
+                  "bg-rose-600 border-rose-600 text-white shadow-rose-200/50",
+                INACTIVE:
+                  "bg-slate-700 border-slate-700 text-white shadow-slate-200/50",
               };
 
               const statusIconMap: Record<RoomBoardStatus, React.ReactNode> = {
@@ -459,14 +475,14 @@ export default function RoomBoardPage() {
 
 function UnitSection({ unit }: { unit: RoomBoardUnit }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-xl border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+    <section className="rounded-lg border border-slate-300 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-lg border-b border-slate-300 bg-slate-100 px-5 py-4">
         <div>
           <h3 className="text-base font-bold text-slate-900">
             Unit {unit.unitNumber}
           </h3>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-            <span className="font-medium">Floor {unit.floor}</span>
+          <div className="mt-1 flex items-center gap-2 text-xs text-slate-700">
+            <span className="font-semibold">Floor {unit.floor}</span>
             <span>•</span>
             {!unit.isActive ? (
               <StatusBadge
@@ -478,7 +494,7 @@ function UnitSection({ unit }: { unit: RoomBoardUnit }) {
             )}
           </div>
         </div>
-        <div className="text-sm font-medium text-slate-500">
+        <div className="text-sm font-bold text-slate-700">
           {unit.rooms.length} Room{unit.rooms.length === 1 ? "" : "s"}
         </div>
       </div>
@@ -492,18 +508,24 @@ function UnitSection({ unit }: { unit: RoomBoardUnit }) {
 }
 
 function RoomTile({ room }: { room: RoomBoardRoom }) {
-  const tone = STATUS_BG_COLORS[room.boardStatus] || "bg-white border-slate-200";
-  const innerBorder = STATUS_INNER_BORDER_COLORS[room.boardStatus] || "border-slate-200";
+  const tone =
+    STATUS_BG_COLORS[room.boardStatus] || "bg-white border-slate-200";
+  const innerBorder =
+    STATUS_INNER_BORDER_COLORS[room.boardStatus] || "border-slate-200";
   const textTheme = STATUS_TEXT_COLORS[room.boardStatus] || "text-slate-700";
 
   return (
-    <article className={`flex flex-1 min-w-[250px] min-h-[160px] flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}>
+    <article
+      className={`flex flex-1 min-w-[250px] min-h-[160px] flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <div className="text-lg font-bold text-slate-900">
             {room.roomNumber}
           </div>
-          <div className={`mt-1 flex items-center gap-1 text-xs font-semibold ${textTheme} opacity-80`}>
+          <div
+            className={`mt-1 flex items-center gap-1.5 text-xs font-semibold ${textTheme}`}
+          >
             <span>{room.roomName}</span>
             <span>•</span>
             <span>{room.hasAC ? "AC" : "Non-AC"}</span>
@@ -516,43 +538,54 @@ function RoomTile({ room }: { room: RoomBoardRoom }) {
 
       <div className="mt-auto space-y-2 text-xs">
         {room.booking && (
-          <div className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}>
-            <div className="flex items-center gap-2 font-bold opacity-90">
-              <FiUsers className="opacity-70" /> {room.booking.guestName}
+          <div
+            className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}
+          >
+            <div className="flex items-center gap-2 font-bold">
+              <FiUsers className="shrink-0" /> {room.booking.guestName}
             </div>
-            <div className="mt-2 font-semibold opacity-80">
-              Ref: {room.booking.bookingRef}
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 font-semibold opacity-80">
-              <FiClock className="opacity-70" />
-              {formatDate(room.booking.checkIn)} to {formatDate(room.booking.checkOut)}
+            <div className="mt-2 font-bold">Ref: {room.booking.bookingRef}</div>
+            <div className="mt-2 flex items-center gap-1.5 font-bold">
+              <FiClock className="shrink-0" />
+              {formatDate(room.booking.checkIn)} to{" "}
+              {formatDate(room.booking.checkOut)}
             </div>
           </div>
         )}
         {room.maintenance && (
-          <div className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}>
-            <div className="flex items-center gap-2 font-bold opacity-90">
-              <FiTool className="opacity-70" /> {room.maintenance.reason}
+          <div
+            className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}
+          >
+            <div className="flex items-center gap-2 font-bold">
+              <FiTool className="shrink-0" /> {room.maintenance.reason}
             </div>
-            <div className="mt-2 flex items-center gap-1.5 font-semibold opacity-80">
-              <FiCalendar className="opacity-70" />
-              {formatDate(room.maintenance.startDate)} to {formatDate(room.maintenance.endDate)}
+            <div className="mt-2 flex items-center gap-1.5 font-bold">
+              <FiCalendar className="shrink-0" />
+              {formatDate(room.maintenance.startDate)} to{" "}
+              {formatInclusiveEndDate(room.maintenance.endDate)}
             </div>
           </div>
         )}
         {!room.booking && !room.maintenance && (
-          <div className={`flex items-center gap-2 rounded-lg border bg-transparent p-3 font-semibold ${innerBorder} ${textTheme} opacity-80`}>
-            <FiCheckCircle className="opacity-70" />
+          <div
+            className={`flex items-center gap-2 rounded-lg border bg-transparent p-3 font-bold ${innerBorder} ${textTheme}`}
+          >
+            <FiCheckCircle className="shrink-0" />
             {room.reason ?? "Ready"}
           </div>
         )}
-
       </div>
     </article>
   );
 }
 
-function EmptyState({ message, icon }: { message: string; icon?: React.ReactNode }) {
+function EmptyState({
+  message,
+  icon,
+}: {
+  message: string;
+  icon?: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
       {icon}
