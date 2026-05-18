@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import RoomsFilters from "@/features/rooms/components/RoomsFilters";
 import RoomForm from "@/features/rooms/components/RoomForm/RoomForm";
 import RoomsTable from "@/features/rooms/components/RoomsTable";
@@ -39,27 +38,29 @@ export default function RoomsPage() {
   const [editingRoom, setEditingRoom] = useState<AdminRoom | null>(null);
 
   const {
-    data: propertiesData,
-    isPending: isLoadingProperties,
+    properties,
+    selectedPropertyId,
+    setSelectedPropertyId,
+    isLoading: isLoadingProperties,
     isError: isPropertiesError,
-  } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-    search: "",
-    status: "",
-    isActive: "true",
-  });
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
+  } = useCurrentProperty();
 
   useEffect(() => {
-    if (!filters.propertyId && properties.length > 0) {
+    if (selectedPropertyId && filters.propertyId !== selectedPropertyId) {
       setFilters((prev) => ({
         ...prev,
-        propertyId: properties[0].id,
+        propertyId: selectedPropertyId,
+      }));
+      return;
+    }
+
+    if (!selectedPropertyId && filters.propertyId) {
+      setFilters((prev) => ({
+        ...prev,
+        propertyId: "",
       }));
     }
-  }, [filters.propertyId, properties, setFilters]);
+  }, [filters.propertyId, selectedPropertyId, setFilters]);
 
   useEffect(() => {
     setPage(1);
@@ -94,7 +95,12 @@ export default function RoomsPage() {
           search={filters.search}
           status={filters.status}
           isActive={filters.isActive}
-          onChange={(next) => setFilters(next)}
+          onChange={(next) => {
+            if (next.propertyId) {
+              setSelectedPropertyId(next.propertyId);
+            }
+            setFilters(next);
+          }}
         />
 
         <Button
@@ -118,7 +124,7 @@ export default function RoomsPage() {
         isError={isError}
         emptyMessage={
           !filters.propertyId
-            ? "Select a property to view rooms."
+            ? "No accessible properties found."
             : "No rooms found for this property."
         }
         isUpdating={isUpdating}

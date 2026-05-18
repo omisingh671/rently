@@ -263,3 +263,27 @@ test("ADMIN cannot access inventory, pricing, or assignments outside scope", asy
     "PROPERTY_NOT_FOUND",
   );
 });
+
+test("property can have only one primary admin assignment", async () => {
+  await assertHttpError(
+    () =>
+      dashboardService.createPropertyAssignment(state.superAdminId, {
+        propertyId: state.propertyAId,
+        userId: state.otherAdminId,
+        role: PropertyAssignmentRole.ADMIN,
+      }),
+    409,
+    "PROPERTY_ADMIN_EXISTS",
+  );
+
+  await assert.rejects(() =>
+    prisma.propertyAssignment.create({
+      data: {
+        propertyId: state.propertyAId,
+        userId: state.otherAdminId,
+        role: PropertyAssignmentRole.ADMIN,
+        assignedByUserId: state.superAdminId,
+      },
+    }),
+  );
+});

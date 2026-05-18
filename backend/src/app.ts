@@ -52,10 +52,23 @@ const validateAllowedOrigins = (origins: string[]) => {
 
 validateAllowedOrigins(allowedOrigins);
 
+const localRateLimitIps = new Set([
+  "127.0.0.1",
+  "::1",
+  "::ffff:127.0.0.1",
+]);
+
+const shouldSkipRateLimit = (req: Request) =>
+  !env.RATE_LIMIT_ENABLED ||
+  (env.NODE_ENV === "development" &&
+    env.RATE_LIMIT_DEV_LOCALHOST_BYPASS &&
+    localRateLimitIps.has(req.ip ?? ""));
+
 const buildRateLimit = (windowMs: number, max: number, code: string) =>
   rateLimit({
     windowMs,
     max,
+    skip: shouldSkipRateLimit,
     standardHeaders: true,
     legacyHeaders: false,
     message: {
@@ -66,15 +79,19 @@ const buildRateLimit = (windowMs: number, max: number, code: string) =>
     },
   });
 
-const authRateLimit = buildRateLimit(15 * 60 * 1000, 20, "AUTH_RATE_LIMITED");
+const authRateLimit = buildRateLimit(
+  15 * 60 * 1000,
+  env.AUTH_RATE_LIMIT_MAX,
+  "AUTH_RATE_LIMITED",
+);
 const publicEnquiryRateLimit = buildRateLimit(
   15 * 60 * 1000,
-  8,
+  env.PUBLIC_ENQUIRY_RATE_LIMIT_MAX,
   "ENQUIRY_RATE_LIMITED",
 );
 const publicBookingRateLimit = buildRateLimit(
   10 * 60 * 1000,
-  12,
+  env.PUBLIC_BOOKING_RATE_LIMIT_MAX,
   "BOOKING_RATE_LIMITED",
 );
 

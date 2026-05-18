@@ -667,6 +667,7 @@ model PropertyAssignment {
   userId           String
   role             PropertyAssignmentRole
   assignedByUserId String
+  primaryAdminPropertyId String?                @unique
   createdAt        DateTime               @default(now())
 
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)

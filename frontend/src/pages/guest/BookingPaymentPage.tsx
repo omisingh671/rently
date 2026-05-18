@@ -79,6 +79,9 @@ const clearPaymentAttemptKey = (bookingId: string) => {
 };
 
 function BookingSummary({ booking }: { booking: Booking }) {
+  const hasDiscount = booking.discountAmount > 0;
+  const subtotalBeforeDiscount = booking.totalPrice + booking.discountAmount;
+
   return (
     <div className="flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="bg-slate-50 border-b border-slate-200 px-8 py-5 flex items-center justify-between">
@@ -148,6 +151,20 @@ function BookingSummary({ booking }: { booking: Booking }) {
                   </div>
                 ))}
               </div>
+            )}
+            {hasDiscount && (
+              <>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Subtotal</span>
+                  <span className="font-medium text-slate-700">{formatPrice(subtotalBeforeDiscount)}</span>
+                </div>
+                <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3 text-sm">
+                  <span className="font-semibold text-emerald-700">
+                    Coupon Applied{booking.couponCode ? ` (${booking.couponCode})` : ""}
+                  </span>
+                  <span className="font-bold text-emerald-700">-{formatPrice(booking.discountAmount)}</span>
+                </div>
+              </>
             )}
             <div className="flex items-center justify-between pt-5 border-t border-slate-100">
               <span className="text-lg font-bold text-slate-900">Total Amount</span>

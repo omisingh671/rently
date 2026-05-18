@@ -73,8 +73,9 @@ Already implemented:
 - Phase 4 pricing engine completed:
   - Nightly, weekly, and monthly rates supported.
   - Date-range conflict validation for pricing rules.
-  - Tax calculation and coupon validation services implemented.
-  - Final quote calculation integrated into booking creation.
+  - Coupon validation is integrated into booking creation and freezes booking totals at creation time.
+  - Tax CRUD exists for dashboard configuration, but tax calculation is not yet applied to booking totals.
+  - A dedicated final quote/price-breakdown API is not yet implemented.
   - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
   - Coupon management and validation integrated across dashboard and frontend.
 - Phase 5 public frontend refinements completed:
@@ -265,9 +266,11 @@ Already implemented:
 
 - Completed: add nightly, weekly, and monthly rate support.
 - Completed: add date-range conflict validation for pricing.
-- Completed: add tax calculation service.
 - Completed: add coupon validation service.
-- Completed: add final quote calculation API.
+- Completed: recalculate booking subtotal and coupon discount on booking creation.
+- Completed: freeze booking price snapshots so later rate edits do not mutate existing bookings.
+- Pending: add tax calculation service and persist/return booking tax breakdown.
+- Pending: add a final quote/price-breakdown API for frontend previews before booking creation.
 
 ### Dashboard Pricing UX
 
@@ -545,7 +548,8 @@ Target rules:
 - 30+ nights should route to quote flow by default.
 - Corporate pricing should prefer corporate tiers when applicable.
 - Seasonal pricing should apply only inside valid date ranges.
-- Tax and coupon calculation must be server-side.
+- Coupon calculation is server-side during booking creation.
+- Tax calculation must be server-side when tax totals are added to bookings.
 - Frontend price preview is advisory only.
 - Final totals must be recalculated on booking creation.
 - Booking price snapshots must be frozen at creation time.
@@ -553,19 +557,13 @@ Target rules:
 
 ### Booking Data Future Spec
 
-Current booking records store the selected target, product snapshot, price per night, dates, status, and total amount.
+Current booking records store the selected target, product snapshot, guest snapshots, price per night, dates, status, payment summary, coupon relation, discount amount, booking items, internal notes, and status history.
 
 Future booking model should add:
 
-- `bookingRef`, for example `SCH-2026-0001`.
-- `bookingType`.
-- guest snapshot fields.
 - price breakdown fields.
-- `BookingItem` records for multi-room/group bookings.
-- coupon relation and frozen coupon metadata.
+- frozen coupon metadata beyond the coupon relation and discount amount.
 - tax breakdown.
-- internal notes.
-- status history/audit trail.
 
 ### Public Route Intent
 

@@ -16,10 +16,10 @@ export default function PricingTable({
   return (
     <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
       <table className="min-w-full text-sm">
-        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <thead className="bg-slate-200 border-b border-slate-300 text-left text-xs font-bold uppercase tracking-wider text-slate-700">
           <tr>
             {headers.map((header) => (
-              <th key={header} className="px-4 py-3">
+              <th key={header} className="px-4 py-3.5">
                 {header}
               </th>
             ))}

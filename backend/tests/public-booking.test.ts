@@ -7,6 +7,7 @@ import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
 import {
   BookingStatus,
   ComfortOption,
+  DiscountType,
   MaintenanceTargetType,
   PricingTier,
   PropertyStatus,
@@ -561,6 +562,76 @@ test("dashboard pricing blocks duplicate overlapping price rules", async () => {
       return true;
     },
   );
+});
+
+test("public booking applies coupon and freezes price snapshots", async () => {
+  const couponCode = `${testId}-SAVE10`.toUpperCase();
+
+  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+    code: couponCode,
+    name: "Save 10 percent",
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    minNights: 2,
+    minAmount: 5000,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    isActive: true,
+  });
+
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-08-01T00:00:00.000Z"),
+      to: new Date("2027-08-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      couponCode: `${testId}-save10`,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(booking.pricePerNight, 2500);
+  assert.equal(booking.totalPrice, 4500);
+  assert.equal(booking.discountAmount, 500);
+  assert.equal(booking.couponCode, couponCode);
+  assert.equal(booking.items[0]?.pricePerNight, 2500);
+  assert.equal(booking.items[0]?.totalAmount, 5000);
+
+  const coupon = await prisma.coupon.findFirstOrThrow({
+    where: {
+      propertyId: state.propertyId,
+      code: couponCode,
+    },
+  });
+
+  assert.equal(coupon.usedCount, 1);
+
+  await dashboardService.updateRoomPricing(state.superAdminId, state.pricingId, {
+    price: 9999,
+  });
+
+  try {
+    const reloaded = await publicService.getBookingById(
+      state.guestOneId,
+      booking.id,
+    );
+
+    assert.equal(reloaded.pricePerNight, 2500);
+    assert.equal(reloaded.totalPrice, 4500);
+    assert.equal(reloaded.discountAmount, 500);
+    assert.equal(reloaded.items[0]?.pricePerNight, 2500);
+    assert.equal(reloaded.items[0]?.totalAmount, 5000);
+  } finally {
+    await dashboardService.updateRoomPricing(
+      state.superAdminId,
+      state.pricingId,
+      {
+        price: 2500,
+      },
+    );
+  }
 });
 
 test("public booking rejects single room when guest count exceeds capacity", async () => {

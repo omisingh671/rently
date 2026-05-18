@@ -17,9 +17,8 @@ const {
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { getRoomBoardApi } from "@/features/operations/api";
 import type {
   RoomBoardRoom,
@@ -101,28 +100,18 @@ export default function RoomBoardPage() {
   const canManageMaintenance = hasAnyRole(["SUPER_ADMIN", "ADMIN"]);
 
   const today = useMemo(() => new Date(), []);
-  const [propertyId, setPropertyId] = useState("");
-  const [propertySearch, setPropertySearch] = useState("");
   const [from, setFrom] = useState(toDateInput(today));
   const [to, setTo] = useState(toDateInput(addDays(today, 1)));
   const [status, setStatus] = useState<RoomBoardStatus | "">("");
   const [search, setSearch] = useState("");
 
-  const { data: propertiesData, isPending: isLoadingProperties } =
-    useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-      search: propertySearch,
-      status: "",
-      isActive: "true",
-    });
-
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
-  const selectedPropertyId = propertyId || properties[0]?.id || "";
-  const selectedProperty = properties.find(
-    (property) => property.id === selectedPropertyId,
-  );
+  const {
+    properties,
+    selectedPropertyId,
+    selectedProperty,
+    setSelectedPropertyId,
+    isLoading: isLoadingProperties,
+  } = useCurrentProperty();
 
   const boardQuery = useQuery({
     queryKey: selectedPropertyId
@@ -237,24 +226,7 @@ export default function RoomBoardPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <div className="min-w-0">
-            <label className="block text-sm">
-              <span className="mb-1 block font-semibold text-slate-700">
-                Find property
-              </span>
-              <div className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
-                <FiSearch className="shrink-0 text-slate-400" />
-                <input
-                  value={propertySearch}
-                  onChange={(event) => setPropertySearch(event.target.value)}
-                  placeholder="Search properties..."
-                  className="min-w-0 flex-1 text-sm outline-none"
-                />
-              </div>
-            </label>
-          </div>
-
+        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <div className="min-w-0">
             <label className="block text-sm">
               <span className="mb-1 block font-semibold text-slate-700">
@@ -263,7 +235,9 @@ export default function RoomBoardPage() {
               <select
                 value={selectedPropertyId}
                 disabled={isLoadingProperties}
-                onChange={(event) => setPropertyId(event.target.value)}
+                onChange={(event) =>
+                  setSelectedPropertyId(event.target.value || null)
+                }
                 className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               >
                 <option value="">Select property</option>

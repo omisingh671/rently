@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
 import { useDashboardContext } from "@/features/dashboard/hooks";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import {
   getRoomBoardApi,
   listBookingsApi,
@@ -32,8 +33,9 @@ const DASHBOARD_SIGNAL_LIMIT = 100;
 export default function AdminDashboard() {
   const user = useAuthStore((state) => state.user);
   const { data: context } = useDashboardContext();
+  const { selectedPropertyId } = useCurrentProperty();
 
-  const propertyId = context?.properties?.[0]?.id || "";
+  const propertyId = selectedPropertyId;
   const from = todayStr();
   const to = tomorrowStr();
 
