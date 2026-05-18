@@ -52,8 +52,6 @@ const fieldClass =
   "flex flex-col gap-2 text-sm font-medium text-slate-700 [&>span]:leading-none";
 const inputClass =
   "h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-700 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-100";
-const checkboxLabelClass =
-  "flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-700";
 const actionRowClass =
   "flex flex-wrap gap-2 border-t border-slate-100 pt-5 sm:col-span-2";
 

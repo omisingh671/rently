@@ -15,16 +15,6 @@ export default function RouteError() {
 
   const isForbidden = status === 403;
 
-  const debugText = isForbidden
-    ? null
-    : error instanceof Error
-      ? error.message
-      : error instanceof Response
-        ? `${error.status}`
-        : typeof error === "string"
-          ? error
-          : null;
-
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div
@@ -74,11 +64,6 @@ export default function RouteError() {
           </Link>
         </div>
 
-        {debugText && (
-          <div className="rounded-lg bg-white p-4 text-xs text-slate-700 overflow-auto">
-            <pre className="whitespace-pre-wrap leading-snug">{debugText}</pre>
-          </div>
-        )}
       </div>
     </div>
   );
