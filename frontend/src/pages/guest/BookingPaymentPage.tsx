@@ -26,6 +26,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 
 const paymentKeyPrefix = "sucasa:manual-payment";
+type PaymentChoice = "token" | "full";
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -46,33 +47,33 @@ const formatDate = (iso?: string) => {
 const createFallbackId = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const createIdempotencyKey = (bookingId: string) => {
+const createIdempotencyKey = (bookingId: string, choice: PaymentChoice) => {
   const randomId =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
       ? crypto.randomUUID()
       : createFallbackId();
 
-  return `manual:${bookingId}:${randomId}`;
+  return `manual:${bookingId}:${choice}:${randomId}`;
 };
 
-const getPaymentAttemptKey = (bookingId: string) => {
-  const storageKey = `${paymentKeyPrefix}:${bookingId}`;
+const getPaymentAttemptKey = (bookingId: string, choice: PaymentChoice) => {
+  const storageKey = `${paymentKeyPrefix}:${bookingId}:${choice}`;
 
   try {
     const existing = window.sessionStorage.getItem(storageKey);
     if (existing) return existing;
 
-    const next = createIdempotencyKey(bookingId);
+    const next = createIdempotencyKey(bookingId, choice);
     window.sessionStorage.setItem(storageKey, next);
     return next;
   } catch {
-    return createIdempotencyKey(bookingId);
+    return createIdempotencyKey(bookingId, choice);
   }
 };
 
-const clearPaymentAttemptKey = (bookingId: string) => {
+const clearPaymentAttemptKey = (bookingId: string, choice: PaymentChoice) => {
   try {
-    window.sessionStorage.removeItem(`${paymentKeyPrefix}:${bookingId}`);
+    window.sessionStorage.removeItem(`${paymentKeyPrefix}:${bookingId}:${choice}`);
   } catch {
     // Storage can be unavailable in private contexts; payment still completed.
   }
@@ -80,7 +81,8 @@ const clearPaymentAttemptKey = (bookingId: string) => {
 
 function BookingSummary({ booking }: { booking: Booking }) {
   const hasDiscount = booking.discountAmount > 0;
-  const subtotalBeforeDiscount = booking.totalPrice + booking.discountAmount;
+  const subtotalBeforeDiscount =
+    booking.subtotalAmount || booking.totalPrice + booking.discountAmount;
 
   return (
     <div className="flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -166,6 +168,23 @@ function BookingSummary({ booking }: { booking: Booking }) {
                 </div>
               </>
             )}
+            {booking.taxBreakdown.length > 0 && (
+              <div className="space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
+                {booking.taxBreakdown.map((tax) => (
+                  <div
+                    key={`${tax.taxId}-${tax.included ? "in" : "ex"}`}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-slate-500">
+                      {tax.name} {tax.included ? "(included)" : ""}
+                    </span>
+                    <span className="font-medium text-slate-700">
+                      {formatPrice(tax.taxAmount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex items-center justify-between pt-5 border-t border-slate-100">
               <span className="text-lg font-bold text-slate-900">Total Amount</span>
               <span className="text-2xl font-bold text-[rgb(var(--primary)/1)]">{formatPrice(booking.totalPrice)}</span>
@@ -235,19 +254,30 @@ export default function BookingPaymentPage() {
   const isConfirmed =
     paymentResult !== null ||
     ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(booking.status);
+  const tokenPaymentAmount = Math.min(
+    booking.upfrontAmount,
+    booking.balanceAmount,
+  );
+  const fullPaymentAmount = booking.balanceAmount;
+  const canPayToken =
+    booking.upfrontAmount > 0 && tokenPaymentAmount < fullPaymentAmount;
 
   const paymentError = paymentMutation.error
     ? normalizeApiError(paymentMutation.error).message
     : null;
 
-  const confirmManualPayment = async () => {
-    const idempotencyKey = getPaymentAttemptKey(booking.id);
+  const confirmManualPayment = async (
+    choice: PaymentChoice,
+    amount: number,
+  ) => {
+    const idempotencyKey = getPaymentAttemptKey(booking.id, choice);
     const result = await paymentMutation.mutateAsync({
       bookingId: booking.id,
       idempotencyKey,
+      amount,
     });
 
-    clearPaymentAttemptKey(booking.id);
+    clearPaymentAttemptKey(booking.id, choice);
     setPaymentResult(result);
     await bookingQuery.refetch();
   };
@@ -300,9 +330,12 @@ export default function BookingPaymentPage() {
                   </div>
                   <h2 className="text-2xl font-bold text-emerald-900">Booking Confirmed!</h2>
                   <p className="mt-2 text-emerald-700">
-                    {booking.upfrontAmount > 0
-                      ? "Your token payment has been recorded successfully."
-                      : "No upfront payment was required. Your booking is all set!"}
+                    {paymentResult?.booking.balanceAmount === 0 ||
+                    booking.balanceAmount === 0
+                      ? "Your full payment has been recorded successfully."
+                      : booking.upfrontAmount > 0
+                        ? "Your token payment has been recorded successfully."
+                        : "No upfront payment was required. Your booking is all set!"}
                   </p>
                   <p className="mt-4 text-sm text-emerald-600/80">
                     A confirmation email has been sent to {booking.guestEmail}.
@@ -354,11 +387,44 @@ export default function BookingPaymentPage() {
                         <div className="flex-1">
                           <h3 className="font-bold text-slate-900">Manual / On-arrival Payment</h3>
                           <p className="mt-1 text-sm text-slate-600 leading-relaxed">
-                            Secure your booking with a token payment of <span className="font-bold text-slate-900">{formatPrice(booking.upfrontAmount)}</span>. The remaining balance of <span className="font-bold text-slate-900">{formatPrice(booking.remainingPayAtCheckIn)}</span> is payable directly at check-in.
+                            {canPayToken ? (
+                              <>
+                                Secure your booking with a token payment of{" "}
+                                <span className="font-bold text-slate-900">
+                                  {formatPrice(tokenPaymentAmount)}
+                                </span>
+                                , or pay the full amount of{" "}
+                                <span className="font-bold text-slate-900">
+                                  {formatPrice(fullPaymentAmount)}
+                                </span>{" "}
+                                now.
+                              </>
+                            ) : (
+                              <>
+                                Confirm your booking by paying the full amount
+                                of{" "}
+                                <span className="font-bold text-slate-900">
+                                  {formatPrice(fullPaymentAmount)}
+                                </span>{" "}
+                                now.
+                              </>
+                            )}
                           </p>
-                          <p className="mt-3 text-[11px] font-semibold text-indigo-600/80 italic">
-                            * Please note: The token amount is non-refundable upon cancellation.
-                          </p>
+                          {canPayToken && (
+                            <div className="mt-3 space-y-1.5 text-[11px] font-semibold italic">
+                              <p className="text-xs font-bold text-slate-900">
+                                Please note:
+                              </p>
+                              <ul className="list-disc space-y-1 pl-4 text-indigo-600/80">
+                                <li>
+                                  The token amount is non-refundable upon cancellation.
+                                </li>
+                                <li>
+                                  Paying the full amount now guarantees your room is fully secured, clears your balance, and speeds up check-in.
+                                </li>
+                              </ul>
+                            </div>
+                          )}
                         </div>
                         <div className="hidden sm:block">
                           <div className="bg-white p-2 rounded-lg shadow-sm border border-indigo-100">
@@ -369,17 +435,41 @@ export default function BookingPaymentPage() {
                     </div>
 
                     <div className="mt-8">
-                      <Button
-                        type="button"
-                        variant="primary"
-                        className="w-full h-12 text-base shadow-lg shadow-indigo-200"
-                        disabled={paymentMutation.isPending}
-                        onClick={() => {
-                          void confirmManualPayment();
-                        }}
-                      >
-                        {paymentMutation.isPending ? "Confirming..." : "Confirm & Pay Token"}
-                      </Button>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {canPayToken && (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-12 w-full text-base"
+                            disabled={paymentMutation.isPending}
+                            onClick={() => {
+                              void confirmManualPayment(
+                                "token",
+                                tokenPaymentAmount,
+                              );
+                            }}
+                          >
+                            {paymentMutation.isPending
+                              ? "Confirming..."
+                              : "Confirm & Pay Token"}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="primary"
+                          className={`h-12 w-full text-base shadow-lg shadow-indigo-200 ${
+                            canPayToken ? "" : "sm:col-span-2"
+                          }`}
+                          disabled={paymentMutation.isPending}
+                          onClick={() => {
+                            void confirmManualPayment("full", fullPaymentAmount);
+                          }}
+                        >
+                          {paymentMutation.isPending
+                            ? "Confirming..."
+                            : "Confirm & Pay Full Amount"}
+                        </Button>
+                      </div>
                       <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                         <FiInfo className="h-3 w-3" />
                         Secure Encrypted Transaction

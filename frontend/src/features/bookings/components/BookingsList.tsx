@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   FiCalendar,
   FiUsers,
@@ -10,6 +11,7 @@ import {
 
 import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 import { ROUTES } from "@/configs/routePaths";
 import { normalizeApiError } from "@/utils/errors";
 import { useCancelBooking } from "../hooks";
@@ -21,6 +23,7 @@ const bookingStatusMap: Record<Booking["status"], string> = {
   CHECKED_IN: "bg-indigo-100 text-indigo-700",
   CHECKED_OUT: "bg-slate-100 text-slate-700",
   CANCELLED: "bg-red-100 text-red-700",
+  NO_SHOW: "bg-orange-100 text-orange-700",
 };
 
 const formatPrice = (price: number) =>
@@ -73,6 +76,8 @@ const getBookingItemLabel = (
 
 export default function BookingsList({ bookings }: BookingsListProps) {
   const cancelBooking = useCancelBooking();
+  const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
 
   if (bookings.length === 0) {
     return (
@@ -89,18 +94,25 @@ export default function BookingsList({ bookings }: BookingsListProps) {
     );
   }
 
-  const requestCancellation = (booking: Booking) => {
-    const reason = window.prompt(
-      "Reason for cancellation",
-      booking.cancellationReason ?? "",
-    );
+  const openCancellationModal = (booking: Booking) => {
+    setBookingToCancel(booking);
+    setCancellationReason(booking.cancellationReason ?? "");
+  };
 
-    if (reason === null) return;
+  const closeCancellationModal = () => {
+    if (cancelBooking.isPending) return;
+    setBookingToCancel(null);
+    setCancellationReason("");
+  };
 
-    void cancelBooking.mutateAsync({
-      bookingId: booking.id,
-      reason: reason.trim() || undefined,
+  const confirmCancellation = async () => {
+    if (!bookingToCancel) return;
+
+    await cancelBooking.mutateAsync({
+      bookingId: bookingToCancel.id,
+      reason: cancellationReason.trim() || undefined,
     });
+    closeCancellationModal();
   };
 
   const cancelError = cancelBooking.error
@@ -214,7 +226,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
                     outline
                     className="h-9 px-4"
                     disabled={cancelBooking.isPending}
-                    onClick={() => requestCancellation(booking)}
+                    onClick={() => openCancellationModal(booking)}
                   >
                     <FiXCircle className="mr-2 h-3.5 w-3.5" />
                     Cancel
@@ -233,6 +245,69 @@ export default function BookingsList({ bookings }: BookingsListProps) {
           </div>
         </article>
       ))}
+
+      <Modal
+        isOpen={bookingToCancel !== null}
+        onClose={closeCancellationModal}
+        title="Cancel Booking"
+        size="sm"
+        disableBackdropClose={cancelBooking.isPending}
+        disableEscapeClose={cancelBooking.isPending}
+      >
+        {bookingToCancel && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+              <p className="text-sm font-semibold text-red-900">
+                Are you sure you want to cancel this booking?
+              </p>
+              <div className="mt-1 space-y-1 text-xs text-red-700">
+                <p>Ref: {bookingToCancel.bookingRef}</p>
+                <p>
+                  {formatDate(bookingToCancel.from)} -{" "}
+                  {formatDate(bookingToCancel.to)}
+                </p>
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Reason
+              </span>
+              <textarea
+                value={cancellationReason}
+                onChange={(event) =>
+                  setCancellationReason(event.target.value)
+                }
+                rows={3}
+                className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50"
+                placeholder="Optional cancellation reason"
+                disabled={cancelBooking.isPending}
+              />
+            </label>
+
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={cancelBooking.isPending}
+                onClick={closeCancellationModal}
+              >
+                Keep Booking
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={cancelBooking.isPending}
+                onClick={() => {
+                  void confirmCancellation();
+                }}
+              >
+                {cancelBooking.isPending ? "Cancelling..." : "Confirm Cancel"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

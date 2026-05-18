@@ -59,8 +59,21 @@ export type AdminBooking = {
   checkIn: string;
   checkOut: string;
   status: BookingStatus;
+  subtotalAmount: string;
   totalAmount: string;
   discountAmount: string;
+  taxableAmount: string;
+  taxAmount: string;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    taxType: "PERCENTAGE" | "FIXED";
+    rate: number;
+    appliesTo: string;
+    taxableAmount: number;
+    taxAmount: number;
+    included: boolean;
+  }>;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
   balanceAmount: string;

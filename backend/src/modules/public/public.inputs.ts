@@ -27,6 +27,11 @@ export interface CreatePublicBookingInput {
   guestDetails?: PublicBookingGuestDetailsInput;
 }
 
+export type PublicBookingQuoteInput = Omit<
+  CreatePublicBookingInput,
+  "guestDetails"
+>;
+
 export interface CreateInventoryLockInput {
   bookingType: PublicBookingType;
   bookingOptionId?: string;

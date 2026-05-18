@@ -11,9 +11,9 @@ export default function AdminTableContainer({
 }: Props) {
   return (
     <div
-      className={`relative overflow-x-auto rounded-lg border border-slate-200 bg-white ${className}`}
+      className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}
     >
-      {children}
+      <div className="overflow-x-auto">{children}</div>
     </div>
   );
 }

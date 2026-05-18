@@ -266,6 +266,36 @@ export const mapCoupon = (
 
 const zeroDecimal = new Prisma.Decimal(0);
 
+type DashboardTaxBreakdown = DashboardBookingDTO["taxBreakdown"];
+
+const isDashboardTaxBreakdown = (
+  value: unknown,
+): value is DashboardTaxBreakdown =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      "taxId" in item &&
+      "name" in item &&
+      "taxAmount" in item,
+  );
+
+const getDashboardTaxBreakdown = (
+  value: Prisma.JsonValue | null,
+): DashboardTaxBreakdown => (isDashboardTaxBreakdown(value) ? value : []);
+
+const getTaxableAmountFromBreakdown = (breakdown: DashboardTaxBreakdown) => {
+  const taxableAmounts = new Set(breakdown.map((tax) => tax.taxableAmount));
+  if (taxableAmounts.size === 1) {
+    return String(breakdown[0]?.taxableAmount ?? 0);
+  }
+
+  return String(
+    breakdown.reduce((total, tax) => total + tax.taxableAmount, 0),
+  );
+};
+
 const maxDecimal = (left: Prisma.Decimal, right: Prisma.Decimal) =>
   left.greaterThan(right) ? left : right;
 
@@ -385,6 +415,7 @@ export const mapBooking = (
     zeroDecimal,
     booking.totalAmount.minus(paidAmount),
   );
+  const taxBreakdown = getDashboardTaxBreakdown(booking.taxBreakdown);
 
   return {
     id: booking.id,
@@ -417,8 +448,12 @@ export const mapBooking = (
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
     status: booking.status,
+    subtotalAmount: booking.subtotalAmount.toString(),
     totalAmount: booking.totalAmount.toString(),
     discountAmount: booking.discountAmount.toString(),
+    taxableAmount: getTaxableAmountFromBreakdown(taxBreakdown),
+    taxAmount: booking.taxAmount.toString(),
+    taxBreakdown,
     paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
     paidAmount: paidAmount.toString(),
     balanceAmount: balanceAmount.toString(),

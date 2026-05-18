@@ -8,7 +8,7 @@ type Props = {
 export default function AdminTableRow({ children, className = "" }: Props) {
   return (
     <tr
-      className={`border-t border-gray-200 hover:bg-slate-50 transition-colors ${className}`}
+      className={`border-t border-slate-200 transition-colors hover:bg-slate-50/80 ${className}`}
     >
       {children}
     </tr>

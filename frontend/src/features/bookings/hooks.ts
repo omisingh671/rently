@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
 import * as api from "./api";
-import type { Booking, CreateManualPaymentResponse } from "./types";
+import type { Booking, BookingQuote, CreateManualPaymentResponse } from "./types";
 import { useAuthStore } from "@/stores/authStore";
 import type { CreateBookingPayload } from "./api";
 
@@ -44,16 +44,21 @@ export const useCreateBooking = () => {
   });
 };
 
+export const useBookingQuote = () =>
+  useMutation<BookingQuote, Error, CreateBookingPayload>({
+    mutationFn: async (payload) => api.getBookingQuote(payload),
+  });
+
 export const useCreateManualPayment = () => {
   const queryClient = useQueryClient();
 
   return useMutation<
     CreateManualPaymentResponse,
     Error,
-    { bookingId: string; idempotencyKey: string }
+    { bookingId: string; idempotencyKey: string; amount: number }
   >({
-    mutationFn: ({ bookingId, idempotencyKey }) =>
-      api.createManualPayment(bookingId, idempotencyKey),
+    mutationFn: ({ bookingId, idempotencyKey, amount }) =>
+      api.createManualPayment(bookingId, idempotencyKey, amount),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({

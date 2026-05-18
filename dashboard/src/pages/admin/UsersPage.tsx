@@ -66,14 +66,16 @@ const UsersPage = () => {
 
   const users = data?.items ?? [];
   const pagination = data?.pagination;
+  const visiblePagination =
+    pagination && pagination.total > pageSize ? pagination : null;
   const canCreate =
     (scope === "admins" && currentUser?.role === "SUPER_ADMIN") ||
     (scope === "managers" && currentUser?.role === "ADMIN");
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-start lg:justify-between">
           <UsersFilters {...filters} onChange={(next) => setFilters(next)} />
 
           {canCreate && (
@@ -97,17 +99,17 @@ const UsersPage = () => {
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <PageSizeSelector value={pageSize} onChange={setPageSize} />
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <PageSizeSelector value={pageSize} onChange={setPageSize} />
 
-        {pagination && pagination.totalPages > 1 && (
           <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       <Modal
         isOpen={isCreateOpen}

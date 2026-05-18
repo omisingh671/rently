@@ -22,7 +22,10 @@ export default function AdminTableCell({
         ? "text-center"
         : "text-left";
 
-  const base = as === "th" ? "px-4 py-3 font-medium" : "px-4 py-3";
+  const base =
+    as === "th"
+      ? "whitespace-nowrap px-6 py-4 text-xs font-bold uppercase tracking-wider"
+      : "px-6 py-4 text-slate-600";
 
   return (
     <Component className={`${base} ${alignment} ${className}`}>

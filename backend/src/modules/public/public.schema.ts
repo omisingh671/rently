@@ -93,6 +93,8 @@ export const createBookingSchema = z
     }
   });
 
+export const createBookingQuoteSchema = createBookingSchema;
+
 export const createInventoryLockSchema = z
   .object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),

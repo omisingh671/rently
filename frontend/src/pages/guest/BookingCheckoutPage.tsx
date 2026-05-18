@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -20,7 +20,7 @@ import {
   clearBookingCheckoutDraft,
   getBookingCheckoutDraft,
 } from "@/features/bookings/bookingCheckoutDraft";
-import { useCreateBooking } from "@/features/bookings/hooks";
+import { useBookingQuote, useCreateBooking } from "@/features/bookings/hooks";
 import { useProfile } from "@/features/profile/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
@@ -79,6 +79,13 @@ export default function BookingCheckoutPage() {
   const isAuthenticated = authStatus === "authenticated" && user !== null;
   const profileQuery = useProfile(isAuthenticated);
   const createBookingMutation = useCreateBooking();
+  const quoteMutation = useBookingQuote();
+  const {
+    data: quote,
+    error: rawQuoteError,
+    mutate: requestQuote,
+    mutateAsync: requestQuoteAsync,
+  } = quoteMutation;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
 
@@ -104,6 +111,30 @@ export default function BookingCheckoutPage() {
     mode: "onTouched",
   });
 
+  const quotePayload = useMemo<CreateBookingPayload | null>(
+    () =>
+      draft
+        ? {
+            ...draft.payload,
+            couponCode: couponCode.trim() || undefined,
+          }
+        : null,
+    [couponCode, draft],
+  );
+  const quoteError = rawQuoteError
+    ? normalizeApiError(rawQuoteError).message
+    : null;
+
+  useEffect(() => {
+    if (!quotePayload) return;
+
+    const timeout = window.setTimeout(() => {
+      requestQuote(quotePayload);
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [quotePayload, requestQuote]);
+
   if (!draft) {
     return <Navigate to={ROUTES.SPACES} replace />;
   }
@@ -112,18 +143,20 @@ export default function BookingCheckoutPage() {
   const summary = draft.summary;
 
   const onSubmit = async (values: GuestInfoSubmitValues) => {
+    if (!quotePayload) return;
+
     const payload: CreateBookingPayload = {
-      ...draft.payload,
+      ...quotePayload,
       guestDetails: {
         name: values.name,
         email: values.email,
         contactNumber: `${values.countryCode}-${values.contactNumber}`,
       },
-      couponCode: couponCode.trim() || undefined,
     };
 
     try {
       setSubmitError(null);
+      await requestQuoteAsync(quotePayload);
       const booking = await createBookingMutation.mutateAsync(payload);
       clearBookingCheckoutDraft();
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
@@ -235,6 +268,11 @@ export default function BookingCheckoutPage() {
                   {submitError}
                 </div>
               )}
+              {quoteError && !submitError && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  {quoteError}
+                </div>
+              )}
 
               <div className="mt-auto pt-4">
                 <Button
@@ -315,16 +353,67 @@ export default function BookingCheckoutPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Nightly rate</span>
                 <span className="font-semibold text-slate-900">
-                  {formatPrice(summary.nightlyTotal)}
+                  {formatPrice(quote?.items.reduce((total, item) => total + item.pricePerNight, 0) ?? summary.nightlyTotal)}
                 </span>
               </div>
+              <div className="mt-3 flex items-center justify-between text-sm">
+                <span className="text-slate-500">Stay subtotal</span>
+                <span className="font-semibold text-slate-900">
+                  {formatPrice(quote?.subtotalAmount ?? summary.stayTotal)}
+                </span>
+              </div>
+              {(quote?.discountAmount ?? 0) > 0 && (
+                <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm">
+                  <span className="font-semibold text-emerald-700">
+                    Coupon{quote?.couponCode ? ` (${quote.couponCode})` : ""}
+                  </span>
+                  <span className="font-bold text-emerald-700">
+                    -{formatPrice(quote?.discountAmount ?? 0)}
+                  </span>
+                </div>
+              )}
+              {(quote?.taxBreakdown.length ?? 0) > 0 && (
+                <div className="mt-3 space-y-2">
+                  {quote?.taxBreakdown.map((tax) => (
+                    <div
+                      key={`${tax.taxId}-${tax.included ? "in" : "ex"}`}
+                      className="flex items-center justify-between text-xs text-slate-500"
+                    >
+                      <span>
+                        {tax.name} {tax.included ? "(included)" : ""}
+                      </span>
+                      <span className="font-semibold text-slate-700">
+                        {formatPrice(tax.taxAmount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-4">
                 <span className="text-base font-bold text-slate-900">
-                  Total stay
+                  Final total
                 </span>
                 <span className="text-xl font-bold text-indigo-600">
-                  {formatPrice(summary.stayTotal)}
+                  {formatPrice(quote?.totalAmount ?? summary.stayTotal)}
                 </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-indigo-50 px-3 py-3 text-xs">
+                <div>
+                  <div className="font-bold uppercase tracking-wider text-indigo-500">
+                    Due now
+                  </div>
+                  <div className="mt-1 font-bold text-indigo-900">
+                    {formatPrice(quote?.upfrontAmount ?? 0)}
+                  </div>
+                </div>
+                <div>
+                  <div className="font-bold uppercase tracking-wider text-slate-400">
+                    At check-in
+                  </div>
+                  <div className="mt-1 font-bold text-slate-700">
+                    {formatPrice(quote?.remainingPayAtCheckIn ?? 0)}
+                  </div>
+                </div>
               </div>
             </div>
           </aside>

@@ -332,6 +332,34 @@ test("manual payment confirms a pending booking", async () => {
   assert.equal(history[1]?.toStatus, BookingStatus.CONFIRMED);
 });
 
+test("manual payment can confirm a pending booking with full amount", async () => {
+  const booking = await createBooking(
+    new Date("2027-03-20T00:00:00.000Z"),
+    new Date("2027-03-22T00:00:00.000Z"),
+  );
+
+  const result = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-full-manual-payment`,
+    amount: booking.totalPrice,
+  });
+
+  assert.equal(result.payment.status, "SUCCEEDED");
+  assert.equal(result.payment.amount, booking.totalPrice);
+  assert.equal(result.booking.status, BookingStatus.CONFIRMED);
+  assert.equal(result.booking.paymentStatus, "PAID");
+  assert.equal(result.booking.paidAmount, booking.totalPrice);
+  assert.equal(result.booking.balanceAmount, 0);
+
+  const confirmedBooking = await prisma.booking.findUniqueOrThrow({
+    where: { id: booking.id },
+  });
+
+  assert.equal(confirmedBooking.status, BookingStatus.CONFIRMED);
+  assert.equal(confirmedBooking.paymentStatus, "PAID");
+});
+
 test("manual payment is idempotent for the same key", async () => {
   const booking = await publicService.createBooking(
     state.guestId,

@@ -31,6 +31,7 @@ interface PublicInventoryItem {
   guestCount: number;
   priceGuestCount: number;
   pricePerNight: number;
+  taxInclusive: boolean;
   productId: string;
   productName: string;
   targetLabel: string;
@@ -91,6 +92,7 @@ const buildOptionSignature = (
       guestCount: item.guestCount,
       productId: item.productId,
       pricePerNight: item.pricePerNight,
+      taxInclusive: item.taxInclusive,
     })),
   });
 
@@ -317,6 +319,7 @@ const toPricedRoomItem = async (
     guestCount,
     priceGuestCount: guestCount,
     pricePerNight: Number(pricing.price),
+    taxInclusive: pricing.taxInclusive,
     productId: pricing.productId,
     productName: pricing.product.name,
     targetLabel: `Room ${index + 1}`,
@@ -363,6 +366,7 @@ const toPricedUnitItem = async (
     guestCount,
     priceGuestCount: capacity,
     pricePerNight: Number(pricing.price),
+    taxInclusive: pricing.taxInclusive,
     productId: pricing.productId,
     productName: pricing.product.name,
     targetLabel: `Unit ${index + 1}`,

@@ -484,6 +484,10 @@ export default function BookingDetailsPage() {
             </h3>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <InfoItem
+                label="Subtotal"
+                value={formatMoney(booking.subtotalAmount)}
+              />
+              <InfoItem
                 label="Total amount"
                 value={formatMoney(booking.totalAmount)}
               />
@@ -512,10 +516,36 @@ export default function BookingDetailsPage() {
                 value={formatMoney(booking.discountAmount)}
               />
               <InfoItem
+                label="Tax"
+                value={formatMoney(booking.taxAmount)}
+              />
+              <InfoItem
                 label="Coupon used"
                 value={booking.couponCode ?? "None"}
               />
             </div>
+            {booking.taxBreakdown.length > 0 && (
+              <div className="mt-5 rounded-md border border-slate-100 bg-slate-50 px-3 py-3 text-sm">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Tax breakdown
+                </div>
+                <div className="space-y-2">
+                  {booking.taxBreakdown.map((tax) => (
+                    <div
+                      key={`${tax.taxId}-${tax.included ? "included" : "exclusive"}`}
+                      className="flex items-center justify-between gap-3"
+                    >
+                      <span className="text-slate-600">
+                        {tax.name} {tax.included ? "(included)" : ""}
+                      </span>
+                      <span className="font-semibold text-slate-900">
+                        {formatMoney(String(tax.taxAmount))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-5 space-y-3">
               {booking.payments.length === 0 ? (
                 <p className="text-sm text-slate-500">No payments recorded.</p>

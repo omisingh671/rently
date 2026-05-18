@@ -397,7 +397,7 @@ async function main() {
     throw new Error("Seed pricing invariant failed");
   }
 
-  await prisma.tax.create({
+  const gstTax = await prisma.tax.create({
     data: {
       propertyId: property.id,
       name: "GST",
@@ -422,6 +422,9 @@ async function main() {
     },
   });
 
+  const seededBookingSubtotal = 4500;
+  const seededBookingTax = 540;
+
   await prisma.booking.create({
     data: {
       bookingRef: "SCH-2026-SEED000001",
@@ -441,7 +444,21 @@ async function main() {
       checkIn: new Date("2026-05-15T00:00:00.000Z"),
       checkOut: new Date("2026-05-17T00:00:00.000Z"),
       status: BookingStatus.CONFIRMED,
-      totalAmount: 4500,
+      subtotalAmount: seededBookingSubtotal,
+      taxAmount: seededBookingTax,
+      taxBreakdown: [
+        {
+          taxId: gstTax.id,
+          name: gstTax.name,
+          taxType: gstTax.taxType,
+          rate: Number(gstTax.rate),
+          appliesTo: gstTax.appliesTo,
+          taxableAmount: seededBookingSubtotal,
+          taxAmount: seededBookingTax,
+          included: false,
+        },
+      ],
+      totalAmount: seededBookingSubtotal + seededBookingTax,
       items: {
         create: {
           productId: doubleAcProduct.id,

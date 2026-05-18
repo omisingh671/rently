@@ -7,6 +7,7 @@ import {
   ComfortOption,
   Prisma,
   PaymentStatus,
+  TaxType,
   UnitStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
@@ -17,6 +18,7 @@ import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
   CreateInventoryLockInput,
+  PublicBookingQuoteInput,
   CreatePublicBookingInput,
   CreatePublicEnquiryInput,
   PublicBookingGuestDetailsInput,
@@ -26,8 +28,11 @@ import type {
 import type {
   PublicAvailabilityDTO,
   PublicBookingDTO,
+  PublicBookingQuoteDTO,
+  PublicBookingQuoteItemDTO,
   PublicEnquiryDTO,
   PublicInventoryLockDTO,
+  PublicTaxBreakdownDTO,
   PublicSpaceDTO,
   PublicTenantConfigDTO,
 } from "./public.dto.js";
@@ -59,6 +64,23 @@ interface BookingGuestSnapshot {
   fullName: string;
   email: string;
   contactNumber: string | null;
+}
+
+interface QuoteCalculationInput {
+  propertyId: string;
+  bookingType: BookingType;
+  nights: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
+  currency: string;
+  couponCode: string | undefined;
+  items: PublicBookingQuoteItemDTO[];
+}
+
+interface QuoteCalculationResult extends PublicBookingQuoteDTO {
+  couponId: string | undefined;
 }
 
 const mapTenantConfig = (
@@ -204,6 +226,36 @@ const mapSpace = (space: repo.PublicSpaceRecord): PublicSpaceDTO => {
   };
 };
 
+const money = (value: number) => Math.round(value * 100) / 100;
+
+const isTaxBreakdown = (value: unknown): value is PublicTaxBreakdownDTO[] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      typeof item === "object" &&
+      item !== null &&
+      "taxId" in item &&
+      "name" in item &&
+      "taxAmount" in item,
+  );
+
+const getBookingTaxBreakdown = (
+  value: Prisma.JsonValue | null,
+): PublicTaxBreakdownDTO[] => (isTaxBreakdown(value) ? value : []);
+
+const getTaxableAmountFromBreakdown = (breakdown: PublicTaxBreakdownDTO[]) => {
+  const taxableAmounts = new Set(breakdown.map((tax) => tax.taxableAmount));
+  if (taxableAmounts.size === 1) {
+    return breakdown[0]?.taxableAmount ?? 0;
+  }
+
+  return breakdown.reduce((total, tax) => total + tax.taxableAmount, 0);
+};
+
+const toTaxBreakdownJson = (
+  breakdown: PublicTaxBreakdownDTO[],
+): Prisma.InputJsonValue => breakdown as unknown as Prisma.InputJsonValue;
+
 const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
   const items = booking.items.map((item) => ({
     id: item.id,
@@ -227,6 +279,8 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
     .reduce((total, payment) => total + Number(payment.amount), 0);
   const balanceAmount = Math.max(0, Number(booking.totalAmount) - paidAmount);
+  const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
+  const taxableAmount = getTaxableAmountFromBreakdown(taxBreakdown);
   const paymentStatus =
     paidAmount <= 0
       ? BookingPaymentStatus.PENDING
@@ -255,8 +309,12 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     from: booking.checkIn.toISOString(),
     to: booking.checkOut.toISOString(),
     pricePerNight: Number(booking.pricePerNight),
+    subtotalAmount: Number(booking.subtotalAmount),
     totalPrice: Number(booking.totalAmount),
     discountAmount: Number(booking.discountAmount),
+    taxableAmount,
+    taxAmount: Number(booking.taxAmount),
+    taxBreakdown,
     paidAmount,
     balanceAmount,
     remainingPayAtCheckIn: balanceAmount,
@@ -402,6 +460,24 @@ const buildBookingItemCreateInput = (
   };
 };
 
+const buildQuoteItemFromBookingInput = (
+  item: Prisma.BookingItemCreateWithoutBookingInput,
+  taxInclusive: boolean,
+): PublicBookingQuoteItemDTO => ({
+  targetType: item.targetType,
+  unitId: typeof item.unitId === "string" ? item.unitId : null,
+  roomId: typeof item.roomId === "string" ? item.roomId : null,
+  productId: typeof item.productId === "string" ? item.productId : null,
+  targetLabel: item.targetLabel,
+  productName: item.productName,
+  capacity: item.capacity,
+  guestCount: item.guestCount ?? 1,
+  comfortOption: item.comfortOption,
+  pricePerNight: Number(item.pricePerNight),
+  totalAmount: Number(item.totalAmount),
+  taxInclusive,
+});
+
 const buildOptionBookingItemCreateInput = (
   item: PublicAvailabilityOptionInternal["items"][number],
   nights: number,
@@ -424,6 +500,16 @@ const buildOptionBookingItemCreateInput = (
   pricePerNight: item.pricePerNight,
   totalAmount: item.pricePerNight * nights,
 });
+
+const buildQuoteItemFromOptionItem = (
+  item: PublicAvailabilityOptionInternal["items"][number],
+  nights: number,
+  comfortOption: ComfortOption,
+): PublicBookingQuoteItemDTO =>
+  buildQuoteItemFromBookingInput(
+    buildOptionBookingItemCreateInput(item, nights, comfortOption),
+    item.taxInclusive,
+  );
 
 const getTargetKey = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
@@ -741,7 +827,124 @@ const validateAndApplyCoupon = async (
 
   return {
     couponId: coupon.id,
+    discountAmount: money(discountAmount),
+  };
+};
+
+const getApplicableTaxes = (
+  taxes: repo.PublicTaxRecord[],
+  targetTypes: BookingTargetType[],
+) => {
+  const applicableTargets = new Set([
+    "ALL",
+    "BOOKING",
+    "STAY",
+    ...targetTypes,
+  ]);
+
+  return taxes.filter((tax) =>
+    applicableTargets.has(tax.appliesTo.trim().toUpperCase()),
+  );
+};
+
+const calculateLineTax = (
+  taxableAmount: number,
+  tax: repo.PublicTaxRecord,
+  included: boolean,
+) => {
+  const rate = Number(tax.rate);
+  if (tax.taxType === TaxType.PERCENTAGE) {
+    return included
+      ? money((taxableAmount * rate) / (100 + rate))
+      : money((taxableAmount * rate) / 100);
+  }
+
+  return money(Math.min(rate, taxableAmount));
+};
+
+const calculateQuoteTotals = async (
+  input: QuoteCalculationInput,
+  tx: Prisma.TransactionClient,
+): Promise<QuoteCalculationResult> => {
+  const subtotalAmount = money(
+    input.items.reduce((total, item) => total + item.totalAmount, 0),
+  );
+  const { couponId, discountAmount } = await validateAndApplyCoupon(
+    input.propertyId,
+    input.couponCode,
+    input.nights,
+    subtotalAmount,
+    tx,
+  );
+  const discountedSubtotal = money(subtotalAmount - discountAmount);
+  const taxes = await repo.listActiveTaxes(input.propertyId, tx);
+  const exclusiveBreakdown = new Map<string, PublicTaxBreakdownDTO>();
+  const inclusiveBreakdown = new Map<string, PublicTaxBreakdownDTO>();
+
+  for (const item of input.items) {
+    const itemRatio = subtotalAmount > 0 ? item.totalAmount / subtotalAmount : 0;
+    const lineTaxableAmount = money(discountedSubtotal * itemRatio);
+    const itemTaxes = getApplicableTaxes(taxes, [item.targetType]);
+
+    for (const tax of itemTaxes) {
+      const taxAmount = calculateLineTax(
+        lineTaxableAmount,
+        tax,
+        item.taxInclusive,
+      );
+      const key = `${tax.id}:${item.taxInclusive ? "included" : "exclusive"}`;
+      const targetMap = item.taxInclusive ? inclusiveBreakdown : exclusiveBreakdown;
+      const existing = targetMap.get(key);
+      const next: PublicTaxBreakdownDTO = {
+        taxId: tax.id,
+        name: tax.name,
+        taxType: tax.taxType,
+        rate: Number(tax.rate),
+        appliesTo: tax.appliesTo,
+        taxableAmount: money((existing?.taxableAmount ?? 0) + lineTaxableAmount),
+        taxAmount: money((existing?.taxAmount ?? 0) + taxAmount),
+        included: item.taxInclusive,
+      };
+
+      targetMap.set(key, next);
+    }
+  }
+
+  const taxBreakdown = [
+    ...inclusiveBreakdown.values(),
+    ...exclusiveBreakdown.values(),
+  ];
+  const taxAmount = money(
+    taxBreakdown.reduce((total, tax) => total + tax.taxAmount, 0),
+  );
+  const exclusiveTaxAmount = money(
+    [...exclusiveBreakdown.values()].reduce(
+      (total, tax) => total + tax.taxAmount,
+      0,
+    ),
+  );
+  const totalAmount = money(discountedSubtotal + exclusiveTaxAmount);
+  const upfrontAmount = money(Math.min(input.upfrontAmount, totalAmount));
+
+  return {
+    propertyId: input.propertyId,
+    bookingType: input.bookingType,
+    nights: input.nights,
+    guestCount: input.guestCount,
+    comfortOption: input.comfortOption,
+    currency: input.currency,
+    subtotalAmount,
     discountAmount,
+    taxableAmount: discountedSubtotal,
+    taxAmount,
+    totalAmount,
+    paymentPolicy: input.paymentPolicy,
+    upfrontAmount,
+    remainingPayAtCheckIn: money(Math.max(0, totalAmount - upfrontAmount)),
+    couponCode: input.couponCode?.trim().toUpperCase() ?? null,
+    taxBreakdown,
+    items: input.items,
+    couponId,
   };
 };
 
@@ -937,6 +1140,228 @@ export const createInventoryLock = async (
   );
 };
 
+export const getBookingQuote = async (
+  input: PublicBookingQuoteInput,
+  tenantInput: TenantResolutionInput = {},
+): Promise<PublicBookingQuoteDTO> => {
+  const tenant = await resolveTenant(tenantInput);
+  const nights = getNights(input.from, input.to);
+  const paymentPolicy = tenant.payAtCheckInEnabled
+    ? BookingPaymentPolicy.TOKEN_AT_BOOKING
+    : BookingPaymentPolicy.NO_UPFRONT_PAYMENT;
+  const upfrontAmount = tenant.payAtCheckInEnabled
+    ? Number(tenant.bookingTokenAmount)
+    : 0;
+
+  return repo.runSerializableTransaction(async (tx) => {
+    if (input.bookingOptionId !== undefined) {
+      const option = await findAvailabilityOptionById(
+        input.bookingOptionId,
+        {
+          checkIn: input.from,
+          checkOut: input.to,
+          guests: input.guests,
+          comfortOption: input.comfortOption,
+        },
+        tenant.id,
+        nights,
+        tx,
+        input.inventoryLockToken,
+      );
+
+      if (!option) {
+        throw new HttpError(
+          409,
+          "BOOKING_OPTION_UNAVAILABLE",
+          "Selected booking option is no longer available",
+        );
+      }
+
+      await assertInventoryLockCoversTargets(
+        input.inventoryLockToken,
+        option.items.map((item) => item.target),
+        input.from,
+        input.to,
+        tx,
+      );
+
+      return calculateQuoteTotals(
+        {
+          propertyId: option.propertyId,
+          bookingType:
+            option.items.length > 1
+              ? BookingType.MULTI_ROOM
+              : BookingType.SINGLE_TARGET,
+          nights,
+          guestCount: input.guests,
+          comfortOption: input.comfortOption,
+          paymentPolicy,
+          upfrontAmount,
+          currency: tenant.defaultCurrency,
+          couponCode: input.couponCode,
+          items: option.items.map((item) =>
+            buildQuoteItemFromOptionItem(item, nights, input.comfortOption),
+          ),
+        },
+        tx,
+      );
+    }
+
+    const selectedSpaces =
+      input.bookingType === "MULTI_ROOM"
+        ? await Promise.all(
+            (input.spaceIds ?? []).map((spaceId) =>
+              repo.findActiveSpaceById(spaceId, now(), tenant.id, tx, {
+                checkIn: input.from,
+                checkOut: input.to,
+                nights,
+              }),
+            ),
+          )
+        : [
+            await repo.findActiveSpaceById(input.spaceId ?? "", now(), tenant.id, tx, {
+              checkIn: input.from,
+              checkOut: input.to,
+              nights,
+            }),
+          ];
+
+    if (selectedSpaces.some((space) => !space)) {
+      throw new HttpError(404, "SPACE_NOT_FOUND", "Space not found");
+    }
+
+    const resolvedSelectedSpaces = selectedSpaces.filter(
+      (space): space is repo.PublicSpaceRecord => space !== null,
+    );
+    const selectedTargets = await Promise.all(
+      resolvedSelectedSpaces.map((space) =>
+        ensureSpaceAvailable(
+          space,
+          input.from,
+          input.to,
+          tx,
+          input.inventoryLockToken,
+        ),
+      ),
+    );
+
+    await assertInventoryLockCoversTargets(
+      input.inventoryLockToken,
+      selectedTargets,
+      input.from,
+      input.to,
+      tx,
+    );
+
+    const uniqueTargetKeys = new Set(selectedTargets.map(getTargetKey));
+    if (uniqueTargetKeys.size !== resolvedSelectedSpaces.length) {
+      throw new HttpError(
+        422,
+        "DUPLICATE_BOOKING_SPACE",
+        "Each selected space can only be booked once",
+      );
+    }
+
+    const propertyIds = new Set(
+      resolvedSelectedSpaces.map((space) => space.propertyId),
+    );
+    if (propertyIds.size !== 1) {
+      throw new HttpError(
+        422,
+        "MULTI_ROOM_PROPERTY_MISMATCH",
+        "Multi-room bookings must stay within one property",
+      );
+    }
+
+    const isMultiRoom = input.bookingType === "MULTI_ROOM";
+    if (
+      isMultiRoom &&
+      selectedTargets.some((target) => target.targetType !== BookingTargetType.ROOM)
+    ) {
+      throw new HttpError(
+        422,
+        "MULTI_ROOM_REQUIRES_ROOMS",
+        "Multi-room bookings can only combine rooms",
+      );
+    }
+
+    const selectedCapacity = resolvedSelectedSpaces.reduce(
+      (total, space) => total + getSpaceCapacity(space),
+      0,
+    );
+    if (input.guests > selectedCapacity) {
+      throw new HttpError(
+        422,
+        "INSUFFICIENT_CAPACITY",
+        "Selected spaces do not cover the requested guest count",
+      );
+    }
+
+    const guestAllocations = isMultiRoom
+      ? allocateGuestsAcrossRooms(resolvedSelectedSpaces, input.guests)
+      : [
+          {
+            space: getArrayItem(
+              resolvedSelectedSpaces,
+              0,
+              "Missing booking space",
+            ),
+            guestCount: input.guests,
+          },
+        ];
+    const pricedSpaces = await Promise.all(
+      guestAllocations.map((allocation, index) =>
+        resolvePricedSpace(
+          allocation.space,
+          getArrayItem(selectedTargets, index, "Missing booking target"),
+          allocation.guestCount,
+          input.comfortOption,
+          tenant.id,
+          input.from,
+          input.to,
+          nights,
+          tx,
+        ),
+      ),
+    );
+    const itemInputs = pricedSpaces.map((space, index) =>
+      buildBookingItemCreateInput(
+        space,
+        getArrayItem(selectedTargets, index, "Missing booking target"),
+        nights,
+        getArrayItem(guestAllocations, index, "Missing guest allocation")
+          .guestCount,
+      ),
+    );
+
+    return calculateQuoteTotals(
+      {
+        propertyId: getArrayItem(
+          Array.from(propertyIds),
+          0,
+          "Missing booking property",
+        ),
+        bookingType: isMultiRoom ? BookingType.MULTI_ROOM : BookingType.SINGLE_TARGET,
+        nights,
+        guestCount: input.guests,
+        comfortOption: input.comfortOption,
+        paymentPolicy,
+        upfrontAmount,
+        currency: tenant.defaultCurrency,
+        couponCode: input.couponCode,
+        items: itemInputs.map((item, index) =>
+          buildQuoteItemFromBookingInput(
+            item,
+            getArrayItem(pricedSpaces, index, "Missing priced space")
+              .taxInclusive,
+          ),
+        ),
+      },
+      tx,
+    );
+  });
+};
+
 export const createBookingForUser = async (
   userId: string | undefined,
   input: CreatePublicBookingInput,
@@ -1009,6 +1434,9 @@ export const createBookingForUser = async (
               input.comfortOption,
             ),
           );
+          const quoteItems = option.items.map((item) =>
+            buildQuoteItemFromOptionItem(item, nights, input.comfortOption),
+          );
           const optionTargets = option.items.map((item) => item.target);
 
           await assertInventoryLockCoversTargets(
@@ -1019,17 +1447,24 @@ export const createBookingForUser = async (
             tx,
           );
 
-          const totalBeforeDiscount = option.stayTotal;
-          const { couponId, discountAmount } = await validateAndApplyCoupon(
-            option.propertyId,
-            input.couponCode,
-            nights,
-            totalBeforeDiscount,
+          const quote = await calculateQuoteTotals(
+            {
+              propertyId: option.propertyId,
+              bookingType:
+                option.items.length > 1
+                  ? BookingType.MULTI_ROOM
+                  : BookingType.SINGLE_TARGET,
+              nights,
+              guestCount: input.guests,
+              comfortOption: input.comfortOption,
+              paymentPolicy,
+              upfrontAmount,
+              currency: tenant.defaultCurrency,
+              couponCode: input.couponCode,
+              items: quoteItems,
+            },
             tx,
           );
-
-          const totalAmount = totalBeforeDiscount - discountAmount;
-          const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
           const firstItem = getArrayItem(
             option.items,
             0,
@@ -1062,11 +1497,14 @@ export const createBookingForUser = async (
               checkIn: input.from,
               checkOut: input.to,
               status: initialStatus,
-              totalAmount,
-              discountAmount,
-              ...(couponId && { coupon: { connect: { id: couponId } } }),
+              subtotalAmount: quote.subtotalAmount,
+              taxAmount: quote.taxAmount,
+              taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
+              totalAmount: quote.totalAmount,
+              discountAmount: quote.discountAmount,
+              ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
               paymentPolicy,
-              upfrontAmount: bookingUpfrontAmount,
+              upfrontAmount: quote.upfrontAmount,
               ...(options.internalNotes !== undefined && {
                 internalNotes: options.internalNotes,
               }),
@@ -1078,8 +1516,8 @@ export const createBookingForUser = async (
             tx,
           );
 
-          if (couponId) {
-            await repo.incrementCouponUsage(couponId, tx);
+          if (quote.couponId) {
+            await repo.incrementCouponUsage(quote.couponId, tx);
           }
 
           await repo.createBookingStatusHistory(
@@ -1264,11 +1702,13 @@ export const createBookingForUser = async (
               .guestCount,
           ),
         );
-        const totalBeforeDiscount = itemInputs.reduce(
-          (total, item) => total + Number(item.totalAmount),
-          0,
+        const quoteItems = itemInputs.map((item, index) =>
+          buildQuoteItemFromBookingInput(
+            item,
+            getArrayItem(pricedSpaces, index, "Missing priced space")
+              .taxInclusive,
+          ),
         );
-
         const pricePerNight = itemInputs.reduce(
           (total, item) => total + Number(item.pricePerNight),
           0,
@@ -1290,17 +1730,24 @@ export const createBookingForUser = async (
           "Missing booking item",
         );
 
-        const { couponId, discountAmount } = await validateAndApplyCoupon(
-          firstSpaceRec.propertyId,
-          input.couponCode,
-          nights,
-          totalBeforeDiscount,
+        const isMultiRoom = input.bookingType === "MULTI_ROOM";
+        const quote = await calculateQuoteTotals(
+          {
+            propertyId: firstSpaceRec.propertyId,
+            bookingType: isMultiRoom
+              ? BookingType.MULTI_ROOM
+              : BookingType.SINGLE_TARGET,
+            nights,
+            guestCount: input.guests,
+            comfortOption: input.comfortOption,
+            paymentPolicy,
+            upfrontAmount,
+            currency: tenant.defaultCurrency,
+            couponCode: input.couponCode,
+            items: quoteItems,
+          },
           tx,
         );
-
-        const totalAmount = totalBeforeDiscount - discountAmount;
-        const bookingUpfrontAmount = Math.min(upfrontAmount, totalAmount);
-        const isMultiRoom = input.bookingType === "MULTI_ROOM";
 
         const booking = await repo.createBooking(
           {
@@ -1331,11 +1778,14 @@ export const createBookingForUser = async (
             checkIn: input.from,
             checkOut: input.to,
             status: initialStatus,
-            totalAmount,
-            discountAmount,
-            ...(couponId && { coupon: { connect: { id: couponId } } }),
+            subtotalAmount: quote.subtotalAmount,
+            taxAmount: quote.taxAmount,
+            taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
+            totalAmount: quote.totalAmount,
+            discountAmount: quote.discountAmount,
+            ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
             paymentPolicy,
-            upfrontAmount: bookingUpfrontAmount,
+            upfrontAmount: quote.upfrontAmount,
             ...(options.internalNotes !== undefined && {
               internalNotes: options.internalNotes,
             }),
@@ -1347,8 +1797,8 @@ export const createBookingForUser = async (
           tx,
         );
 
-        if (couponId) {
-          await repo.incrementCouponUsage(couponId, tx);
+        if (quote.couponId) {
+          await repo.incrementCouponUsage(quote.couponId, tx);
         }
 
         await repo.createBookingStatusHistory(
