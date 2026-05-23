@@ -1,14 +1,32 @@
 import { z } from "zod";
 
+const passwordSchema = z.string().superRefine((value, ctx) => {
+  const messages = [
+    value.length < 10 ? "Password must be at least 10 characters" : null,
+    value.length > 128 ? "Password must be at most 128 characters" : null,
+    /[a-z]/.test(value) ? null : "Password must contain a lowercase letter",
+    /[A-Z]/.test(value) ? null : "Password must contain an uppercase letter",
+    /\d/.test(value) ? null : "Password must contain a number",
+    /[^A-Za-z0-9]/.test(value) ? null : "Password must contain a symbol",
+  ].filter((message): message is string => message !== null);
+
+  if (messages.length === 0) return;
+
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    message: messages.join(". "),
+  });
+});
+
 export const registerSchema = z
   .object({
     fullName: z.string().min(2, "Full name is required"),
 
     email: z.string().email("Enter a valid email address"),
 
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: passwordSchema,
 
-    confirmPassword: z.string(),
+    confirmPassword: z.string().min(1, "Confirm password is required"),
 
     // Optional fields
     countryCode: z.string().optional(),
