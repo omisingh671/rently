@@ -9,7 +9,14 @@ import type {
   CheckAvailabilityInput,
   PublicSpaceTarget,
 } from "./public.inputs.js";
-import type { PublicAvailabilityOptionDTO } from "./public.dto.js";
+import type {
+  AvailabilityOptionItemDTO,
+  AvailabilityOptionRoomDTO,
+  GalleryImageDTO,
+  GalleryImageScope,
+  PublicAmenityDTO,
+  PublicAvailabilityOptionDTO,
+} from "./public.dto.js";
 import * as repo from "./public.repository.js";
 
 const maxPublicOptions = 6;
@@ -36,6 +43,10 @@ interface PublicInventoryItem {
   productName: string;
   targetLabel: string;
   publicLabel: string;
+  propertyImages: string[];
+  images: GalleryImageDTO[];
+  amenities: PublicAmenityDTO[];
+  rooms: AvailabilityOptionRoomDTO[];
 }
 
 export interface PublicAvailabilityOptionInternal {
@@ -50,7 +61,25 @@ export interface PublicAvailabilityOptionInternal {
   itemCount: number;
   propertyId: string;
   items: PublicInventoryItem[];
+  propertyImages: string[];
+  images: GalleryImageDTO[];
 }
+
+type GallerySource = {
+  id: string;
+  propertyId: string;
+  unitId: string | null;
+  roomId: string | null;
+  url: string;
+};
+
+type AmenityLinkSource = {
+  amenity: {
+    id: string;
+    name: string;
+    icon: string | null;
+  };
+};
 
 const getRoomCapacity = (room: { maxOccupancy: number }) =>
   Math.max(1, Math.min(room.maxOccupancy, publicRoomCapacityCap));
@@ -118,6 +147,24 @@ const mapOptionDTO = (
   nights: option.nights,
   itemCount: option.itemCount,
   priceBreakup: option.items.map((item) => item.pricePerNight),
+  propertyImages: option.propertyImages,
+  images: option.images,
+  items: option.items.map(mapOptionItemDTO),
+});
+
+const mapOptionItemDTO = (
+  item: PublicInventoryItem,
+): AvailabilityOptionItemDTO => ({
+  targetType: item.target.targetType,
+  unitId: item.target.unitId,
+  roomId: item.target.roomId,
+  label: item.publicLabel,
+  guestCount: item.guestCount,
+  capacity: item.capacity,
+  pricePerNight: item.pricePerNight,
+  images: item.images,
+  amenities: item.amenities,
+  rooms: item.rooms,
 });
 
 const optionRank = (
@@ -281,6 +328,97 @@ const priceTarget = async (
   return pricing;
 };
 
+const getGalleryScope = (gallery: GallerySource): GalleryImageScope => {
+  if (gallery.roomId) {
+    return "ROOM";
+  }
+
+  if (gallery.unitId) {
+    return "UNIT";
+  }
+
+  return "PROPERTY";
+};
+
+const mapGalleryImage = (gallery: GallerySource): GalleryImageDTO => {
+  const scope = getGalleryScope(gallery);
+
+  return {
+    id: gallery.id,
+    url: gallery.url,
+    scope,
+    propertyId: gallery.propertyId,
+    unitId: gallery.unitId,
+    roomId: gallery.roomId,
+    altText:
+      scope === "ROOM"
+        ? "Room image"
+        : scope === "UNIT"
+          ? "Unit image"
+          : "Property image",
+  };
+};
+
+const getInventoryImages = (
+  galleries: GallerySource[],
+  targetUnitId: string | null,
+  targetRoomId: string | null,
+): GalleryImageDTO[] => {
+  if (targetRoomId) {
+    const roomImages = galleries
+      .filter((gallery) => gallery.roomId === targetRoomId)
+      .map(mapGalleryImage);
+    if (roomImages.length > 0) return roomImages;
+  }
+
+  if (targetUnitId) {
+    const unitImages = galleries
+      .filter((gallery) => gallery.unitId === targetUnitId && !gallery.roomId)
+      .map(mapGalleryImage);
+    if (unitImages.length > 0) return unitImages;
+  }
+
+  const propertyImages = galleries
+    .filter((gallery) => !gallery.unitId && !gallery.roomId)
+    .map(mapGalleryImage);
+  if (propertyImages.length > 0) return propertyImages;
+
+  return galleries.map(mapGalleryImage);
+};
+
+const mapAmenityLinks = (links: AmenityLinkSource[]): PublicAmenityDTO[] =>
+  links.map((link) => ({
+    id: link.amenity.id,
+    name: link.amenity.name,
+    icon: link.amenity.icon ?? null,
+  }));
+
+const mergeAmenities = (...groups: PublicAmenityDTO[][]): PublicAmenityDTO[] => {
+  const amenities = new Map<string, PublicAmenityDTO>();
+
+  for (const group of groups) {
+    for (const amenity of group) {
+      amenities.set(amenity.id, amenity);
+    }
+  }
+
+  return [...amenities.values()];
+};
+
+const mapUnitRooms = (
+  unit: repo.PublicAvailabilityUnitRecord,
+): AvailabilityOptionRoomDTO[] =>
+  unit.rooms.map((room, index) => ({
+    id: room.id,
+    label: `Room ${index + 1}`,
+    capacity: getRoomCapacity(room),
+    hasAC: room.hasAC,
+    amenities: mergeAmenities(
+      mapAmenityLinks(room.amenities),
+      mapAmenityLinks(unit.amenities),
+    ),
+  }));
+
 const toPricedRoomItem = async (
   room: repo.PublicAvailabilityRoomRecord,
   guestCount: number,
@@ -308,6 +446,11 @@ const toPricedRoomItem = async (
   if (!pricing) {
     return null;
   }
+  const images = getInventoryImages(
+    room.unit.property.galleries,
+    room.unitId,
+    room.id,
+  );
 
   return {
     target,
@@ -324,6 +467,13 @@ const toPricedRoomItem = async (
     productName: pricing.product.name,
     targetLabel: `Room ${index + 1}`,
     publicLabel: `Room ${index + 1}`,
+    propertyImages: images.map((image) => image.url),
+    images,
+    amenities: mergeAmenities(
+      mapAmenityLinks(room.amenities),
+      mapAmenityLinks(room.unit.amenities),
+    ),
+    rooms: [],
   };
 };
 
@@ -355,6 +505,11 @@ const toPricedUnitItem = async (
   if (!pricing) {
     return null;
   }
+  const images = getInventoryImages(
+    unit.property.galleries,
+    unit.id,
+    null,
+  );
 
   return {
     target,
@@ -371,6 +526,10 @@ const toPricedUnitItem = async (
     productName: pricing.product.name,
     targetLabel: `Unit ${index + 1}`,
     publicLabel: `Unit ${index + 1}`,
+    propertyImages: images.map((image) => image.url),
+    images,
+    amenities: mapAmenityLinks(unit.amenities),
+    rooms: mapUnitRooms(unit),
   };
 };
 
@@ -434,6 +593,13 @@ const toOption = (
     (total, item) => total + item.pricePerNight,
     0,
   );
+  const imagesById = new Map<string, GalleryImageDTO>();
+  for (const item of items) {
+    for (const image of item.images) {
+      imagesById.set(image.id, image);
+    }
+  }
+  const images = [...imagesById.values()];
 
   return {
     optionId: buildOptionId(input, items),
@@ -447,6 +613,8 @@ const toOption = (
     itemCount: items.length,
     propertyId: items[0]?.propertyId ?? "",
     items,
+    propertyImages: images.map((image) => image.url),
+    images,
   };
 };
 

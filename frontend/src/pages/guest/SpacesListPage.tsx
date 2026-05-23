@@ -37,6 +37,19 @@ const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
   { value: "NON_AC", label: "Non-AC" },
 ];
 
+type LayoutMode = "grid" | "stack";
+
+const layoutPreferenceKey = "rently:availability-layout";
+
+const getInitialLayoutMode = (): LayoutMode => {
+  if (typeof window === "undefined") return "grid";
+
+  const savedLayout = window.localStorage.getItem(layoutPreferenceKey);
+  return savedLayout === "grid" || savedLayout === "stack"
+    ? savedLayout
+    : "grid";
+};
+
 const isComfortFilter = (value: string | null): value is ComfortFilter =>
   value === "ALL" || value === "AC" || value === "NON_AC";
 
@@ -90,7 +103,8 @@ export default function SpacesListPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [layoutMode, setLayoutMode] = useState<"grid" | "stack">("stack");
+  const [layoutMode, setLayoutMode] =
+    useState<LayoutMode>(getInitialLayoutMode);
 
   const from = searchParams.get("from") ?? "";
   const to = searchParams.get("to") ?? "";
@@ -196,6 +210,11 @@ export default function SpacesListPage() {
   };
 
   const options = availabilityQuery.data?.options ?? [];
+
+  const updateLayoutMode = (nextLayoutMode: LayoutMode) => {
+    setLayoutMode(nextLayoutMode);
+    window.localStorage.setItem(layoutPreferenceKey, nextLayoutMode);
+  };
 
   return (
     <section className="section bg-indigo-50">
@@ -360,7 +379,7 @@ export default function SpacesListPage() {
               <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
                 <button
                   type="button"
-                  onClick={() => setLayoutMode("grid")}
+                  onClick={() => updateLayoutMode("grid")}
                   className={`rounded-md p-1.5 transition ${layoutMode === "grid" ? "bg-slate-100 text-indigo-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
                   aria-label="Grid layout"
                 >
@@ -368,7 +387,7 @@ export default function SpacesListPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setLayoutMode("stack")}
+                  onClick={() => updateLayoutMode("stack")}
                   className={`rounded-md p-1.5 transition ${layoutMode === "stack" ? "bg-slate-100 text-indigo-600" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
                   aria-label="Stack layout"
                 >

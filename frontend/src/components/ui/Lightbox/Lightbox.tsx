@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   FiX,
   FiChevronLeft,
@@ -117,12 +118,12 @@ export default function Lightbox({
 
   if (!visible || !current) return null;
 
-  return (
+  const lightbox = (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Image gallery"
-      className={`fixed inset-0 z-50 flex items-center justify-center ${className}`}
+      className={`fixed inset-0 z-[1000] flex items-center justify-center ${className}`}
     >
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -239,4 +240,6 @@ export default function Lightbox({
       </div>
     </div>
   );
+
+  return createPortal(lightbox, document.body);
 }

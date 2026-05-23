@@ -149,8 +149,8 @@ const requireAuditNote = (note: string | undefined, message: string) => {
   }
 };
 
-type DashboardActor = NonNullable<Awaited<ReturnType<typeof repo.findUserById>>>;
-type DashboardPropertyScope = {
+export type DashboardActor = NonNullable<Awaited<ReturnType<typeof repo.findUserById>>>;
+export type DashboardPropertyScope = {
   isGlobal: boolean;
   propertyIds: string[];
 };
@@ -197,7 +197,7 @@ const ensureActiveActor = (actor: DashboardActor) => {
   }
 };
 
-const getActor = async (userId: string): Promise<DashboardActor> => {
+export const getActor = async (userId: string): Promise<DashboardActor> => {
   const actor = await repo.findUserById(userId);
   if (!actor) {
     throw new HttpError(404, "USER_NOT_FOUND", "User not found");
@@ -207,7 +207,7 @@ const getActor = async (userId: string): Promise<DashboardActor> => {
   return actor;
 };
 
-const getPropertyScope = async (
+export const getPropertyScope = async (
   actor: DashboardActor,
 ): Promise<DashboardPropertyScope> => {
   if (actor.role === UserRole.SUPER_ADMIN) {
@@ -257,7 +257,7 @@ const assertPropertyInScope = async (
   }
 };
 
-const assertCanManageInventory = async (
+export const assertCanManageInventory = async (
   actor: DashboardActor,
   propertyId: string,
 ) => {
@@ -280,7 +280,7 @@ const ensureManagerBelongsToAdmin = (
   }
 };
 
-const ensurePropertyExists = async (propertyId: string) => {
+export const ensurePropertyExists = async (propertyId: string) => {
   const property = await repo.findPropertyById(propertyId);
   if (!property) {
     throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
@@ -1332,6 +1332,7 @@ export const createProperty = async (
         },
       },
       ...(input.status !== undefined && { status: input.status }),
+      ...(input.images !== undefined && { images: input.images }),
     });
 
     return mapProperty(property);
@@ -1355,6 +1356,7 @@ export const updateProperty = async (
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN]);
   await ensurePropertyExists(propertyId);
+
   if (input.tenantId !== undefined) {
     await ensureTenantExists(input.tenantId);
   }
@@ -1374,6 +1376,7 @@ export const updateProperty = async (
       ...(input.state !== undefined && { state: input.state }),
       ...(input.status !== undefined && { status: input.status }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
+      ...(input.images !== undefined && { images: input.images }),
     });
 
     return mapProperty(property);

@@ -117,4 +117,11 @@ export const API_ENDPOINTS = {
       `/dashboard/properties/${propertyId}/quotes`,
     quoteById: (quoteId: string) => `/dashboard/quotes/${quoteId}`,
   },
+
+  galleries: {
+    list: "/dashboard/galleries",
+    upload: "/dashboard/galleries/upload",
+    create: "/dashboard/galleries",
+    deleteById: (galleryId: string) => `/dashboard/galleries/${galleryId}`,
+  },
 } as const;

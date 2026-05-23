@@ -7,6 +7,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import path from "path";
+import multer from "multer";
 
 import { env } from "@/config/env.js";
 
@@ -129,7 +131,8 @@ app.use(
  * Global Middlewares
  * --------------------------------------------------
  */
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use("/uploads", express.static(path.resolve("uploads")));
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(cookieParser());
@@ -200,6 +203,18 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
           path: issue.path,
           message: issue.message,
         })),
+      },
+    });
+  }
+
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({
+      error: {
+        code: err.code,
+        message:
+          err.code === "LIMIT_FILE_SIZE"
+            ? "Image file must be 10MB or smaller"
+            : "Invalid file upload",
       },
     });
   }

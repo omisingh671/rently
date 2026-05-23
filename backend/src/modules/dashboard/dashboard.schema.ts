@@ -145,6 +145,7 @@ export const createPropertySchema = z.object({
   city: z.string().trim().min(1).max(80),
   state: z.string().trim().min(1).max(80),
   status: z.nativeEnum(PropertyStatus).optional(),
+  images: z.array(z.string().url()).optional(),
 });
 
 export const updatePropertySchema = z
@@ -156,10 +157,12 @@ export const updatePropertySchema = z
     state: z.string().trim().min(1).max(80).optional(),
     status: z.nativeEnum(PropertyStatus).optional(),
     isActive: z.boolean().optional(),
+    images: z.array(z.string().url()).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
   });
+
 
 const nullableOptionalString = (max: number) =>
   z

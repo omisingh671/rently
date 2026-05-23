@@ -50,6 +50,12 @@ function getAdminPageMeta(pathname: string) {
       subtitle: "Control maintenance blocks",
     };
 
+  if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.GALLERY))
+    return {
+      title: "Gallery",
+      subtitle: "Manage property, unit, and room image galleries",
+    };
+
   if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.PRICING))
     return {
       title: "Pricing",

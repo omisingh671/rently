@@ -26,6 +26,7 @@ const EditPropertyPage = lazy(() => import("@/pages/admin/EditPropertyPage"));
 const AmenitiesPage = lazy(() => import("@/pages/admin/AmenitiesPage"));
 const UnitsPage = lazy(() => import("@/pages/admin/UnitsPage"));
 const RoomsPage = lazy(() => import("@/pages/admin/RoomsPage"));
+const GalleryPage = lazy(() => import("@/pages/admin/GalleryPage"));
 const MaintenancePage = lazy(() => import("@/pages/admin/MaintenancePage"));
 const PricingPage = lazy(() => import("@/pages/admin/PricingPage"));
 const BookingsPage = lazy(() => import("@/pages/admin/BookingsPage"));
@@ -152,6 +153,13 @@ const routes: RouteObject[] = [
                           ADMIN_ROUTES.INVENTORY_CHILDREN.ROOMS,
                         ).slice(1),
                         element: <RoomsPage />,
+                      },
+                      {
+                        path: adminPath(
+                          ADMIN_ROUTES.INVENTORY,
+                          ADMIN_ROUTES.INVENTORY_CHILDREN.GALLERY,
+                        ).slice(1),
+                        element: <GalleryPage />,
                       },
                       {
                         path: adminPath(

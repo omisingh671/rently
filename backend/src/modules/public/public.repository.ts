@@ -42,16 +42,106 @@ export const publicBookingInclude = {
 export type PublicTaxRecord = Prisma.TaxGetPayload<Record<string, never>>;
 
 const publicAvailabilityRoomInclude = {
+  amenities: {
+    where: {
+      amenity: {
+        isActive: true,
+      },
+    },
+    include: {
+      amenity: {
+        select: {
+          id: true,
+          name: true,
+          icon: true,
+        },
+      },
+    },
+  },
   unit: {
     include: {
-      property: true,
+      amenities: {
+        where: {
+          amenity: {
+            isActive: true,
+          },
+        },
+        include: {
+          amenity: {
+            select: {
+              id: true,
+              name: true,
+              icon: true,
+            },
+          },
+        },
+      },
+      property: {
+        include: {
+          galleries: {
+            orderBy: {
+              createdAt: "desc",
+            },
+          },
+        },
+      },
     },
   },
 } satisfies Prisma.RoomInclude;
 
 const publicAvailabilityUnitInclude = {
-  property: true,
-  rooms: true,
+  amenities: {
+    where: {
+      amenity: {
+        isActive: true,
+      },
+    },
+    include: {
+      amenity: {
+        select: {
+          id: true,
+          name: true,
+          icon: true,
+        },
+      },
+    },
+  },
+  property: {
+    include: {
+      galleries: {
+        orderBy: {
+          createdAt: "desc",
+        },
+      },
+    },
+  },
+  rooms: {
+    where: {
+      isActive: true,
+      status: RoomStatus.AVAILABLE,
+    },
+    include: {
+      amenities: {
+        where: {
+          amenity: {
+            isActive: true,
+          },
+        },
+        include: {
+          amenity: {
+            select: {
+              id: true,
+              name: true,
+              icon: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      number: "asc",
+    },
+  },
 } satisfies Prisma.UnitInclude;
 
 export type PublicSpaceRecord = Prisma.RoomPricingGetPayload<{

@@ -1,5 +1,10 @@
 import { useEffect } from "react";
-import { useForm, FormProvider, useWatch } from "react-hook-form";
+import {
+  useForm,
+  FormProvider,
+  useWatch,
+  type FieldPath,
+} from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import Button from "@/components/ui/Button";
@@ -14,6 +19,21 @@ import { registerSchema, type RegisterFormValues } from "./register.schema";
 type RegisterFormProps = {
   onSuccess: () => void;
 };
+
+const registerFieldNames = [
+  "fullName",
+  "email",
+  "password",
+  "confirmPassword",
+  "countryCode",
+  "contactNumber",
+] satisfies FieldPath<RegisterFormValues>[];
+
+const isRegisterFieldName = (
+  value: string | undefined,
+): value is FieldPath<RegisterFormValues> =>
+  value !== undefined &&
+  registerFieldNames.includes(value as FieldPath<RegisterFormValues>);
 
 export default function RegisterForm({ onSuccess }: RegisterFormProps) {
   const registerMutation = useRegister();
@@ -52,10 +72,33 @@ export default function RegisterForm({ onSuccess }: RegisterFormProps) {
 
     registerMutation.mutate(payload, {
       onError: (error) => {
-        setError("root.server", {
-          type: "server",
-          message: error.message,
-        });
+        const fieldMessages = new Map<FieldPath<RegisterFormValues>, string[]>();
+
+        for (const issue of error.validationIssues ?? []) {
+          const fieldName = issue.path[0];
+          if (!isRegisterFieldName(fieldName)) {
+            continue;
+          }
+
+          fieldMessages.set(fieldName, [
+            ...(fieldMessages.get(fieldName) ?? []),
+            issue.message,
+          ]);
+        }
+
+        for (const [fieldName, messages] of fieldMessages) {
+          setError(fieldName, {
+            type: "server",
+            message: messages.join(". "),
+          });
+        }
+
+        if (fieldMessages.size === 0) {
+          setError("root.server", {
+            type: "server",
+            message: error.message,
+          });
+        }
       },
     });
   };
