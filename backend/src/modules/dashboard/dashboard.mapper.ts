@@ -22,6 +22,7 @@ import type {
   DashboardTenantDTO,
   DashboardUnitDTO,
   DashboardUserDTO,
+  DashboardGalleryDTO,
 } from "./dashboard.dto.js";
 import type * as repo from "./dashboard.repository.js";
 
@@ -545,4 +546,20 @@ export const mapQuote = (
   notes: quote.notes ?? null,
   createdAt: quote.createdAt,
   updatedAt: quote.updatedAt,
+});
+
+export const mapGallery = (
+  gallery: repo.DashboardGalleryRecord,
+): DashboardGalleryDTO => ({
+  id: gallery.id,
+  propertyId: gallery.propertyId,
+  propertyName: gallery.property.name,
+  unitId: gallery.unitId ?? null,
+  unitNumber: gallery.unit?.unitNumber ?? null,
+  roomId: gallery.roomId ?? null,
+  roomName: gallery.room?.name ?? null,
+  roomNumber: gallery.room?.number ?? null,
+  url: gallery.url,
+  createdAt: gallery.createdAt,
+  updatedAt: gallery.updatedAt,
 });

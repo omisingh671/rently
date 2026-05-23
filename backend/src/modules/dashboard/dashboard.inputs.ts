@@ -124,6 +124,7 @@ export interface CreateDashboardPropertyInput {
   city: string;
   state: string;
   status?: PropertyStatus;
+  images?: string[];
 }
 
 export interface UpdateDashboardPropertyInput {
@@ -134,7 +135,9 @@ export interface UpdateDashboardPropertyInput {
   state?: string;
   status?: PropertyStatus;
   isActive?: boolean;
+  images?: string[];
 }
+
 
 export interface CreateDashboardTenantInput {
   name: string;

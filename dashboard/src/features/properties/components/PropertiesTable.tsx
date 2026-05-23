@@ -27,6 +27,7 @@ type Props = {
   isFetching: boolean;
   isUpdating: boolean;
   canManage?: boolean;
+  canEdit?: boolean;
   onUpdate: (args: {
     propertyId: string;
     payload: { isActive?: boolean; status?: PropertyStatus };
@@ -42,6 +43,7 @@ export default function PropertiesTable({
   isFetching,
   isUpdating,
   canManage = true,
+  canEdit = canManage,
   onUpdate,
 }: Props) {
   const safeItems = items ?? [];
@@ -82,7 +84,7 @@ export default function PropertiesTable({
                   </AdminTableCell>
 
                   <AdminTableCell className="font-medium text-slate-900">
-                    {canManage ? (
+                    {canEdit ? (
                       <Link
                         to={adminPath(ADMIN_ROUTES.PROPERTY_EDIT(p.id))}
                         className="text-indigo-600 hover:underline"

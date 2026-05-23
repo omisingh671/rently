@@ -87,6 +87,7 @@ export interface DashboardPropertyDTO {
     | null;
 }
 
+
 export interface DashboardPropertyAssignmentDTO {
   id: string;
   propertyId: string;
@@ -455,4 +456,18 @@ export interface DashboardSummaryDTO {
   totalQuotes: number;
   openQuotes: number;
   totalAssignments: number;
+}
+
+export interface DashboardGalleryDTO {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  unitId: string | null;
+  unitNumber: string | null;
+  roomId: string | null;
+  roomName: string | null;
+  roomNumber: string | null;
+  url: string;
+  createdAt: Date;
+  updatedAt: Date;
 }

@@ -64,6 +64,48 @@ export interface PublicAvailabilityOptionDTO {
   nights: number;
   itemCount: number;
   priceBreakup: number[];
+  propertyImages: string[];
+  images: GalleryImageDTO[];
+  items: AvailabilityOptionItemDTO[];
+}
+
+export type GalleryImageScope = "PROPERTY" | "UNIT" | "ROOM";
+
+export interface GalleryImageDTO {
+  id: string;
+  url: string;
+  scope: GalleryImageScope;
+  propertyId: string;
+  unitId: string | null;
+  roomId: string | null;
+  altText: string;
+}
+
+export interface PublicAmenityDTO {
+  id: string;
+  name: string;
+  icon: string | null;
+}
+
+export interface AvailabilityOptionItemDTO {
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
+  label: string;
+  guestCount: number;
+  capacity: number;
+  pricePerNight: number;
+  images: GalleryImageDTO[];
+  amenities: PublicAmenityDTO[];
+  rooms: AvailabilityOptionRoomDTO[];
+}
+
+export interface AvailabilityOptionRoomDTO {
+  id: string;
+  label: string;
+  capacity: number;
+  hasAC: boolean;
+  amenities: PublicAmenityDTO[];
 }
 
 export interface PublicAvailabilityDTO {

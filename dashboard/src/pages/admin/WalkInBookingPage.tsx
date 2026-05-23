@@ -8,6 +8,8 @@ const {
   FiUsers,
   FiInfo,
   FiCheck,
+  FiWind,
+  FiSun,
 } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
@@ -741,6 +743,10 @@ function SpaceRow({
     : isAvailable
       ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
       : "bg-red-50 text-red-700 border border-red-200";
+  const comfortClass =
+    item.comfortOption === "AC"
+      ? "border-blue-200 bg-blue-50 text-blue-700"
+      : "border-amber-200 bg-amber-50 text-amber-700";
 
   return (
     <label className={`${baseCardClass} ${stateClass}`}>
@@ -763,8 +769,18 @@ function SpaceRow({
             <span className="text-base font-bold text-slate-900">
               {item.title}
             </span>
-            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusClass}`}>
-              {statusText}
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold uppercase ${comfortClass}`}>
+                {item.comfortOption === "AC" ? (
+                  <FiWind className="h-3 w-3" />
+                ) : (
+                  <FiSun className="h-3 w-3" />
+                )}
+                {item.comfortOption === "AC" ? "AC" : "Non-AC"}
+              </span>
+              <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase ${statusClass}`}>
+                {statusText}
+              </span>
             </span>
           </div>
 

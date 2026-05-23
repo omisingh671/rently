@@ -1,6 +1,8 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import type { ElementType } from "react";
+import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
+import AdminUserDropdown from "./AdminUserDropdown";
 
 const {
   FiGrid,
@@ -19,10 +21,9 @@ const {
   FiFileText,
   FiBriefcase,
   FiClipboard,
+  FiImage,
   MdMeetingRoom,
 } = ICON_REGISTRY;
-import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
-import AdminUserDropdown from "./AdminUserDropdown";
 
 interface AdminSidebarProps {
   admin: {
@@ -216,6 +217,17 @@ export default function AdminSidebar({
               )}
               icon={FiTool}
               label="Maintenance"
+            />
+          )}
+
+          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
+            <SidebarLink
+              to={adminPath(
+                ADMIN_ROUTES.INVENTORY,
+                ADMIN_ROUTES.INVENTORY_CHILDREN.GALLERY,
+              )}
+              icon={FiImage}
+              label="Gallery"
             />
           )}
 

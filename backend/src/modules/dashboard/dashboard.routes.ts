@@ -1,8 +1,26 @@
 import { Router } from "express";
+import multer from "multer";
 import { authenticate } from "@/common/middleware/auth.middleware.js";
+import { HttpError } from "@/common/errors/http-error.js";
 import { authorize } from "@/common/middleware/role.middleware.js";
 import { UserRole } from "@/generated/prisma/enums.js";
 import * as controller from "./dashboard.controller.js";
+import * as galleryController from "./gallery.controller.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (!file.mimetype.startsWith("image/")) {
+      callback(new HttpError(400, "INVALID_FILE_TYPE", "Only image files are supported"));
+      return;
+    }
+
+    callback(null, true);
+  },
+});
 
 const router = Router();
 
@@ -111,5 +129,9 @@ router.patch("/enquiries/:id", controller.updateEnquiry);
 
 router.get("/properties/:propertyId/quotes", controller.listQuotes);
 router.patch("/quotes/:id", controller.updateQuote);
+
+router.post("/galleries", upload.single("image"), galleryController.createGallery);
+router.get("/galleries", galleryController.listGalleries);
+router.delete("/galleries/:id", galleryController.deleteGallery);
 
 export default router;

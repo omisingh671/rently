@@ -25,7 +25,8 @@ type Filters = {
 
 export default function PropertiesPage() {
   const user = useAuthStore((state) => state.user);
-  const canManage = user?.role === "SUPER_ADMIN";
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+  const canEdit = isSuperAdmin;
 
   const {
     page,
@@ -70,7 +71,7 @@ export default function PropertiesPage() {
       <div className="flex flex-col-reverse gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:justify-between">
         <PropertiesFilters {...filters} onChange={(next) => setFilters(next)} />
 
-        {canManage && (
+        {isSuperAdmin && (
           <Link to={adminPath(ADMIN_ROUTES.PROPERTIES, "create")}>
             <Button>Create Property</Button>
           </Link>
@@ -86,7 +87,8 @@ export default function PropertiesPage() {
         isPending={isPending}
         isFetching={isFetching}
         isUpdating={isUpdating}
-        canManage={canManage}
+        canManage={isSuperAdmin}
+        canEdit={canEdit}
         onUpdate={updateProperty}
       />
 

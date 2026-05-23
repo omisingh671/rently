@@ -57,6 +57,7 @@ import {
   FiFileText,
   FiMenu,
   FiBell,
+  FiImage,
 } from "react-icons/fi";
 
 /* ========= FONT AWESOME ========= */
@@ -231,5 +232,6 @@ export const ICON_REGISTRY: Record<string, ElementType> = {
   FiFileText,
   FiMenu,
   FiBell,
+  FiImage,
   MdMeetingRoom,
 };

@@ -196,6 +196,14 @@ export type DashboardRoomBoardBookingItemRecord =
 export type DashboardRoomBoardMaintenanceRecord =
   Prisma.MaintenanceBlockGetPayload<Record<string, never>>;
 
+export type DashboardGalleryRecord = Prisma.GalleryGetPayload<{
+  include: {
+    property: { select: { name: true } };
+    unit: { select: { unitNumber: true } };
+    room: { select: { name: true; number: true } };
+  };
+}>;
+
 interface UserListFilters {
   page: number;
   limit: number;
@@ -1652,3 +1660,54 @@ export const updateQuoteById = (
     data,
     include: dashboardQuoteInclude,
   });
+
+const dashboardGalleryInclude = {
+  property: { select: { name: true } },
+  unit: { select: { unitNumber: true } },
+  room: { select: { name: true, number: true } },
+} satisfies Prisma.GalleryInclude;
+
+export const createGallery = (data: Prisma.GalleryUncheckedCreateInput) =>
+  prisma.gallery.create({
+    data,
+    include: dashboardGalleryInclude,
+  });
+
+export const findGalleryById = (id: string) =>
+  prisma.gallery.findUnique({
+    where: { id },
+    include: dashboardGalleryInclude,
+  });
+
+export const deleteGalleryById = (id: string) =>
+  prisma.gallery.delete({
+    where: { id },
+  });
+
+export const listGalleries = (filters: {
+  propertyId?: string | string[];
+  unitId?: string;
+  roomId?: string;
+}) => {
+  const where: Prisma.GalleryWhereInput = {};
+
+  if (filters.propertyId) {
+    if (Array.isArray(filters.propertyId)) {
+      where.propertyId = { in: filters.propertyId };
+    } else {
+      where.propertyId = filters.propertyId;
+    }
+  }
+  if (filters.unitId) {
+    where.unitId = filters.unitId;
+  }
+  if (filters.roomId) {
+    where.roomId = filters.roomId;
+  }
+
+  return prisma.gallery.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: dashboardGalleryInclude,
+  });
+};
