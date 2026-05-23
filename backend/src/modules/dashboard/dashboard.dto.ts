@@ -334,8 +334,21 @@ export interface DashboardBookingDTO {
   checkIn: Date;
   checkOut: Date;
   status: BookingStatus;
+  subtotalAmount: string;
   totalAmount: string;
   discountAmount: string;
+  taxableAmount: string;
+  taxAmount: string;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    taxType: TaxType;
+    rate: number;
+    appliesTo: string;
+    taxableAmount: number;
+    taxAmount: number;
+    included: boolean;
+  }>;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
   balanceAmount: string;

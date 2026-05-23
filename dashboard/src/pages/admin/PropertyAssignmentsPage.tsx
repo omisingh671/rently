@@ -94,10 +94,14 @@ export default function PropertyAssignmentsPage() {
     ...(filters.propertyId && { propertyId: filters.propertyId }),
     role: assignmentRole,
   });
+  const visiblePagination =
+    data?.pagination && data.pagination.total > pageSize
+      ? data.pagination
+      : null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:justify-between">
         <AssignmentsFilters
           properties={properties}
           propertyId={filters.propertyId}
@@ -121,17 +125,17 @@ export default function PropertyAssignmentsPage() {
         onDelete={setAssignmentToRemove}
       />
 
-      <div className="flex items-center justify-between">
-        <PageSizeSelector value={pageSize} onChange={setPageSize} />
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <PageSizeSelector value={pageSize} onChange={setPageSize} />
 
-        {data?.pagination && data.pagination.totalPages > 1 && (
           <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       <Modal
         isOpen={isCreateOpen}

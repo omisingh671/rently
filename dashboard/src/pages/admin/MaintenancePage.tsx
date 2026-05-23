@@ -98,6 +98,10 @@ export default function MaintenancePage() {
     search: debouncedSearch,
     targetType: filters.targetType,
   });
+  const visiblePagination =
+    data?.pagination && data.pagination.total > pageSize
+      ? data.pagination
+      : null;
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -129,8 +133,8 @@ export default function MaintenancePage() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row">
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row">
         <MaintenanceFilters
           properties={properties}
           propertyId={filters.propertyId}
@@ -178,12 +182,12 @@ export default function MaintenancePage() {
         }}
       />
 
-      {data?.pagination && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <PageSizeSelector value={pageSize} onChange={setPageSize} />
           <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
         </div>

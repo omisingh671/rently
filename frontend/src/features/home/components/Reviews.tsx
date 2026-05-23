@@ -39,7 +39,7 @@ function ReviewCard({ review }: { review: Review }) {
       : null;
 
   return (
-    <div className="h-full rounded-2xl bg-surface1 px-8 py-10 shadow-sm hover:shadow-lg transition-all border border-default/10">
+    <div className="h-full rounded-2xl bg-surface1 px-8 py-10 shadow-md hover:shadow-lg transition-all border border-default/20">
       {/* Quote */}
       <RiDoubleQuotesL className="text-5xl text-warning/25 mb-6" />
 

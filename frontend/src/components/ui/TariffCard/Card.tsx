@@ -39,7 +39,7 @@ export default function TariffCard({
       className={clsx(
         "relative flex h-full flex-col rounded-3xl px-8 py-10 border shadow-lg transition-all duration-200",
         isCorporate
-          ? "bg-amber-100/10 border-slate-300 hover:border-amber-600"
+          ? "bg-amber-50 border-amber-200 hover:border-amber-600"
           : "bg-white border-slate-200 hover:border-indigo-600"
       )}
     >

@@ -61,7 +61,7 @@ export default function LocationHero() {
           </div>
 
           <div
-            className={`md:absolute md:bottom-6 md:left-6 md:z-20 rounded-xl mt-6 md:mt-0 px-3 py-2 md:w-64 shadow-lg backdrop-blur-sm bg-white/80 border border-indigo-500}`}
+            className={`md:absolute md:bottom-6 md:left-6 md:z-20 rounded-xl mt-6 md:mt-0 px-3 py-2 md:w-64 shadow-lg backdrop-blur-sm bg-white border border-slate-200`}
           >
             <div className="flex items-start gap-3">
               <span

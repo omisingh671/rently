@@ -170,6 +170,8 @@ export default function OperationsPage({ module }: Props) {
 
   const items = data?.items ?? [];
   const statuses = module === "bookings" ? bookingStatuses : leadStatuses;
+  const visiblePagination =
+    data && data.pagination.total > limit ? data.pagination : null;
 
   const setFilterValue = (key: keyof typeof filters, value: string) => {
     setActionError("");
@@ -545,7 +547,7 @@ export default function OperationsPage({ module }: Props) {
             </tbody>
             </table>
           </div>
-          {data && data.pagination.total > 0 && (
+          {visiblePagination && (
             <div className="border-t border-slate-200 bg-slate-50 px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               {/* Left Side: Page Size Selector */}
               <div className="flex flex-wrap items-center gap-2.5 text-sm text-slate-600">
@@ -566,16 +568,16 @@ export default function OperationsPage({ module }: Props) {
                 </select>
                 <span>entries</span>
                 <span className="text-xs text-slate-400 font-medium sm:ml-2">
-                  (Showing {Math.min((page - 1) * limit + 1, data.pagination.total)} to {Math.min(page * limit, data.pagination.total)} of {data.pagination.total})
+                  (Showing {Math.min((page - 1) * limit + 1, visiblePagination.total)} to {Math.min(page * limit, visiblePagination.total)} of {visiblePagination.total})
                 </span>
               </div>
 
               {/* Right Side: Pagination navigation */}
-              {data.pagination.totalPages > 1 && (
+              {visiblePagination.totalPages > 1 && (
                 <div className="shrink-0">
                   <Pagination
                     page={page}
-                    totalPages={data.pagination.totalPages}
+                    totalPages={visiblePagination.totalPages}
                     onPageChange={setPage}
                   />
                 </div>

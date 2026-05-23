@@ -39,6 +39,8 @@ export const publicBookingInclude = {
   coupon: true,
 } satisfies Prisma.BookingInclude;
 
+export type PublicTaxRecord = Prisma.TaxGetPayload<Record<string, never>>;
+
 const publicAvailabilityRoomInclude = {
   unit: {
     include: {
@@ -710,6 +712,18 @@ export const findActiveCouponByCode = (
       validFrom: { lte: now },
       OR: [{ validTo: null }, { validTo: { gte: now } }],
     },
+  });
+
+export const listActiveTaxes = (
+  propertyId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).tax.findMany({
+    where: {
+      propertyId,
+      isActive: true,
+    },
+    orderBy: { createdAt: "asc" },
   });
 
 export const incrementCouponUsage = (

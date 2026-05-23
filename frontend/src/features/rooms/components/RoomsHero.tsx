@@ -64,8 +64,8 @@ export default function RoomsHero() {
                 title={a.label}
                 desc={a.description}
                 size="md"
-                cardBg="bg-indigo-100/50"
-                borderClass="border border-indigo-200"
+                cardBg="bg-indigo-50"
+                borderClass="border border-indigo-300"
                 iconBg="bg-indigo-200 text-indigo-700"
               />
             ))}

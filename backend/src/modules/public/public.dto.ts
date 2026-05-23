@@ -5,6 +5,7 @@ import type {
   BookingStatus,
   BookingTargetType,
   ComfortOption,
+  TaxType,
 } from "@/generated/prisma/client.js";
 
 export interface PublicTenantConfigDTO {
@@ -91,6 +92,52 @@ export interface PublicBookingItemDTO {
   totalAmount: number;
 }
 
+export interface PublicTaxBreakdownDTO {
+  taxId: string;
+  name: string;
+  taxType: TaxType;
+  rate: number;
+  appliesTo: string;
+  taxableAmount: number;
+  taxAmount: number;
+  included: boolean;
+}
+
+export interface PublicBookingQuoteItemDTO {
+  targetType: BookingTargetType;
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  pricePerNight: number;
+  totalAmount: number;
+  taxInclusive: boolean;
+}
+
+export interface PublicBookingQuoteDTO {
+  propertyId: string;
+  bookingType: BookingType;
+  nights: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  currency: string;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
+  remainingPayAtCheckIn: number;
+  couponCode: string | null;
+  taxBreakdown: PublicTaxBreakdownDTO[];
+  items: PublicBookingQuoteItemDTO[];
+}
+
 export interface PublicBookingDTO {
   id: string;
   bookingRef: string;
@@ -112,8 +159,12 @@ export interface PublicBookingDTO {
   from: string;
   to: string;
   pricePerNight: number;
+  subtotalAmount: number;
   totalPrice: number;
   discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: PublicTaxBreakdownDTO[];
   paidAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;

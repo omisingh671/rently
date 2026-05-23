@@ -14,6 +14,7 @@ import {
   RateType,
   RoomProductCategory,
   RoomStatus,
+  TaxType,
   UnitStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
@@ -631,6 +632,57 @@ test("public booking applies coupon and freezes price snapshots", async () => {
         price: 2500,
       },
     );
+  }
+});
+
+test("public final quote applies tax and booking freezes tax breakdown", async () => {
+  const tax = await prisma.tax.create({
+    data: {
+      propertyId: state.propertyId,
+      name: "GST",
+      rate: 12,
+      taxType: TaxType.PERCENTAGE,
+      appliesTo: "ROOM",
+      isActive: true,
+    },
+  });
+
+  try {
+    const input = {
+      bookingType: "SINGLE_TARGET" as const,
+      spaceId: state.pricingId,
+      from: new Date("2027-08-05T00:00:00.000Z"),
+      to: new Date("2027-08-07T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    };
+    const quote = await publicService.getBookingQuote(input, {
+      tenantSlug: state.tenantSlug,
+    });
+
+    assert.equal(quote.subtotalAmount, 5000);
+    assert.equal(quote.discountAmount, 0);
+    assert.equal(quote.taxAmount, 600);
+    assert.equal(quote.totalAmount, 5600);
+    assert.equal(quote.upfrontAmount, 10);
+    assert.equal(quote.remainingPayAtCheckIn, 5590);
+    assert.equal(quote.taxBreakdown.length, 1);
+    assert.equal(quote.taxBreakdown[0]?.name, "GST");
+    assert.equal(quote.taxBreakdown[0]?.included, false);
+
+    const booking = await publicService.createBooking(
+      state.guestOneId,
+      input,
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(booking.subtotalAmount, 5000);
+    assert.equal(booking.taxAmount, 600);
+    assert.equal(booking.totalPrice, 5600);
+    assert.equal(booking.taxBreakdown.length, 1);
+    assert.equal(booking.taxBreakdown[0]?.taxId, tax.id);
+  } finally {
+    await prisma.tax.delete({ where: { id: tax.id } });
   }
 });
 

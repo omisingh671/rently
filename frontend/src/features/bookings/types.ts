@@ -3,7 +3,8 @@ export type BookingStatus =
   | "CONFIRMED"
   | "CHECKED_IN"
   | "CHECKED_OUT"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "NO_SHOW";
 
 export type PaymentProvider = "MANUAL" | "RAZORPAY" | "STRIPE";
 
@@ -35,6 +36,52 @@ export interface BookingItem {
   totalAmount: number;
 }
 
+export interface TaxBreakdown {
+  taxId: string;
+  name: string;
+  taxType: "PERCENTAGE" | "FIXED";
+  rate: number;
+  appliesTo: string;
+  taxableAmount: number;
+  taxAmount: number;
+  included: boolean;
+}
+
+export interface BookingQuoteItem {
+  targetType: "ROOM" | "UNIT";
+  unitId: string | null;
+  roomId: string | null;
+  productId: string | null;
+  targetLabel: string;
+  productName: string;
+  capacity: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  pricePerNight: number;
+  totalAmount: number;
+  taxInclusive: boolean;
+}
+
+export interface BookingQuote {
+  propertyId: string;
+  bookingType: BookingType;
+  nights: number;
+  guestCount: number;
+  comfortOption: ComfortOption;
+  currency: string;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  totalAmount: number;
+  paymentPolicy: BookingPaymentPolicy;
+  upfrontAmount: number;
+  remainingPayAtCheckIn: number;
+  couponCode: string | null;
+  taxBreakdown: TaxBreakdown[];
+  items: BookingQuoteItem[];
+}
+
 export interface Booking {
   id: string;
   bookingRef: string;
@@ -55,8 +102,14 @@ export interface Booking {
   from: string;
   to: string;
   pricePerNight: number;
+  subtotalAmount: number;
   totalPrice: number;
   discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: TaxBreakdown[];
+  paidAmount: number;
+  balanceAmount: number;
   remainingPayAtCheckIn: number;
   items: BookingItem[];
   internalNotes: string | null;
@@ -109,5 +162,8 @@ export interface CreateManualPaymentResponse {
     id: string;
     status: BookingStatus;
     totalAmount: number;
+    paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+    paidAmount: number;
+    balanceAmount: number;
   };
 }

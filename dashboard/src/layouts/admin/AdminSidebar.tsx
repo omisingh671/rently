@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
+import type { ElementType } from "react";
 
 const {
   FiGrid,
@@ -37,10 +38,41 @@ interface AdminSidebarProps {
 
 const navBase =
   "group relative flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200";
-const navActive = "bg-white/10 text-white shadow-sm";
+const navActive = "bg-[#3b82f6]/15 text-blue-50 shadow-sm";
 const navInactive = "text-slate-400 hover:bg-white/5 hover:text-white";
 const sectionLabel =
   "px-4 pt-4 pb-1 text-xs font-semibold uppercase tracking-widest text-[#7a7daa]";
+
+type SidebarIcon = ElementType<{ className?: string }>;
+
+interface SidebarLinkProps {
+  to: string;
+  icon: SidebarIcon;
+  label: string;
+}
+
+function SidebarLink({ to, icon: Icon, label }: SidebarLinkProps) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `${navBase} ${isActive ? navActive : navInactive}`
+      }
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <div className="absolute left-0 h-5 w-1 rounded-r-full bg-[#3b82f6]" />
+          )}
+          <Icon
+            className={isActive ? "text-[#3b82f6]" : "group-hover:text-white"}
+          />
+          <span>{label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
 
 export default function AdminSidebar({
   admin,
@@ -93,103 +125,50 @@ export default function AdminSidebar({
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 pt-4 space-y-2">
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.DASHBOARD)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                {isActive && (
-                  <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                )}
-                <FiGrid className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Dashboard
-              </>
-            )}
-          </NavLink>
+            icon={FiGrid}
+            label="Dashboard"
+          />
 
           {admin.role === "SUPER_ADMIN" && (
-            <NavLink
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.TENANTS)}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                  )}
-                  <FiBriefcase className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Tenants
-                </>
-              )}
-            </NavLink>
+              icon={FiBriefcase}
+              label="Tenants"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.PROPERTIES)}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                  )}
-                  <FiHome className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Properties
-                </>
-              )}
-            </NavLink>
+              icon={FiHome}
+              label="Properties"
+            />
           )}
 
           {admin.role === "SUPER_ADMIN" && (
-            <NavLink
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.ADMINS)}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                  )}
-                  <FiUsers className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Admins
-                </>
-              )}
-            </NavLink>
+              icon={FiUsers}
+              label="Admins"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.PROPERTY_ASSIGNMENTS)}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <div className="absolute left-0 h-5 w-1 rounded-r-full bg-indigo-500" />
-                  )}
-                  <FiLink className={isActive ? "text-indigo-400" : "group-hover:text-white"} /> Assignments
-                </>
-              )}
-            </NavLink>
+              icon={FiLink}
+              label="Assignments"
+            />
           )}
 
           {admin.role === "ADMIN" && (
-            <NavLink
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.MANAGERS)}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <FiUsers /> Managers
-            </NavLink>
+              icon={FiUsers}
+              label="Managers"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
@@ -197,123 +176,93 @@ export default function AdminSidebar({
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(
                 ADMIN_ROUTES.INVENTORY,
                 ADMIN_ROUTES.INVENTORY_CHILDREN.AMENITIES,
               )}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <FiLayers /> Amenities
-            </NavLink>
+              icon={FiLayers}
+              label="Amenities"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(
                 ADMIN_ROUTES.INVENTORY,
                 ADMIN_ROUTES.INVENTORY_CHILDREN.UNITS,
               )}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <FiKey /> Units
-            </NavLink>
+              icon={FiKey}
+              label="Units"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(
                 ADMIN_ROUTES.INVENTORY,
                 ADMIN_ROUTES.INVENTORY_CHILDREN.ROOMS,
               )}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <MdMeetingRoom /> Rooms
-            </NavLink>
+              icon={MdMeetingRoom}
+              label="Rooms"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(
                 ADMIN_ROUTES.INVENTORY,
                 ADMIN_ROUTES.INVENTORY_CHILDREN.MAINTENANCE,
               )}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <FiTool /> Maintenance
-            </NavLink>
+              icon={FiTool}
+              label="Maintenance"
+            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <NavLink
+            <SidebarLink
               to={adminPath(
                 ADMIN_ROUTES.INVENTORY,
                 ADMIN_ROUTES.INVENTORY_CHILDREN.PRICING,
               )}
-              className={({ isActive }) =>
-                `${navBase} ${isActive ? navActive : navInactive}`
-              }
-            >
-              <FiDollarSign /> Pricing
-            </NavLink>
+              icon={FiDollarSign}
+              label="Pricing"
+            />
           )}
 
           <p className={sectionLabel}>Leads</p>
 
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.ENQUIRIES)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <FiMessageSquare /> Enquiries
-          </NavLink>
+            icon={FiMessageSquare}
+            label="Enquiries"
+          />
 
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.QUOTES)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <FiFileText /> Quotes
-          </NavLink>
+            icon={FiFileText}
+            label="Quotes"
+          />
 
           <p className={sectionLabel}>Operations</p>
 
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.BOOKINGS)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <FiCalendar /> Bookings
-          </NavLink>
+            icon={FiCalendar}
+            label="Bookings"
+          />
 
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <FiClipboard /> Room Board
-          </NavLink>
+            icon={FiClipboard}
+            label="Room Board"
+          />
 
-          <NavLink
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.SETTINGS)}
-            className={({ isActive }) =>
-              `${navBase} ${isActive ? navActive : navInactive}`
-            }
-          >
-            <FiSettings /> Settings
-          </NavLink>
+            icon={FiSettings}
+            label="Settings"
+          />
         </nav>
 
         {/* Footer */}

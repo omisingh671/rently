@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -11,10 +11,9 @@ import Pagination from "@/components/common/Pagination";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 
 import { useAdminUnits } from "@/features/units/hooks/useAdminUnits";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 
 import type { AdminUnit, UnitStatus } from "@/features/units/types";
 
@@ -45,28 +44,29 @@ export default function UnitsPage() {
   const [editingUnit, setEditingUnit] = useState<AdminUnit | null>(null);
 
   const {
-    data: propertiesData,
-    isPending: isLoadingProperties,
+    properties,
+    selectedPropertyId,
+    setSelectedPropertyId,
+    isLoading: isLoadingProperties,
     isError: isPropertiesError,
-  } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-    search: "",
-    status: "",
-    isActive: "true",
-  });
-
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
+  } = useCurrentProperty();
 
   useEffect(() => {
-    if (!filters.propertyId && properties.length > 0) {
+    if (selectedPropertyId && filters.propertyId !== selectedPropertyId) {
       setFilters((prev) => ({
         ...prev,
-        propertyId: properties[0].id,
+        propertyId: selectedPropertyId,
+      }));
+      return;
+    }
+
+    if (!selectedPropertyId && filters.propertyId) {
+      setFilters((prev) => ({
+        ...prev,
+        propertyId: "",
       }));
     }
-  }, [properties, filters.propertyId, setFilters]);
+  }, [filters.propertyId, selectedPropertyId, setFilters]);
 
   useEffect(() => {
     setPage(1);
@@ -86,6 +86,10 @@ export default function UnitsPage() {
     status: filters.status,
     isActive: filters.isActive,
   });
+  const visiblePagination =
+    data?.pagination && data.pagination.total > pageSize
+      ? data.pagination
+      : null;
 
   const handleCreate = () => {
     setEditingUnit(null);
@@ -103,16 +107,21 @@ export default function UnitsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header + Filters */}
-      <div className="flex flex-col lg:flex-row justify-between gap-4">
+      <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:justify-between">
         <UnitsFilters
           properties={properties}
           propertyId={filters.propertyId}
           search={filters.search}
           status={filters.status}
           isActive={filters.isActive}
-          onChange={(next) => setFilters(next)}
+          onChange={(next) => {
+            if (next.propertyId) {
+              setSelectedPropertyId(next.propertyId);
+            }
+            setFilters(next);
+          }}
         />
 
         <Button
@@ -145,13 +154,13 @@ export default function UnitsPage() {
       />
 
       {/* Pagination */}
-      {data?.pagination && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <PageSizeSelector value={pageSize} onChange={setPageSize} />
 
           <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
         </div>

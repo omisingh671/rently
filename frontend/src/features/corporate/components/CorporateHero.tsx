@@ -85,8 +85,8 @@ export default function CorporateHero() {
               desc={a.desc}
               size="md"
               isDark={false}
-              cardBg="bg-indigo-100/50"
-              borderClass="border border-indigo-200"
+              cardBg="bg-indigo-50"
+              borderClass="border border-indigo-300"
               iconBg="bg-indigo-200 text-indigo-700"
             />
           ))}

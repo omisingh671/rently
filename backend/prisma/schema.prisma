@@ -441,6 +441,9 @@ model Booking {
   checkIn     DateTime
   checkOut    DateTime
   status      BookingStatus @default(PENDING)
+  subtotalAmount Decimal             @default(0)
+  taxAmount      Decimal             @default(0)
+  taxBreakdown   Json?
   totalAmount Decimal
   paymentStatus BookingPaymentStatus @default(PENDING)
   paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)

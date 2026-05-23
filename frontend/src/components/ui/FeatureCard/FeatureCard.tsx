@@ -28,10 +28,10 @@ export default function FeatureCard({
   iconPosition = "left",
   contentAlign = "left",
 
-  iconBg = "bg-indigo-100/80",
+  iconBg = "bg-indigo-100",
   iconColor = "text-indigo-600",
-  cardBg = "bg-indigo-50/40",
-  borderClass = "border border-indigo-200/60",
+  cardBg = "bg-indigo-50",
+  borderClass = "border border-indigo-200",
   compact = false,
 }: FeatureCardProps) {
   const isIconType = typeof icon === "function";

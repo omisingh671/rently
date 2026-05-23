@@ -7,6 +7,7 @@ import {
   checkAvailabilitySchema,
   createInventoryLockSchema,
   createBookingSchema,
+  createBookingQuoteSchema,
   createEnquirySchema,
   idParamsSchema,
 } from "./public.schema.js";
@@ -95,6 +96,31 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
   );
 
   res.status(201).json({ success: true, data });
+};
+
+export const getBookingQuote = async (req: AuthRequest, res: Response) => {
+  const body = createBookingQuoteSchema.parse(req.body);
+  const data = await service.getBookingQuote(
+    {
+      bookingType: body.bookingType,
+      ...(body.bookingOptionId !== undefined && {
+        bookingOptionId: body.bookingOptionId,
+      }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      from: body.from,
+      to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+      couponCode: body.couponCode,
+    },
+    resolveTenantInput(req),
+  );
+
+  res.json({ success: true, data });
 };
 
 export const createInventoryLock = async (

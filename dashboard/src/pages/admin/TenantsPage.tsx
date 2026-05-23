@@ -135,6 +135,10 @@ export default function TenantsPage() {
   const isSubmitting = isCreating || isUpdating;
   const safeItems = data?.items ?? [];
   const isInitialLoading = isPending && safeItems.length === 0;
+  const visiblePagination =
+    data?.pagination && data.pagination.total > pageSize
+      ? data.pagination
+      : null;
 
   const updateField = (
     name: keyof TenantFormPayload,
@@ -200,10 +204,10 @@ export default function TenantsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <form
         onSubmit={submit}
-        className="space-y-4 rounded-lg border border-slate-200 bg-white p-4"
+        className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
       >
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
           <input
@@ -326,7 +330,7 @@ export default function TenantsPage() {
         </div>
       </form>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
         <input
           value={filters.search}
           onChange={(event) =>
@@ -410,12 +414,12 @@ export default function TenantsPage() {
         </AdminTable>
       </AdminTableContainer>
 
-      {data?.pagination && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <PageSizeSelector value={pageSize} onChange={setPageSize} />
           <Pagination
-            page={data.pagination.page}
-            totalPages={data.pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
         </div>

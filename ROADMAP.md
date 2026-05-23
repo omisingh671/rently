@@ -27,20 +27,23 @@ Build a production-grade multi-tenant booking management platform with:
 
 ### Tenant Boundary
 
-The platform should support multiple client brands and properties.
+The platform supports multiple client brands through tenant-owned properties.
 
-Current operational boundary is `Property`.
+Current operational boundary is `Tenant -> Property`:
 
-Needed long-term boundary:
+- Completed: top-level `Tenant` model.
+- Completed: `Property` is tenant-scoped.
+- Completed: public frontend config and branding resolve from tenant config.
+- Current user, assignment, booking, enquiry, quote, pricing, and inventory scope flows through tenant-owned properties.
 
-- Add a top-level `Tenant` or `Client` model.
-- Scope `Property` to tenant/client.
-- Scope public frontend config and branding to tenant/client.
-- Scope users, assignments, bookings, enquiries, quotes, pricing, and inventory through tenant-owned properties.
+Remaining long-term boundary work:
+
+- Add tenant-level user ownership only if admins need cross-property tenant access without explicit property assignments.
+- Add tenant-aware reporting filters and deployment runbooks for each public frontend.
 
 ## Current Baseline
 
-Already implemented:
+Current repo status:
 
 - Split apps: `backend/`, `dashboard/`, `frontend/`.
 - Dashboard app separated from public frontend.
@@ -55,12 +58,12 @@ Already implemented:
 - Dashboard modules for properties, admins, managers, assignments, amenities, units, rooms, maintenance, pricing, bookings, enquiries, quotes.
 - Public frontend modules for pages, spaces, availability, booking, enquiries, auth, account, bookings.
 - Minimal seed covering dashboard users, guest user, property, inventory, pricing, booking, enquiry, quote.
-- Backend, dashboard, and frontend build/lint currently pass.
+- Backend, dashboard, and frontend check scripts exist; the Phase 4 quote/tax refresh was verified with targeted backend, dashboard, and frontend checks plus production builds.
 - Phase 1 stale source cleanup completed for unused dashboard placeholder/availability/spaces pages and frontend test page.
 - Backend RBAC/property-scope integration tests added for dashboard property access, operations access, inventory denial, and cross-property direct access.
 - Backend local smoke script added for health, public spaces, guest login, dashboard admin login, and dashboard `/me`.
 - App-level check scripts added for backend, dashboard, and frontend.
-- GitHub Actions CI workflow added for backend, dashboard, and frontend checks.
+- Root GitHub Actions CI workflow is not present in this checkout yet.
 - Phase 2 tenant foundation completed:
   - `Tenant` model added with status, domain, branding, support, currency, and timezone fields.
   - `Property` is now tenant-scoped.
@@ -74,19 +77,25 @@ Already implemented:
   - Nightly, weekly, and monthly rates supported.
   - Date-range conflict validation for pricing rules.
   - Coupon validation is integrated into booking creation and freezes booking totals at creation time.
-  - Tax CRUD exists for dashboard configuration, but tax calculation is not yet applied to booking totals.
-  - A dedicated final quote/price-breakdown API is not yet implemented.
+  - Tax CRUD is applied by server-side quote/booking calculation and booking records freeze subtotal, tax, and tax-breakdown snapshots.
+  - Dedicated final quote/price-breakdown API is available at `POST /api/v1/public/bookings/quote`.
   - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
   - Coupon management and validation integrated across dashboard and frontend.
+  - Payment summary now supports token and balance collection, including dashboard balance-payment recording.
 - Phase 5 public frontend refinements completed:
   - Modernized BookingForm with occupancy toggles and grid layout.
   - High-end Booking Payment and Account UI (Sucasa theme).
+  - Guest payment page supports both token payment and full-amount payment for pending bookings.
   - MVP cancellation flow and booking history integrated into guest account.
+  - Account booking cancellation now uses an in-app confirmation popup with optional cancellation reason instead of native browser prompts.
   - Detailed Guest Booking Page with stay breakdown, price summary, and coupon visibility.
 - Phase 6 dashboard operations completed:
   - High-density Room Board with live status filtering and unit-based grouping.
   - Walk-in booking module with pricing and availability checks.
   - Manager check-in/check-out workflow with status history.
+  - Booking Details page is the operational surface for payment history, balance collection, no-show, and lifecycle actions.
+  - Dashboard list/table surfaces use the shared table visual pattern, consistent panels, and pagination controls only when records exceed the current page limit.
+- Assignment rules now enforce one primary admin per property and manager assignment under the assigned admin.
 - Synchronized availability logic between dashboard and public frontend using shared identifiers.
 - Dashboard sidebar navigation reordered to the exact sequence: Dashboard, Tenants, Properties, Admins, Assignments (followed by Managers for the ADMIN role), with unified visual active-state indicator pills.
 - Visual contrast and layout refinements applied across Room Board card headers (softer solid backgrounds, slate-300 borders, flat border layouts with removed shadow, and high-legibility bold text weights).
@@ -148,6 +157,8 @@ Already implemented:
   - `supportPhone`
   - `defaultCurrency`
   - `timezone`
+  - `payAtCheckInEnabled`
+  - `bookingTokenAmount`
   - `createdAt`
   - `updatedAt`
 - Completed: add `tenantId` to `Property`.
@@ -179,6 +190,8 @@ Already implemented:
   - support phone
   - default currency
   - timezone
+  - pay-at-check-in setting
+  - booking token amount
 - Deferred: public booking rules as structured tenant policy.
 - Completed: add dashboard page for super-admin tenant management.
 - Completed: add public endpoint for tenant config.
@@ -224,7 +237,7 @@ Already implemented:
   - `CHECKED_OUT`
   - `CANCELLED`
   - `NO_SHOW`
-- Deferred: `NO_SHOW` enum value. Current schema supports the active MVP statuses except `NO_SHOW`.
+- Completed: `NO_SHOW` enum value, manual no-show eligibility, and status history support.
 - Completed: cancellation policy fields for MVP guest cancellations:
   - `cancellationReason`
   - `cancelledAt`
@@ -258,6 +271,7 @@ Already implemented:
 - Deferred until late-stage gateway integration: webhook verification.
 - Completed for manual payment: add idempotency keys for payment creation.
 - Completed: expose the manual payment and confirmation flow in the public frontend.
+- Completed: public pending booking payment can collect either the configured token amount or the full remaining booking balance.
 - Deferred until late-stage gateway integration: provider callback idempotency keys and webhook event storage.
 
 ## Phase 4: Pricing Engine
@@ -269,8 +283,8 @@ Already implemented:
 - Completed: add coupon validation service.
 - Completed: recalculate booking subtotal and coupon discount on booking creation.
 - Completed: freeze booking price snapshots so later rate edits do not mutate existing bookings.
-- Pending: add tax calculation service and persist/return booking tax breakdown.
-- Pending: add a final quote/price-breakdown API for frontend previews before booking creation.
+- Completed: add tax calculation service and persist/return booking subtotal, tax total, and tax breakdown.
+- Completed: add a final quote/price-breakdown API for frontend previews before booking creation.
 
 ### Dashboard Pricing UX
 
@@ -295,6 +309,7 @@ Already implemented:
   - confirmation
 - Add loading and error states everywhere.
 - Completed: public pending bookings can continue to manual payment and display confirmation state.
+- Completed: public pending bookings can be confirmed by either token payment or full-amount payment.
 - Replace visual placeholders with real assets or tenant-managed media.
 - Completed: improve account pages:
   - bookings
@@ -302,6 +317,7 @@ Already implemented:
   - payments
   - cancellation flow
 - Completed for MVP cancellation flow: account bookings can cancel pending or confirmed future bookings.
+- Completed: account booking cancellation uses an in-app confirmation modal with optional reason capture.
 - Add SEO metadata for public pages.
 
 ### Multi-Frontend Strategy
@@ -318,10 +334,12 @@ Already implemented:
 
 ### Admin Workflows
 
-- Improve property assignment workflow:
-  - one primary admin per property
-  - manager assignment scoped to admin-owned properties
-  - clear conflict/error messages
+- Completed: improve property assignment workflow:
+  - one primary admin per property is enforced.
+  - manager assignment is scoped to the assigned admin.
+  - duplicate assignment and invalid role/property combinations return explicit errors.
+- Completed: align dashboard table/list UI patterns across managers, assignments, properties, tenants, inventory, bookings, leads, and pricing surfaces.
+- Completed: hide dashboard pagination and page-size controls unless total records exceed the current page limit.
 - Add audit logs for:
   - property changes
   - user changes
@@ -383,7 +401,7 @@ Already implemented:
 - Add structured application logs.
 - Add error tracking integration.
 - Add health checks:
-  - API process
+  - Completed: API process (`/health`)
   - database connectivity
   - mail provider
   - payment provider
@@ -428,7 +446,8 @@ Already implemented:
 
 ### Local And Docker
 
-- Add or update Docker Compose for:
+- Pending: no Docker Compose or Dockerfile artifacts are present in this checkout yet.
+- Add Docker Compose for:
   - backend
   - MySQL
   - dashboard
@@ -439,7 +458,7 @@ Already implemented:
 
 ### CI/CD
 
-- Completed: add GitHub Actions CI workflow for:
+- Pending: add root GitHub Actions CI workflow for:
   - backend typecheck/lint/build
   - frontend lint/build
   - dashboard lint/build
@@ -548,8 +567,8 @@ Target rules:
 - 30+ nights should route to quote flow by default.
 - Corporate pricing should prefer corporate tiers when applicable.
 - Seasonal pricing should apply only inside valid date ranges.
-- Coupon calculation is server-side during booking creation.
-- Tax calculation must be server-side when tax totals are added to bookings.
+- Coupon calculation is server-side during quote preview and booking creation.
+- Tax calculation is server-side during quote preview and booking creation.
 - Frontend price preview is advisory only.
 - Final totals must be recalculated on booking creation.
 - Booking price snapshots must be frozen at creation time.
@@ -557,13 +576,11 @@ Target rules:
 
 ### Booking Data Future Spec
 
-Current booking records store the selected target, product snapshot, guest snapshots, price per night, dates, status, payment summary, coupon relation, discount amount, booking items, internal notes, and status history.
+Current booking records store the selected target, product snapshot, guest snapshots, price per night, dates, status, payment summary, subtotal, coupon relation, discount amount, tax amount, tax breakdown, booking items, internal notes, and status history.
 
 Future booking model should add:
 
-- price breakdown fields.
 - frozen coupon metadata beyond the coupon relation and discount amount.
-- tax breakdown.
 
 ### Public Route Intent
 
@@ -581,6 +598,9 @@ Current public routes include:
 - `/spaces`
 - `/spaces/:id`
 - `/availability-result`
+- `/bookings/checkout`
+- `/bookings/:id/payment`
+- `/bookings/:id`
 - `/login`
 - `/register`
 - `/forgot-password`
@@ -593,16 +613,19 @@ Current public routes include:
 Future public route intent:
 
 - Add a dedicated search route if needed.
-- Add a dedicated quote request route for 30+ nights and corporate leads.
-- Add public booking payment and confirmation routes for the current manual payment flow.
-- Improve account booking cancellation and payment history.
+- Add a dedicated quote request route for 30+ nights and corporate leads; current public quote intent submits an enquiry with `PUBLIC_QUOTE_REQUEST`.
+- Completed: public booking payment route for the current manual payment flow.
+- Improve account payment history beyond the current booking-detail payment summary.
 
 ### Dashboard Route Intent
 
 Current dashboard routes include:
 
 - `/dashboard`
+- `/tenants`
 - `/properties`
+- `/properties/create`
+- `/properties/:id/edit`
 - `/admins`
 - `/managers`
 - `/property-assignments`
@@ -612,6 +635,9 @@ Current dashboard routes include:
 - `/inventory/maintenance`
 - `/inventory/pricing`
 - `/bookings`
+- `/bookings/:id`
+- `/bookings/walk-in`
+- `/room-board`
 - `/enquiries`
 - `/quotes`
 - `/settings`
@@ -643,9 +669,10 @@ Target dashboard behavior:
 15. Quote requests should not require login.
 16. Booking references should follow a readable yearly sequence.
 17. Checkout session keys should be arrays to support single and group bookings.
+18. Final quote and booking creation must use the same server-side pricing, coupon, tax, and token/balance calculation path.
 
 ## Immediate Next Tasks
 
-1. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, and manager activity to provide operational insights.
-2. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay once operational workflows are fully stable.
-3. **Mobile Responsiveness Polish**: Audit and fix layout shifts and density issues on mobile for the new Room Board and Pricing pages.
+1. **Reporting & Analytics (Phase 6)**: Build dashboard reports for occupancy, revenue, booking source, and manager activity now that the booking money model has frozen subtotal, discount, tax, final total, and payment-balance fields.
+2. **CI + Deployment Foundation (Phase 9)**: Add root GitHub Actions and Docker/local run documentation so the existing backend/dashboard/frontend checks and tests run repeatably outside a local terminal.
+3. **Real Payment Gateway Integration**: Transition from manual payment flow to Stripe/Razorpay only after reporting needs and deployment basics are stable.

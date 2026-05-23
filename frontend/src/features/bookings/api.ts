@@ -2,6 +2,7 @@ import axiosInstance from "@/api/axios";
 import type {
   Booking,
   BookingGuestDetails,
+  BookingQuote,
   ComfortOption,
   CreateOptionBookingPayload,
   InventoryLock,
@@ -46,6 +47,15 @@ export const createBooking = async (
   return res.data?.data;
 };
 
+export const getBookingQuote = async (
+  payload: CreateBookingPayload,
+): Promise<BookingQuote> => {
+  const quotePayload = { ...payload };
+  delete quotePayload.guestDetails;
+  const res = await axiosInstance.post("/public/bookings/quote", quotePayload);
+  return res.data?.data;
+};
+
 export const createInventoryLock = async (
   payload: CreateBookingPayload,
 ): Promise<InventoryLock> => {
@@ -74,10 +84,11 @@ export const cancelBooking = async (
 export const createManualPayment = async (
   bookingId: string,
   idempotencyKey: string,
+  amount: number,
 ): Promise<CreateManualPaymentResponse> => {
   const res = await axiosInstance.post(
     `/public/bookings/${bookingId}/payments/manual`,
-    null,
+    { amount },
     {
       headers: {
         "Idempotency-Key": idempotencyKey,

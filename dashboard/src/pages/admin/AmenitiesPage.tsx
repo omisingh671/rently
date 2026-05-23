@@ -81,6 +81,8 @@ export default function AmenitiesPage() {
 
   const items = data?.items ?? [];
   const pagination = data?.pagination;
+  const visiblePagination =
+    pagination && pagination.total > pageSize ? pagination : null;
 
   const handleCreate = (
     values: { name: string; icon?: string },
@@ -123,7 +125,7 @@ export default function AmenitiesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col-reverse lg:flex-row justify-between gap-4">
+      <div className="flex flex-col-reverse gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:justify-between">
         <AmenitiesFilters
           properties={properties}
           propertyId={filters.propertyId}
@@ -158,17 +160,17 @@ export default function AmenitiesPage() {
         onEdit={handleEdit}
       />
 
-      <div className="flex items-center justify-between">
-        <PageSizeSelector value={pageSize} onChange={setPageSize} />
+      {visiblePagination && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <PageSizeSelector value={pageSize} onChange={setPageSize} />
 
-        {pagination && pagination.totalPages > 1 && (
           <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
+            page={visiblePagination.page}
+            totalPages={visiblePagination.totalPages}
             onPageChange={setPage}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {modalState && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
