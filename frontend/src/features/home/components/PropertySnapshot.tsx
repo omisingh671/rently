@@ -90,7 +90,7 @@ export default function PropertySnapshot() {
                 return (
                   <div
                     key={f.label}
-                    className="flex items-start gap-4 p-5 bg-white/95 border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-shadow"
+                    className="flex items-start gap-4 p-5 bg-white border border-slate-200 rounded-2xl shadow-md hover:shadow-lg transition-shadow"
                   >
                     <IconBadge
                       icon={f.icon}

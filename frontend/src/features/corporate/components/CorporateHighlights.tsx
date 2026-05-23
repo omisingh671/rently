@@ -57,8 +57,8 @@ export default function CorporateHighlights() {
               description={item.desc}
               iconBg="bg-amber-200"
               iconColor="text-amber-800"
-              cardBg="bg-amber-50/60"
-              borderClass="border border-amber-200/60"
+              cardBg="bg-amber-50"
+              borderClass="border border-amber-200"
             />
           ))}
         </div>

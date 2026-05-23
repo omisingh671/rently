@@ -70,12 +70,12 @@ const variants = {
   light: {
     sectionBg: "bg-white text-slate-900",
     mutedText: "text-slate-600",
-    cardBg: "bg-white border-indigo-100",
+    cardBg: "bg-white border-indigo-200",
     borderClass: "border",
     iconBg: "bg-indigo-50 text-indigo-600",
     chipIsDark: false,
     mapBorder: "border-slate-200",
-    mapOverlayBg: "bg-white border-slate-100",
+    mapOverlayBg: "bg-white border-slate-200",
     buttonBg: "bg-slate-800 hover:opacity-90",
     textPrimary: "text-slate-900",
     textSecondary: "text-slate-600",
@@ -165,7 +165,7 @@ export default function Location({
               className={`md:absolute md:bottom-6 md:left-6 md:z-20 rounded-xl mt-6 md:mt-0 px-5 py-4 md:w-64 shadow-lg backdrop-blur-sm border ${
                 variant === "dark"
                   ? "bg-[#2b1f66]/80 border-[#6a56ff]/40"
-                  : "bg-white/95 border-slate-100"
+                  : "bg-white border-slate-200"
               }`}
             >
               <div className="flex items-start gap-3">

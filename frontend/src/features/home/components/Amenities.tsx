@@ -89,7 +89,7 @@ const AmenitiesSection: React.FC<AmenitiesSectionProps> = ({
   const mutedText = isDark ? "text-indigo-100/85" : "text-slate-600";
   const cardBg = isDark
     ? "bg-[#4533e6]/20 border-[#6a56ff]/20"
-    : "bg-white border-indigo-100";
+    : "bg-white border-indigo-200";
   const iconBg = isDark
     ? "bg-white/10 text-amber-300"
     : "bg-indigo-50 text-indigo-600";
@@ -141,10 +141,10 @@ const AmenitiesSection: React.FC<AmenitiesSectionProps> = ({
 
             <div
               className={clsx(
-                "flex items-center mt-8 md:mt-12 rounded-xl p-4 shadow-sm",
+                "flex items-center mt-8 md:mt-12 rounded-xl p-4 shadow-md border",
                 isDark
                   ? "bg-white/6 border-white/6"
-                  : "bg-slate-50 border-slate-100"
+                  : "bg-slate-50 border-slate-200"
               )}
             >
               <FiUser

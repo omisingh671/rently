@@ -198,7 +198,7 @@ export default function SpacesListPage() {
   const options = availabilityQuery.data?.options ?? [];
 
   return (
-    <section className="section bg-surface">
+    <section className="section bg-indigo-50">
       <div className="container">
         <div className="mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
           {/* Header Part with Background */}
