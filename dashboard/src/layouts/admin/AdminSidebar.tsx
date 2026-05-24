@@ -150,6 +150,14 @@ export default function AdminSidebar({
 
           {admin.role === "SUPER_ADMIN" && (
             <SidebarLink
+              to={adminPath(ADMIN_ROUTES.AMENITIES)}
+              icon={FiLayers}
+              label="Amenities"
+            />
+          )}
+
+          {admin.role === "SUPER_ADMIN" && (
+            <SidebarLink
               to={adminPath(ADMIN_ROUTES.ADMINS)}
               icon={FiUsers}
               label="Admins"
@@ -174,17 +182,6 @@ export default function AdminSidebar({
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
             <p className={sectionLabel}>Inventory</p>
-          )}
-
-          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <SidebarLink
-              to={adminPath(
-                ADMIN_ROUTES.INVENTORY,
-                ADMIN_ROUTES.INVENTORY_CHILDREN.AMENITIES,
-              )}
-              icon={FiLayers}
-              label="Amenities"
-            />
           )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (

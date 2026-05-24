@@ -1,7 +1,5 @@
 export type Amenity = {
   id: string;
-  propertyId: string;
-  propertyName: string;
   name: string;
   icon: string | null;
   isActive: boolean;
@@ -22,4 +20,8 @@ export type UpdateAmenityPayload = {
 export type UpdateAmenityVariables = {
   amenityId: string;
   payload: UpdateAmenityPayload;
+};
+
+export type PropertyAmenityAssignments = {
+  amenityIds: string[];
 };

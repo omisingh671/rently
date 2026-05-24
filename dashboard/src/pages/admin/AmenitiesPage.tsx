@@ -1,28 +1,29 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import Button from "@/components/ui/Button";
+import PageSizeSelector from "@/components/common/PageSizeSelector";
+import Pagination from "@/components/common/Pagination";
 
 import AmenitiesTable from "@/features/amenities/components/AmenitiesTable";
 import AmenitiesFilters from "@/features/amenities/components/AmenitiesFilters";
 import AmenityForm from "@/features/amenities/components/AmenityForm/AmenityForm";
 
-import PageSizeSelector from "@/components/common/PageSizeSelector";
-import Pagination from "@/components/common/Pagination";
-
 import { useAdminAmenities } from "@/features/amenities/hooks/useAdminAmenities";
-import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
+import { useAuthStore } from "@/stores/authStore";
+import { normalizeApiError } from "@/utils/errors";
 
 import type { Amenity } from "@/features/amenities/types";
 
 type Filters = {
-  propertyId: string;
   search: string;
   isActive: "" | "true" | "false";
 };
 
 export default function AmenitiesPage() {
+  const user = useAuthStore((state) => state.user);
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+
   const {
     page,
     pageSize,
@@ -32,7 +33,6 @@ export default function AmenitiesPage() {
     setPageSize,
     setFilters,
   } = useAdminListState<Filters>({
-    propertyId: "",
     search: "",
     isActive: "",
   });
@@ -41,29 +41,9 @@ export default function AmenitiesPage() {
     { type: "create" } | { type: "edit"; amenity: Amenity } | null
   >(null);
 
-  const {
-    data: propertiesData,
-    isPending: isLoadingProperties,
-    isError: isPropertiesError,
-  } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
-    search: "",
-    status: "",
-    isActive: "true",
-  });
-
-  const properties = useMemo(
-    () => propertiesData?.items ?? [],
-    [propertiesData?.items],
-  );
-
   useEffect(() => {
-    if (!filters.propertyId && properties.length > 0) {
-      setFilters((prev) => ({
-        ...prev,
-        propertyId: properties[0].id,
-      }));
-    }
-  }, [filters.propertyId, properties, setFilters]);
+    setPage(1);
+  }, [filters.isActive, setPage]);
 
   const {
     data,
@@ -74,7 +54,7 @@ export default function AmenitiesPage() {
     updateAmenity,
     isCreating,
     isUpdating,
-  } = useAdminAmenities(filters.propertyId, page, pageSize, {
+  } = useAdminAmenities(page, pageSize, {
     search: debouncedSearch,
     isActive: filters.isActive,
   });
@@ -88,17 +68,13 @@ export default function AmenitiesPage() {
     values: { name: string; icon?: string },
     setServerError: (message: string) => void,
   ) => {
-    if (!filters.propertyId) {
-      setServerError("Select a property before creating an amenity.");
-      return;
-    }
-
     createAmenity(values)
       .then(() => setModalState(null))
-      .catch(() => setServerError("Failed to create amenity"));
+      .catch((error) => setServerError(normalizeApiError(error).message));
   };
 
   const handleEdit = (amenity: Amenity) => {
+    if (!isSuperAdmin) return;
     setModalState({ type: "edit", amenity });
   };
 
@@ -113,13 +89,14 @@ export default function AmenitiesPage() {
       payload: values,
     })
       .then(() => setModalState(null))
-      .catch(() => setServerError("Failed to update amenity"));
+      .catch((error) => setServerError(normalizeApiError(error).message));
   };
 
   const handleToggle = (args: {
     amenityId: string;
     payload: { isActive?: boolean };
   }) => {
+    if (!isSuperAdmin) return;
     void updateAmenity(args);
   };
 
@@ -127,19 +104,16 @@ export default function AmenitiesPage() {
     <div className="space-y-6">
       <div className="flex flex-col-reverse gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:justify-between">
         <AmenitiesFilters
-          properties={properties}
-          propertyId={filters.propertyId}
           search={filters.search}
           isActive={filters.isActive}
           onChange={(next) => setFilters(next)}
         />
 
-        <Button
-          disabled={!filters.propertyId || isLoadingProperties || isPropertiesError}
-          onClick={() => setModalState({ type: "create" })}
-        >
-          + Create Amenity
-        </Button>
+        {isSuperAdmin && (
+          <Button onClick={() => setModalState({ type: "create" })}>
+            + Create Amenity
+          </Button>
+        )}
       </div>
 
       <AmenitiesTable
@@ -147,15 +121,12 @@ export default function AmenitiesPage() {
         page={page}
         pageSize={pageSize}
         search={debouncedSearch}
-        isPending={Boolean(filters.propertyId) && isPending}
+        isPending={isPending}
         isFetching={isFetching}
         isError={isError}
-        emptyMessage={
-          !filters.propertyId
-            ? "Select a property to view amenities."
-            : "No amenities found for this property."
-        }
+        emptyMessage="No amenities found."
         isUpdating={isUpdating}
+        canManageCatalog={isSuperAdmin}
         onUpdate={handleToggle}
         onEdit={handleEdit}
       />
@@ -172,7 +143,7 @@ export default function AmenitiesPage() {
         </div>
       )}
 
-      {modalState && (
+      {modalState && isSuperAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-lg bg-white p-6">
             <h2 className="mb-4 text-lg font-semibold">

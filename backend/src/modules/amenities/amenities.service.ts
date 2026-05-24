@@ -28,7 +28,6 @@ export const createAmenity = async (
 ): Promise<AmenityDTO> => {
   try {
     const amenity = await repo.createAmenity({
-      propertyId: data.propertyId,
       name: data.name,
       ...(data.icon !== undefined && { icon: data.icon }),
     });

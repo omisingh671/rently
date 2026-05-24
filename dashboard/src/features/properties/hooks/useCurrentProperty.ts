@@ -6,6 +6,7 @@ export const useCurrentProperty = () => {
   const selectedPropertyId = useCurrentPropertyStore(
     (state) => state.selectedPropertyId,
   );
+  const hasHydrated = useCurrentPropertyStore((state) => state.hasHydrated);
   const setSelectedPropertyId = useCurrentPropertyStore(
     (state) => state.setSelectedPropertyId,
   );
@@ -18,9 +19,10 @@ export const useCurrentProperty = () => {
     () => propertiesQuery.data ?? [],
     [propertiesQuery.data],
   );
+  const isSelectionReady = hasHydrated && !propertiesQuery.isPending;
 
   useEffect(() => {
-    if (propertiesQuery.isPending) return;
+    if (!isSelectionReady) return;
 
     if (properties.length === 0) {
       if (selectedPropertyId !== null) {
@@ -38,17 +40,18 @@ export const useCurrentProperty = () => {
     }
   }, [
     clearSelectedPropertyId,
+    isSelectionReady,
     properties,
-    propertiesQuery.isPending,
     selectedPropertyId,
     setSelectedPropertyId,
   ]);
 
   const effectivePropertyId =
-    selectedPropertyId !== null &&
-    properties.some((property) => property.id === selectedPropertyId)
+    selectedPropertyId !== null
       ? selectedPropertyId
-      : properties[0]?.id;
+      : isSelectionReady
+        ? properties[0]?.id
+        : undefined;
 
   const selectedProperty =
     properties.find((property) => property.id === effectivePropertyId) ?? null;
@@ -59,7 +62,7 @@ export const useCurrentProperty = () => {
     selectedPropertyId: effectivePropertyId ?? "",
     setSelectedPropertyId,
     clearSelectedPropertyId,
-    isLoading: propertiesQuery.isPending,
+    isLoading: !hasHydrated || propertiesQuery.isPending,
     isFetching: propertiesQuery.isFetching,
     isError: propertiesQuery.isError,
     hasProperties: properties.length > 0,

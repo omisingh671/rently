@@ -265,7 +265,6 @@ model Property {
   createdBy         User                 @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   units             Unit[]
   amenities         PropertyAmenity[]
-  amenityCatalog    Amenity[]
   roomProducts      RoomProduct[]
   roomPricing       RoomPricing[]
   bookings          Booking[]
@@ -313,7 +312,6 @@ model Room {
   unitId       String
   name         String
   number       String
-  rent         Float
   hasAC        Boolean    @default(false)
   maxOccupancy Int        @default(2)
   status       RoomStatus @default(AVAILABLE)
@@ -589,21 +587,17 @@ model Payment {
  */
 
 model Amenity {
-  id         String  @id @default(uuid())
-  propertyId String
-  name       String
-  icon       String?
+  id   String  @id @default(uuid())
+  name String  @unique
+  icon String?
 
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  property          Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   propertyAmenities PropertyAmenity[]
   unitAmenities     UnitAmenity[]
   roomAmenities     RoomAmenity[]
 
-  @@unique([propertyId, name])
-  @@index([propertyId])
   @@map("amenities")
 }
 

@@ -27,11 +27,16 @@ interface OptionGridCardProps {
 const getSliderImages = (option: AvailabilityOption): SliderImage[] =>
   option.images.length > 0 ? option.images : option.propertyImages;
 
+const hasGalleryImages = (option: AvailabilityOption) =>
+  option.images.length > 0 || option.propertyImages.length > 0;
+
 const getLightboxImages = (images: SliderImage[]): LightboxImage[] =>
-  normalizeSliderImages(images).map((image) => ({
-    src: image.src,
-    ...(image.caption !== undefined && { caption: image.caption }),
-  }));
+  images.length > 0
+    ? normalizeSliderImages(images).map((image) => ({
+        src: image.src,
+        ...(image.caption !== undefined && { caption: image.caption }),
+      }))
+    : [];
 
 export const OptionGridCard = ({
   option,
@@ -43,6 +48,7 @@ export const OptionGridCard = ({
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const sliderImages = useMemo(() => getSliderImages(option), [option]);
+  const canOpenLightbox = hasGalleryImages(option);
   const lightboxImages = useMemo(
     () => getLightboxImages(sliderImages),
     [sliderImages],
@@ -53,10 +59,14 @@ export const OptionGridCard = ({
       <div className="mb-4">
         <ImageSlider
           images={sliderImages}
-          onImageClick={(index) => {
-            setLightboxIndex(index);
-            setIsLightboxOpen(true);
-          }}
+          onImageClick={
+            canOpenLightbox
+              ? (index) => {
+                  setLightboxIndex(index);
+                  setIsLightboxOpen(true);
+                }
+              : undefined
+          }
         />
       </div>
 

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import type { UnitStatus } from "../types";
 import type { AdminProperty } from "@/features/properties/types";
 
@@ -29,17 +28,6 @@ export default function UnitsFilters({
   onChange,
 }: Props) {
   const hasFilters = !!search || !!status || !!isActive;
-
-  useEffect(() => {
-    if (!propertyId && properties.length > 0) {
-      onChange({
-        propertyId: properties[0].id,
-        search,
-        status,
-        isActive,
-      });
-    }
-  }, [propertyId, properties, search, status, isActive, onChange]);
 
   const clearFilters = () => {
     onChange({

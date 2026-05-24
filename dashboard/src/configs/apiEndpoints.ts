@@ -61,11 +61,12 @@ export const API_ENDPOINTS = {
   },
 
   amenities: {
-    byProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/amenities`,
-    create: (propertyId: string) => `/dashboard/properties/${propertyId}/amenities`,
+    list: "/dashboard/amenities",
+    create: "/dashboard/amenities",
     byId: (amenityId: string) => `/dashboard/amenities/${amenityId}`,
     updateById: (amenityId: string) => `/dashboard/amenities/${amenityId}`,
+    assignmentsByProperty: (propertyId: string) =>
+      `/dashboard/properties/${propertyId}/amenity-assignments`,
   },
 
   units: {

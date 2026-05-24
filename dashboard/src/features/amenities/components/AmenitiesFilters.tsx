@@ -1,22 +1,16 @@
-import type { AdminProperty } from "@/features/properties/types";
 import Button from "@/components/ui/Button";
 import { HiChevronDown, HiXMark } from "react-icons/hi2";
 
 type Props = {
-  properties: AdminProperty[];
-  propertyId: string;
   search: string;
   isActive: "" | "true" | "false";
   onChange: (next: {
-    propertyId: string;
     search: string;
     isActive: "" | "true" | "false";
   }) => void;
 };
 
 export default function AmenitiesFilters({
-  properties,
-  propertyId,
   search,
   isActive,
   onChange,
@@ -24,7 +18,7 @@ export default function AmenitiesFilters({
   const hasFilters = !!search || !!isActive;
 
   const clearFilters = () => {
-    onChange({ propertyId, search: "", isActive: "" });
+    onChange({ search: "", isActive: "" });
   };
 
   const controlBase =
@@ -32,30 +26,6 @@ export default function AmenitiesFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-3 flex-1">
-      <div className={`${controlBase} w-64`}>
-        <select
-          value={propertyId}
-          onChange={(e) =>
-            onChange({
-              propertyId: e.target.value,
-              search,
-              isActive,
-            })
-          }
-          className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
-        >
-          <option value="">Select property</option>
-          {properties.map((property) => (
-            <option key={property.id} value={property.id}>
-              {property.name}
-            </option>
-          ))}
-        </select>
-
-        <HiChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-      </div>
-
-      {/* Search */}
       <div className={controlBase}>
         <input
           type="text"
@@ -63,7 +33,6 @@ export default function AmenitiesFilters({
           value={search}
           onChange={(e) =>
             onChange({
-              propertyId,
               search: e.target.value,
               isActive,
             })
@@ -72,13 +41,11 @@ export default function AmenitiesFilters({
         />
       </div>
 
-      {/* Active filter */}
       <div className={`${controlBase} w-40`}>
         <select
           value={isActive}
           onChange={(e) =>
             onChange({
-              propertyId,
               search,
               isActive: e.target.value as "" | "true" | "false",
             })

@@ -14,7 +14,6 @@ export const create = async (req: Request, res: Response) => {
   const parsed = createAmenitySchema.parse(req.body);
 
   const input = {
-    propertyId: parsed.propertyId,
     name: parsed.name,
     ...(parsed.icon !== undefined && { icon: parsed.icon }),
   };

@@ -33,6 +33,7 @@ import {
   listUnitsQuerySchema,
   listUsersQuerySchema,
   propertyIdParamsSchema,
+  replacePropertyAmenityAssignmentsSchema,
   recordBookingPaymentSchema,
   checkManualBookingAvailabilitySchema,
   updateAmenitySchema,
@@ -314,10 +315,8 @@ export const deletePropertyAssignment = async (
 };
 
 export const listAmenities = async (req: AuthRequest, res: Response) => {
-  const params = propertyIdParamsSchema.parse(req.params);
   const query = listAmenitiesQuerySchema.parse(req.query);
   const data = await service.listAmenities(getUserId(req), {
-    propertyId: params.propertyId,
     page: query.page,
     limit: query.limit,
     ...(query.search !== undefined && { search: query.search }),
@@ -333,16 +332,11 @@ export const getAmenityById = async (req: AuthRequest, res: Response) => {
 };
 
 export const createAmenity = async (req: AuthRequest, res: Response) => {
-  const params = propertyIdParamsSchema.parse(req.params);
   const body = createAmenitySchema.parse(req.body);
-  const data = await service.createAmenity(
-    getUserId(req),
-    params.propertyId,
-    {
-      name: body.name,
-      ...(body.icon !== undefined && { icon: body.icon }),
-    },
-  );
+  const data = await service.createAmenity(getUserId(req), {
+    name: body.name,
+    ...(body.icon !== undefined && { icon: body.icon }),
+  });
   res.status(201).json({ success: true, data });
 };
 
@@ -354,6 +348,34 @@ export const updateAmenity = async (req: AuthRequest, res: Response) => {
     ...(body.icon !== undefined && { icon: body.icon }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
   });
+  res.json({ success: true, data });
+};
+
+export const getPropertyAmenityAssignments = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const data = await service.getPropertyAmenityAssignments(
+    getUserId(req),
+    params.propertyId,
+  );
+  res.json({ success: true, data });
+};
+
+export const replacePropertyAmenityAssignments = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = replacePropertyAmenityAssignmentsSchema.parse(req.body);
+  const data = await service.replacePropertyAmenityAssignments(
+    getUserId(req),
+    params.propertyId,
+    {
+      amenityIds: body.amenityIds,
+    },
+  );
   res.json({ success: true, data });
 };
 
@@ -445,7 +467,6 @@ export const createRoom = async (req: AuthRequest, res: Response) => {
     unitId: body.unitId,
     name: body.name,
     number: body.number,
-    rent: body.rent,
     ...(body.hasAC !== undefined && { hasAC: body.hasAC }),
     ...(body.maxOccupancy !== undefined && {
       maxOccupancy: body.maxOccupancy,
@@ -463,7 +484,6 @@ export const updateRoom = async (req: AuthRequest, res: Response) => {
     ...(body.unitId !== undefined && { unitId: body.unitId }),
     ...(body.name !== undefined && { name: body.name }),
     ...(body.number !== undefined && { number: body.number }),
-    ...(body.rent !== undefined && { rent: body.rent }),
     ...(body.hasAC !== undefined && { hasAC: body.hasAC }),
     ...(body.maxOccupancy !== undefined && {
       maxOccupancy: body.maxOccupancy,

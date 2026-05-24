@@ -73,6 +73,7 @@ import type {
   DashboardTaxListInput,
   DashboardTenantListInput,
   DashboardUnitListInput,
+  ReplaceDashboardPropertyAmenityAssignmentsInput,
   UpdateDashboardAmenityInput,
   UpdateDashboardCouponInput,
   UpdateDashboardMaintenanceInput,
@@ -98,6 +99,7 @@ import type {
   DashboardMaintenanceBlockDTO,
   DashboardMeDTO,
   DashboardPropertyAssignmentDTO,
+  DashboardPropertyAmenityAssignmentsDTO,
   DashboardPropertyDTO,
   DashboardRoomBoardDTO,
   DashboardRoomPricingDTO,
@@ -512,24 +514,18 @@ const getStayNights = (from: Date, to: Date) =>
     Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)),
   );
 
-const ensureAmenityIdsBelongToProperty = async (
-  propertyId: string,
-  amenityIds: string[],
-) => {
+const ensureAmenityIdsExistAndAreActive = async (amenityIds: string[]) => {
   if (amenityIds.length === 0) {
     return;
   }
 
-  const count = await repo.countActiveAmenitiesByPropertyAndIds(
-    propertyId,
-    amenityIds,
-  );
+  const count = await repo.countActiveAmenitiesByIds(amenityIds);
 
   if (count !== amenityIds.length) {
     throw new HttpError(
       400,
       "INVALID_AMENITIES",
-      "Some amenities are invalid, inactive, or belong to another property",
+      "Some amenities are invalid or inactive",
     );
   }
 };
@@ -1225,7 +1221,7 @@ export const getDashboardSummary = async (
       totalAssignments,
       operationalSummary,
     ] = await Promise.all([
-      repo.countAmenities(scopedPropertyIds),
+        repo.countAmenities(),
       repo.countUnits(scopedPropertyIds),
       repo.countUsersByRole(UserRole.MANAGER, actor.id),
       repo.countAssignments(scopedPropertyIds, PropertyAssignmentRole.MANAGER),
@@ -1748,7 +1744,7 @@ export const listAmenities = async (
   filters: DashboardAmenityListInput,
 ) => {
   const actor = await getActor(userId);
-  await assertCanManageInventory(actor, filters.propertyId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
 
   const { items, total } = await repo.listAmenitiesPaginated(filters);
 
@@ -1765,26 +1761,20 @@ export const getAmenityById = async (
   amenityId: string,
 ): Promise<DashboardAmenityDTO> => {
   const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
   const amenity = await ensureAmenityExists(amenityId);
-  await assertCanManageInventory(actor, amenity.propertyId);
   return mapAmenity(amenity);
 };
 
 export const createAmenity = async (
   userId: string,
-  propertyId: string,
   input: CreateDashboardAmenityInput,
 ): Promise<DashboardAmenityDTO> => {
   const actor = await getActor(userId);
-  await assertCanManageInventory(actor, propertyId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
 
   try {
     const amenity = await repo.createAmenity({
-      property: {
-        connect: {
-          id: propertyId,
-        },
-      },
       name: input.name,
       ...(input.icon !== undefined && { icon: input.icon }),
     });
@@ -1808,8 +1798,8 @@ export const updateAmenity = async (
   input: UpdateDashboardAmenityInput,
 ): Promise<DashboardAmenityDTO> => {
   const actor = await getActor(userId);
-  const amenity = await ensureAmenityExists(amenityId);
-  await assertCanManageInventory(actor, amenity.propertyId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+  await ensureAmenityExists(amenityId);
 
   try {
     const updatedAmenity = await repo.updateAmenityById(amenityId, {
@@ -1829,6 +1819,36 @@ export const updateAmenity = async (
 
     throw error;
   }
+};
+
+export const getPropertyAmenityAssignments = async (
+  userId: string,
+  propertyId: string,
+): Promise<DashboardPropertyAmenityAssignmentsDTO> => {
+  const actor = await getActor(userId);
+  await assertCanManageInventory(actor, propertyId);
+  await ensurePropertyExists(propertyId);
+
+  return {
+    amenityIds: await repo.listPropertyAmenityIds(propertyId),
+  };
+};
+
+export const replacePropertyAmenityAssignments = async (
+  userId: string,
+  propertyId: string,
+  input: ReplaceDashboardPropertyAmenityAssignmentsInput,
+): Promise<DashboardPropertyAmenityAssignmentsDTO> => {
+  const actor = await getActor(userId);
+  await assertCanManageInventory(actor, propertyId);
+  await ensurePropertyExists(propertyId);
+
+  const amenityIds = uniqueIds(input.amenityIds);
+  await ensureAmenityIdsExistAndAreActive(amenityIds);
+
+  return {
+    amenityIds: await repo.replacePropertyAmenities(propertyId, amenityIds),
+  };
 };
 
 export const listUnits = async (
@@ -1879,7 +1899,7 @@ export const createUnit = async (
     );
   }
 
-  await ensureAmenityIdsBelongToProperty(propertyId, input.amenityIds ?? []);
+  await ensureAmenityIdsExistAndAreActive(input.amenityIds ?? []);
 
   const unit = await repo.createUnit({
     property: {
@@ -1932,10 +1952,7 @@ export const updateUnit = async (
   }
 
   if (input.amenityIds !== undefined) {
-    await ensureAmenityIdsBelongToProperty(
-      existingUnit.propertyId,
-      input.amenityIds,
-    );
+    await ensureAmenityIdsExistAndAreActive(input.amenityIds);
   }
 
   const unit = await repo.updateUnitById(unitId, {
@@ -2040,7 +2057,7 @@ export const createRoom = async (
     );
   }
 
-  await ensureAmenityIdsBelongToProperty(propertyId, input.amenityIds ?? []);
+  await ensureAmenityIdsExistAndAreActive(input.amenityIds ?? []);
 
   const room = await repo.createRoom({
     unit: {
@@ -2050,7 +2067,6 @@ export const createRoom = async (
     },
     name: input.name,
     number: input.number,
-    rent: input.rent,
     hasAC: input.hasAC ?? false,
     maxOccupancy: input.maxOccupancy ?? 2,
     ...(input.status !== undefined && { status: input.status }),
@@ -2102,7 +2118,7 @@ export const updateRoom = async (
   }
 
   if (input.amenityIds !== undefined) {
-    await ensureAmenityIdsBelongToProperty(propertyId, input.amenityIds);
+    await ensureAmenityIdsExistAndAreActive(input.amenityIds);
   }
 
   const room = await repo.updateRoomById(roomId, {
@@ -2115,7 +2131,6 @@ export const updateRoom = async (
     }),
     ...(input.name !== undefined && { name: input.name }),
     ...(input.number !== undefined && { number: input.number }),
-    ...(input.rent !== undefined && { rent: input.rent }),
     ...(input.hasAC !== undefined && { hasAC: input.hasAC }),
     ...(input.maxOccupancy !== undefined && {
       maxOccupancy: input.maxOccupancy,

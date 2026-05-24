@@ -31,13 +31,13 @@ function getAdminPageMeta(pathname: string) {
   if (pathname.includes(ADMIN_ROUTES.PROPERTIES))
     return { title: "Properties", subtitle: "Manage assigned properties" };
 
-  /* Inventory Children (Specific First) */
-  if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.AMENITIES))
+  if (pathname.includes(ADMIN_ROUTES.AMENITIES))
     return {
       title: "Amenities",
-      subtitle: "Manage property-scoped amenity inventory",
+      subtitle: "Manage global amenity catalog",
     };
 
+  /* Inventory Children (Specific First) */
   if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.ROOMS))
     return {
       title: "Rooms",

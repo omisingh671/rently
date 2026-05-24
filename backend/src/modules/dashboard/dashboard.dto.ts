@@ -103,12 +103,14 @@ export interface DashboardPropertyAssignmentDTO {
 
 export interface DashboardAmenityDTO {
   id: string;
-  propertyId: string;
-  propertyName: string;
   name: string;
   icon: string | null;
   isActive: boolean;
   createdAt: Date;
+}
+
+export interface DashboardPropertyAmenityAssignmentsDTO {
+  amenityIds: string[];
 }
 
 export interface DashboardUnitDTO {
@@ -132,7 +134,6 @@ export interface DashboardRoomDTO {
   unitNumber: string;
   name: string;
   number: string;
-  rent: number;
   hasAC: boolean;
   maxOccupancy: number;
   status: RoomStatus;

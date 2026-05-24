@@ -21,8 +21,6 @@ interface ImageSliderProps {
   onImageClick?: (index: number) => void;
 }
 
-const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
-
 export const resolveImageUrl = (url: string) => {
   if (/^(https?:|data:|blob:)/i.test(url)) {
     return url;
@@ -34,6 +32,8 @@ export const resolveImageUrl = (url: string) => {
 
   return url;
 };
+
+const DEFAULT_IMAGE = resolveImageUrl("/uploads/hah/building-placeholder.png");
 
 export const normalizeSliderImages = (
   images: SliderImage[],

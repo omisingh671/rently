@@ -1,5 +1,4 @@
 export type CreateAmenityInput = {
-  propertyId: string;
   name: string;
   icon?: string;
 };
