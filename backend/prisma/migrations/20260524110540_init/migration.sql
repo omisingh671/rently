@@ -112,7 +112,7 @@ CREATE TABLE `rooms` (
     `number` VARCHAR(191) NOT NULL,
     `rent` DOUBLE NOT NULL,
     `hasAC` BOOLEAN NOT NULL DEFAULT false,
-    `maxOccupancy` INTEGER NOT NULL DEFAULT 1,
+    `maxOccupancy` INTEGER NOT NULL DEFAULT 2,
     `status` ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') NOT NULL DEFAULT 'AVAILABLE',
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -197,6 +197,7 @@ CREATE TABLE `bookings` (
     `unitId` VARCHAR(191) NULL,
     `roomId` VARCHAR(191) NULL,
     `guestCount` INTEGER NOT NULL DEFAULT 1,
+    `comfortOption` ENUM('AC', 'NON_AC') NOT NULL,
     `guestNameSnapshot` VARCHAR(191) NOT NULL,
     `guestEmailSnapshot` VARCHAR(191) NOT NULL,
     `guestContactSnapshot` VARCHAR(191) NULL,
@@ -205,10 +206,16 @@ CREATE TABLE `bookings` (
     `pricePerNight` DECIMAL(65, 30) NOT NULL,
     `checkIn` DATETIME(3) NOT NULL,
     `checkOut` DATETIME(3) NOT NULL,
-    `status` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
+    `status` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW') NOT NULL DEFAULT 'PENDING',
+    `subtotalAmount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
+    `taxAmount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
+    `taxBreakdown` JSON NULL,
     `totalAmount` DECIMAL(65, 30) NOT NULL,
+    `paymentStatus` ENUM('PENDING', 'PARTIALLY_PAID', 'PAID', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
     `paymentPolicy` ENUM('TOKEN_AT_BOOKING', 'NO_UPFRONT_PAYMENT') NOT NULL DEFAULT 'TOKEN_AT_BOOKING',
     `upfrontAmount` DECIMAL(65, 30) NOT NULL DEFAULT 10,
+    `couponId` VARCHAR(191) NULL,
+    `discountAmount` DECIMAL(65, 30) NOT NULL DEFAULT 0,
     `internalNotes` TEXT NULL,
     `cancellationReason` TEXT NULL,
     `cancelledAt` DATETIME(3) NULL,
@@ -226,6 +233,29 @@ CREATE TABLE `bookings` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `inventory_locks` (
+    `id` VARCHAR(191) NOT NULL,
+    `lockToken` VARCHAR(191) NOT NULL,
+    `propertyId` VARCHAR(191) NOT NULL,
+    `targetType` ENUM('ROOM', 'UNIT') NOT NULL,
+    `unitId` VARCHAR(191) NULL,
+    `roomId` VARCHAR(191) NULL,
+    `checkIn` DATETIME(3) NOT NULL,
+    `checkOut` DATETIME(3) NOT NULL,
+    `expiresAt` DATETIME(3) NOT NULL,
+    `releasedAt` DATETIME(3) NULL,
+    `bookingId` VARCHAR(191) NULL,
+    `createdByUserId` VARCHAR(191) NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `inventory_locks_lockToken_idx`(`lockToken`),
+    INDEX `inventory_locks_propertyId_expiresAt_releasedAt_idx`(`propertyId`, `expiresAt`, `releasedAt`),
+    INDEX `inventory_locks_roomId_checkIn_checkOut_idx`(`roomId`, `checkIn`, `checkOut`),
+    INDEX `inventory_locks_unitId_checkIn_checkOut_idx`(`unitId`, `checkIn`, `checkOut`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `booking_items` (
     `id` VARCHAR(191) NOT NULL,
     `bookingId` VARCHAR(191) NOT NULL,
@@ -233,6 +263,8 @@ CREATE TABLE `booking_items` (
     `targetType` ENUM('ROOM', 'UNIT') NOT NULL,
     `unitId` VARCHAR(191) NULL,
     `roomId` VARCHAR(191) NULL,
+    `guestCount` INTEGER NOT NULL DEFAULT 1,
+    `comfortOption` ENUM('AC', 'NON_AC') NOT NULL,
     `targetLabel` VARCHAR(191) NOT NULL,
     `productName` VARCHAR(191) NOT NULL,
     `capacity` INTEGER NOT NULL,
@@ -250,8 +282,8 @@ CREATE TABLE `booking_items` (
 CREATE TABLE `booking_status_history` (
     `id` VARCHAR(191) NOT NULL,
     `bookingId` VARCHAR(191) NOT NULL,
-    `fromStatus` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED') NULL,
-    `toStatus` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED') NOT NULL,
+    `fromStatus` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW') NULL,
+    `toStatus` ENUM('PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW') NOT NULL,
     `actorUserId` VARCHAR(191) NULL,
     `note` TEXT NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -269,6 +301,8 @@ CREATE TABLE `payments` (
     `userId` VARCHAR(191) NOT NULL,
     `provider` ENUM('MANUAL', 'RAZORPAY', 'STRIPE') NOT NULL,
     `status` ENUM('PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+    `purpose` ENUM('TOKEN', 'BALANCE', 'FULL_PAYMENT') NOT NULL DEFAULT 'TOKEN',
+    `method` ENUM('CASH', 'UPI_MANUAL', 'BANK_TRANSFER', 'MANUAL', 'ONLINE_GATEWAY') NOT NULL DEFAULT 'MANUAL',
     `amount` DECIMAL(65, 30) NOT NULL,
     `currency` VARCHAR(3) NOT NULL DEFAULT 'INR',
     `idempotencyKey` VARCHAR(191) NOT NULL,
@@ -278,6 +312,8 @@ CREATE TABLE `payments` (
     `failureCode` VARCHAR(191) NULL,
     `failureMessage` VARCHAR(191) NULL,
     `metadata` JSON NULL,
+    `note` TEXT NULL,
+    `receivedByUserId` VARCHAR(191) NULL,
     `paidAt` DATETIME(3) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
@@ -286,6 +322,7 @@ CREATE TABLE `payments` (
     INDEX `payments_bookingId_idx`(`bookingId`),
     INDEX `payments_propertyId_idx`(`propertyId`),
     INDEX `payments_userId_idx`(`userId`),
+    INDEX `payments_receivedByUserId_idx`(`receivedByUserId`),
     INDEX `payments_status_createdAt_idx`(`status`, `createdAt`),
     UNIQUE INDEX `payments_provider_providerPaymentId_key`(`provider`, `providerPaymentId`),
     PRIMARY KEY (`id`)
@@ -354,8 +391,10 @@ CREATE TABLE `property_assignments` (
     `userId` VARCHAR(191) NOT NULL,
     `role` ENUM('ADMIN', 'MANAGER') NOT NULL,
     `assignedByUserId` VARCHAR(191) NOT NULL,
+    `primaryAdminPropertyId` VARCHAR(191) NULL,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
+    UNIQUE INDEX `property_assignments_primaryAdminPropertyId_key`(`primaryAdminPropertyId`),
     INDEX `property_assignments_userId_idx`(`userId`),
     INDEX `property_assignments_propertyId_role_idx`(`propertyId`, `role`),
     UNIQUE INDEX `property_assignments_propertyId_userId_key`(`propertyId`, `userId`),
@@ -420,6 +459,22 @@ CREATE TABLE `coupons` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- CreateTable
+CREATE TABLE `galleries` (
+    `id` VARCHAR(191) NOT NULL,
+    `propertyId` VARCHAR(191) NOT NULL,
+    `unitId` VARCHAR(191) NULL,
+    `roomId` VARCHAR(191) NULL,
+    `url` VARCHAR(500) NOT NULL,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
+
+    INDEX `galleries_propertyId_idx`(`propertyId`),
+    INDEX `galleries_unitId_idx`(`unitId`),
+    INDEX `galleries_roomId_idx`(`roomId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
 -- AddForeignKey
 ALTER TABLE `users` ADD CONSTRAINT `users_createdByUserId_fkey` FOREIGN KEY (`createdByUserId`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
@@ -472,6 +527,15 @@ ALTER TABLE `bookings` ADD CONSTRAINT `bookings_propertyId_fkey` FOREIGN KEY (`p
 ALTER TABLE `bookings` ADD CONSTRAINT `fk_booking_user` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE `bookings` ADD CONSTRAINT `bookings_couponId_fkey` FOREIGN KEY (`couponId`) REFERENCES `coupons`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `inventory_locks` ADD CONSTRAINT `inventory_locks_propertyId_fkey` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `inventory_locks` ADD CONSTRAINT `inventory_locks_bookingId_fkey` FOREIGN KEY (`bookingId`) REFERENCES `bookings`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE `booking_items` ADD CONSTRAINT `booking_items_bookingId_fkey` FOREIGN KEY (`bookingId`) REFERENCES `bookings`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -488,6 +552,9 @@ ALTER TABLE `payments` ADD CONSTRAINT `payments_propertyId_fkey` FOREIGN KEY (`p
 
 -- AddForeignKey
 ALTER TABLE `payments` ADD CONSTRAINT `payments_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `payments` ADD CONSTRAINT `payments_receivedByUserId_fkey` FOREIGN KEY (`receivedByUserId`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `amenities` ADD CONSTRAINT `amenities_propertyId_fkey` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -539,3 +606,12 @@ ALTER TABLE `taxes` ADD CONSTRAINT `taxes_propertyId_fkey` FOREIGN KEY (`propert
 
 -- AddForeignKey
 ALTER TABLE `coupons` ADD CONSTRAINT `coupons_propertyId_fkey` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `galleries` ADD CONSTRAINT `galleries_propertyId_fkey` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `galleries` ADD CONSTRAINT `galleries_unitId_fkey` FOREIGN KEY (`unitId`) REFERENCES `units`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `galleries` ADD CONSTRAINT `galleries_roomId_fkey` FOREIGN KEY (`roomId`) REFERENCES `rooms`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

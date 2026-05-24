@@ -164,19 +164,19 @@ model User {
   passwordHash    String
   role            UserRole @default(GUEST)
 
-  createdBy                  User?                @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdUsers               User[]               @relation("UserCreator")
+  createdBy                  User?                  @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers               User[]                 @relation("UserCreator")
   sessions                   Session[]
   resetTokens                PasswordResetToken[]
   bookings                   Booking[]
   payments                   Payment[]
-  paymentsReceived           Payment[]             @relation("PaymentReceivedBy")
+  paymentsReceived           Payment[]              @relation("PaymentReceivedBy")
   bookingStatusHistory       BookingStatusHistory[] @relation("BookingStatusActor")
   quotes                     QuoteRequest[]
-  propertyAssignments        PropertyAssignment[] @relation("AssignedUser")
-  createdPropertyAssignments PropertyAssignment[] @relation("AssignmentCreatedBy")
-  createdProperties          Property[]           @relation("PropertyCreatedBy")
-  createdMaintenanceBlocks   MaintenanceBlock[]   @relation("MaintenanceCreatedBy")
+  propertyAssignments        PropertyAssignment[]   @relation("AssignedUser")
+  createdPropertyAssignments PropertyAssignment[]   @relation("AssignmentCreatedBy")
+  createdProperties          Property[]             @relation("PropertyCreatedBy")
+  createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
 
   isActive Boolean @default(true)
 
@@ -222,21 +222,21 @@ model PasswordResetToken {
  */
 
 model Tenant {
-  id              String       @id @default(uuid())
-  name            String
-  slug            String       @unique
-  primaryDomain   String?      @unique
-  status          TenantStatus @default(ACTIVE)
-  brandName       String
-  logoUrl         String?
-  primaryColor    String       @default("#4f46e5")
-  secondaryColor  String       @default("#f59e0b")
-  supportEmail    String?
-  supportPhone    String?
-  defaultCurrency String       @default("INR")
-  timezone        String       @default("Asia/Kolkata")
-  payAtCheckInEnabled Boolean  @default(true)
-  bookingTokenAmount Decimal   @default(10)
+  id                  String       @id @default(uuid())
+  name                String
+  slug                String       @unique
+  primaryDomain       String?      @unique
+  status              TenantStatus @default(ACTIVE)
+  brandName           String
+  logoUrl             String?
+  primaryColor        String       @default("#4f46e5")
+  secondaryColor      String       @default("#f59e0b")
+  supportEmail        String?
+  supportPhone        String?
+  defaultCurrency     String       @default("INR")
+  timezone            String       @default("Asia/Kolkata")
+  payAtCheckInEnabled Boolean      @default(true)
+  bookingTokenAmount  Decimal      @default(10)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -422,49 +422,49 @@ model QuoteRequest {
 }
 
 model Booking {
-  id         String            @id @default(uuid())
-  bookingRef String            @unique
-  propertyId String
-  userId     String
-  productId  String?
-  bookingType BookingType      @default(SINGLE_TARGET)
-  targetType BookingTargetType
-  unitId     String?
-  roomId     String?
-  guestCount Int               @default(1)
+  id            String            @id @default(uuid())
+  bookingRef    String            @unique
+  propertyId    String
+  userId        String
+  productId     String?
+  bookingType   BookingType       @default(SINGLE_TARGET)
+  targetType    BookingTargetType
+  unitId        String?
+  roomId        String?
+  guestCount    Int               @default(1)
   comfortOption ComfortOption
 
   guestNameSnapshot    String
   guestEmailSnapshot   String
   guestContactSnapshot String?
-  targetLabel   String
-  productName   String
-  pricePerNight Decimal
+  targetLabel          String
+  productName          String
+  pricePerNight        Decimal
 
-  checkIn     DateTime
-  checkOut    DateTime
-  status      BookingStatus @default(PENDING)
-  subtotalAmount Decimal             @default(0)
-  taxAmount      Decimal             @default(0)
-  taxBreakdown   Json?
-  totalAmount Decimal
-  paymentStatus BookingPaymentStatus @default(PENDING)
-  paymentPolicy BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
-  upfrontAmount Decimal              @default(10)
-  couponId      String?
-  discountAmount Decimal             @default(0)
-  internalNotes       String?   @db.Text
-  cancellationReason  String?   @db.Text
-  cancelledAt         DateTime?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  checkIn            DateTime
+  checkOut           DateTime
+  status             BookingStatus        @default(PENDING)
+  subtotalAmount     Decimal              @default(0)
+  taxAmount          Decimal              @default(0)
+  taxBreakdown       Json?
+  totalAmount        Decimal
+  paymentStatus      BookingPaymentStatus @default(PENDING)
+  paymentPolicy      BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
+  upfrontAmount      Decimal              @default(10)
+  couponId           String?
+  discountAmount     Decimal              @default(0)
+  internalNotes      String?              @db.Text
+  cancellationReason String?              @db.Text
+  cancelledAt        DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
-  property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user          User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
-  coupon        Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  items         BookingItem[]
-  payments      Payment[]
-  statusHistory BookingStatusHistory[]
+  property       Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  coupon         Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items          BookingItem[]
+  payments       Payment[]
+  statusHistory  BookingStatusHistory[]
   inventoryLocks InventoryLock[]
 
   @@index([propertyId])
@@ -477,19 +477,19 @@ model Booking {
 }
 
 model InventoryLock {
-  id         String            @id @default(uuid())
-  lockToken  String
-  propertyId String
-  targetType BookingTargetType
-  unitId     String?
-  roomId     String?
-  checkIn    DateTime
-  checkOut   DateTime
-  expiresAt  DateTime
-  releasedAt DateTime?
-  bookingId  String?
+  id              String            @id @default(uuid())
+  lockToken       String
+  propertyId      String
+  targetType      BookingTargetType
+  unitId          String?
+  roomId          String?
+  checkIn         DateTime
+  checkOut        DateTime
+  expiresAt       DateTime
+  releasedAt      DateTime?
+  bookingId       String?
   createdByUserId String?
-  createdAt  DateTime          @default(now())
+  createdAt       DateTime          @default(now())
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
@@ -502,13 +502,13 @@ model InventoryLock {
 }
 
 model BookingItem {
-  id         String            @id @default(uuid())
-  bookingId  String
-  productId  String?
-  targetType BookingTargetType
-  unitId     String?
-  roomId     String?
-  guestCount Int               @default(1)
+  id            String            @id @default(uuid())
+  bookingId     String
+  productId     String?
+  targetType    BookingTargetType
+  unitId        String?
+  roomId        String?
+  guestCount    Int               @default(1)
   comfortOption ComfortOption
 
   targetLabel   String
@@ -551,8 +551,8 @@ model Payment {
   userId            String
   provider          PaymentProvider
   status            PaymentStatus   @default(PENDING)
-  purpose           PaymentPurpose   @default(TOKEN)
-  method            PaymentMethod    @default(MANUAL)
+  purpose           PaymentPurpose  @default(TOKEN)
+  method            PaymentMethod   @default(MANUAL)
   amount            Decimal
   currency          String          @default("INR") @db.VarChar(3)
   idempotencyKey    String          @unique
@@ -568,10 +568,10 @@ model Payment {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  receivedBy User?  @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receivedBy User?    @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([provider, providerPaymentId])
   @@index([bookingId])
@@ -668,13 +668,13 @@ model Enquiry {
 }
 
 model PropertyAssignment {
-  id               String                 @id @default(uuid())
-  propertyId       String
-  userId           String
-  role             PropertyAssignmentRole
-  assignedByUserId String
+  id                     String                 @id @default(uuid())
+  propertyId             String
+  userId                 String
+  role                   PropertyAssignmentRole
+  assignedByUserId       String
   primaryAdminPropertyId String?                @unique
-  createdAt        DateTime               @default(now())
+  createdAt              DateTime               @default(now())
 
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   user       User     @relation("AssignedUser", fields: [userId], references: [id], onDelete: Cascade)
@@ -760,9 +760,9 @@ model Gallery {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  room       Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unit     Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  room     Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
   @@index([unitId])
