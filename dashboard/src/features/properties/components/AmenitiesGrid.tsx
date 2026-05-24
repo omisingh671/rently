@@ -43,9 +43,7 @@ export default function AmenitiesGrid({ iconSize = 20 }: AmenitiesGridProps) {
 
   if (!amenities.length) {
     return (
-      <div className="text-sm text-slate-500">
-        No active amenities available.
-      </div>
+      <div className="text-sm text-slate-500">No active amenities available.</div>
     );
   }
 

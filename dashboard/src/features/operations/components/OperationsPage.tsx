@@ -402,6 +402,9 @@ export default function OperationsPage({ module }: Props) {
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
                           <span>{getBookingTargetSummary(booking)}</span>
                         </div>
+                        <div className="text-xs font-semibold text-slate-500">
+                          Ref: {booking.bookingRef}
+                        </div>
                         <div className="flex items-center gap-1.5 text-xs text-slate-500">
                           <FiUser className="h-3.5 w-3.5 text-slate-400" />
                           <span>Guests: {booking.guestCount}</span>

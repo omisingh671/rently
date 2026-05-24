@@ -119,6 +119,7 @@ before(async () => {
         userId: admin.id,
         role: PropertyAssignmentRole.ADMIN,
         assignedByUserId: superAdmin.id,
+        primaryAdminPropertyId: propertyA.id,
       },
       {
         propertyId: propertyA.id,
@@ -131,6 +132,7 @@ before(async () => {
         userId: otherAdmin.id,
         role: PropertyAssignmentRole.ADMIN,
         assignedByUserId: superAdmin.id,
+        primaryAdminPropertyId: propertyB.id,
       },
     ],
   });
@@ -152,6 +154,14 @@ after(async () => {
       where: {
         id: {
           in: [state.propertyAId, state.propertyBId],
+        },
+      },
+    });
+
+    await prisma.amenity.deleteMany({
+      where: {
+        name: {
+          startsWith: `${testId} `,
         },
       },
     });
@@ -218,7 +228,6 @@ test("MANAGER can access operations modules only", async () => {
   await assertHttpError(
     () =>
       dashboardService.listAmenities(state.managerId, {
-        propertyId: state.propertyAId,
         page: 1,
         limit: 10,
       }),
@@ -227,21 +236,103 @@ test("MANAGER can access operations modules only", async () => {
   );
 });
 
-test("direct ID access is blocked across property boundaries", async () => {
+test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
+  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+    name: `${testId} Catalog WiFi`,
+    icon: "wifi",
+  });
+
+  const listResult = await dashboardService.listAmenities(state.adminId, {
+    page: 1,
+    limit: 50,
+  });
+  assert.ok(listResult.items.some((item) => item.id === amenity.id));
+
   await assertHttpError(
     () =>
-      dashboardService.listBookings(state.adminId, {
-        propertyId: state.propertyBId,
-        page: 1,
-        limit: 10,
+      dashboardService.createAmenity(state.adminId, {
+        name: `${testId} Pool`,
+        icon: "waves",
       }),
-    404,
-    "PROPERTY_NOT_FOUND",
+    403,
+    "FORBIDDEN",
   );
 
   await assertHttpError(
     () =>
-      dashboardService.listAmenities(state.adminId, {
+      dashboardService.updateAmenity(state.adminId, amenity.id, {
+        name: `${testId} Fast WiFi`,
+      }),
+    403,
+    "FORBIDDEN",
+  );
+});
+
+test("property amenity assignments are scoped to assigned properties", async () => {
+  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+    name: `${testId} Assignment WiFi`,
+    icon: "wifi",
+  });
+
+  const assigned =
+    await dashboardService.replacePropertyAmenityAssignments(
+      state.adminId,
+      state.propertyAId,
+      {
+        amenityIds: [amenity.id],
+      },
+    );
+
+  assert.deepEqual(assigned.amenityIds, [amenity.id]);
+
+  const reloaded = await dashboardService.getPropertyAmenityAssignments(
+    state.adminId,
+    state.propertyAId,
+  );
+  assert.deepEqual(reloaded.amenityIds, [amenity.id]);
+
+  await assertHttpError(
+    () =>
+      dashboardService.replacePropertyAmenityAssignments(
+        state.adminId,
+        state.propertyBId,
+        {
+          amenityIds: [amenity.id],
+        },
+      ),
+    404,
+    "PROPERTY_NOT_FOUND",
+  );
+});
+
+test("property amenity assignments reject inactive amenities", async () => {
+  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+    name: `${testId} Inactive Amenity`,
+    icon: "wifi",
+  });
+
+  await dashboardService.updateAmenity(state.superAdminId, amenity.id, {
+    isActive: false,
+  });
+
+  await assertHttpError(
+    () =>
+      dashboardService.replacePropertyAmenityAssignments(
+        state.adminId,
+        state.propertyAId,
+        {
+          amenityIds: [amenity.id],
+        },
+      ),
+    400,
+    "INVALID_AMENITIES",
+  );
+});
+
+test("direct ID access is blocked across property boundaries", async () => {
+  await assertHttpError(
+    () =>
+      dashboardService.listBookings(state.adminId, {
         propertyId: state.propertyBId,
         page: 1,
         limit: 10,
@@ -283,6 +374,7 @@ test("property can have only one primary admin assignment", async () => {
         userId: state.otherAdminId,
         role: PropertyAssignmentRole.ADMIN,
         assignedByUserId: state.superAdminId,
+        primaryAdminPropertyId: state.propertyAId,
       },
     }),
   );

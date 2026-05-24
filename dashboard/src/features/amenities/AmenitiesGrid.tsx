@@ -4,7 +4,6 @@ import { useActiveAmenities } from "@/features/amenities/hooks/useActiveAmenitie
 import { resolveIcon } from "@/utils/resolveIcon";
 
 type PropertyFormValues = {
-  propertyId?: string;
   amenityIds?: string[];
 };
 
@@ -14,8 +13,7 @@ type AmenitiesGridProps = {
 
 export default function AmenitiesGrid({ iconSize = 20 }: AmenitiesGridProps) {
   const { control, setValue } = useFormContext<PropertyFormValues>();
-  const propertyId = useWatch({ control, name: "propertyId" });
-  const { data: amenities = [] } = useActiveAmenities(propertyId);
+  const { data: amenities = [] } = useActiveAmenities();
 
   const watchedAmenityIds = useWatch({ control, name: "amenityIds" });
   const selected = useMemo(
@@ -45,16 +43,12 @@ export default function AmenitiesGrid({ iconSize = 20 }: AmenitiesGridProps) {
 
   if (!amenities.length) {
     return (
-      <div className="text-sm text-slate-500">
-        {propertyId
-          ? "No active amenities available."
-          : "Select a property to load amenities."}
-      </div>
+      <div className="text-sm text-slate-500">No active amenities available.</div>
     );
   }
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="flex min-w-0 flex-wrap gap-3">
       {amenities.map((a) => {
         const Icon = resolveIcon(a.icon);
         const isSelected = selected.includes(a.id);
@@ -64,7 +58,7 @@ export default function AmenitiesGrid({ iconSize = 20 }: AmenitiesGridProps) {
             key={a.id}
             type="button"
             onClick={() => toggleAmenity(a.id)}
-            className={`group inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm whitespace-nowrap max-w-[250px] transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${isSelected ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+            className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:max-w-[250px] ${isSelected ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
           >
             {Icon && (
               <Icon

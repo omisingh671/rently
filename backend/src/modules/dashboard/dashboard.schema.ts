@@ -245,6 +245,10 @@ export const updateAmenitySchema = z
     message: "At least one field must be provided",
   });
 
+export const replacePropertyAmenityAssignmentsSchema = z.object({
+  amenityIds: z.array(idSchema),
+});
+
 export const createUnitSchema = z.object({
   unitNumber: z.string().trim().min(1).max(50),
   floor: z.number().int().min(0),
@@ -268,7 +272,6 @@ export const createRoomSchema = z.object({
   unitId: idSchema,
   name: z.string().trim().min(1).max(120),
   number: z.string().trim().min(1).max(50),
-  rent: z.number().positive(),
   hasAC: z.boolean().optional(),
   maxOccupancy: z.number().int().min(1).max(10).optional(),
   status: z.nativeEnum(RoomStatus).optional(),
@@ -280,7 +283,6 @@ export const updateRoomSchema = z
     unitId: idSchema.optional(),
     name: z.string().trim().min(1).max(120).optional(),
     number: z.string().trim().min(1).max(50).optional(),
-    rent: z.number().positive().optional(),
     hasAC: z.boolean().optional(),
     maxOccupancy: z.number().int().min(1).max(10).optional(),
     status: z.nativeEnum(RoomStatus).optional(),

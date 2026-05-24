@@ -21,6 +21,9 @@ const DashboardPage = lazy(() => import("@/pages/admin/DashboardPage"));
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
 const PropertiesPage = lazy(() => import("@/pages/admin/PropertiesPage"));
+const PropertyDetailsPage = lazy(
+  () => import("@/pages/admin/PropertyDetailsPage"),
+);
 const CreatePropertyPage = lazy(() => import("@/pages/admin/CreatePropertyPage"));
 const EditPropertyPage = lazy(() => import("@/pages/admin/EditPropertyPage"));
 const AmenitiesPage = lazy(() => import("@/pages/admin/AmenitiesPage"));
@@ -94,6 +97,10 @@ const routes: RouteObject[] = [
                     element: <PropertiesPage />,
                   },
                   {
+                    path: ADMIN_ROUTES.PROPERTY_VIEW(":id"),
+                    element: <PropertyDetailsPage />,
+                  },
+                  {
                     path: ADMIN_ROUTES.PROFILE,
                     element: <ProfilePage />,
                   },
@@ -120,6 +127,10 @@ const routes: RouteObject[] = [
                         path: ADMIN_ROUTES.PROPERTY_EDIT(":id"),
                         element: <EditPropertyPage />,
                       },
+                      {
+                        path: ADMIN_ROUTES.AMENITIES,
+                        element: <AmenitiesPage />,
+                      },
                     ],
                   },
                   {
@@ -132,13 +143,6 @@ const routes: RouteObject[] = [
                       {
                         path: ADMIN_ROUTES.MANAGERS,
                         element: <UsersPage />,
-                      },
-                      {
-                        path: adminPath(
-                          ADMIN_ROUTES.INVENTORY,
-                          ADMIN_ROUTES.INVENTORY_CHILDREN.AMENITIES,
-                        ).slice(1),
-                        element: <AmenitiesPage />,
                       },
                       {
                         path: adminPath(

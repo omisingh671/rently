@@ -27,11 +27,13 @@ type Props = {
   isFetching: boolean;
   isUpdating: boolean;
   canManage?: boolean;
-  canEdit?: boolean;
+  propertyLinkMode?: "edit" | "view" | "none";
+  canManageAmenities?: boolean;
   onUpdate: (args: {
     propertyId: string;
     payload: { isActive?: boolean; status?: PropertyStatus };
   }) => void;
+  onManageAmenities: (property: AdminProperty) => void;
 };
 
 export default function PropertiesTable({
@@ -43,8 +45,10 @@ export default function PropertiesTable({
   isFetching,
   isUpdating,
   canManage = true,
-  canEdit = canManage,
+  propertyLinkMode = canManage ? "edit" : "none",
+  canManageAmenities = false,
   onUpdate,
+  onManageAmenities,
 }: Props) {
   const safeItems = items ?? [];
 
@@ -62,8 +66,8 @@ export default function PropertiesTable({
             <AdminTableCell as="th">Name</AdminTableCell>
             <AdminTableCell as="th">Tenant</AdminTableCell>
             <AdminTableCell as="th">City</AdminTableCell>
-            <AdminTableCell as="th">State</AdminTableCell>
             <AdminTableCell as="th">Status</AdminTableCell>
+            <AdminTableCell as="th">Action</AdminTableCell>
             <AdminTableCell as="th">Active</AdminTableCell>
           </tr>
         </AdminTableHeader>
@@ -84,11 +88,19 @@ export default function PropertiesTable({
                   </AdminTableCell>
 
                   <AdminTableCell className="font-medium text-slate-900">
-                    {canEdit ? (
+                    {propertyLinkMode !== "none" ? (
                       <Link
-                        to={adminPath(ADMIN_ROUTES.PROPERTY_EDIT(p.id))}
+                        to={adminPath(
+                          propertyLinkMode === "edit"
+                            ? ADMIN_ROUTES.PROPERTY_EDIT(p.id)
+                            : ADMIN_ROUTES.PROPERTY_VIEW(p.id),
+                        )}
                         className="text-indigo-600 hover:underline"
-                        aria-label={`Edit property ${p.name}`}
+                        aria-label={
+                          propertyLinkMode === "edit"
+                            ? `Edit property ${p.name}`
+                            : `View property ${p.name}`
+                        }
                       >
                         {highlightText(p.name, search)}
                       </Link>
@@ -103,10 +115,22 @@ export default function PropertiesTable({
                     {highlightText(p.city, search)}
                   </AdminTableCell>
 
-                  <AdminTableCell>{p.state}</AdminTableCell>
-
                   <AdminTableCell>
                     <PropertyStatusBadge status={p.status} />
+                  </AdminTableCell>
+
+                  <AdminTableCell>
+                    {canManageAmenities ? (
+                      <button
+                        type="button"
+                        onClick={() => onManageAmenities(p)}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        Assign Amenity
+                      </button>
+                    ) : (
+                      <span className="text-sm text-slate-400">View only</span>
+                    )}
                   </AdminTableCell>
 
                   <AdminTableCell>

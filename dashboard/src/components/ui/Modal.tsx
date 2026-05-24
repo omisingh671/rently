@@ -61,13 +61,15 @@ export default function Modal({
 
       {/* Modal */}
       <div
-        className={`relative z-10 w-full ${SIZE_MAP[size]} rounded-lg bg-white p-6 shadow-xl`}
+        className={`relative z-10 flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl ${SIZE_MAP[size]}`}
       >
         {title && (
-          <h2 className="mb-4 text-lg font-semibold text-slate-800">{title}</h2>
+          <div className="border-b border-slate-200 px-6 py-4">
+            <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+          </div>
         )}
 
-        {children}
+        <div className="overflow-y-auto px-6 py-4">{children}</div>
       </div>
     </div>,
     document.body,

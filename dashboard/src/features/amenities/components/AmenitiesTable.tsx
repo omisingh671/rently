@@ -22,6 +22,7 @@ type Props = {
   isError?: boolean;
   emptyMessage?: string;
   isUpdating: boolean;
+  canManageCatalog?: boolean;
   onUpdate: (args: {
     amenityId: string;
     payload: { isActive?: boolean };
@@ -39,6 +40,7 @@ export default function AmenitiesTable({
   isError = false,
   emptyMessage = "No amenities found.",
   isUpdating,
+  canManageCatalog = true,
   onUpdate,
   onEdit,
 }: Props) {
@@ -103,7 +105,7 @@ export default function AmenitiesTable({
                   <AdminTableCell>
                     <AmenityStatusToggle
                       checked={a.isActive}
-                      disabled={isUpdating}
+                      disabled={isUpdating || !canManageCatalog}
                       onChange={(next) =>
                         onUpdate({
                           amenityId: a.id,
@@ -115,13 +117,17 @@ export default function AmenitiesTable({
 
                   {/* Actions */}
                   <AdminTableCell>
-                    <button
-                      className="text-indigo-600 hover:underline text-sm"
-                      onClick={() => onEdit(a)}
-                      type="button"
-                    >
-                      Edit
-                    </button>
+                    {canManageCatalog ? (
+                      <button
+                        className="text-indigo-600 hover:underline text-sm"
+                        onClick={() => onEdit(a)}
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <span className="text-sm text-slate-400">View only</span>
+                    )}
                   </AdminTableCell>
                 </AdminTableRow>
               );

@@ -6,6 +6,7 @@ import type { PaginatedResult } from "@/common/types/pagination";
 
 import type {
   CreateAmenityPayload,
+  PropertyAmenityAssignments,
   UpdateAmenityVariables,
   Amenity,
 } from "./types";
@@ -13,7 +14,6 @@ import type {
 /* ---------------- LIST ---------------- */
 
 export const fetchAdminAmenities = async (
-  propertyId: string,
   page: number,
   limit: number,
   filters: {
@@ -23,7 +23,7 @@ export const fetchAdminAmenities = async (
 ): Promise<PaginatedResult<Amenity>> => {
   const res = await axiosInstance.get<
     ApiSuccessResponse<PaginatedResult<Amenity>>
-  >(API_ENDPOINTS.amenities.byProperty(propertyId), {
+  >(API_ENDPOINTS.amenities.list, {
     params: {
       page,
       limit,
@@ -37,11 +37,10 @@ export const fetchAdminAmenities = async (
 /* ---------------- CREATE ---------------- */
 
 export const createAmenity = async (
-  propertyId: string,
   payload: CreateAmenityPayload,
 ): Promise<Amenity> => {
   const res = await axiosInstance.post<ApiSuccessResponse<Amenity>>(
-    API_ENDPOINTS.amenities.create(propertyId),
+    API_ENDPOINTS.amenities.create,
     payload,
   );
 
@@ -69,6 +68,27 @@ export const fetchAmenityById = async (amenityId: string): Promise<Amenity> => {
   const res = await axiosInstance.get<ApiSuccessResponse<Amenity>>(
     API_ENDPOINTS.amenities.byId(amenityId),
   );
+
+  return res.data.data;
+};
+
+export const fetchPropertyAmenityAssignments = async (
+  propertyId: string,
+): Promise<PropertyAmenityAssignments> => {
+  const res = await axiosInstance.get<
+    ApiSuccessResponse<PropertyAmenityAssignments>
+  >(API_ENDPOINTS.amenities.assignmentsByProperty(propertyId));
+
+  return res.data.data;
+};
+
+export const replacePropertyAmenityAssignments = async (
+  propertyId: string,
+  payload: PropertyAmenityAssignments,
+): Promise<PropertyAmenityAssignments> => {
+  const res = await axiosInstance.put<
+    ApiSuccessResponse<PropertyAmenityAssignments>
+  >(API_ENDPOINTS.amenities.assignmentsByProperty(propertyId), payload);
 
   return res.data.data;
 };

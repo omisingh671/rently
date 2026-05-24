@@ -9,7 +9,9 @@ export const ADMIN_ROUTES = {
 
   PROPERTIES: "properties",
   PROPERTIES_CREATE: "properties/create",
+  PROPERTY_VIEW: (id: string) => `properties/${id}`,
   PROPERTY_EDIT: (id: string) => `properties/${id}/edit`,
+  AMENITIES: "amenities",
 
   UNITS_BY_PROPERTY: (propertyId: string) => `properties/${propertyId}/units`,
   UNIT_CREATE: (propertyId: string) => `properties/${propertyId}/units/create`,
@@ -18,7 +20,6 @@ export const ADMIN_ROUTES = {
   INVENTORY: "inventory",
   INVENTORY_CHILDREN: {
     PRICING: "pricing",
-    AMENITIES: "amenities",
     UNITS: "units",
     ROOMS: "rooms",
     MAINTENANCE: "maintenance",

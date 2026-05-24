@@ -2,28 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "@/api/axios";
 import { API_ENDPOINTS } from "@/configs/apiEndpoints";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
-
-interface Amenity {
-  id: string;
-  name: string;
-  icon: string | null;
-}
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
+import type { Amenity } from "../types";
 
 interface ApiResponse<T> {
   success: boolean;
   data: T;
 }
 
-export function useActiveAmenities(propertyId?: string) {
+export function useActiveAmenities() {
   return useQuery<Amenity[]>({
-    queryKey: ["admin", "amenities", "active", propertyId],
+    queryKey: ADMIN_KEYS.amenities.active(),
     queryFn: async () => {
-      if (!propertyId) {
-        return [];
-      }
-
       const res = await axiosInstance.get<ApiResponse<{ items: Amenity[] }>>(
-        API_ENDPOINTS.amenities.byProperty(propertyId),
+        API_ENDPOINTS.amenities.list,
         {
           params: {
             page: 1,
@@ -35,7 +27,6 @@ export function useActiveAmenities(propertyId?: string) {
 
       return res.data.data.items;
     },
-    enabled: Boolean(propertyId),
     placeholderData: (prev) => prev,
   });
 }

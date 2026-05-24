@@ -49,7 +49,6 @@ export interface DashboardAssignmentListInput extends DashboardPaginationInput {
 }
 
 export interface DashboardAmenityListInput extends DashboardPaginationInput {
-  propertyId: string;
   search?: string;
   isActive?: boolean;
 }
@@ -205,6 +204,10 @@ export interface UpdateDashboardAmenityInput {
   isActive?: boolean;
 }
 
+export interface ReplaceDashboardPropertyAmenityAssignmentsInput {
+  amenityIds: string[];
+}
+
 export interface CreateDashboardUnitInput {
   unitNumber: string;
   floor: number;
@@ -224,7 +227,6 @@ export interface CreateDashboardRoomInput {
   unitId: string;
   name: string;
   number: string;
-  rent: number;
   hasAC?: boolean;
   maxOccupancy?: number;
   status?: RoomStatus;
@@ -235,7 +237,6 @@ export interface UpdateDashboardRoomInput {
   unitId?: string;
   name?: string;
   number?: string;
-  rent?: number;
   hasAC?: boolean;
   maxOccupancy?: number;
   status?: RoomStatus;

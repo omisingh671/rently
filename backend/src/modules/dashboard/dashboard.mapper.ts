@@ -129,8 +129,6 @@ export const mapAmenity = (
   amenity: repo.DashboardAmenityRecord,
 ): DashboardAmenityDTO => ({
   id: amenity.id,
-  propertyId: amenity.propertyId,
-  propertyName: amenity.property.name,
   name: amenity.name,
   icon: amenity.icon ?? null,
   isActive: amenity.isActive,
@@ -158,7 +156,6 @@ export const mapRoom = (room: repo.DashboardRoomRecord): DashboardRoomDTO => ({
   unitNumber: room.unit.unitNumber,
   name: room.name,
   number: room.number,
-  rent: room.rent,
   hasAC: room.hasAC,
   maxOccupancy: room.maxOccupancy,
   status: room.status,

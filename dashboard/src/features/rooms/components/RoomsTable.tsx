@@ -53,7 +53,6 @@ export default function RoomsTable({
             <AdminTableCell as="th">#</AdminTableCell>
             <AdminTableCell as="th">Room</AdminTableCell>
             <AdminTableCell as="th">Unit</AdminTableCell>
-            <AdminTableCell as="th">Rent</AdminTableCell>
             <AdminTableCell as="th">Capacity</AdminTableCell>
             <AdminTableCell as="th">Availability</AdminTableCell>
             <AdminTableCell as="th">Enabled</AdminTableCell>
@@ -62,11 +61,11 @@ export default function RoomsTable({
         </AdminTableHeader>
         <tbody className={isFetching ? "opacity-70" : ""}>
           {isInitialLoading ? (
-            <AdminTableEmpty colSpan={8} message="Loading rooms..." />
+            <AdminTableEmpty colSpan={7} message="Loading rooms..." />
           ) : isError ? (
-            <AdminTableEmpty colSpan={8} message="Failed to load rooms." />
+            <AdminTableEmpty colSpan={7} message="Failed to load rooms." />
           ) : isEmpty ? (
-            <AdminTableEmpty colSpan={8} message={emptyMessage} />
+            <AdminTableEmpty colSpan={7} message={emptyMessage} />
           ) : (
             safeItems.map((room, index) => {
               const serial = (page - 1) * pageSize + index + 1;
@@ -83,7 +82,6 @@ export default function RoomsTable({
                     </div>
                   </AdminTableCell>
                   <AdminTableCell>{room.unitNumber}</AdminTableCell>
-                  <AdminTableCell>{room.rent.toLocaleString()}</AdminTableCell>
                   <AdminTableCell>
                     {room.maxOccupancy} {room.hasAC ? "AC" : "Non-AC"}
                   </AdminTableCell>

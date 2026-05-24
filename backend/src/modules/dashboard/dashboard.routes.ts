@@ -55,10 +55,18 @@ router.get("/property-assignments", controller.listPropertyAssignments);
 router.post("/property-assignments", controller.createPropertyAssignment);
 router.delete("/property-assignments/:id", controller.deletePropertyAssignment);
 
-router.get("/properties/:propertyId/amenities", controller.listAmenities);
-router.post("/properties/:propertyId/amenities", controller.createAmenity);
+router.get("/amenities", controller.listAmenities);
+router.post("/amenities", controller.createAmenity);
 router.get("/amenities/:id", controller.getAmenityById);
 router.patch("/amenities/:id", controller.updateAmenity);
+router.get(
+  "/properties/:propertyId/amenity-assignments",
+  controller.getPropertyAmenityAssignments,
+);
+router.put(
+  "/properties/:propertyId/amenity-assignments",
+  controller.replacePropertyAmenityAssignments,
+);
 
 router.get("/properties/:propertyId/units", controller.listUnits);
 router.post("/properties/:propertyId/units", controller.createUnit);

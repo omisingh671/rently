@@ -83,21 +83,17 @@ export const ADMIN_KEYS = {
   amenities: {
     all: () => [...ADMIN_KEYS.root, "amenities"] as const,
 
-    byProperty: (propertyId: string) =>
-      [...ADMIN_KEYS.amenities.all(), propertyId] as const,
-
     list: (params: {
-      propertyId: string;
       page: number;
       limit: number;
       search?: string;
       isActive?: boolean;
-    }) =>
-      [
-        ...ADMIN_KEYS.amenities.byProperty(params.propertyId),
-        "list",
-        params,
-      ] as const,
+    }) => [...ADMIN_KEYS.amenities.all(), "list", params] as const,
+
+    active: () => [...ADMIN_KEYS.amenities.all(), "active"] as const,
+
+    assignments: (propertyId: string) =>
+      [...ADMIN_KEYS.amenities.all(), "assignments", propertyId] as const,
 
     detail: (id: string) =>
       [...ADMIN_KEYS.amenities.all(), "detail", id] as const,

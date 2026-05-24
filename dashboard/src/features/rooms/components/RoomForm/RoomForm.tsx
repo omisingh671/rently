@@ -78,13 +78,13 @@ export default function RoomForm({
     <FormProvider {...methods}>
       <form
         onSubmit={handleSubmit(submitHandler)}
-        className="space-y-8"
+        className="space-y-6"
         noValidate
       >
         <ErrorSummary />
 
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1px_1fr]">
-          <div className="space-y-6">
+        <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-5">
             <SelectField name="propertyId" label="Property" disabled={isEditing}>
               <option value="">Select property</option>
               {properties.map((property) => (
@@ -106,12 +106,6 @@ export default function RoomForm({
             <InputField name="name" label="Room Name" />
             <InputField name="number" label="Room Number" />
             <InputField
-              name="rent"
-              label="Rent"
-              type="number"
-              registerOptions={{ valueAsNumber: true }}
-            />
-            <InputField
               name="maxOccupancy"
               label="Max Occupancy"
               type="number"
@@ -124,13 +118,15 @@ export default function RoomForm({
               <option value="MAINTENANCE">Maintenance</option>
             </SelectField>
 
-            <CheckboxField name="hasAC" label="Air conditioned" />
-            <CheckboxField name="isActive" label="Enabled" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <CheckboxField name="hasAC" label="Air conditioned" />
+              <CheckboxField name="isActive" label="Enabled" />
+            </div>
           </div>
 
           <div className="hidden w-px bg-slate-200 lg:block" />
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4 overflow-x-hidden lg:max-h-[52vh] lg:overflow-y-auto lg:pl-1 lg:pr-2">
             <h3 className="text-sm font-semibold tracking-wide text-slate-700">
               Amenities
             </h3>
@@ -138,7 +134,7 @@ export default function RoomForm({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 py-4 sm:flex-row">
+        <div className="sticky bottom-0 flex flex-col gap-3 border-t border-slate-200 bg-white py-4 sm:flex-row">
           {onCancel && (
             <Button type="button" variant="dark" onClick={onCancel}>
               Cancel

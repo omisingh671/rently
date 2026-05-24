@@ -11,7 +11,6 @@ export type AdminRoom = {
   unitNumber: string;
   name: string;
   number: string;
-  rent: number;
   hasAC: boolean;
   maxOccupancy: number;
   status: RoomStatus;
@@ -30,7 +29,6 @@ export interface CreateRoomPayload {
   unitId: string;
   name: string;
   number: string;
-  rent: number;
   hasAC: boolean;
   maxOccupancy: number;
   status: RoomStatus;
@@ -43,7 +41,6 @@ export interface UpdateRoomPayload {
   unitId?: string;
   name?: string;
   number?: string;
-  rent?: number;
   hasAC?: boolean;
   maxOccupancy?: number;
   status?: RoomStatus;
