@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
+import type { Response } from "express";
 
 import { HttpError } from "@/common/errors/http-error.js";
+import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { prisma } from "@/db/prisma.js";
+import type { DashboardCouponDTO } from "@/modules/dashboard/dashboard.dto.js";
+import * as dashboardController from "@/modules/dashboard/dashboard.controller.js";
 import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import * as paymentsService from "@/modules/payments/payments.service.js";
 import {
   BookingStatus,
   ComfortOption,
@@ -44,7 +49,34 @@ type TestState = {
   unitPricingId: string;
 };
 
+type ApiSuccess<T> = {
+  success: true;
+  data: T;
+};
+
 let state: TestState;
+
+const createResponseRecorder = <T>() => {
+  const captured: { statusCode: number; body: T | undefined } = {
+    statusCode: 200,
+    body: undefined,
+  };
+  const response = {
+    status(code: number) {
+      captured.statusCode = code;
+      return response;
+    },
+    json(body: T) {
+      captured.body = body;
+      return response;
+    },
+  };
+
+  return {
+    response: response as unknown as Response,
+    captured,
+  };
+};
 
 const assertBookingConflict = (reason: unknown) => {
   assert.ok(reason instanceof HttpError);
@@ -326,9 +358,18 @@ after(async () => {
 
     await prisma.user.deleteMany({
       where: {
-        id: {
-          in: [state.guestOneId, state.guestTwoId, state.superAdminId],
-        },
+        OR: [
+          {
+            id: {
+              in: [state.guestOneId, state.guestTwoId, state.superAdminId],
+            },
+          },
+          {
+            email: {
+              contains: testId,
+            },
+          },
+        ],
       },
     });
 
@@ -632,6 +673,371 @@ test("public booking applies coupon and freezes price snapshots", async () => {
   }
 });
 
+test("dashboard coupon controller persists once-per-user flag", async () => {
+  const couponCode = `${testId}-CTRL-ONCE`.toUpperCase();
+  const createRecorder =
+    createResponseRecorder<ApiSuccess<DashboardCouponDTO>>();
+
+  await dashboardController.createCoupon(
+    {
+      params: { propertyId: state.propertyId },
+      body: {
+        code: couponCode,
+        name: "Controller Once Per User Coupon",
+        discountType: DiscountType.PERCENTAGE,
+        discountValue: 10,
+        minNights: 1,
+        validFrom: "2026-01-01T00:00:00.000Z",
+        isActive: true,
+        oncePerUser: true,
+      },
+      user: {
+        userId: state.superAdminId,
+        role: UserRole.SUPER_ADMIN,
+      },
+    } as unknown as AuthRequest,
+    createRecorder.response,
+  );
+
+  assert.equal(createRecorder.captured.statusCode, 201);
+  assert.equal(createRecorder.captured.body?.data.oncePerUser, true);
+
+  const couponId = createRecorder.captured.body?.data.id;
+  assert.ok(couponId);
+
+  const updateRecorder =
+    createResponseRecorder<ApiSuccess<DashboardCouponDTO>>();
+  await dashboardController.updateCoupon(
+    {
+      params: { id: couponId },
+      body: { oncePerUser: false },
+      user: {
+        userId: state.superAdminId,
+        role: UserRole.SUPER_ADMIN,
+      },
+    } as unknown as AuthRequest,
+    updateRecorder.response,
+  );
+
+  assert.equal(updateRecorder.captured.body?.data.oncePerUser, false);
+});
+
+test("public booking once-per-user coupon rejects second booking", async () => {
+  const couponCode = `${testId}-ONCE`.toUpperCase();
+
+  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+    code: couponCode,
+    name: "Once Per User Coupon",
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    minNights: 1,
+    minAmount: 1000,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    isActive: true,
+    oncePerUser: true,
+  });
+
+  const firstBooking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-09-01T00:00:00.000Z"),
+      to: new Date("2027-09-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      couponCode: couponCode,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.ok(firstBooking.id);
+  assert.equal(firstBooking.couponCode, couponCode);
+
+  // Try applying same coupon on a second booking for the SAME user (guestOneId)
+  await assert.rejects(
+    publicService.createBooking(
+      state.guestOneId,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2027-09-05T00:00:00.000Z"),
+        to: new Date("2027-09-07T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        couponCode: couponCode,
+      },
+      { tenantSlug: state.tenantSlug },
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "COUPON_ALREADY_USED");
+      return true;
+    },
+  );
+
+  // Try applying same coupon for a DIFFERENT user (guestTwoId) - should succeed
+  const secondBooking = await publicService.createBooking(
+    state.guestTwoId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-09-05T00:00:00.000Z"),
+      to: new Date("2027-09-07T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      couponCode: couponCode,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.ok(secondBooking.id);
+  assert.equal(secondBooking.couponCode, couponCode);
+});
+
+test("public booking checkout edit updates guest details and coupon totals", async () => {
+  const couponCode = `${testId}-EDIT20`.toUpperCase();
+
+  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+    code: couponCode,
+    name: "Edit Checkout Coupon",
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 20,
+    minNights: 1,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    isActive: true,
+  });
+
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2030-01-01T00:00:00.000Z"),
+      to: new Date("2030-01-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const quoted = await publicService.getBookingCheckoutQuote(
+    state.guestOneId,
+    booking.id,
+    { couponCode },
+  );
+  assert.equal(quoted.couponCode, couponCode);
+  assert.equal(quoted.discountAmount, 1000);
+
+  const updated = await publicService.updateBookingCheckout(
+    state.guestOneId,
+    booking.id,
+    {
+      guestDetails: {
+        name: "Edited Guest",
+        email: `${testId}-edited-guest@sucasa.test`,
+        contactNumber: "+91-9999999999",
+      },
+      couponCode,
+    },
+  );
+
+  assert.equal(updated.guestName, "Edited Guest");
+  assert.equal(updated.guestEmail, `${testId}-edited-guest@sucasa.test`);
+  assert.equal(updated.guestContactNumber, "+91-9999999999");
+  assert.equal(updated.couponCode, couponCode);
+  assert.equal(updated.discountAmount, 1000);
+  assert.equal(updated.totalPrice, booking.totalPrice - 1000);
+
+  const couponAfterApply = await prisma.coupon.findFirstOrThrow({
+    where: {
+      propertyId: state.propertyId,
+      code: couponCode,
+    },
+  });
+  assert.equal(couponAfterApply.usedCount, 1);
+
+  const withoutCoupon = await publicService.updateBookingCheckout(
+    state.guestOneId,
+    booking.id,
+    {
+      guestDetails: {
+        name: "Edited Guest",
+        email: `${testId}-edited-guest@sucasa.test`,
+        contactNumber: "+91-9999999999",
+      },
+      couponCode: null,
+    },
+  );
+
+  assert.equal(withoutCoupon.couponCode, null);
+  assert.equal(withoutCoupon.discountAmount, 0);
+  assert.equal(withoutCoupon.totalPrice, booking.totalPrice);
+
+  const couponAfterRemoval = await prisma.coupon.findFirstOrThrow({
+    where: {
+      propertyId: state.propertyId,
+      code: couponCode,
+    },
+  });
+  assert.equal(couponAfterRemoval.usedCount, 0);
+});
+
+test("public booking checkout edit accepts matching guest edit token", async () => {
+  const payload = {
+    bookingType: "SINGLE_TARGET",
+    spaceId: state.pricingTwoId,
+    from: new Date("2030-02-01T00:00:00.000Z"),
+    to: new Date("2030-02-03T00:00:00.000Z"),
+    guests: 2,
+    comfortOption: ComfortOption.AC,
+  } as const;
+  const lock = await publicService.createInventoryLock(undefined, payload, {
+    tenantSlug: state.tenantSlug,
+  });
+  const booking = await publicService.createBooking(
+    undefined,
+    {
+      ...payload,
+      inventoryLockToken: lock.lockToken,
+      guestDetails: {
+        name: "Guest Token User",
+        email: `${testId}-guest-token@sucasa.test`,
+        contactNumber: "+91-9000000000",
+      },
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    publicService.updateBookingCheckout(undefined, booking.id, {
+      guestDetails: {
+        name: "Guest Token User",
+        email: `${testId}-guest-token@sucasa.test`,
+        contactNumber: "+91-9000000001",
+      },
+      couponCode: null,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "BOOKING_EDIT_FORBIDDEN");
+      return true;
+    },
+  );
+
+  const updated = await publicService.updateBookingCheckout(undefined, booking.id, {
+    editToken: lock.lockToken,
+    guestDetails: {
+      name: "Guest Token Updated",
+      email: `${testId}-guest-token@sucasa.test`,
+      contactNumber: "+91-9000000001",
+    },
+    couponCode: null,
+  });
+
+  assert.equal(updated.guestName, "Guest Token Updated");
+  assert.equal(updated.guestContactNumber, "+91-9000000001");
+});
+
+test("public booking checkout edit rejects paid booking", async () => {
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2030-03-01T00:00:00.000Z"),
+      to: new Date("2030-03-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-paid-edit-token`,
+    amount: booking.upfrontAmount,
+  });
+
+  await assert.rejects(
+    publicService.updateBookingCheckout(state.guestOneId, booking.id, {
+      guestDetails: {
+        name: booking.guestName,
+        email: booking.guestEmail,
+        contactNumber: booking.guestContactNumber ?? "+91-9000000002",
+      },
+      couponCode: null,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_PAYMENT_STARTED");
+      return true;
+    },
+  );
+});
+
+test("public booking checkout edit rejects once-per-user coupon used on another booking", async () => {
+  const couponCode = `${testId}-EDIT-ONCE`.toUpperCase();
+
+  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+    code: couponCode,
+    name: "Edit Once Coupon",
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    minNights: 1,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    isActive: true,
+    oncePerUser: true,
+  });
+
+  await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2030-04-01T00:00:00.000Z"),
+      to: new Date("2030-04-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      couponCode,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const secondBooking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2030-04-05T00:00:00.000Z"),
+      to: new Date("2030-04-07T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    publicService.updateBookingCheckout(state.guestOneId, secondBooking.id, {
+      guestDetails: {
+        name: secondBooking.guestName,
+        email: secondBooking.guestEmail,
+        contactNumber: secondBooking.guestContactNumber ?? "+91-9000000003",
+      },
+      couponCode,
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "COUPON_ALREADY_USED");
+      return true;
+    },
+  );
+});
+
 test("public final quote applies tax and booking freezes tax breakdown", async () => {
   const tax = await prisma.tax.create({
     data: {
@@ -653,7 +1059,7 @@ test("public final quote applies tax and booking freezes tax breakdown", async (
       guests: 2,
       comfortOption: ComfortOption.AC,
     };
-    const quote = await publicService.getBookingQuote(input, {
+    const quote = await publicService.getBookingQuote(undefined, input, {
       tenantSlug: state.tenantSlug,
     });
 

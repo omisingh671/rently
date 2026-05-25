@@ -94,6 +94,16 @@ export const useAdminOperations = (
     });
   };
 
+  const invalidateBookingState = (nextPropertyId = propertyId) => {
+    if (!nextPropertyId) return;
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.bookings(nextPropertyId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.roomBoards(nextPropertyId),
+    });
+  };
+
   const updateBooking = useMutation({
     mutationFn: ({
       bookingId,
@@ -102,7 +112,7 @@ export const useAdminOperations = (
       bookingId: string;
       payload: UpdateBookingPayload;
     }) => updateBookingStatusApi(bookingId, payload),
-    onSuccess: (booking) => invalidate(booking.propertyId),
+    onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
 
   const createManualBooking = useMutation({
@@ -113,7 +123,7 @@ export const useAdminOperations = (
       propertyId: string;
       payload: CreateManualBookingPayload;
     }) => createManualBookingApi(targetPropertyId, payload),
-    onSuccess: (booking) => invalidate(booking.propertyId),
+    onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
 
   const checkManualBookingAvailability = useMutation({
@@ -134,7 +144,7 @@ export const useAdminOperations = (
       bookingId: string;
       payload: Omit<UpdateBookingPayload, "status">;
     }) => checkInBookingApi(bookingId, payload),
-    onSuccess: (booking) => invalidate(booking.propertyId),
+    onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
 
   const checkOutBooking = useMutation({
@@ -145,7 +155,7 @@ export const useAdminOperations = (
       bookingId: string;
       payload: Omit<UpdateBookingPayload, "status">;
     }) => checkOutBookingApi(bookingId, payload),
-    onSuccess: (booking) => invalidate(booking.propertyId),
+    onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
 
   const updateEnquiry = useMutation({
@@ -211,6 +221,9 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     });
     queryClient.invalidateQueries({
       queryKey: ADMIN_KEYS.operations.bookings(propertyId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.roomBoards(propertyId),
     });
   };
 

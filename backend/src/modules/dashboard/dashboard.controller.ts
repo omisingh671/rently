@@ -27,6 +27,8 @@ import {
   listRoomProductsQuerySchema,
   listPropertiesQuerySchema,
   listRoomsQuerySchema,
+  listAllUsersQuerySchema,
+  listSessionsQuerySchema,
   roomBoardQuerySchema,
   listTaxesQuerySchema,
   listTenantsQuerySchema,
@@ -39,9 +41,12 @@ import {
   updateAmenitySchema,
   updateBookingStatusSchema,
   updateCouponSchema,
+  updateForcePasswordChangeSchema,
   updateLeadStatusSchema,
   updateMaintenanceSchema,
   updateDashboardUserSchema,
+  updateUserRoleSchema,
+  updateUserStatusSchema,
   updatePropertySchema,
   updateRoomPricingSchema,
   updateRoomProductSchema,
@@ -280,6 +285,103 @@ export const updateManager = async (req: AuthRequest, res: Response) => {
     }),
   });
   res.json({ success: true, data });
+};
+
+export const listUsers = async (req: AuthRequest, res: Response) => {
+  const query = listAllUsersQuerySchema.parse(req.query);
+  const data = await service.listUsers(getUserId(req), {
+    page: query.page,
+    limit: query.limit,
+    ...(query.search !== undefined && { search: query.search }),
+    ...(query.role !== undefined && { role: query.role }),
+    ...(query.isActive !== undefined && { isActive: query.isActive }),
+    ...(query.mustChangePassword !== undefined && {
+      mustChangePassword: query.mustChangePassword,
+    }),
+  });
+  res.json({ success: true, data });
+};
+
+export const updateUserStatus = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = updateUserStatusSchema.parse(req.body);
+  const data = await service.updateUserStatus(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const updateUserRole = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = updateUserRoleSchema.parse(req.body);
+  const data = await service.updateUserRole(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const sendUserPasswordResetEmail = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  await service.sendUserPasswordResetEmail(getUserId(req), params.id);
+  res.status(204).send();
+};
+
+export const updateForcePasswordChange = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = updateForcePasswordChangeSchema.parse(req.body);
+  const data = await service.updateForcePasswordChange(
+    getUserId(req),
+    params.id,
+    body,
+  );
+  res.json({ success: true, data });
+};
+
+export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  await service.revokeUserSessions(
+    getUserId(req),
+    params.id,
+    req.cookies?.refreshToken,
+  );
+  res.status(204).send();
+};
+
+export const listSessions = async (req: AuthRequest, res: Response) => {
+  const query = listSessionsQuerySchema.parse(req.query);
+  const data = await service.listSessions(
+    getUserId(req),
+    {
+      page: query.page,
+      limit: query.limit,
+      ...(query.search !== undefined && { search: query.search }),
+      ...(query.userId !== undefined && { userId: query.userId }),
+      ...(query.role !== undefined && { role: query.role }),
+      ...(query.status !== undefined && { status: query.status }),
+    },
+    req.cookies?.refreshToken,
+  );
+  res.json({ success: true, data });
+};
+
+export const revokeSession = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  await service.revokeSession(
+    getUserId(req),
+    params.id,
+    req.cookies?.refreshToken,
+  );
+  res.status(204).send();
+};
+
+export const revokeExpiredSessions = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const count = await service.revokeExpiredSessions(getUserId(req));
+  res.json({ success: true, data: { count } });
 };
 
 export const listPropertyAssignments = async (
@@ -760,6 +862,9 @@ export const createCoupon = async (req: AuthRequest, res: Response) => {
       validFrom: body.validFrom,
       ...(body.validTo !== undefined && { validTo: body.validTo }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.oncePerUser !== undefined && {
+        oncePerUser: body.oncePerUser,
+      }),
     },
   );
   res.status(201).json({ success: true, data });
@@ -783,6 +888,7 @@ export const updateCoupon = async (req: AuthRequest, res: Response) => {
     ...(body.validFrom !== undefined && { validFrom: body.validFrom }),
     ...(body.validTo !== undefined && { validTo: body.validTo }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
+    ...(body.oncePerUser !== undefined && { oncePerUser: body.oncePerUser }),
   });
   res.json({ success: true, data });
 };

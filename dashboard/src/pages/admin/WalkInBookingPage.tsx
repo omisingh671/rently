@@ -214,6 +214,9 @@ export default function WalkInBookingPage() {
       await queryClient.invalidateQueries({
         queryKey: ADMIN_KEYS.operations.bookings(booking.propertyId),
       });
+      await queryClient.invalidateQueries({
+        queryKey: ADMIN_KEYS.operations.roomBoards(booking.propertyId),
+      });
       navigate(adminPath(ADMIN_ROUTES.BOOKINGS));
     },
     onError: () => {

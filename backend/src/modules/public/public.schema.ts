@@ -95,6 +95,15 @@ export const createBookingSchema = z
 
 export const createBookingQuoteSchema = createBookingSchema;
 
+export const bookingCheckoutQuoteSchema = z.object({
+  couponCode: z.string().trim().min(1).max(20).nullable().optional(),
+  editToken: z.string().uuid().optional(),
+});
+
+export const updateBookingCheckoutSchema = bookingCheckoutQuoteSchema.extend({
+  guestDetails: bookingGuestDetailsSchema,
+});
+
 export const createInventoryLockSchema = z
   .object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),

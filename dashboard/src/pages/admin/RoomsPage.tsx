@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/common/Pagination";
@@ -9,6 +9,7 @@ import RoomsFilters from "@/features/rooms/components/RoomsFilters";
 import RoomForm from "@/features/rooms/components/RoomForm/RoomForm";
 import RoomsTable from "@/features/rooms/components/RoomsTable";
 import { useAdminRooms } from "@/features/rooms/hooks/useAdminRooms";
+import { normalizeApiError } from "@/utils/errors";
 import type { AdminRoom, RoomStatus } from "@/features/rooms/types";
 
 type Filters = {
@@ -84,6 +85,34 @@ export default function RoomsPage() {
     data?.pagination && data.pagination.total > pageSize
       ? data.pagination
       : null;
+
+  const roomFormDefaultValues = useMemo(
+    () =>
+      editingRoom
+        ? {
+            propertyId: editingRoom.propertyId,
+            unitId: editingRoom.unitId,
+            name: editingRoom.name,
+            number: editingRoom.number,
+            hasAC: editingRoom.hasAC,
+            maxOccupancy: editingRoom.maxOccupancy,
+            status: editingRoom.status,
+            isActive: editingRoom.isActive,
+            amenityIds: editingRoom.amenityIds,
+          }
+        : {
+            propertyId: filters.propertyId,
+            unitId: "",
+            name: "",
+            number: "",
+            hasAC: false,
+            maxOccupancy: 2,
+            status: "AVAILABLE" as const,
+            isActive: true,
+            amenityIds: [],
+          },
+    [editingRoom, filters.propertyId],
+  );
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
@@ -164,31 +193,7 @@ export default function RoomsPage() {
           properties={properties}
           submitLabel={editingRoom ? "Save Changes" : "Create Room"}
           isEditing={!!editingRoom}
-          defaultValues={
-            editingRoom
-              ? {
-                  propertyId: editingRoom.propertyId,
-                  unitId: editingRoom.unitId,
-                  name: editingRoom.name,
-                  number: editingRoom.number,
-                  hasAC: editingRoom.hasAC,
-                  maxOccupancy: editingRoom.maxOccupancy,
-                  status: editingRoom.status,
-                  isActive: editingRoom.isActive,
-                  amenityIds: editingRoom.amenityIds,
-                }
-              : {
-                  propertyId: filters.propertyId,
-                  unitId: "",
-                  name: "",
-                  number: "",
-                  hasAC: false,
-                  maxOccupancy: 2,
-                  status: "AVAILABLE",
-                  isActive: true,
-                  amenityIds: [],
-                }
-          }
+          defaultValues={roomFormDefaultValues}
           isSubmitting={isCreating || isUpdating}
           onSubmit={(values, setServerError) => {
             const action = editingRoom
@@ -197,10 +202,8 @@ export default function RoomsPage() {
 
             action
               .then(() => handleCloseModal())
-              .catch(() => {
-                setServerError(
-                  editingRoom ? "Failed to update room" : "Failed to create room",
-                );
+              .catch((error) => {
+                setServerError(normalizeApiError(error).message);
               });
           }}
           onCancel={handleCloseModal}

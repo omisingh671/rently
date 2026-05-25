@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   FiCheckCircle,
   FiCreditCard,
   FiArrowLeft,
+  FiArrowRight,
   FiCalendar,
   FiUsers,
   FiInfo,
@@ -14,6 +15,10 @@ import {
 import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
+import {
+  clearBookingCheckoutDraftForBooking,
+  getBookingCheckoutDraft,
+} from "@/features/bookings/bookingCheckoutDraft";
 import {
   useBooking,
   useCreateManualPayment,
@@ -215,11 +220,23 @@ export default function BookingPaymentPage() {
   const { id } = useParams();
   const bookingQuery = useBooking(id);
   const paymentMutation = useCreateManualPayment();
+  const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
   const [paymentResult, setPaymentResult] =
     useState<CreateManualPaymentResponse | null>(null);
+  const loadedBooking = bookingQuery.data;
+  const isConfirmed =
+    paymentResult !== null ||
+    (loadedBooking !== undefined &&
+      ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status));
+
+  useEffect(() => {
+    if (loadedBooking !== undefined && isConfirmed) {
+      clearBookingCheckoutDraftForBooking(loadedBooking.id);
+    }
+  }, [isConfirmed, loadedBooking]);
 
   if (!id) {
     return <Navigate to={ROUTES.BOOKINGS} replace />;
@@ -251,9 +268,6 @@ export default function BookingPaymentPage() {
   }
 
   const booking = bookingQuery.data;
-  const isConfirmed =
-    paymentResult !== null ||
-    ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(booking.status);
   const tokenPaymentAmount = Math.min(
     booking.upfrontAmount,
     booking.balanceAmount,
@@ -261,6 +275,11 @@ export default function BookingPaymentPage() {
   const fullPaymentAmount = booking.balanceAmount;
   const canPayToken =
     booking.upfrontAmount > 0 && tokenPaymentAmount < fullPaymentAmount;
+  const hasMatchingCheckoutDraft = checkoutDraft?.createdBookingId === booking.id;
+  const canEditCheckout =
+    booking.status === "PENDING" &&
+    booking.paidAmount <= 0 &&
+    (isAuthenticated || hasMatchingCheckoutDraft);
 
   const paymentError = paymentMutation.error
     ? normalizeApiError(paymentMutation.error).message
@@ -278,6 +297,7 @@ export default function BookingPaymentPage() {
     });
 
     clearPaymentAttemptKey(booking.id, choice);
+    clearBookingCheckoutDraftForBooking(booking.id);
     setPaymentResult(result);
     await bookingQuery.refetch();
   };
@@ -286,11 +306,15 @@ export default function BookingPaymentPage() {
     <section className="section bg-surface min-h-screen">
       <div className="container max-w-5xl">
         <Link
-          to={ROUTES.SPACES}
+          to={
+            canEditCheckout
+              ? `${ROUTES.BOOKING_CHECKOUT}?bookingId=${booking.id}`
+              : ROUTES.SPACES
+          }
           className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 hover:text-indigo-700 transition"
         >
           <FiArrowLeft className="h-4 w-4" />
-          Back to Availability
+          {canEditCheckout ? "Edit details or coupon" : "Back to Availability"}
         </Link>
 
         <div className="mt-8 grid gap-10 lg:grid-cols-12 items-stretch">
@@ -353,9 +377,10 @@ export default function BookingPaymentPage() {
                         </div>
                         <Button
                           to={`${ROUTES.ACCOUNT}?tab=bookings`}
-                          variant="secondary"
-                          size="sm"
-                          className="bg-emerald-100 border-emerald-200 text-emerald-700 hover:bg-emerald-200"
+                          variant="success"
+                          size="md"
+                          iconRight={<FiArrowRight />}
+                          className="border border-emerald-500 bg-emerald-600 px-5 shadow-md shadow-emerald-200/70 hover:bg-emerald-700"
                         >
                           View My Booking
                         </Button>

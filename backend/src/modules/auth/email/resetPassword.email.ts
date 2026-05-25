@@ -1,8 +1,17 @@
-import { mailer } from "@/common/email/mailer.js";
 import { env } from "@/config/env.js";
+import { mailer } from "@/common/email/mailer.js";
 
-export async function sendResetPasswordEmail(to: string, token: string) {
-  const resetUrl = `${env.FRONTEND_URL}/reset-password/${token}`;
+export async function sendResetPasswordEmail(
+  to: string,
+  token: string,
+  options: { appUrl?: string } = {},
+) {
+  const appUrl = options.appUrl ?? env.FRONTEND_URL;
+  const resetUrl = `${appUrl}/reset-password/${token}`;
+
+  if (env.NODE_ENV === "test" || to.endsWith(".test")) {
+    return;
+  }
 
   await mailer.sendMail({
     from: env.MAIL_FROM,

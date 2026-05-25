@@ -178,7 +178,8 @@ model User {
   createdProperties          Property[]             @relation("PropertyCreatedBy")
   createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
 
-  isActive Boolean @default(true)
+  isActive           Boolean @default(true)
+  mustChangePassword Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -198,6 +199,8 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
   @@map("sessions")
 }
 
@@ -734,6 +737,7 @@ model Coupon {
   validFrom     DateTime
   validTo       DateTime?
   isActive      Boolean      @default(true)
+  oncePerUser   Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

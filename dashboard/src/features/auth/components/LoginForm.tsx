@@ -22,6 +22,16 @@ type LocationState = {
   };
 };
 
+const loginDefaultValues: LoginFormValues = import.meta.env.DEV
+  ? {
+      email: "admin@hah.com",
+      password: "Admin@123",
+    }
+  : {
+      email: "",
+      password: "",
+    };
+
 export default function LoginForm() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,10 +43,7 @@ export default function LoginForm() {
   const methods = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     mode: "onTouched",
-    defaultValues: {
-      email: "admin@sucasa.com",
-      password: "Admin@123",
-    },
+    defaultValues: loginDefaultValues,
   });
 
   const { handleSubmit, setError, clearErrors, control } = methods;

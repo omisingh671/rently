@@ -10,6 +10,8 @@ import {
   createBookingQuoteSchema,
   createEnquirySchema,
   idParamsSchema,
+  bookingCheckoutQuoteSchema,
+  updateBookingCheckoutSchema,
 } from "./public.schema.js";
 
 const resolveTenantInput = (req: AuthRequest) => {
@@ -101,6 +103,7 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
 export const getBookingQuote = async (req: AuthRequest, res: Response) => {
   const body = createBookingQuoteSchema.parse(req.body);
   const data = await service.getBookingQuote(
+    req.user?.userId,
     {
       bookingType: body.bookingType,
       ...(body.bookingOptionId !== undefined && {
@@ -118,6 +121,43 @@ export const getBookingQuote = async (req: AuthRequest, res: Response) => {
       couponCode: body.couponCode,
     },
     resolveTenantInput(req),
+  );
+
+  res.json({ success: true, data });
+};
+
+export const getBookingCheckoutQuote = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = bookingCheckoutQuoteSchema.parse(req.body);
+  const data = await service.getBookingCheckoutQuote(
+    req.user?.userId,
+    params.id,
+    {
+      ...(body.couponCode !== undefined && { couponCode: body.couponCode }),
+      ...(body.editToken !== undefined && { editToken: body.editToken }),
+    },
+  );
+
+  res.json({ success: true, data });
+};
+
+export const updateBookingCheckout = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = updateBookingCheckoutSchema.parse(req.body);
+  const data = await service.updateBookingCheckout(
+    req.user?.userId,
+    params.id,
+    {
+      guestDetails: body.guestDetails,
+      ...(body.couponCode !== undefined && { couponCode: body.couponCode }),
+      ...(body.editToken !== undefined && { editToken: body.editToken }),
+    },
   );
 
   res.json({ success: true, data });

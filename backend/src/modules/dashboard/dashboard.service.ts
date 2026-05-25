@@ -16,9 +16,12 @@ import {
 } from "@/generated/prisma/client.js";
 import { hashPassword } from "@/common/utils/password.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import crypto from "node:crypto";
 import { randomUUID } from "node:crypto";
+import { env } from "@/config/env.js";
 import { createBookingForUser } from "@/modules/public/public.service.js";
 import { generateAvailabilityOptions } from "@/modules/public/public-availability.service.js";
+import { sendResetPasswordEmail } from "@/modules/auth/email/resetPassword.email.js";
 import * as repo from "./dashboard.repository.js";
 import { buildDashboardRoomBoard } from "./dashboard-room-board.mapper.js";
 import {
@@ -33,6 +36,7 @@ import {
   mapRoom,
   mapRoomPricing,
   mapRoomProduct,
+  mapSession,
   mapTax,
   mapTenant,
   mapUnit,
@@ -73,6 +77,8 @@ import type {
   DashboardTaxListInput,
   DashboardTenantListInput,
   DashboardUnitListInput,
+  DashboardUserListInput,
+  DashboardSessionListInput,
   ReplaceDashboardPropertyAmenityAssignmentsInput,
   UpdateDashboardAmenityInput,
   UpdateDashboardCouponInput,
@@ -88,6 +94,9 @@ import type {
   RecordDashboardBookingPaymentInput,
   UpdateDashboardLeadInput,
   UpdateDashboardUserInput,
+  UpdateDashboardUserRoleInput,
+  UpdateDashboardUserStatusInput,
+  UpdateDashboardForcePasswordChangeInput,
 } from "./dashboard.inputs.js";
 
 import type {
@@ -127,6 +136,8 @@ const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]>
   [BookingStatus.NO_SHOW]: [],
 };
 
+const RESET_TOKEN_TTL_MINUTES = 15;
+
 const assertBookingTransitionAllowed = (
   fromStatus: BookingStatus,
   toStatus: BookingStatus,
@@ -162,6 +173,8 @@ const DASHBOARD_MODULES: Record<UserRole, string[]> = {
     "dashboard",
     "tenants",
     "properties",
+    "users",
+    "sessions",
     "admins",
     "propertyAssignments",
   ],
@@ -1550,6 +1563,207 @@ export const updateManager = async (
   return mapUser(updatedManager);
 };
 
+const ensureUserExists = async (targetUserId: string) => {
+  const user = await repo.findUserById(targetUserId);
+  if (!user) {
+    throw new HttpError(404, "USER_NOT_FOUND", "User not found");
+  }
+
+  return user;
+};
+
+const ensureRoleManageable = (target: DashboardActor) => {
+  if (target.role === UserRole.SUPER_ADMIN) {
+    throw new HttpError(
+      403,
+      "SUPER_ADMIN_ROLE_PROTECTED",
+      "Super admin users cannot be changed from this screen",
+    );
+  }
+};
+
+export const listUsers = async (
+  userId: string,
+  filters: DashboardUserListInput,
+) => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const { items, total } = await repo.listUsersPaginated(filters);
+
+  return normalizePaginationResult(
+    filters.page,
+    filters.limit,
+    total,
+    items.map(mapUser),
+  );
+};
+
+export const updateUserStatus = async (
+  userId: string,
+  targetUserId: string,
+  input: UpdateDashboardUserStatusInput,
+): Promise<DashboardUserDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  if (actor.id === targetUserId && input.isActive === false) {
+    throw new HttpError(
+      400,
+      "SELF_DISABLE_NOT_ALLOWED",
+      "You cannot disable your own account",
+    );
+  }
+
+  const target = await ensureUserExists(targetUserId);
+  const updatedUser = await repo.updateUserById(target.id, {
+    isActive: input.isActive,
+  });
+
+  if (!input.isActive) {
+    await repo.deleteSessionsForUser(target.id);
+  }
+
+  return mapUser(updatedUser);
+};
+
+export const updateUserRole = async (
+  userId: string,
+  targetUserId: string,
+  input: UpdateDashboardUserRoleInput,
+): Promise<DashboardUserDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  if (actor.id === targetUserId) {
+    throw new HttpError(
+      400,
+      "SELF_ROLE_CHANGE_NOT_ALLOWED",
+      "You cannot change your own role",
+    );
+  }
+
+  const target = await ensureUserExists(targetUserId);
+  ensureRoleManageable(target);
+
+  const updatedUser = await repo.updateUserRoleAndAssignments(
+    target.id,
+    input.role,
+  );
+  await repo.deleteSessionsForUser(target.id);
+
+  return mapUser(updatedUser);
+};
+
+export const sendUserPasswordResetEmail = async (
+  userId: string,
+  targetUserId: string,
+): Promise<void> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const target = await ensureUserExists(targetUserId);
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+
+  await repo.deletePasswordResetTokensForUser(target.id);
+  await repo.createPasswordResetToken({
+    userId: target.id,
+    tokenHash,
+    expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000),
+  });
+
+  await sendResetPasswordEmail(target.email, rawToken, {
+    appUrl: env.DASHBOARD_URL ?? env.FRONTEND_URL,
+  });
+};
+
+export const updateForcePasswordChange = async (
+  userId: string,
+  targetUserId: string,
+  input: UpdateDashboardForcePasswordChangeInput,
+): Promise<DashboardUserDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const target = await ensureUserExists(targetUserId);
+  const updatedUser = await repo.updateUserById(target.id, {
+    mustChangePassword: input.mustChangePassword,
+  });
+
+  return mapUser(updatedUser);
+};
+
+export const revokeUserSessions = async (
+  userId: string,
+  targetUserId: string,
+  currentRefreshToken?: string,
+): Promise<void> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const target = await ensureUserExists(targetUserId);
+  if (target.id === actor.id && currentRefreshToken !== undefined) {
+    await repo.deleteSessionsForUserExcept(target.id, currentRefreshToken);
+    return;
+  }
+
+  await repo.deleteSessionsForUser(target.id);
+};
+
+export const listSessions = async (
+  userId: string,
+  filters: DashboardSessionListInput,
+  currentRefreshToken?: string,
+) => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const { items, total } = await repo.listSessionsPaginated(filters);
+
+  return normalizePaginationResult(
+    filters.page,
+    filters.limit,
+    total,
+    items.map((session) => mapSession(session, currentRefreshToken)),
+  );
+};
+
+export const revokeSession = async (
+  userId: string,
+  sessionId: string,
+  currentRefreshToken?: string,
+): Promise<void> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const session = await repo.findSessionById(sessionId);
+  if (!session) {
+    throw new HttpError(404, "SESSION_NOT_FOUND", "Session not found");
+  }
+
+  if (
+    currentRefreshToken !== undefined &&
+    session.refreshToken === currentRefreshToken
+  ) {
+    throw new HttpError(
+      400,
+      "CURRENT_SESSION_REVOKE_NOT_ALLOWED",
+      "Use logout to end your current session",
+    );
+  }
+
+  await repo.deleteSessionById(session.id);
+};
+
+export const revokeExpiredSessions = async (userId: string): Promise<number> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN]);
+
+  const result = await repo.deleteExpiredSessions();
+  return result.count;
+};
+
 export const listPropertyAssignments = async (
   userId: string,
   filters: DashboardAssignmentListInput,
@@ -2685,6 +2899,7 @@ export const createCoupon = async (
       validFrom: input.validFrom,
       ...(input.validTo !== undefined && { validTo: input.validTo }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
+      ...(input.oncePerUser !== undefined && { oncePerUser: input.oncePerUser }),
     });
 
     return mapCoupon(coupon);
@@ -2729,6 +2944,7 @@ export const updateCoupon = async (
       ...(input.validFrom !== undefined && { validFrom: input.validFrom }),
       ...(input.validTo !== undefined && { validTo: input.validTo }),
       ...(input.isActive !== undefined && { isActive: input.isActive }),
+      ...(input.oncePerUser !== undefined && { oncePerUser: input.oncePerUser }),
     });
 
     return mapCoupon(coupon);

@@ -34,6 +34,10 @@ const dashboardAssignmentInclude = {
   assignedBy: true,
 } satisfies Prisma.PropertyAssignmentInclude;
 
+const dashboardSessionInclude = {
+  user: true,
+} satisfies Prisma.SessionInclude;
+
 const dashboardUnitInclude = {
   property: true,
   amenities: true,
@@ -133,6 +137,9 @@ export type DashboardPropertyAssignmentRecord =
   Prisma.PropertyAssignmentGetPayload<{
     include: typeof dashboardAssignmentInclude;
   }>;
+export type DashboardSessionRecord = Prisma.SessionGetPayload<{
+  include: typeof dashboardSessionInclude;
+}>;
 const dashboardAmenitySelect = {
   id: true,
   name: true,
@@ -203,10 +210,20 @@ export type DashboardGalleryRecord = Prisma.GalleryGetPayload<{
 interface UserListFilters {
   page: number;
   limit: number;
-  roles: UserRole[];
+  roles?: UserRole[];
   search?: string;
   isActive?: boolean;
+  mustChangePassword?: boolean;
   createdByUserId?: string;
+}
+
+interface SessionListFilters {
+  page: number;
+  limit: number;
+  search?: string;
+  userId?: string;
+  role?: UserRole;
+  status?: "active" | "expired";
 }
 
 interface PropertyListFilters {
@@ -322,7 +339,7 @@ interface LeadListFilters {
 
 const buildUserWhere = (filters: Omit<UserListFilters, "page" | "limit">) =>
   ({
-    role: { in: filters.roles },
+    ...(filters.roles !== undefined && { role: { in: filters.roles } }),
     ...(filters.search !== undefined && {
       OR: [
         { fullName: { contains: filters.search } },
@@ -330,10 +347,38 @@ const buildUserWhere = (filters: Omit<UserListFilters, "page" | "limit">) =>
       ],
     }),
     ...(filters.isActive !== undefined && { isActive: filters.isActive }),
+    ...(filters.mustChangePassword !== undefined && {
+      mustChangePassword: filters.mustChangePassword,
+    }),
     ...(filters.createdByUserId !== undefined && {
       createdByUserId: filters.createdByUserId,
     }),
   }) satisfies Prisma.UserWhereInput;
+
+const buildSessionWhere = (
+  filters: Omit<SessionListFilters, "page" | "limit">,
+) => {
+  const now = new Date();
+
+  return {
+    ...(filters.userId !== undefined && { userId: filters.userId }),
+    ...(filters.status === "active" && { expiresAt: { gt: now } }),
+    ...(filters.status === "expired" && { expiresAt: { lte: now } }),
+    ...((filters.search !== undefined || filters.role !== undefined) && {
+      user: {
+        is: {
+          ...(filters.role !== undefined && { role: filters.role }),
+          ...(filters.search !== undefined && {
+            OR: [
+              { fullName: { contains: filters.search } },
+              { email: { contains: filters.search } },
+            ],
+          }),
+        },
+      },
+    }),
+  } satisfies Prisma.SessionWhereInput;
+};
 
 const buildPropertyWhere = (
   filters: Omit<PropertyListFilters, "page" | "limit">,
@@ -578,6 +623,34 @@ export const updateUserById = (id: string, data: Prisma.UserUpdateInput) =>
     data,
   });
 
+export const updateUserRoleAndAssignments = (
+  userId: string,
+  role: Exclude<UserRole, "SUPER_ADMIN">,
+) =>
+  prisma.$transaction(async (tx) => {
+    await tx.propertyAssignment.deleteMany({
+      where: {
+        userId,
+        ...(role === UserRole.ADMIN
+          ? { role: { not: PropertyAssignmentRole.ADMIN } }
+          : role === UserRole.MANAGER
+            ? { role: { not: PropertyAssignmentRole.MANAGER } }
+            : {}),
+      },
+    });
+
+    if (role === UserRole.GUEST) {
+      await tx.propertyAssignment.deleteMany({
+        where: { userId },
+      });
+    }
+
+    return tx.user.update({
+      where: { id: userId },
+      data: { role },
+    });
+  });
+
 export const listUsersPaginated = async (filters: UserListFilters) => {
   const where = buildUserWhere(filters);
   const skip = (filters.page - 1) * filters.limit;
@@ -594,6 +667,72 @@ export const listUsersPaginated = async (filters: UserListFilters) => {
 
   return { items, total };
 };
+
+export const listSessionsPaginated = async (filters: SessionListFilters) => {
+  const where = buildSessionWhere(filters);
+  const skip = (filters.page - 1) * filters.limit;
+
+  const [items, total] = await prisma.$transaction([
+    prisma.session.findMany({
+      where,
+      skip,
+      take: filters.limit,
+      orderBy: { createdAt: "desc" },
+      include: dashboardSessionInclude,
+    }),
+    prisma.session.count({ where }),
+  ]);
+
+  return { items, total };
+};
+
+export const findSessionById = (id: string) =>
+  prisma.session.findUnique({
+    where: { id },
+    include: dashboardSessionInclude,
+  });
+
+export const deleteSessionById = (id: string) =>
+  prisma.session.deleteMany({
+    where: { id },
+  });
+
+export const deleteSessionsForUser = (userId: string) =>
+  prisma.session.deleteMany({
+    where: { userId },
+  });
+
+export const deleteSessionsForUserExcept = (
+  userId: string,
+  currentRefreshToken: string,
+) =>
+  prisma.session.deleteMany({
+    where: {
+      userId,
+      refreshToken: { not: currentRefreshToken },
+    },
+  });
+
+export const deleteExpiredSessions = () =>
+  prisma.session.deleteMany({
+    where: {
+      expiresAt: { lte: new Date() },
+    },
+  });
+
+export const deletePasswordResetTokensForUser = (userId: string) =>
+  prisma.passwordResetToken.deleteMany({
+    where: { userId },
+  });
+
+export const createPasswordResetToken = (data: {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}) =>
+  prisma.passwordResetToken.create({
+    data,
+  });
 
 export const countUsersByRole = (role: UserRole, createdByUserId?: string) =>
   prisma.user.count({

@@ -154,7 +154,7 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
     newPassword: body.newPassword,
   };
 
-  await service.changePassword(input);
+  await service.changePassword(input, req.cookies?.refreshToken);
 
   return res.status(204).send();
 };

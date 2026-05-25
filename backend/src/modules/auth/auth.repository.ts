@@ -62,6 +62,17 @@ export const deleteSessionByToken = (refreshToken: string) =>
 export const deleteSessionsForUser = (userId: string) =>
   prisma.session.deleteMany({ where: { userId } });
 
+export const deleteOtherSessionsForUser = (
+  userId: string,
+  currentRefreshToken: string,
+) =>
+  prisma.session.deleteMany({
+    where: {
+      userId,
+      refreshToken: { not: currentRefreshToken },
+    },
+  });
+
 export const rotateSessionToken = (
   currentRefreshToken: string,
   nextRefreshToken: string,
@@ -107,5 +118,5 @@ export const deletePasswordResetTokensForUser = (userId: string) =>
 export const updateUserPassword = (userId: string, passwordHash: string) =>
   prisma.user.update({
     where: { id: userId },
-    data: { passwordHash },
+    data: { passwordHash, mustChangePassword: false },
   });

@@ -5,6 +5,7 @@ export interface AuthUserDTO {
   fullName: string;
   email: string;
   role: UserRole;
+  mustChangePassword: boolean;
 }
 
 export interface AuthResponseDTO {

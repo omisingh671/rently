@@ -60,13 +60,19 @@ export const useAdminRooms = (
     placeholderData: (prev) => prev,
   });
 
+  const invalidateRoomState = (nextPropertyId = propertyId) => {
+    if (!nextPropertyId) return;
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.rooms.byProperty(nextPropertyId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.roomBoards(nextPropertyId),
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: createRoomApi,
-    onSuccess: (room) => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.rooms.byProperty(room.propertyId),
-      });
-    },
+    onSuccess: (room) => invalidateRoomState(room.propertyId),
   });
 
   const updateMutation = useMutation({
@@ -77,21 +83,12 @@ export const useAdminRooms = (
       roomId: string;
       payload: UpdateRoomPayload;
     }) => updateRoomApi(roomId, payload),
-    onSuccess: (room) => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.rooms.byProperty(room.propertyId),
-      });
-    },
+    onSuccess: (room) => invalidateRoomState(room.propertyId),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteRoomApi,
-    onSuccess: () => {
-      if (!propertyId) return;
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.rooms.byProperty(propertyId),
-      });
-    },
+    onSuccess: () => invalidateRoomState(),
   });
 
   return {

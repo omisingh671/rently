@@ -46,6 +46,23 @@ export const API_ENDPOINTS = {
     updateById: (userId: string) => `/dashboard/managers/${userId}`,
   },
 
+  users: {
+    list: "/dashboard/users",
+    statusById: (userId: string) => `/dashboard/users/${userId}/status`,
+    roleById: (userId: string) => `/dashboard/users/${userId}/role`,
+    passwordResetEmailById: (userId: string) =>
+      `/dashboard/users/${userId}/password-reset-email`,
+    forcePasswordChangeById: (userId: string) =>
+      `/dashboard/users/${userId}/force-password-change`,
+    sessionsByUserId: (userId: string) => `/dashboard/users/${userId}/sessions`,
+  },
+
+  sessions: {
+    list: "/dashboard/sessions",
+    deleteById: (sessionId: string) => `/dashboard/sessions/${sessionId}`,
+    deleteExpired: "/dashboard/sessions/expired",
+  },
+
   propertyAssignments: {
     list: "/dashboard/property-assignments",
     create: "/dashboard/property-assignments",

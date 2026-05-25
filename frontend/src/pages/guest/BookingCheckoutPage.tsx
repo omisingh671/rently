@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
   FiArrowLeft,
+  FiArrowRight,
   FiCalendar,
   FiCreditCard,
   FiMail,
@@ -17,14 +18,21 @@ import CountryDialCodeInput from "@/components/inputs/CountryDialCodeInput";
 import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
 import {
-  clearBookingCheckoutDraft,
   getBookingCheckoutDraft,
+  saveBookingCheckoutDraftCreatedBooking,
 } from "@/features/bookings/bookingCheckoutDraft";
-import { useBookingQuote, useCreateBooking } from "@/features/bookings/hooks";
+import {
+  useBooking,
+  useBookingCheckoutQuote,
+  useBookingQuote,
+  useCreateBooking,
+  useUpdateBookingCheckout,
+} from "@/features/bookings/hooks";
 import { useProfile } from "@/features/profile/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import type { CreateBookingPayload } from "@/features/bookings/api";
+import type { Booking, BookingQuote } from "@/features/bookings/types";
 
 const guestInfoSchema = z.object({
   name: z.string().trim().min(1, "Guest name is required").max(120),
@@ -65,6 +73,35 @@ const buildReturnHref = (location: {
   hash: string;
 }) => `${location.pathname}${location.search}${location.hash}`;
 
+const splitContactNumber = (value: string | null | undefined) => {
+  const fullPhone = value ?? "";
+  const [code, ...numParts] = fullPhone.includes("-")
+    ? fullPhone.split("-")
+    : ["+91", fullPhone];
+
+  return {
+    countryCode: code || "+91",
+    contactNumber: numParts.join("-") || fullPhone,
+  };
+};
+
+const buildBookingFormValues = (booking: Booking): GuestInfoFormValues => ({
+  name: booking.guestName,
+  email: booking.guestEmail,
+  ...splitContactNumber(booking.guestContactNumber),
+});
+
+const buildBookingSummary = (booking: Booking) => ({
+  title: booking.title,
+  spaceName: booking.spaceName,
+  from: booking.from,
+  to: booking.to,
+  guestCount: booking.guestCount,
+  comfortOption: booking.comfortOption,
+  nightlyTotal: booking.pricePerNight,
+  stayTotal: booking.subtotalAmount || booking.totalPrice + booking.discountAmount,
+});
+
 function FieldError({ message }: { message?: string }) {
   if (!message) return null;
 
@@ -73,84 +110,206 @@ function FieldError({ message }: { message?: string }) {
 
 export default function BookingCheckoutPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const draft = useMemo(() => getBookingCheckoutDraft(), []);
+  const editBookingId = searchParams.get("bookingId") ?? undefined;
   const user = useAuthStore((state) => state.user);
   const authStatus = useAuthStore((state) => state.status);
   const isAuthenticated = authStatus === "authenticated" && user !== null;
+  const editBookingQuery = useBooking(editBookingId, editBookingId !== undefined);
   const profileQuery = useProfile(isAuthenticated);
   const createBookingMutation = useCreateBooking();
+  const updateBookingCheckoutMutation = useUpdateBookingCheckout();
   const quoteMutation = useBookingQuote();
+  const checkoutQuoteMutation = useBookingCheckoutQuote();
   const {
     data: quote,
     error: rawQuoteError,
     mutate: requestQuote,
     mutateAsync: requestQuoteAsync,
   } = quoteMutation;
+  const {
+    data: checkoutQuote,
+    error: rawCheckoutQuoteError,
+    mutate: requestCheckoutQuote,
+    mutateAsync: requestCheckoutQuoteAsync,
+  } = checkoutQuoteMutation;
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState("");
+  const [hydratedCouponBookingId, setHydratedCouponBookingId] = useState<
+    string | null
+  >(null);
 
   const profile = profileQuery.data;
   const profileDefaults = useMemo<GuestInfoFormValues>(() => {
-    const fullPhone = profile?.contactNumber ?? "";
-    const [code, ...numParts] = fullPhone.includes("-")
-      ? fullPhone.split("-")
-      : ["+91", fullPhone];
-
     return {
       name: profile?.fullName ?? user?.fullName ?? "",
       email: profile?.email ?? user?.email ?? "",
-      countryCode: code || "+91",
-      contactNumber: numParts.join("-") || fullPhone,
+      ...splitContactNumber(profile?.contactNumber),
     };
   }, [profile, user]);
+  const editBooking = editBookingQuery.data;
+  const isEditingCheckout = editBookingId !== undefined;
+  const editToken =
+    draft && draft.createdBookingId === editBookingId
+      ? draft.payload.inventoryLockToken
+      : undefined;
+  const formValues =
+    isEditingCheckout && editBooking
+      ? buildBookingFormValues(editBooking)
+      : isAuthenticated
+        ? profileDefaults
+        : undefined;
 
   const form = useForm<GuestInfoFormValues, undefined, GuestInfoSubmitValues>({
     resolver: zodResolver(guestInfoSchema),
     defaultValues: profileDefaults,
-    values: isAuthenticated ? profileDefaults : undefined,
+    values: formValues,
     mode: "onTouched",
   });
 
   const quotePayload = useMemo<CreateBookingPayload | null>(
     () =>
-      draft
+      draft && !isEditingCheckout
         ? {
             ...draft.payload,
             couponCode: couponCode.trim() || undefined,
           }
         : null,
-    [couponCode, draft],
+    [couponCode, draft, isEditingCheckout],
   );
+  const checkoutQuotePayload = useMemo(
+    () =>
+      editBookingId
+        ? {
+            bookingId: editBookingId,
+            payload: {
+              couponCode: couponCode.trim() || null,
+              ...(editToken !== undefined && { editToken }),
+            },
+          }
+        : null,
+    [couponCode, editBookingId, editToken],
+  );
+  const activeQuote: BookingQuote | undefined = isEditingCheckout
+    ? checkoutQuote
+    : quote;
   const quoteError = rawQuoteError
     ? normalizeApiError(rawQuoteError).message
-    : null;
+    : rawCheckoutQuoteError
+      ? normalizeApiError(rawCheckoutQuoteError).message
+      : null;
 
   useEffect(() => {
-    if (!quotePayload) return;
+    if (!editBooking || hydratedCouponBookingId === editBooking.id) return;
+
+    setCouponCode(editBooking.couponCode ?? "");
+    setHydratedCouponBookingId(editBooking.id);
+  }, [editBooking, hydratedCouponBookingId]);
+
+  useEffect(() => {
+    if (!quotePayload && !checkoutQuotePayload) return;
 
     const timeout = window.setTimeout(() => {
-      requestQuote(quotePayload);
+      if (quotePayload) {
+        requestQuote(quotePayload);
+      } else if (checkoutQuotePayload) {
+        requestCheckoutQuote(checkoutQuotePayload);
+      }
     }, 250);
 
     return () => window.clearTimeout(timeout);
-  }, [quotePayload, requestQuote]);
+  }, [checkoutQuotePayload, quotePayload, requestCheckoutQuote, requestQuote]);
 
-  if (!draft) {
+  if (!draft && !isEditingCheckout) {
     return <Navigate to={ROUTES.SPACES} replace />;
   }
 
-  const returnHref = buildReturnHref(draft.returnTo);
-  const summary = draft.summary;
+  if (isEditingCheckout && editBookingQuery.status === "pending") {
+    return (
+      <section className="section bg-surface min-h-[60vh]">
+        <div className="container max-w-2xl text-center">
+          <p className="font-medium text-slate-500">Loading checkout...</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (isEditingCheckout && editBookingQuery.status === "error") {
+    return (
+      <section className="section bg-surface">
+        <div className="container max-w-2xl text-center">
+          <div className="rounded-2xl border border-red-100 bg-red-50 p-8">
+            <h1 className="text-xl font-bold text-red-900">
+              Checkout edit unavailable
+            </h1>
+            <p className="mt-2 text-red-700">
+              {editBookingQuery.error.message}
+            </p>
+            {editBookingId && (
+              <Button className="mt-6" to={ROUTES.BOOKING_PAYMENT(editBookingId)}>
+                Back to payment
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  const returnHref =
+    isEditingCheckout && editBookingId
+      ? ROUTES.BOOKING_PAYMENT(editBookingId)
+      : draft
+        ? buildReturnHref(draft.returnTo)
+        : ROUTES.SPACES;
+  const summary =
+    isEditingCheckout && editBooking
+      ? buildBookingSummary(editBooking)
+      : draft?.summary;
+
+  if (!summary) {
+    return <Navigate to={ROUTES.SPACES} replace />;
+  }
 
   const onSubmit = async (values: GuestInfoSubmitValues) => {
+    const guestDetails = {
+      name: values.name,
+      email: values.email,
+      contactNumber: `${values.countryCode}-${values.contactNumber}`,
+    };
+
+    if (isEditingCheckout && editBookingId) {
+      try {
+        setSubmitError(null);
+        const checkoutPayload = {
+          couponCode: couponCode.trim() || null,
+          ...(editToken !== undefined && { editToken }),
+        };
+        await requestCheckoutQuoteAsync({
+          bookingId: editBookingId,
+          payload: checkoutPayload,
+        });
+        await updateBookingCheckoutMutation.mutateAsync({
+          bookingId: editBookingId,
+          payload: {
+            ...checkoutPayload,
+            guestDetails,
+          },
+        });
+        navigate(ROUTES.BOOKING_PAYMENT(editBookingId), { replace: true });
+      } catch (error: unknown) {
+        setSubmitError(normalizeApiError(error).message);
+      }
+      return;
+    }
+
     if (!quotePayload) return;
 
     const payload: CreateBookingPayload = {
       ...quotePayload,
       guestDetails: {
-        name: values.name,
-        email: values.email,
-        contactNumber: `${values.countryCode}-${values.contactNumber}`,
+        ...guestDetails,
       },
     };
 
@@ -158,7 +317,7 @@ export default function BookingCheckoutPage() {
       setSubmitError(null);
       await requestQuoteAsync(quotePayload);
       const booking = await createBookingMutation.mutateAsync(payload);
-      clearBookingCheckoutDraft();
+      saveBookingCheckoutDraftCreatedBooking(booking.id);
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
       setSubmitError(normalizeApiError(error).message);
@@ -172,8 +331,12 @@ export default function BookingCheckoutPage() {
           to={returnHref}
           className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 transition hover:text-indigo-700"
         >
-          <FiArrowLeft className="h-4 w-4" />
-          Back to selection
+          {isEditingCheckout ? (
+            <FiArrowRight className="h-4 w-4" />
+          ) : (
+            <FiArrowLeft className="h-4 w-4" />
+          )}
+          {isEditingCheckout ? "Back to payment" : "Back to selection"}
         </Link>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
@@ -184,12 +347,14 @@ export default function BookingCheckoutPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">
-                  Guest Information
+                  {isEditingCheckout ? "Edit Guest Information" : "Guest Information"}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  {isAuthenticated
-                    ? "Profile details are prefilled. Complete any missing field before continuing."
-                    : "Enter the contact details for this booking."}
+                  {isEditingCheckout
+                    ? "Update contact details or coupon before completing payment."
+                    : isAuthenticated
+                      ? "Profile details are prefilled. Complete any missing field before continuing."
+                      : "Enter the contact details for this booking."}
                 </p>
               </div>
             </div>
@@ -279,17 +444,26 @@ export default function BookingCheckoutPage() {
                   type="submit"
                   fullWidth
                   size="lg"
-                  disabled={createBookingMutation.isPending}
+                  disabled={
+                    createBookingMutation.isPending ||
+                    updateBookingCheckoutMutation.isPending
+                  }
                   icon={<FiCreditCard />}
                   className={
-                    createBookingMutation.isPending
+                    createBookingMutation.isPending ||
+                    updateBookingCheckoutMutation.isPending
                       ? "cursor-wait opacity-70"
                       : undefined
                   }
                 >
-                  {createBookingMutation.isPending
-                    ? "Creating booking..."
-                    : "Continue to payment"}
+                  {createBookingMutation.isPending ||
+                  updateBookingCheckoutMutation.isPending
+                    ? isEditingCheckout
+                      ? "Saving changes..."
+                      : "Creating booking..."
+                    : isEditingCheckout
+                      ? "Save and return to payment"
+                      : "Continue to payment"}
                 </Button>
               </div>
             </form>
@@ -353,28 +527,28 @@ export default function BookingCheckoutPage() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">Nightly rate</span>
                 <span className="font-semibold text-slate-900">
-                  {formatPrice(quote?.items.reduce((total, item) => total + item.pricePerNight, 0) ?? summary.nightlyTotal)}
+                  {formatPrice(activeQuote?.items.reduce((total, item) => total + item.pricePerNight, 0) ?? summary.nightlyTotal)}
                 </span>
               </div>
               <div className="mt-3 flex items-center justify-between text-sm">
                 <span className="text-slate-500">Stay subtotal</span>
                 <span className="font-semibold text-slate-900">
-                  {formatPrice(quote?.subtotalAmount ?? summary.stayTotal)}
+                  {formatPrice(activeQuote?.subtotalAmount ?? summary.stayTotal)}
                 </span>
               </div>
-              {(quote?.discountAmount ?? 0) > 0 && (
+              {(activeQuote?.discountAmount ?? 0) > 0 && (
                 <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm">
                   <span className="font-semibold text-emerald-700">
-                    Coupon{quote?.couponCode ? ` (${quote.couponCode})` : ""}
+                    Coupon{activeQuote?.couponCode ? ` (${activeQuote.couponCode})` : ""}
                   </span>
                   <span className="font-bold text-emerald-700">
-                    -{formatPrice(quote?.discountAmount ?? 0)}
+                    -{formatPrice(activeQuote?.discountAmount ?? 0)}
                   </span>
                 </div>
               )}
-              {(quote?.taxBreakdown.length ?? 0) > 0 && (
+              {(activeQuote?.taxBreakdown.length ?? 0) > 0 && (
                 <div className="mt-3 space-y-2">
-                  {quote?.taxBreakdown.map((tax) => (
+                  {activeQuote?.taxBreakdown.map((tax) => (
                     <div
                       key={`${tax.taxId}-${tax.included ? "in" : "ex"}`}
                       className="flex items-center justify-between text-xs text-slate-500"
@@ -394,7 +568,7 @@ export default function BookingCheckoutPage() {
                   Final total
                 </span>
                 <span className="text-xl font-bold text-indigo-600">
-                  {formatPrice(quote?.totalAmount ?? summary.stayTotal)}
+                  {formatPrice(activeQuote?.totalAmount ?? summary.stayTotal)}
                 </span>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3 rounded-lg bg-indigo-50 px-3 py-3 text-xs">
@@ -403,7 +577,7 @@ export default function BookingCheckoutPage() {
                     Due now
                   </div>
                   <div className="mt-1 font-bold text-indigo-900">
-                    {formatPrice(quote?.upfrontAmount ?? 0)}
+                    {formatPrice(activeQuote?.upfrontAmount ?? 0)}
                   </div>
                 </div>
                 <div>
@@ -411,7 +585,7 @@ export default function BookingCheckoutPage() {
                     At check-in
                   </div>
                   <div className="mt-1 font-bold text-slate-700">
-                    {formatPrice(quote?.remainingPayAtCheckIn ?? 0)}
+                    {formatPrice(activeQuote?.remainingPayAtCheckIn ?? 0)}
                   </div>
                 </div>
               </div>

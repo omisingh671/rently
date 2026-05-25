@@ -67,6 +67,7 @@ export type AdminCoupon = {
   validFrom: string;
   validTo: string | null;
   isActive: boolean;
+  oncePerUser: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -111,6 +112,7 @@ export type CouponPayload = {
   validFrom: string;
   validTo?: string;
   isActive: boolean;
+  oncePerUser: boolean;
 };
 
 export type ProductListResponse = PaginatedResult<AdminRoomProduct>;

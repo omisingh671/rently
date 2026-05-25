@@ -19,9 +19,11 @@ import type {
   CheckAvailabilityInput,
   CreateInventoryLockInput,
   PublicBookingQuoteInput,
+  PublicBookingCheckoutQuoteInput,
   CreatePublicBookingInput,
   CreatePublicEnquiryInput,
   PublicBookingGuestDetailsInput,
+  UpdatePublicBookingCheckoutInput,
   PublicSpaceTarget,
   TenantResolutionInput,
 } from "./public.inputs.js";
@@ -77,6 +79,9 @@ interface QuoteCalculationInput {
   currency: string;
   couponCode: string | undefined;
   items: PublicBookingQuoteItemDTO[];
+  userId?: string | undefined;
+  currentCouponId?: string | undefined;
+  excludeBookingId?: string | undefined;
 }
 
 interface QuoteCalculationResult extends PublicBookingQuoteDTO {
@@ -783,6 +788,11 @@ const validateAndApplyCoupon = async (
   nights: number,
   totalBeforeDiscount: number,
   tx: Prisma.TransactionClient,
+  options: {
+    userId?: string | undefined;
+    currentCouponId?: string | undefined;
+    excludeBookingId?: string | undefined;
+  } = {},
 ) => {
   if (!code) return { couponId: undefined, discountAmount: 0 };
 
@@ -792,8 +802,28 @@ const validateAndApplyCoupon = async (
     throw new HttpError(422, "INVALID_COUPON", "Invalid or expired coupon code");
   }
 
-  if (coupon.maxUses !== null && coupon.usedCount >= coupon.maxUses) {
+  if (
+    coupon.id !== options.currentCouponId &&
+    coupon.maxUses !== null &&
+    coupon.usedCount >= coupon.maxUses
+  ) {
     throw new HttpError(422, "COUPON_EXHAUSTED", "Coupon usage limit reached");
+  }
+
+  if (coupon.oncePerUser && options.userId) {
+    const previousBookingCount = await repo.countUserCouponBookings(
+      options.userId,
+      coupon.id,
+      options.excludeBookingId,
+      tx,
+    );
+    if (previousBookingCount > 0) {
+      throw new HttpError(
+        422,
+        "COUPON_ALREADY_USED",
+        "Coupon has already been used by this user",
+      );
+    }
   }
 
   if (coupon.minNights !== null && nights < coupon.minNights) {
@@ -875,6 +905,11 @@ const calculateQuoteTotals = async (
     input.nights,
     subtotalAmount,
     tx,
+    {
+      userId: input.userId,
+      currentCouponId: input.currentCouponId,
+      excludeBookingId: input.excludeBookingId,
+    },
   );
   const discountedSubtotal = money(subtotalAmount - discountAmount);
   const taxes = await repo.listActiveTaxes(input.propertyId, tx);
@@ -946,6 +981,113 @@ const calculateQuoteTotals = async (
     items: input.items,
     couponId,
   };
+};
+
+const getPaidAmount = (booking: repo.PublicBookingRecord) =>
+  booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce((total, payment) => total + Number(payment.amount), 0);
+
+const normalizeCouponCode = (couponCode: string | null | undefined) => {
+  const trimmed = couponCode?.trim();
+  return trimmed ? trimmed.toUpperCase() : undefined;
+};
+
+const assertBookingCheckoutEditable = async (
+  booking: repo.PublicBookingRecord,
+  userId: string | undefined,
+  editToken: string | undefined,
+  tx: Prisma.TransactionClient,
+) => {
+  if (booking.paymentStatus !== BookingPaymentStatus.PENDING || getPaidAmount(booking) > 0) {
+    throw new HttpError(
+      409,
+      "BOOKING_PAYMENT_STARTED",
+      "Booking details cannot be edited after payment starts",
+    );
+  }
+
+  if (booking.status !== BookingStatus.PENDING) {
+    throw new HttpError(
+      409,
+      "BOOKING_CHECKOUT_LOCKED",
+      "Only pending bookings can be edited before payment",
+    );
+  }
+
+  if (userId !== undefined && userId === booking.userId) {
+    return;
+  }
+
+  if (editToken !== undefined) {
+    const lock = await repo.findReleasedInventoryLockByBookingToken(
+      booking.id,
+      editToken,
+      tx,
+    );
+    if (lock) {
+      return;
+    }
+  }
+
+  throw new HttpError(
+    403,
+    "BOOKING_EDIT_FORBIDDEN",
+    "You cannot edit this booking checkout",
+  );
+};
+
+const buildQuoteItemsFromBooking = (
+  booking: repo.PublicBookingRecord,
+): PublicBookingQuoteItemDTO[] => {
+  const taxInclusive = getBookingTaxBreakdown(booking.taxBreakdown).some(
+    (tax) => tax.included,
+  );
+
+  return booking.items.map((item) => ({
+    targetType: item.targetType,
+    unitId: item.unitId ?? null,
+    roomId: item.roomId ?? null,
+    productId: item.productId ?? null,
+    targetLabel: item.targetLabel,
+    productName: item.productName,
+    capacity: item.capacity,
+    guestCount: item.guestCount,
+    comfortOption: item.comfortOption,
+    pricePerNight: Number(item.pricePerNight),
+    totalAmount: Number(item.totalAmount),
+    taxInclusive,
+  }));
+};
+
+const calculateExistingBookingCheckoutQuote = async (
+  booking: repo.PublicBookingRecord,
+  couponCode: string | null | undefined,
+  tx: Prisma.TransactionClient,
+) => {
+  const propertyCurrency = await repo.findPropertyCurrencyById(
+    booking.propertyId,
+    tx,
+  );
+
+  return calculateQuoteTotals(
+    {
+      propertyId: booking.propertyId,
+      bookingType: booking.bookingType,
+      nights: getNights(booking.checkIn, booking.checkOut),
+      guestCount: booking.guestCount,
+      comfortOption: booking.comfortOption,
+      paymentPolicy: booking.paymentPolicy,
+      upfrontAmount: Number(booking.upfrontAmount),
+      currency: propertyCurrency?.tenant.defaultCurrency ?? "INR",
+      couponCode: normalizeCouponCode(couponCode),
+      items: buildQuoteItemsFromBooking(booking),
+      userId: booking.userId,
+      currentCouponId: booking.couponId ?? undefined,
+      excludeBookingId: booking.id,
+    },
+    tx,
+  );
 };
 
 const resolveInventoryLockTargets = async (
@@ -1141,6 +1283,7 @@ export const createInventoryLock = async (
 };
 
 export const getBookingQuote = async (
+  userId: string | undefined,
   input: PublicBookingQuoteInput,
   tenantInput: TenantResolutionInput = {},
 ): Promise<PublicBookingQuoteDTO> => {
@@ -1202,6 +1345,7 @@ export const getBookingQuote = async (
           items: option.items.map((item) =>
             buildQuoteItemFromOptionItem(item, nights, input.comfortOption),
           ),
+          userId,
         },
         tx,
       );
@@ -1356,6 +1500,7 @@ export const getBookingQuote = async (
               .taxInclusive,
           ),
         ),
+        userId,
       },
       tx,
     );
@@ -1462,6 +1607,7 @@ export const createBookingForUser = async (
               currency: tenant.defaultCurrency,
               couponCode: input.couponCode,
               items: quoteItems,
+              userId: guestSnapshot.userId,
             },
             tx,
           );
@@ -1745,6 +1891,7 @@ export const createBookingForUser = async (
             currency: tenant.defaultCurrency,
             couponCode: input.couponCode,
             items: quoteItems,
+            userId: guestSnapshot.userId,
           },
           tx,
         );
@@ -1862,6 +2009,90 @@ export const createBooking = async (
   tenantInput: TenantResolutionInput = {},
 ): Promise<PublicBookingDTO> =>
   createBookingForUser(userId, input, tenantInput);
+
+export const getBookingCheckoutQuote = async (
+  userId: string | undefined,
+  bookingId: string,
+  input: PublicBookingCheckoutQuoteInput,
+): Promise<PublicBookingQuoteDTO> =>
+  repo.runSerializableTransaction(async (tx) => {
+    const booking = await repo.findBookingById(bookingId, tx);
+    if (!booking) {
+      throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+    }
+
+    await assertBookingCheckoutEditable(
+      booking,
+      userId,
+      input.editToken,
+      tx,
+    );
+
+    return calculateExistingBookingCheckoutQuote(
+      booking,
+      input.couponCode === undefined ? (booking.coupon?.code ?? null) : input.couponCode,
+      tx,
+    );
+  });
+
+export const updateBookingCheckout = async (
+  userId: string | undefined,
+  bookingId: string,
+  input: UpdatePublicBookingCheckoutInput,
+): Promise<PublicBookingDTO> =>
+  repo.runSerializableTransaction(async (tx) => {
+    const booking = await repo.findBookingById(bookingId, tx);
+    if (!booking) {
+      throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+    }
+
+    await assertBookingCheckoutEditable(
+      booking,
+      userId,
+      input.editToken,
+      tx,
+    );
+
+    const quote = await calculateExistingBookingCheckoutQuote(
+      booking,
+      input.couponCode === undefined ? (booking.coupon?.code ?? null) : input.couponCode,
+      tx,
+    );
+    const currentCouponId = booking.couponId ?? undefined;
+    const nextCouponId = quote.couponId;
+
+    if (currentCouponId !== undefined && currentCouponId !== nextCouponId) {
+      await repo.decrementCouponUsage(currentCouponId, tx);
+    }
+
+    if (nextCouponId !== undefined && nextCouponId !== currentCouponId) {
+      await repo.incrementCouponUsage(nextCouponId, tx);
+    }
+
+    const updatedBooking = await repo.updateBookingById(
+      booking.id,
+      {
+        guestNameSnapshot: input.guestDetails.name,
+        guestEmailSnapshot: input.guestDetails.email,
+        guestContactSnapshot: input.guestDetails.contactNumber,
+        subtotalAmount: quote.subtotalAmount,
+        discountAmount: quote.discountAmount,
+        taxAmount: quote.taxAmount,
+        taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
+        totalAmount: quote.totalAmount,
+        upfrontAmount: quote.upfrontAmount,
+        ...(nextCouponId !== currentCouponId && {
+          coupon:
+            nextCouponId !== undefined
+              ? { connect: { id: nextCouponId } }
+              : { disconnect: true },
+        }),
+      },
+      tx,
+    );
+
+    return mapBooking(updatedBooking);
+  });
 
 export const listBookings = async (
   userId: string,

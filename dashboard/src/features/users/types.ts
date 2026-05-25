@@ -1,16 +1,20 @@
 import { type UserRole } from "@/configs/appConfig";
 
+export type ManagedUserRole = UserRole | "GUEST";
+export type MutableManagedUserRole = Exclude<ManagedUserRole, "SUPER_ADMIN">;
+
 export type AdminUser = {
   id: string;
   fullName: string;
   email: string;
-  role: UserRole;
+  role: ManagedUserRole;
 
   createdByUserId?: string | null;
   countryCode: string | null;
   contactNumber: string | null;
 
   isActive: boolean;
+  mustChangePassword: boolean;
 
   createdAt: string;
   updatedAt: string;
@@ -37,3 +41,48 @@ export interface UpdateUserVariables {
 }
 
 export type AdminUserScope = "admins" | "managers";
+
+export type ManagedUsersFilters = {
+  search?: string;
+  role?: ManagedUserRole | "";
+  isActive?: boolean;
+  mustChangePassword?: boolean;
+};
+
+export type ManagedUserStatusVariables = {
+  userId: string;
+  isActive: boolean;
+};
+
+export type ManagedUserRoleVariables = {
+  userId: string;
+  role: MutableManagedUserRole;
+};
+
+export type ManagedUserForcePasswordVariables = {
+  userId: string;
+  mustChangePassword: boolean;
+};
+
+export type AdminSessionStatus = "active" | "expired";
+
+export type AdminSession = {
+  id: string;
+  userId: string;
+  userFullName: string;
+  userEmail: string;
+  userRole: ManagedUserRole;
+  ip: string | null;
+  userAgent: string | null;
+  expiresAt: string;
+  createdAt: string;
+  isExpired: boolean;
+  isCurrent: boolean;
+};
+
+export type AdminSessionsFilters = {
+  search?: string;
+  userId?: string;
+  role?: ManagedUserRole | "";
+  status?: AdminSessionStatus | "";
+};

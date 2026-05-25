@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const passwordSchema = z.string().superRefine((value, ctx) => {
   const messages = [
-    value.length < 10 ? "Password must be at least 10 characters" : null,
+    value.length < 8 ? "Password must be at least 8 characters" : null,
     value.length > 128 ? "Password must be at most 128 characters" : null,
     /[a-z]/.test(value) ? null : "Password must contain a lowercase letter",
     /[A-Z]/.test(value) ? null : "Password must contain an uppercase letter",

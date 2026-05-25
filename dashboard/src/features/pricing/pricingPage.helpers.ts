@@ -70,6 +70,7 @@ export const couponSchema = z.object({
   validFrom: z.string().min(1),
   validTo: z.string().optional(),
   isActive: z.boolean(),
+  oncePerUser: z.boolean(),
 });
 
 export type ProductForm = z.input<typeof productSchema>;
@@ -127,6 +128,7 @@ export const emptyCoupon: CouponForm = {
   validFrom: "",
   validTo: "",
   isActive: true,
+  oncePerUser: false,
 };
 
 export const formatDate = (value: string | null) =>

@@ -20,6 +20,10 @@ const ResetPasswordPage = lazy(() => import("@/pages/auth/ResetPasswordPage"));
 const DashboardPage = lazy(() => import("@/pages/admin/DashboardPage"));
 const TenantsPage = lazy(() => import("@/pages/admin/TenantsPage"));
 const UsersPage = lazy(() => import("@/pages/admin/UsersPage"));
+const UserManagementPage = lazy(
+  () => import("@/pages/admin/UserManagementPage"),
+);
+const SessionsPage = lazy(() => import("@/pages/admin/SessionsPage"));
 const PropertiesPage = lazy(() => import("@/pages/admin/PropertiesPage"));
 const PropertyDetailsPage = lazy(
   () => import("@/pages/admin/PropertyDetailsPage"),
@@ -114,6 +118,14 @@ const routes: RouteObject[] = [
                       {
                         path: ADMIN_ROUTES.TENANTS,
                         element: <TenantsPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.USERS,
+                        element: <UserManagementPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.SESSIONS,
+                        element: <SessionsPage />,
                       },
                       {
                         path: ADMIN_ROUTES.ADMINS,

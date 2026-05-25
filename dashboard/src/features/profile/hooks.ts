@@ -43,5 +43,17 @@ export const useUpdateProfile = () => {
 export const useChangePassword = () => {
   return useMutation<void, Error, ChangePasswordPayload>({
     mutationFn: usersApi.changePassword,
+    onSuccess: () => {
+      const { user, accessToken, setAuth } = useAuthStore.getState();
+      if (!user || !accessToken) return;
+
+      setAuth({
+        user: {
+          ...user,
+          mustChangePassword: false,
+        },
+        accessToken,
+      });
+    },
   });
 };

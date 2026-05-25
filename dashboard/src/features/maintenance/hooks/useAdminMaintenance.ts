@@ -54,13 +54,19 @@ export const useAdminMaintenance = (
     placeholderData: (prev) => prev,
   });
 
+  const invalidateMaintenanceState = (nextPropertyId = propertyId) => {
+    if (!nextPropertyId) return;
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.maintenance.byProperty(nextPropertyId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.roomBoards(nextPropertyId),
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: createMaintenanceApi,
-    onSuccess: (block) => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.maintenance.byProperty(block.propertyId),
-      });
-    },
+    onSuccess: (block) => invalidateMaintenanceState(block.propertyId),
   });
 
   const updateMutation = useMutation({
@@ -71,21 +77,12 @@ export const useAdminMaintenance = (
       maintenanceId: string;
       payload: UpdateMaintenancePayload;
     }) => updateMaintenanceApi(maintenanceId, payload),
-    onSuccess: (block) => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.maintenance.byProperty(block.propertyId),
-      });
-    },
+    onSuccess: (block) => invalidateMaintenanceState(block.propertyId),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteMaintenanceApi,
-    onSuccess: () => {
-      if (!propertyId) return;
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.maintenance.byProperty(propertyId),
-      });
-    },
+    onSuccess: () => invalidateMaintenanceState(),
   });
 
   return {

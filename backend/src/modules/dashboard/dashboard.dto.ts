@@ -32,8 +32,23 @@ export interface DashboardUserDTO {
   countryCode: string | null;
   contactNumber: string | null;
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DashboardSessionDTO {
+  id: string;
+  userId: string;
+  userFullName: string;
+  userEmail: string;
+  userRole: UserRole;
+  ip: string | null;
+  userAgent: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+  isExpired: boolean;
+  isCurrent: boolean;
 }
 
 export interface DashboardPropertySummaryDTO {
@@ -308,6 +323,7 @@ export interface DashboardCouponDTO {
   validFrom: Date;
   validTo: Date | null;
   isActive: boolean;
+  oncePerUser: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

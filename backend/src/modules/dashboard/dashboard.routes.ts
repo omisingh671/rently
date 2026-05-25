@@ -3,6 +3,7 @@ import multer from "multer";
 import { authenticate } from "@/common/middleware/auth.middleware.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { authorize } from "@/common/middleware/role.middleware.js";
+import { requirePasswordChangeComplete } from "@/common/middleware/password-change.middleware.js";
 import { UserRole } from "@/generated/prisma/enums.js";
 import * as controller from "./dashboard.controller.js";
 import * as galleryController from "./gallery.controller.js";
@@ -30,6 +31,9 @@ router.use(
 );
 
 router.get("/me", controller.getMe);
+
+router.use(requirePasswordChangeComplete);
+
 router.get("/summary", controller.getSummary);
 
 router.get("/tenants/options", controller.listActiveTenants);
@@ -50,6 +54,23 @@ router.patch("/admins/:id", controller.updateAdmin);
 router.get("/managers", controller.listManagers);
 router.post("/managers", controller.createManager);
 router.patch("/managers/:id", controller.updateManager);
+
+router.get("/users", controller.listUsers);
+router.patch("/users/:id/status", controller.updateUserStatus);
+router.patch("/users/:id/role", controller.updateUserRole);
+router.post(
+  "/users/:id/password-reset-email",
+  controller.sendUserPasswordResetEmail,
+);
+router.patch(
+  "/users/:id/force-password-change",
+  controller.updateForcePasswordChange,
+);
+router.delete("/users/:id/sessions", controller.revokeUserSessions);
+
+router.get("/sessions", controller.listSessions);
+router.delete("/sessions/expired", controller.revokeExpiredSessions);
+router.delete("/sessions/:id", controller.revokeSession);
 
 router.get("/property-assignments", controller.listPropertyAssignments);
 router.post("/property-assignments", controller.createPropertyAssignment);

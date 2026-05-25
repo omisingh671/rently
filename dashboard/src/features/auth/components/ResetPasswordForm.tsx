@@ -63,6 +63,9 @@ export default function ResetPasswordForm({ token }: { token: string }) {
           type="password"
           required
         />
+        <p className="text-xs text-slate-500 mt-1">
+          Password must be at least 8 characters, and contain at least one uppercase letter, one number, and one symbol.
+        </p>
 
         <InputField
           name="confirmPassword"

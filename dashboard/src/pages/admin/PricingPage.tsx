@@ -175,6 +175,7 @@ export default function PricingPage() {
       validFrom: parsed.validFrom,
       ...(parsed.validTo && { validTo: parsed.validTo }),
       isActive: parsed.isActive,
+      oncePerUser: parsed.oncePerUser,
     };
 
     try {
@@ -972,7 +973,19 @@ export default function PricingPage() {
                       className={inputClass}
                     />
                   </label>
-                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-2">
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-1">
+                    <span className="text-sm font-medium text-slate-700">Once per User</span>
+                    <ActiveToggle
+                      checked={couponForm.oncePerUser}
+                      onChange={(checked) =>
+                        setCouponForm((prev) => ({
+                          ...prev,
+                          oncePerUser: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-1">
                     <span className="text-sm font-medium text-slate-700">Enabled</span>
                     <ActiveToggle
                       checked={couponForm.isActive}
@@ -1004,7 +1017,7 @@ export default function PricingPage() {
               </div>
 
               <PricingTable
-                headers={["Code", "Name", "Discount", "Validity", "Active", "Action"]}
+                headers={["Code", "Name", "Discount", "Once/User", "Validity", "Active", "Action"]}
                 loading={isFetching}
                 empty={coupons.length === 0}
               >
@@ -1014,6 +1027,15 @@ export default function PricingPage() {
                     <td className="px-4 py-3">{coupon.name}</td>
                     <td className="px-4 py-3">
                       {coupon.discountValue} {coupon.discountType}
+                    </td>
+                    <td className="px-4 py-3">
+                      {coupon.oncePerUser ? (
+                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {formatDate(coupon.validFrom)} - {formatDate(coupon.validTo)}
@@ -1048,6 +1070,7 @@ export default function PricingPage() {
                             validFrom: dateInput(coupon.validFrom),
                             validTo: dateInput(coupon.validTo),
                             isActive: coupon.isActive,
+                            oncePerUser: coupon.oncePerUser,
                           });
                         }}
                       >
