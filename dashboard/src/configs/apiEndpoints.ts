@@ -136,6 +136,19 @@ export const API_ENDPOINTS = {
     quoteById: (quoteId: string) => `/dashboard/quotes/${quoteId}`,
   },
 
+  billing: {
+    list: "/dashboard/billing-documents",
+    byId: (documentId: string) => `/dashboard/billing-documents/${documentId}`,
+    invoice: "/dashboard/billing-documents/invoices",
+    receipt: "/dashboard/billing-documents/receipts",
+    download: (documentId: string) =>
+      `/dashboard/billing-documents/${documentId}/download`,
+    voidById: (documentId: string) =>
+      `/dashboard/billing-documents/${documentId}/void`,
+    settingsByProperty: (propertyId: string) =>
+      `/dashboard/properties/${propertyId}/billing-settings`,
+  },
+
   galleries: {
     list: "/dashboard/galleries",
     upload: "/dashboard/galleries/upload",

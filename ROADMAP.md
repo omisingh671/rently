@@ -95,10 +95,26 @@ Current repo status:
   - Manager check-in/check-out workflow with status history.
   - Booking Details page is the operational surface for payment history, balance collection, no-show, and lifecycle actions.
   - Dashboard list/table surfaces use the shared table visual pattern, consistent panels, and pagination controls only when records exceed the current page limit.
+- Billing Documents MVP completed:
+  - Added per-property invoice and receipt generation with frozen booking, guest, property, tenant, pricing, tax, payment, and line-item snapshots.
+  - Added transaction-safe invoice/receipt numbering, dashboard billing list/settings/download actions, and public guest document downloads.
+  - Added server-side HTML-to-PDF rendering via Playwright; PDF storage remains deferred and PDFs stream on demand.
 - Assignment rules now enforce one primary admin per property and manager assignment under the assigned admin.
 - Synchronized availability logic between dashboard and public frontend using shared identifiers.
 - Dashboard sidebar navigation reordered to the exact sequence: Dashboard, Tenants, Properties, Admins, Assignments (followed by Managers for the ADMIN role), with unified visual active-state indicator pills.
 - Visual contrast and layout refinements applied across Room Board card headers (softer solid backgrounds, slate-300 borders, flat border layouts with removed shadow, and high-legibility bold text weights).
+- Phase 4 Pricing & Taxes advanced architecture completed:
+  - Extended dynamic tax models supporting `TaxCategory` (GENERIC, GST), `TaxScope` (BOOKING, ACCOMMODATION), `TaxTargetType` (ALL, ROOM, UNIT), and `TaxCalculationMode` (FLAT, SLAB_PER_ITEM_NIGHTLY_TARIFF).
+  - Implemented pre-discount/slab-based nightly tariff calculations (e.g. GST slab rules dynamically determined by item nightly price).
+  - Enhanced itemized pricing tracking in `Booking` and `BookingItem` schemas (`taxableAmount`, `subtotalAmount`, `discountAmount`, `taxAmount`, `taxBreakdown`, and `finalAmount`).
+  - Added intensive integration tests (`public-booking.test.ts`) covering GST slab pricing, room/unit bookings, and discount/taxation combinations.
+  - Refined Dashboard Pricing and Properties pages to manage property/unit overrides and advanced tax slab configurations.
+- Phase 7 Security, Sessions & User Management completed:
+  - Implemented Session Management in the dashboard (`/admins/sessions`) with dynamic active session listing and revoke session capabilities.
+  - Added User Management in the dashboard (`/admins/users`) for Super Admins to manage and audit global operators, managers, and admin users.
+  - Enforced dashboard password policy and mandatory password change tracking.
+- Global amenities architecture completed where amenities are managed globally and assigned to properties via a dedicated property-amenity assignments layout.
+- Added static, well-structured "System Guide" page in the dashboard (`/system-guide`) accessible to super admins and admins for module education and workflows.
 
 ## Phase 1: Stabilize Current MVP
 
@@ -285,6 +301,8 @@ Current repo status:
 - Completed: freeze booking price snapshots so later rate edits do not mutate existing bookings.
 - Completed: add tax calculation service and persist/return booking subtotal, tax total, and tax breakdown.
 - Completed: add a final quote/price-breakdown API for frontend previews before booking creation.
+- Completed: Advanced slab-based nightly tariff/GST calculations and property/unit-level overrides.
+- Completed: Detailed itemized pricing snapshots in `BookingItem` (subtotal, taxable amount, discount, tax breakdown, final amount).
 
 ### Dashboard Pricing UX
 
@@ -340,6 +358,8 @@ Current repo status:
   - duplicate assignment and invalid role/property combinations return explicit errors.
 - Completed: align dashboard table/list UI patterns across managers, assignments, properties, tenants, inventory, bookings, leads, and pricing surfaces.
 - Completed: hide dashboard pagination and page-size controls unless total records exceed the current page limit.
+- Completed: Static, well-structured 'System Guide' page in the dashboard (`/system-guide`) accessible to super admins and admins for module education and workflows.
+- Completed: Global amenities architecture with a property-amenity assignment wizard on the Property Details page.
 - Add audit logs for:
   - property changes
   - user changes
@@ -385,6 +405,9 @@ Current repo status:
   - public enquiry
   - booking creation
 - Completed: lightweight login throttling/account lockout.
+- Completed: Session Management page in the dashboard to view active sessions and revoke them individually or in bulk.
+- Completed: User Management page in the dashboard allowing Super Admins to manage operational dashboard users, admins, and managers.
+- Completed: Password change requirement tracking and enforcement middleware for security compliance.
 
 ### API Security
 
@@ -417,6 +440,7 @@ Current repo status:
   - availability
   - booking creation
   - pricing calculation
+  - Completed: GST slab pricing calculations, room/unit bookings, and discount/taxation integrations
 - Integration tests for routes:
   - auth
   - dashboard modules

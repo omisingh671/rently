@@ -128,6 +128,7 @@ import type {
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
 import { createManualPayment } from "@/modules/payments/payments.service.js";
+import { billingService } from "@/modules/billing/index.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -3448,6 +3449,8 @@ export const createManualBooking = async (
     );
   }
 
+  await billingService.createInvoiceForBooking(booking.id);
+
   return mapDashboardBooking(booking);
 };
 
@@ -3599,6 +3602,10 @@ export const updateBooking = async (
     nextStatus === BookingStatus.CANCELLED
   ) {
     await repo.releaseInventoryLocksByBooking(updatedBooking.id, new Date());
+  }
+
+  if (nextStatus === BookingStatus.CONFIRMED) {
+    await billingService.createInvoiceForBooking(updatedBooking.id);
   }
 
   return mapDashboardBooking(updatedBooking);

@@ -7,6 +7,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { billingService } from "@/modules/billing/index.js";
 import type {
   CreateManualPaymentDTO,
   PaymentDTO,
@@ -110,6 +111,8 @@ export const createManualPayment = async (
 
     if (existingPayment) {
       assertSameIdempotentPayment(existingPayment, input);
+      await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
+      await billingService.createReceiptForPayment(existingPayment.id, tx);
       const paidAmount = await repo.sumSucceededPaymentsByBooking(
         existingPayment.bookingId,
         tx,
@@ -280,6 +283,9 @@ export const createManualPayment = async (
       },
       tx,
     );
+
+    await billingService.createInvoiceForBooking(booking.id, tx);
+    await billingService.createReceiptForPayment(payment.id, tx);
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });

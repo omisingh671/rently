@@ -5,6 +5,7 @@ import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
   BookingPaymentPolicy,
+  BillingDocumentType,
   BookingStatus,
   ComfortOption,
   PaymentMethod,
@@ -21,6 +22,7 @@ import {
 import * as publicService from "@/modules/public/public.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
 import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
@@ -328,6 +330,188 @@ test("manual payment confirms a pending booking", async () => {
   assert.equal(history[0]?.toStatus, BookingStatus.PENDING);
   assert.equal(history[1]?.fromStatus, BookingStatus.PENDING);
   assert.equal(history[1]?.toStatus, BookingStatus.CONFIRMED);
+
+  const billingDocuments = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id },
+    orderBy: { createdAt: "asc" },
+  });
+  assert.equal(billingDocuments.length, 2);
+  assert.equal(billingDocuments[0]?.type, BillingDocumentType.INVOICE);
+  assert.equal(billingDocuments[1]?.type, BillingDocumentType.RECEIPT);
+  assert.equal(billingDocuments[1]?.paymentId, result.payment.id);
+});
+
+test("billing documents are idempotent and snapshots stay frozen", async () => {
+  const booking = await createBooking(
+    new Date("2027-03-28T00:00:00.000Z"),
+    new Date("2027-03-30T00:00:00.000Z"),
+  );
+  const payment = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-billing-idempotent-payment`,
+  });
+
+  const invoice = await billingService.createInvoiceForBooking(booking.id);
+  const invoiceAgain = await billingService.createInvoiceForBooking(booking.id);
+  const receipt = await billingService.createReceiptForPayment(payment.payment.id);
+  const receiptAgain = await billingService.createReceiptForPayment(
+    payment.payment.id,
+  );
+
+  assert.equal(invoiceAgain.id, invoice.id);
+  assert.equal(receiptAgain.id, receipt.id);
+  assert.equal(invoice.total, "6000");
+  assert.equal(receipt.balance, "5990");
+
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: { totalAmount: 9999, taxAmount: 999 },
+  });
+
+  const frozenInvoice = await prisma.billingDocument.findUniqueOrThrow({
+    where: { id: invoice.id },
+  });
+  assert.equal(frozenInvoice.total.toString(), "6000");
+  assert.equal(frozenInvoice.tax.toString(), "0");
+
+  const documentCount = await prisma.billingDocument.count({
+    where: { bookingId: booking.id },
+  });
+  assert.equal(documentCount, 2);
+});
+
+test("manager cannot void billing documents", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-01T00:00:00.000Z"),
+    new Date("2027-04-03T00:00:00.000Z"),
+  );
+  const invoice = await billingService.createInvoiceForBooking(booking.id);
+
+  await assert.rejects(
+    () =>
+      billingService.voidDashboardDocument(
+        state.managerId,
+        invoice.id,
+        "Manager attempt",
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("guest billing document access is scoped to own booking", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-04T00:00:00.000Z"),
+    new Date("2027-04-06T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-guest-billing-access`,
+  });
+
+  const ownDocuments = await billingService.listPublicBookingDocuments(
+    booking.id,
+    state.guestId,
+    undefined,
+  );
+  assert.equal(ownDocuments.length, 2);
+
+  await assert.rejects(
+    () =>
+      billingService.listPublicBookingDocuments(
+        booking.id,
+        state.otherManagerId,
+        undefined,
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("anonymous checkout token can read only its booking documents", async () => {
+  const lock = await publicService.createInventoryLock(
+    undefined,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-06-10T00:00:00.000Z"),
+      to: new Date("2027-06-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const booking = await publicService.createBooking(
+    undefined,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      inventoryLockToken: lock.lockToken,
+      from: new Date("2027-06-10T00:00:00.000Z"),
+      to: new Date("2027-06-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      guestDetails: {
+        name: "Anonymous Billing Guest",
+        email: `${testId}-anonymous@sucasa.test`,
+        contactNumber: "+919999999999",
+      },
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-anonymous-token-docs`,
+  });
+
+  const documents = await billingService.listPublicBookingDocuments(
+    booking.id,
+    undefined,
+    lock.lockToken,
+  );
+  assert.equal(documents.length, 2);
+
+  const otherBooking = await createBooking(
+    new Date("2027-06-13T00:00:00.000Z"),
+    new Date("2027-06-15T00:00:00.000Z"),
+  );
+  await assert.rejects(
+    () =>
+      billingService.listPublicBookingDocuments(
+        otherBooking.id,
+        undefined,
+        lock.lockToken,
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("concurrent invoice generation does not duplicate document numbers", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-07T00:00:00.000Z"),
+    new Date("2027-04-09T00:00:00.000Z"),
+  );
+
+  const [first, second] = await Promise.all([
+    billingService.createInvoiceForBooking(booking.id),
+    billingService.createInvoiceForBooking(booking.id),
+  ]);
+
+  assert.equal(first.id, second.id);
+
+  const documents = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id, type: BillingDocumentType.INVOICE },
+  });
+  assert.equal(documents.length, 1);
 });
 
 test("manual payment can confirm a pending booking with full amount", async () => {
@@ -400,8 +584,8 @@ test("manual payment confirms a multi-room booking", async () => {
     {
       bookingType: "MULTI_ROOM",
       spaceIds: [state.pricingId, state.pricingTwoId],
-      from: new Date("2027-06-10T00:00:00.000Z"),
-      to: new Date("2027-06-12T00:00:00.000Z"),
+      from: new Date("2027-08-10T00:00:00.000Z"),
+      to: new Date("2027-08-12T00:00:00.000Z"),
       guests: 3,
       comfortOption: ComfortOption.AC,
     },
@@ -475,8 +659,8 @@ test("dashboard can create a confirmed walk-in booking without payment", async (
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingTwoId,
-      from: new Date("2027-08-10T00:00:00.000Z"),
-      to: new Date("2027-08-12T00:00:00.000Z"),
+      from: new Date("2027-11-10T00:00:00.000Z"),
+      to: new Date("2027-11-12T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
       guestName: "Walk In Guest",
@@ -606,6 +790,15 @@ test("dashboard records remaining balance payment and marks booking paid", async
   assert.equal(updated.payments.length, 2);
   assert.equal(updated.payments[1]?.purpose, PaymentPurpose.BALANCE);
   assert.equal(updated.payments[1]?.method, PaymentMethod.CASH);
+
+  const receipts = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id, type: BillingDocumentType.RECEIPT },
+    orderBy: { issuedAt: "asc" },
+  });
+  assert.equal(receipts.length, 2);
+  assert.equal(receipts[0]?.paid.toString(), "10");
+  assert.equal(receipts[1]?.paid.toString(), "5590");
+  assert.equal(receipts[1]?.balance.toString(), "0");
 });
 
 test("dashboard rejects balance overpayment", async () => {

@@ -272,6 +272,12 @@ export default function AdminSidebar({
           />
 
           <SidebarLink
+            to={adminPath(ADMIN_ROUTES.BILLING)}
+            icon={FiFileText}
+            label="Billing"
+          />
+
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
             icon={FiClipboard}
             label="Room Board"

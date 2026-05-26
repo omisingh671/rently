@@ -3,6 +3,7 @@ import {
   authenticate,
   optionalAuthenticate,
 } from "@/common/middleware/auth.middleware.js";
+import { billingController } from "@/modules/billing/index.js";
 import { paymentsController } from "@/modules/payments/index.js";
 import * as controller from "./public.controller.js";
 
@@ -36,6 +37,16 @@ router.post(
   "/bookings/:id/payments/manual",
   optionalAuthenticate,
   paymentsController.createManualPayment,
+);
+router.get(
+  "/bookings/:id/billing-documents",
+  optionalAuthenticate,
+  billingController.listPublicBookingDocuments,
+);
+router.get(
+  "/billing-documents/:id/download",
+  optionalAuthenticate,
+  billingController.downloadPublicDocument,
 );
 router.get("/bookings/:id", optionalAuthenticate, controller.getBookingById);
 router.patch("/bookings/:id/cancel", authenticate, controller.cancelBooking);

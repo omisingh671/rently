@@ -12,6 +12,15 @@ export const PUBLIC_QUERY_KEYS = {
     all: [...tenantScope, "bookings"] as const,
     detail: (id: string) => [...tenantScope, "bookings", id] as const,
   },
+  billing: {
+    booking: (bookingId: string, checkoutToken?: string) =>
+      [
+        ...tenantScope,
+        "billing-documents",
+        bookingId,
+        checkoutToken ?? "auth",
+      ] as const,
+  },
   availability: {
     all: availabilityScope,
     check: [...availabilityScope, "check"] as const,

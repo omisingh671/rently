@@ -5,6 +5,7 @@ import { HttpError } from "@/common/errors/http-error.js";
 import { authorize } from "@/common/middleware/role.middleware.js";
 import { requirePasswordChangeComplete } from "@/common/middleware/password-change.middleware.js";
 import { UserRole } from "@/generated/prisma/enums.js";
+import { billingController } from "@/modules/billing/index.js";
 import * as controller from "./dashboard.controller.js";
 import * as galleryController from "./gallery.controller.js";
 
@@ -152,6 +153,24 @@ router.post("/properties/:propertyId/bookings", controller.createManualBooking);
 router.get("/bookings/:id", controller.getBookingById);
 router.patch("/bookings/:id", controller.updateBooking);
 router.post("/bookings/:id/payments", controller.recordBookingPayment);
+
+router.get("/billing-documents", billingController.listDashboardDocuments);
+router.post("/billing-documents/invoices", billingController.generateDashboardInvoice);
+router.post("/billing-documents/receipts", billingController.generateDashboardReceipt);
+router.get(
+  "/billing-documents/:id/download",
+  billingController.downloadDashboardDocument,
+);
+router.get("/billing-documents/:id", billingController.getDashboardDocument);
+router.patch("/billing-documents/:id/void", billingController.voidDashboardDocument);
+router.get(
+  "/properties/:propertyId/billing-settings",
+  billingController.getDashboardSetting,
+);
+router.patch(
+  "/properties/:propertyId/billing-settings",
+  billingController.updateDashboardSetting,
+);
 
 router.get("/properties/:propertyId/enquiries", controller.listEnquiries);
 router.patch("/enquiries/:id", controller.updateEnquiry);

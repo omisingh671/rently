@@ -18,6 +18,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { HttpError } from "@/common/errors/http-error.js";
 import { hashPassword } from "@/common/utils/password.js";
+import { billingService } from "@/modules/billing/index.js";
 import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
@@ -2120,6 +2121,10 @@ export const createBookingForUser = async (
 
         return booking;
       });
+
+      if (initialStatus === BookingStatus.CONFIRMED) {
+        await billingService.createInvoiceForBooking(booking.id);
+      }
 
       return mapBooking(booking);
     } catch (error) {

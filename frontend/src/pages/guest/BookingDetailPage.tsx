@@ -7,11 +7,17 @@ import {
   FiHome,
   FiClock,
   FiCreditCard,
+  FiDownload,
   FiAlertTriangle,
   FiInfo,
+  FiFileText,
 } from "react-icons/fi";
 
 import { useBooking } from "@/features/bookings/hooks";
+import {
+  useBookingBillingDocuments,
+  useDownloadBillingDocument,
+} from "@/features/billing/hooks";
 import { ROUTES } from "@/configs/routePaths";
 import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
@@ -52,6 +58,8 @@ export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: booking, isLoading, error } = useBooking(id);
+  const billingDocumentsQuery = useBookingBillingDocuments(id);
+  const downloadBillingDocument = useDownloadBillingDocument();
 
   if (isLoading) {
     return (
@@ -255,6 +263,51 @@ export default function BookingDetailPage() {
                 </p>
               </div>
             </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 className="mb-6 flex items-center gap-3 text-lg font-bold text-slate-900">
+              <FiFileText className="text-indigo-500" />
+              Billing Documents
+            </h2>
+            {billingDocumentsQuery.isPending ? (
+              <p className="text-sm text-slate-500">Loading documents...</p>
+            ) : (billingDocumentsQuery.data ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Billing documents will appear here after confirmation or
+                successful payment.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {(billingDocumentsQuery.data ?? []).map((document) => (
+                  <div
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-900">
+                        {document.documentNumber}
+                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {document.type.replaceAll("_", " ")} / {document.status}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={downloadBillingDocument.isPending}
+                      onClick={() => {
+                        void downloadBillingDocument.mutateAsync(document);
+                      }}
+                    >
+                      <FiDownload className="mr-2" />
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
 

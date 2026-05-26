@@ -6,6 +6,10 @@ import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
+import {
+  useBillingActions,
+  useBookingBillingDocuments,
+} from "@/features/billing/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import { getRoomBoardApi } from "../api";
@@ -17,7 +21,9 @@ import {
   FiCalendar,
   FiCheckCircle,
   FiCreditCard,
+  FiDownload,
   FiEdit3,
+  FiFileText,
   FiHome,
   FiLogIn,
   FiLogOut,
@@ -222,6 +228,21 @@ export default function BookingDetailsPage() {
     recordBalancePayment,
     isMutating,
   } = useAdminBooking(id);
+  const billingDocumentsQuery = useBookingBillingDocuments(
+    booking?.id,
+    booking?.propertyId,
+  );
+  const billingActions = useBillingActions();
+  const billingDocuments = billingDocumentsQuery.data ?? [];
+  const invoiceDocument = billingDocuments.find(
+    (document) => document.type === "INVOICE",
+  );
+  const receiptByPaymentId = new Map(
+    billingDocuments
+      .filter((document) => document.type === "RECEIPT" && document.paymentId)
+      .map((document) => [document.paymentId, document]),
+  );
+  const isBillingMutating = billingActions.isMutating;
 
   const roomsQuery = useQuery({
     queryKey: booking
@@ -568,9 +589,124 @@ export default function BookingDetailsPage() {
                       {payment.method.replaceAll("_", " ")} /{" "}
                       {formatDateTime(payment.paidAt ?? payment.createdAt)}
                     </div>
+                    {payment.status === "SUCCEEDED" && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {receiptByPaymentId.get(payment.id) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            icon={<FiDownload />}
+                            disabled={isBillingMutating}
+                            onClick={() => {
+                              const receipt = receiptByPaymentId.get(payment.id);
+                              if (receipt) {
+                                void billingActions.downloadDocument(receipt);
+                              }
+                            }}
+                          >
+                            Receipt
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            icon={<FiFileText />}
+                            disabled={isBillingMutating}
+                            onClick={() => {
+                              void billingActions.generateReceipt(payment.id);
+                            }}
+                          >
+                            Generate Receipt
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {payment.note && (
                       <p className="mt-2 text-slate-700">{payment.note}</p>
                     )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Billing Documents
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Frozen invoice and receipt snapshots for this booking.
+                </p>
+              </div>
+              {invoiceDocument ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  icon={<FiDownload />}
+                  disabled={isBillingMutating}
+                  onClick={() => {
+                    void billingActions.downloadDocument(invoiceDocument);
+                  }}
+                >
+                  Download Invoice
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  icon={<FiFileText />}
+                  disabled={isBillingMutating}
+                  onClick={() => {
+                    if (booking) {
+                      void billingActions.generateInvoice(booking.id);
+                    }
+                  }}
+                >
+                  Generate Invoice
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {billingDocumentsQuery.isPending ? (
+                <p className="text-sm text-slate-500">Loading documents...</p>
+              ) : billingDocuments.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No billing documents generated yet.
+                </p>
+              ) : (
+                billingDocuments.map((document) => (
+                  <div
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {document.documentNumber}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {document.type.replaceAll("_", " ")} / {document.status} /{" "}
+                        {formatMoney(document.total)}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      icon={<FiDownload />}
+                      disabled={isBillingMutating}
+                      onClick={() => {
+                        void billingActions.downloadDocument(document);
+                      }}
+                    >
+                      Download
+                    </Button>
                   </div>
                 ))
               )}

@@ -28,6 +28,10 @@ import type {
   CreateManualPaymentResponse,
 } from "@/features/bookings/types";
 import { useAuthStore } from "@/stores/authStore";
+import {
+  useBookingBillingDocuments,
+  useDownloadBillingDocument,
+} from "@/features/billing/hooks";
 import { normalizeApiError } from "@/utils/errors";
 
 const paymentKeyPrefix = "sucasa:manual-payment";
@@ -231,6 +235,23 @@ export default function BookingPaymentPage() {
     paymentResult !== null ||
     (loadedBooking !== undefined &&
       ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status));
+  const checkoutToken =
+    loadedBooking !== undefined &&
+    checkoutDraft?.createdBookingId === loadedBooking.id
+      ? checkoutDraft.payload.inventoryLockToken
+      : undefined;
+  const billingDocumentsQuery = useBookingBillingDocuments(
+    loadedBooking?.id,
+    checkoutToken,
+    isConfirmed,
+  );
+  const downloadBillingDocument = useDownloadBillingDocument(checkoutToken);
+  const invoiceDocument = billingDocumentsQuery.data?.find(
+    (document) => document.type === "INVOICE",
+  );
+  const receiptDocuments =
+    billingDocumentsQuery.data?.filter((document) => document.type === "RECEIPT") ??
+    [];
 
   useEffect(() => {
     if (loadedBooking !== undefined && isConfirmed) {
@@ -364,6 +385,37 @@ export default function BookingPaymentPage() {
                   <p className="mt-4 text-sm text-emerald-600/80">
                     A confirmation email has been sent to {booking.guestEmail}.
                   </p>
+                  <div className="mt-6 flex flex-wrap justify-center gap-3">
+                    {invoiceDocument && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={downloadBillingDocument.isPending}
+                        onClick={() => {
+                          void downloadBillingDocument.mutateAsync(
+                            invoiceDocument,
+                          );
+                        }}
+                      >
+                        Download Invoice
+                      </Button>
+                    )}
+                    {receiptDocuments.map((receipt) => (
+                      <Button
+                        key={receipt.id}
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={downloadBillingDocument.isPending}
+                        onClick={() => {
+                          void downloadBillingDocument.mutateAsync(receipt);
+                        }}
+                      >
+                        Download Receipt
+                      </Button>
+                    ))}
+                  </div>
                   <div className="mt-8 pt-6 border-t border-emerald-200/50">
                     {isAuthenticated ? (
                       <div className="space-y-4">

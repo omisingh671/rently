@@ -263,4 +263,29 @@ export const ADMIN_KEYS = {
     quotes: (propertyId: string) =>
       [...ADMIN_KEYS.operations.byProperty(propertyId), "quotes"] as const,
   },
+
+  billing: {
+    all: () => [...ADMIN_KEYS.root, "billing"] as const,
+
+    list: (params: {
+      page: number;
+      limit: number;
+      propertyId?: string;
+      type?: string;
+      status?: string;
+      bookingRef?: string;
+      guest?: string;
+      from?: string;
+      to?: string;
+    }) => [...ADMIN_KEYS.billing.all(), "list", params] as const,
+
+    booking: (bookingId: string) =>
+      [...ADMIN_KEYS.billing.all(), "booking", bookingId] as const,
+
+    detail: (documentId: string) =>
+      [...ADMIN_KEYS.billing.all(), "detail", documentId] as const,
+
+    setting: (propertyId: string) =>
+      [...ADMIN_KEYS.billing.all(), "settings", propertyId] as const,
+  },
 } as const;
