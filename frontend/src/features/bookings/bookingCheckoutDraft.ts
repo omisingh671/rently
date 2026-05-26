@@ -25,6 +25,7 @@ export interface BookingCheckoutDraft {
   payload: CreateBookingPayload;
   summary: BookingCheckoutDraftSummary;
   returnTo: BookingCheckoutDraftLocation;
+  createdBookingId?: string;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -113,6 +114,9 @@ const parseDraft = (value: unknown): BookingCheckoutDraft | null => {
     payload: value.payload,
     summary: value.summary,
     returnTo: value.returnTo,
+    ...(typeof value.createdBookingId === "string" && {
+      createdBookingId: value.createdBookingId,
+    }),
   };
 };
 
@@ -147,6 +151,25 @@ export const getBookingCheckoutDraft = (): BookingCheckoutDraft | null => {
   } catch {
     clearBookingCheckoutDraft();
     return null;
+  }
+};
+
+export const saveBookingCheckoutDraftCreatedBooking = (
+  bookingId: string,
+): boolean => {
+  const draft = getBookingCheckoutDraft();
+  if (!draft) return false;
+
+  return saveBookingCheckoutDraft({
+    ...draft,
+    createdBookingId: bookingId,
+  });
+};
+
+export const clearBookingCheckoutDraftForBooking = (bookingId: string) => {
+  const draft = getBookingCheckoutDraft();
+  if (draft?.createdBookingId === bookingId) {
+    clearBookingCheckoutDraft();
   }
 };
 

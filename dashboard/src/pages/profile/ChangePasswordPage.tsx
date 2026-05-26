@@ -15,7 +15,17 @@ export default function ChangePasswordPage() {
         Back to settings
       </Link>
 
-      <ChangePasswordForm />
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm max-w-md overflow-hidden">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <h1 className="text-sm font-semibold text-slate-900">Change Password</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Update your password security for dashboard access.
+          </p>
+        </div>
+        <div className="p-6">
+          <ChangePasswordForm />
+        </div>
+      </div>
     </div>
   );
 }

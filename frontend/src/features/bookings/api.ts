@@ -14,6 +14,15 @@ type GuestDetailsPayload = {
   couponCode?: string;
 };
 
+export interface BookingCheckoutQuotePayload {
+  couponCode?: string | null;
+  editToken?: string;
+}
+
+export interface UpdateBookingCheckoutPayload extends BookingCheckoutQuotePayload {
+  guestDetails: BookingGuestDetails;
+}
+
 export type CreateBookingPayload =
   | (CreateOptionBookingPayload & GuestDetailsPayload)
   | ({
@@ -53,6 +62,28 @@ export const getBookingQuote = async (
   const quotePayload = { ...payload };
   delete quotePayload.guestDetails;
   const res = await axiosInstance.post("/public/bookings/quote", quotePayload);
+  return res.data?.data;
+};
+
+export const getBookingCheckoutQuote = async (
+  bookingId: string,
+  payload: BookingCheckoutQuotePayload,
+): Promise<BookingQuote> => {
+  const res = await axiosInstance.post(
+    `/public/bookings/${bookingId}/checkout/quote`,
+    payload,
+  );
+  return res.data?.data;
+};
+
+export const updateBookingCheckout = async (
+  bookingId: string,
+  payload: UpdateBookingCheckoutPayload,
+): Promise<Booking> => {
+  const res = await axiosInstance.patch(
+    `/public/bookings/${bookingId}/checkout`,
+    payload,
+  );
   return res.data?.data;
 };
 

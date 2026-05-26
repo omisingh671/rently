@@ -75,6 +75,31 @@ enum TaxType {
   FIXED
 }
 
+enum TaxCategory {
+  GENERIC
+  GST
+}
+
+enum TaxScope {
+  BOOKING
+  ACCOMMODATION
+}
+
+enum TaxTargetType {
+  ALL
+  ROOM
+  UNIT
+}
+
+enum TaxCalculationMode {
+  FLAT
+  SLAB_PER_ITEM_NIGHTLY_TARIFF
+}
+
+enum TaxDiscountTreatment {
+  BEFORE_TAX
+}
+
 enum BookingTargetType {
   ROOM
   UNIT
@@ -178,7 +203,8 @@ model User {
   createdProperties          Property[]             @relation("PropertyCreatedBy")
   createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
 
-  isActive Boolean @default(true)
+  isActive           Boolean @default(true)
+  mustChangePassword Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -198,6 +224,8 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
   @@map("sessions")
 }
 
@@ -443,6 +471,7 @@ model Booking {
   checkOut           DateTime
   status             BookingStatus        @default(PENDING)
   subtotalAmount     Decimal              @default(0)
+  taxableAmount      Decimal              @default(0)
   taxAmount          Decimal              @default(0)
   taxBreakdown       Json?
   totalAmount        Decimal
@@ -509,11 +538,18 @@ model BookingItem {
   guestCount    Int               @default(1)
   comfortOption ComfortOption
 
-  targetLabel   String
-  productName   String
-  capacity      Int
-  pricePerNight Decimal
-  totalAmount   Decimal
+  targetLabel    String
+  productName    String
+  capacity       Int
+  pricePerNight  Decimal
+  pricingId      String?
+  subtotalAmount Decimal @default(0)
+  discountAmount Decimal @default(0)
+  taxableAmount  Decimal @default(0)
+  taxAmount      Decimal @default(0)
+  taxBreakdown   Json?
+  totalAmount    Decimal
+  finalAmount    Decimal @default(0)
 
   createdAt DateTime @default(now())
 
@@ -704,19 +740,30 @@ model MaintenanceBlock {
 }
 
 model Tax {
-  id         String   @id @default(uuid())
-  propertyId String
-  name       String
-  rate       Decimal
-  taxType    TaxType  @default(PERCENTAGE)
-  appliesTo  String   @default("ALL")
-  isActive   Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                String               @id @default(uuid())
+  propertyId        String
+  name              String
+  rate              Decimal
+  taxType           TaxType              @default(PERCENTAGE)
+  category          TaxCategory          @default(GENERIC)
+  scope             TaxScope             @default(BOOKING)
+  targetType        TaxTargetType        @default(ALL)
+  calculationMode   TaxCalculationMode   @default(FLAT)
+  discountTreatment TaxDiscountTreatment @default(BEFORE_TAX)
+  minTariff         Decimal?
+  maxTariff         Decimal?
+  validFrom         DateTime?
+  validTo           DateTime?
+  priority          Int                  @default(0)
+  appliesTo         String               @default("ALL")
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@index([propertyId])
+  @@index([propertyId, category, scope, targetType, isActive])
   @@map("taxes")
 }
 
@@ -734,6 +781,7 @@ model Coupon {
   validFrom     DateTime
   validTo       DateTime?
   isActive      Boolean      @default(true)
+  oncePerUser   Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

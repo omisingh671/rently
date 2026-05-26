@@ -1,6 +1,7 @@
 import { TENANT_SLUG } from "./appConfig";
 
 const tenantScope = ["tenant", TENANT_SLUG] as const;
+const availabilityScope = [...tenantScope, "availability"] as const;
 
 export const PUBLIC_QUERY_KEYS = {
   spaces: {
@@ -12,7 +13,8 @@ export const PUBLIC_QUERY_KEYS = {
     detail: (id: string) => [...tenantScope, "bookings", id] as const,
   },
   availability: {
-    check: [...tenantScope, "availability", "check"] as const,
+    all: availabilityScope,
+    check: [...availabilityScope, "check"] as const,
     byCriteria: (criteria: {
       checkIn: string;
       checkOut: string;
@@ -20,8 +22,7 @@ export const PUBLIC_QUERY_KEYS = {
       comfort: string;
     }) =>
       [
-        ...tenantScope,
-        "availability",
+        ...availabilityScope,
         "check",
         criteria.checkIn,
         criteria.checkOut,

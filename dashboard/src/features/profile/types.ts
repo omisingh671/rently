@@ -7,6 +7,7 @@ export interface UserProfile {
   countryCode: string | null;
   contactNumber: string | null;
   role: UserRole;
+  mustChangePassword?: boolean;
 }
 
 export interface ChangePasswordPayload {

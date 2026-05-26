@@ -3,6 +3,8 @@ export const ADMIN_ROUTES = {
 
   DASHBOARD: "dashboard",
   TENANTS: "tenants",
+  USERS: "users",
+  SESSIONS: "sessions",
   ADMINS: "admins",
   MANAGERS: "managers",
   PROPERTY_ASSIGNMENTS: "property-assignments",
@@ -36,6 +38,7 @@ export const ADMIN_ROUTES = {
 
   PROFILE: "profile",
   CHANGE_PASSWORD: "change-password",
+  SYSTEM_GUIDE: "system-guide",
 } as const;
 
 /**

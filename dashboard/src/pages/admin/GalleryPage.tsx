@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FiUploadCloud, FiTrash2, FiImage, FiX, FiTag } from "react-icons/fi";
 import { AxiosError } from "axios";
@@ -79,24 +79,6 @@ export default function GalleryPage() {
   const [filterPropId, setFilterPropId] = useState(selectedPropertyId || "");
   const [filterUnitId, setFilterUnitId] = useState("");
   const [filterRoomId, setFilterRoomId] = useState("");
-
-  // Sync selectedPropertyId to local states
-  useEffect(() => {
-    if (selectedPropertyId) {
-      setUploadPropId((prev) => (prev !== selectedPropertyId ? selectedPropertyId : prev));
-      setFilterPropId((prev) => (prev !== selectedPropertyId ? selectedPropertyId : prev));
-    }
-  }, [selectedPropertyId]);
-
-  useEffect(() => {
-    setUploadUnitId("");
-    setUploadRoomId("");
-  }, [uploadPropId]);
-
-  useEffect(() => {
-    setFilterUnitId("");
-    setFilterRoomId("");
-  }, [filterPropId]);
 
   // Fetching relationships
   const { data: uploadUnits = [], isLoading: isLoadingUnits } = usePropertyUnits(uploadPropId);

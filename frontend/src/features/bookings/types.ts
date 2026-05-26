@@ -33,7 +33,14 @@ export interface BookingItem {
   guestCount: number;
   comfortOption: ComfortOption;
   pricePerNight: number;
+  pricingId: string | null;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: TaxBreakdown[];
   totalAmount: number;
+  finalAmount: number;
 }
 
 export interface TaxBreakdown {
@@ -42,6 +49,7 @@ export interface TaxBreakdown {
   taxType: "PERCENTAGE" | "FIXED";
   rate: number;
   appliesTo: string;
+  itemId?: string;
   taxableAmount: number;
   taxAmount: number;
   included: boolean;
@@ -58,7 +66,14 @@ export interface BookingQuoteItem {
   guestCount: number;
   comfortOption: ComfortOption;
   pricePerNight: number;
+  pricingId: string | null;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: TaxBreakdown[];
   totalAmount: number;
+  finalAmount: number;
   taxInclusive: boolean;
 }
 

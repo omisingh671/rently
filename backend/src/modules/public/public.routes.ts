@@ -23,6 +23,16 @@ router.get("/bookings", authenticate, controller.listBookings);
 router.post("/bookings/quote", optionalAuthenticate, controller.getBookingQuote);
 router.post("/bookings", optionalAuthenticate, controller.createBooking);
 router.post(
+  "/bookings/:id/checkout/quote",
+  optionalAuthenticate,
+  controller.getBookingCheckoutQuote,
+);
+router.patch(
+  "/bookings/:id/checkout",
+  optionalAuthenticate,
+  controller.updateBookingCheckout,
+);
+router.post(
   "/bookings/:id/payments/manual",
   optionalAuthenticate,
   paymentsController.createManualPayment,

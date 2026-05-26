@@ -575,6 +575,19 @@ export const findActiveInventoryLocksByToken = (
     orderBy: { createdAt: "asc" },
   });
 
+export const findReleasedInventoryLockByBookingToken = (
+  bookingId: string,
+  lockToken: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.findFirst({
+    where: {
+      bookingId,
+      lockToken,
+      releasedAt: { not: null },
+    },
+  });
+
 export const releaseInventoryLocksByToken = (
   lockToken: string,
   releasedAt: Date,
@@ -727,8 +740,12 @@ export const listBookingsByUser = (userId: string) =>
     include: publicBookingInclude,
   });
 
-export const findBookingByUser = (id: string, userId: string) =>
-  prisma.booking.findFirst({
+export const findBookingByUser = (
+  id: string,
+  userId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).booking.findFirst({
     where: {
       id,
       userId,
@@ -736,9 +753,20 @@ export const findBookingByUser = (id: string, userId: string) =>
     include: publicBookingInclude,
   });
 
-export const findBookingById = (id: string) =>
-  prisma.booking.findUnique({
+export const findBookingById = (id: string, tx?: Prisma.TransactionClient) =>
+  client(tx).booking.findUnique({
     where: { id },
+    include: publicBookingInclude,
+  });
+
+export const updateBookingById = (
+  id: string,
+  data: Prisma.BookingUpdateInput,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).booking.update({
+    where: { id },
+    data,
     include: publicBookingInclude,
   });
 
@@ -783,6 +811,21 @@ export const findActivePropertyById = (id: string, tenantId?: string) =>
     },
   });
 
+export const findPropertyCurrencyById = (
+  propertyId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).property.findUnique({
+    where: { id: propertyId },
+    select: {
+      tenant: {
+        select: {
+          defaultCurrency: true,
+        },
+      },
+    },
+  });
+
 export const createEnquiry = (data: Prisma.EnquiryCreateInput) =>
   prisma.enquiry.create({
     data,
@@ -824,5 +867,38 @@ export const incrementCouponUsage = (
     where: { id },
     data: {
       usedCount: { increment: 1 },
+    },
+  });
+
+export const decrementCouponUsage = (
+  id: string,
+  tx: Prisma.TransactionClient,
+) =>
+  tx.coupon.updateMany({
+    where: {
+      id,
+      usedCount: { gt: 0 },
+    },
+    data: {
+      usedCount: { decrement: 1 },
+    },
+  });
+
+export const countUserCouponBookings = (
+  userId: string,
+  couponId: string,
+  excludeBookingId?: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).booking.count({
+    where: {
+      userId,
+      couponId,
+      ...(excludeBookingId !== undefined && {
+        id: { not: excludeBookingId },
+      }),
+      status: {
+        notIn: [BookingStatus.CANCELLED],
+      },
     },
   });

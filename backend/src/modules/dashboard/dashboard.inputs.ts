@@ -12,8 +12,14 @@ import type {
   RoomProductCategory,
   RoomStatus,
   TenantStatus,
+  TaxCalculationMode,
+  TaxCategory,
+  TaxDiscountTreatment,
+  TaxScope,
+  TaxTargetType,
   TaxType,
   UnitStatus,
+  UserRole,
 } from "@/generated/prisma/enums.js";
 
 export interface DashboardPaginationInput {
@@ -41,6 +47,20 @@ export interface DashboardAdminListInput extends DashboardPaginationInput {
 export interface DashboardManagerListInput extends DashboardPaginationInput {
   search?: string;
   isActive?: boolean;
+}
+
+export interface DashboardUserListInput extends DashboardPaginationInput {
+  search?: string;
+  role?: UserRole;
+  isActive?: boolean;
+  mustChangePassword?: boolean;
+}
+
+export interface DashboardSessionListInput extends DashboardPaginationInput {
+  search?: string;
+  userId?: string;
+  role?: UserRole;
+  status?: "active" | "expired";
 }
 
 export interface DashboardAssignmentListInput extends DashboardPaginationInput {
@@ -93,6 +113,8 @@ export interface DashboardTaxListInput extends DashboardPaginationInput {
   propertyId: string;
   search?: string;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
   isActive?: boolean;
 }
 
@@ -185,6 +207,18 @@ export interface UpdateDashboardUserInput {
   isActive?: boolean;
   countryCode?: string;
   contactNumber?: string;
+}
+
+export interface UpdateDashboardUserStatusInput {
+  isActive: boolean;
+}
+
+export interface UpdateDashboardUserRoleInput {
+  role: Exclude<UserRole, "SUPER_ADMIN">;
+}
+
+export interface UpdateDashboardForcePasswordChangeInput {
+  mustChangePassword: boolean;
 }
 
 export interface CreateDashboardAssignmentInput {
@@ -308,6 +342,16 @@ export interface CreateDashboardTaxInput {
   name: string;
   rate: number;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
+  targetType?: TaxTargetType;
+  calculationMode?: TaxCalculationMode;
+  discountTreatment?: TaxDiscountTreatment;
+  minTariff?: number | null;
+  maxTariff?: number | null;
+  validFrom?: Date | null;
+  validTo?: Date | null;
+  priority?: number;
   appliesTo?: string;
   isActive?: boolean;
 }
@@ -316,6 +360,16 @@ export interface UpdateDashboardTaxInput {
   name?: string;
   rate?: number;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
+  targetType?: TaxTargetType;
+  calculationMode?: TaxCalculationMode;
+  discountTreatment?: TaxDiscountTreatment;
+  minTariff?: number | null;
+  maxTariff?: number | null;
+  validFrom?: Date | null;
+  validTo?: Date | null;
+  priority?: number;
   appliesTo?: string;
   isActive?: boolean;
 }
@@ -331,6 +385,7 @@ export interface CreateDashboardCouponInput {
   validFrom: Date;
   validTo?: Date;
   isActive?: boolean;
+  oncePerUser?: boolean;
 }
 
 export interface UpdateDashboardCouponInput {
@@ -344,6 +399,7 @@ export interface UpdateDashboardCouponInput {
   validFrom?: Date;
   validTo?: Date;
   isActive?: boolean;
+  oncePerUser?: boolean;
 }
 
 export interface UpdateDashboardBookingInput {

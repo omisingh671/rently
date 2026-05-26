@@ -55,8 +55,69 @@ export const taxSchema = z.object({
   name: z.string().trim().min(1),
   rate: z.number().nonnegative(),
   taxType: z.enum(["PERCENTAGE", "FIXED"]),
+  category: z.enum(["GENERIC", "GST"]),
+  scope: z.enum(["BOOKING", "ACCOMMODATION"]),
+  targetType: z.enum(["ALL", "ROOM", "UNIT"]),
+  calculationMode: z.enum(["FLAT", "SLAB_PER_ITEM_NIGHTLY_TARIFF"]),
+  discountTreatment: z.enum(["BEFORE_TAX"]),
+  minTariff: z.number().nonnegative().nullable().optional(),
+  maxTariff: z.number().positive().nullable().optional(),
+  validFrom: z.string().nullable().optional(),
+  validTo: z.string().nullable().optional(),
+  priority: z.number().int(),
   appliesTo: z.string().trim().min(1),
   isActive: z.boolean(),
+}).superRefine((data, ctx) => {
+  if (data.calculationMode === "FLAT") {
+    if (data.minTariff !== undefined && data.minTariff !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minTariff"],
+        message: "Flat rules do not use min tariff",
+      });
+    }
+
+    if (data.maxTariff !== undefined && data.maxTariff !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maxTariff"],
+        message: "Flat rules do not use max tariff",
+      });
+    }
+  }
+
+  if (
+    data.calculationMode === "SLAB_PER_ITEM_NIGHTLY_TARIFF" &&
+    (data.minTariff === undefined || data.minTariff === null)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["minTariff"],
+      message: "Min tariff is required for slab rules",
+    });
+  }
+
+  if (
+    data.minTariff !== undefined &&
+    data.minTariff !== null &&
+    data.maxTariff !== undefined &&
+    data.maxTariff !== null &&
+    data.maxTariff <= data.minTariff
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["maxTariff"],
+      message: "Max tariff must be greater than min tariff",
+    });
+  }
+
+  if (data.validFrom && data.validTo && data.validTo < data.validFrom) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["validTo"],
+      message: "Valid to must be on or after valid from",
+    });
+  }
 });
 
 export const couponSchema = z.object({
@@ -70,6 +131,7 @@ export const couponSchema = z.object({
   validFrom: z.string().min(1),
   validTo: z.string().optional(),
   isActive: z.boolean(),
+  oncePerUser: z.boolean(),
 });
 
 export type ProductForm = z.input<typeof productSchema>;
@@ -109,9 +171,19 @@ export const emptyRate: RateForm = {
 };
 
 export const emptyTax: TaxForm = {
-  name: "",
-  rate: 0,
+  name: "GST",
+  rate: 5,
   taxType: "PERCENTAGE",
+  category: "GST",
+  scope: "ACCOMMODATION",
+  targetType: "ALL",
+  calculationMode: "SLAB_PER_ITEM_NIGHTLY_TARIFF",
+  discountTreatment: "BEFORE_TAX",
+  minTariff: 0,
+  maxTariff: undefined,
+  validFrom: "",
+  validTo: "",
+  priority: 0,
   appliesTo: "ALL",
   isActive: true,
 };
@@ -127,6 +199,7 @@ export const emptyCoupon: CouponForm = {
   validFrom: "",
   validTo: "",
   isActive: true,
+  oncePerUser: false,
 };
 
 export const formatDate = (value: string | null) =>

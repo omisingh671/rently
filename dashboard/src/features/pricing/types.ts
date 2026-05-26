@@ -5,6 +5,11 @@ export type RateType = "NIGHTLY" | "WEEKLY" | "MONTHLY";
 export type PricingTier = "STANDARD" | "CORPORATE" | "SEASONAL";
 export type DiscountType = "PERCENTAGE" | "FIXED";
 export type TaxType = "PERCENTAGE" | "FIXED";
+export type TaxCategory = "GENERIC" | "GST";
+export type TaxScope = "BOOKING" | "ACCOMMODATION";
+export type TaxTargetType = "ALL" | "ROOM" | "UNIT";
+export type TaxCalculationMode = "FLAT" | "SLAB_PER_ITEM_NIGHTLY_TARIFF";
+export type TaxDiscountTreatment = "BEFORE_TAX";
 
 export type AdminRoomProduct = {
   id: string;
@@ -46,6 +51,16 @@ export type AdminTax = {
   name: string;
   rate: string;
   taxType: TaxType;
+  category: TaxCategory;
+  scope: TaxScope;
+  targetType: TaxTargetType;
+  calculationMode: TaxCalculationMode;
+  discountTreatment: TaxDiscountTreatment;
+  minTariff: string | null;
+  maxTariff: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  priority: number;
   appliesTo: string;
   isActive: boolean;
   createdAt: string;
@@ -67,6 +82,7 @@ export type AdminCoupon = {
   validFrom: string;
   validTo: string | null;
   isActive: boolean;
+  oncePerUser: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -96,6 +112,16 @@ export type TaxPayload = {
   name: string;
   rate: number;
   taxType: TaxType;
+  category: TaxCategory;
+  scope: TaxScope;
+  targetType: TaxTargetType;
+  calculationMode: TaxCalculationMode;
+  discountTreatment: TaxDiscountTreatment;
+  minTariff?: number | null;
+  maxTariff?: number | null;
+  validFrom?: string | null;
+  validTo?: string | null;
+  priority: number;
   appliesTo: string;
   isActive: boolean;
 };
@@ -111,6 +137,7 @@ export type CouponPayload = {
   validFrom: string;
   validTo?: string;
   isActive: boolean;
+  oncePerUser: boolean;
 };
 
 export type ProductListResponse = PaginatedResult<AdminRoomProduct>;

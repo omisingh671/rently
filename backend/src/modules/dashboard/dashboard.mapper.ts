@@ -18,6 +18,7 @@ import type {
   DashboardRoomDTO,
   DashboardRoomPricingDTO,
   DashboardRoomProductDTO,
+  DashboardSessionDTO,
   DashboardTaxDTO,
   DashboardTenantDTO,
   DashboardUnitDTO,
@@ -54,8 +55,29 @@ export const mapUser = (
   countryCode: user.countryCode ?? null,
   contactNumber: user.contactNumber ?? null,
   isActive: user.isActive,
+  mustChangePassword: user.mustChangePassword,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
+});
+
+export const mapSession = (
+  session: repo.DashboardSessionRecord,
+  currentRefreshToken?: string,
+  now = new Date(),
+): DashboardSessionDTO => ({
+  id: session.id,
+  userId: session.userId,
+  userFullName: session.user.fullName,
+  userEmail: session.user.email,
+  userRole: session.user.role,
+  ip: session.ip ?? null,
+  userAgent: session.userAgent ?? null,
+  expiresAt: session.expiresAt,
+  createdAt: session.createdAt,
+  isExpired: session.expiresAt <= now,
+  isCurrent:
+    currentRefreshToken !== undefined &&
+    session.refreshToken === currentRefreshToken,
 });
 
 export const mapProperty = (
@@ -235,6 +257,16 @@ export const mapTax = (tax: repo.DashboardTaxRecord): DashboardTaxDTO => ({
   name: tax.name,
   rate: tax.rate.toString(),
   taxType: tax.taxType,
+  category: tax.category,
+  scope: tax.scope,
+  targetType: tax.targetType,
+  calculationMode: tax.calculationMode,
+  discountTreatment: tax.discountTreatment,
+  minTariff: tax.minTariff?.toString() ?? null,
+  maxTariff: tax.maxTariff?.toString() ?? null,
+  validFrom: tax.validFrom ?? null,
+  validTo: tax.validTo ?? null,
+  priority: tax.priority,
   appliesTo: tax.appliesTo,
   isActive: tax.isActive,
   createdAt: tax.createdAt,
@@ -258,6 +290,7 @@ export const mapCoupon = (
   validFrom: coupon.validFrom,
   validTo: coupon.validTo ?? null,
   isActive: coupon.isActive,
+  oncePerUser: coupon.oncePerUser,
   createdAt: coupon.createdAt,
   updatedAt: coupon.updatedAt,
 });
@@ -282,17 +315,6 @@ const isDashboardTaxBreakdown = (
 const getDashboardTaxBreakdown = (
   value: Prisma.JsonValue | null,
 ): DashboardTaxBreakdown => (isDashboardTaxBreakdown(value) ? value : []);
-
-const getTaxableAmountFromBreakdown = (breakdown: DashboardTaxBreakdown) => {
-  const taxableAmounts = new Set(breakdown.map((tax) => tax.taxableAmount));
-  if (taxableAmounts.size === 1) {
-    return String(breakdown[0]?.taxableAmount ?? 0);
-  }
-
-  return String(
-    breakdown.reduce((total, tax) => total + tax.taxableAmount, 0),
-  );
-};
 
 const maxDecimal = (left: Prisma.Decimal, right: Prisma.Decimal) =>
   left.greaterThan(right) ? left : right;
@@ -449,7 +471,7 @@ export const mapBooking = (
     subtotalAmount: booking.subtotalAmount.toString(),
     totalAmount: booking.totalAmount.toString(),
     discountAmount: booking.discountAmount.toString(),
-    taxableAmount: getTaxableAmountFromBreakdown(taxBreakdown),
+    taxableAmount: booking.taxableAmount.toString(),
     taxAmount: booking.taxAmount.toString(),
     taxBreakdown,
     paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
@@ -491,7 +513,14 @@ export const mapBooking = (
       guestCount: item.guestCount,
       comfortOption: item.comfortOption,
       pricePerNight: item.pricePerNight.toString(),
+      pricingId: item.pricingId ?? null,
+      subtotalAmount: item.subtotalAmount.toString(),
+      discountAmount: item.discountAmount.toString(),
+      taxableAmount: item.taxableAmount.toString(),
+      taxAmount: item.taxAmount.toString(),
+      taxBreakdown: getDashboardTaxBreakdown(item.taxBreakdown),
       totalAmount: item.totalAmount.toString(),
+      finalAmount: item.finalAmount.toString(),
     })),
     statusHistory: booking.statusHistory.map((event) => ({
       id: event.id,

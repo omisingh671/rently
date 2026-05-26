@@ -66,6 +66,16 @@ export const useAdminUnits = (
     placeholderData: (prev) => prev,
   });
 
+  const invalidateUnitState = (nextPropertyId = propertyId) => {
+    if (!nextPropertyId) return;
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.units.byProperty(nextPropertyId),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.operations.roomBoards(nextPropertyId),
+    });
+  };
+
   /* ---------------- CREATE ---------------- */
 
   const createMutation = useMutation({
@@ -73,12 +83,7 @@ export const useAdminUnits = (
       if (!propertyId) throw new Error("PropertyId required");
       return createUnitApi(propertyId, payload);
     },
-    onSuccess: () => {
-      if (!propertyId) return;
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.units.byProperty(propertyId),
-      });
-    },
+    onSuccess: (unit) => invalidateUnitState(unit.propertyId),
   });
 
   /* ---------------- UPDATE ---------------- */
@@ -91,24 +96,14 @@ export const useAdminUnits = (
       unitId: string;
       payload: UpdateUnitPayload;
     }) => updateUnitApi(unitId, payload),
-    onSuccess: () => {
-      if (!propertyId) return;
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.units.byProperty(propertyId),
-      });
-    },
+    onSuccess: (unit) => invalidateUnitState(unit.propertyId),
   });
 
   /* ---------------- DELETE ---------------- */
 
   const deleteMutation = useMutation({
     mutationFn: deleteUnitApi,
-    onSuccess: () => {
-      if (!propertyId) return;
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.units.byProperty(propertyId),
-      });
-    },
+    onSuccess: () => invalidateUnitState(),
   });
 
   return {

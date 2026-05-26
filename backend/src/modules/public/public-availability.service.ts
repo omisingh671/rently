@@ -156,8 +156,8 @@ const mapOptionItemDTO = (
   item: PublicInventoryItem,
 ): AvailabilityOptionItemDTO => ({
   targetType: item.target.targetType,
-  unitId: item.target.unitId,
-  roomId: item.target.roomId,
+  unitId: null,
+  roomId: null,
   label: item.publicLabel,
   guestCount: item.guestCount,
   capacity: item.capacity,
@@ -409,7 +409,7 @@ const mapUnitRooms = (
   unit: repo.PublicAvailabilityUnitRecord,
 ): AvailabilityOptionRoomDTO[] =>
   unit.rooms.map((room, index) => ({
-    id: room.id,
+    id: `room-${index + 1}`,
     label: `Room ${index + 1}`,
     capacity: getRoomCapacity(room),
     hasAC: room.hasAC,

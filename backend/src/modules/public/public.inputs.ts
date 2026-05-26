@@ -49,6 +49,15 @@ export interface PublicBookingGuestDetailsInput {
   contactNumber: string;
 }
 
+export interface PublicBookingCheckoutQuoteInput {
+  couponCode?: string | null | undefined;
+  editToken?: string | undefined;
+}
+
+export interface UpdatePublicBookingCheckoutInput extends PublicBookingCheckoutQuoteInput {
+  guestDetails: PublicBookingGuestDetailsInput;
+}
+
 export interface CreatePublicEnquiryInput {
   tenantId?: string;
   propertyId?: string;

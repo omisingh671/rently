@@ -13,6 +13,16 @@ import { loginSchema, type LoginFormValues } from "./login.schema";
 
 import { ROUTES } from "@/configs/routePaths";
 
+const loginDefaultValues: LoginFormValues = import.meta.env.DEV
+  ? {
+      email: "guest@sucasa.com",
+      password: "Guest@123",
+    }
+  : {
+      email: "",
+      password: "",
+    };
+
 export default function LoginForm() {
   const navigate = useNavigate();
 
@@ -21,10 +31,7 @@ export default function LoginForm() {
   const methods = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     mode: "onTouched",
-    defaultValues: {
-      email: "guest@sucasa.com",
-      password: "Guest@123",
-    },
+    defaultValues: loginDefaultValues,
   });
 
   const { handleSubmit, setError, clearErrors, control } = methods;

@@ -13,8 +13,14 @@ import {
   RoomProductCategory,
   RoomStatus,
   TenantStatus,
+  TaxCalculationMode,
+  TaxCategory,
+  TaxDiscountTreatment,
+  TaxScope,
+  TaxTargetType,
   TaxType,
   UnitStatus,
+  UserRole,
 } from "@/generated/prisma/enums.js";
 
 const idSchema = z.string().min(1, "ID is required");
@@ -77,6 +83,32 @@ export const listUsersQuerySchema = basePaginationQuerySchema.extend({
   isActive: optionalBooleanQuerySchema,
 });
 
+export const listAllUsersQuerySchema = basePaginationQuerySchema.extend({
+  search: z.string().trim().min(1).optional(),
+  role: z.nativeEnum(UserRole).optional(),
+  isActive: optionalBooleanQuerySchema,
+  mustChangePassword: optionalBooleanQuerySchema,
+});
+
+export const listSessionsQuerySchema = basePaginationQuerySchema.extend({
+  search: z.string().trim().min(1).optional(),
+  userId: idSchema.optional(),
+  role: z.nativeEnum(UserRole).optional(),
+  status: z.enum(["active", "expired"]).optional(),
+});
+
+export const updateUserStatusSchema = z.object({
+  isActive: z.boolean(),
+});
+
+export const updateUserRoleSchema = z.object({
+  role: z.enum([UserRole.ADMIN, UserRole.MANAGER, UserRole.GUEST]),
+});
+
+export const updateForcePasswordChangeSchema = z.object({
+  mustChangePassword: z.boolean(),
+});
+
 export const listAssignmentsQuerySchema = basePaginationQuerySchema.extend({
   propertyId: idSchema.optional(),
   role: z.nativeEnum(PropertyAssignmentRole).optional(),
@@ -118,6 +150,8 @@ export const listRoomPricingQuerySchema = basePaginationQuerySchema.extend({
 export const listTaxesQuerySchema = basePaginationQuerySchema.extend({
   search: z.string().trim().min(1).optional(),
   taxType: z.nativeEnum(TaxType).optional(),
+  category: z.nativeEnum(TaxCategory).optional(),
+  scope: z.nativeEnum(TaxScope).optional(),
   isActive: optionalBooleanQuerySchema,
 });
 
@@ -416,8 +450,75 @@ export const createTaxSchema = z.object({
   name: z.string().trim().min(1).max(120),
   rate: z.number().nonnegative(),
   taxType: z.nativeEnum(TaxType).optional(),
+  category: z.nativeEnum(TaxCategory).optional(),
+  scope: z.nativeEnum(TaxScope).optional(),
+  targetType: z.nativeEnum(TaxTargetType).optional(),
+  calculationMode: z.nativeEnum(TaxCalculationMode).optional(),
+  discountTreatment: z.nativeEnum(TaxDiscountTreatment).optional(),
+  minTariff: z.number().nonnegative().nullable().optional(),
+  maxTariff: z.number().positive().nullable().optional(),
+  validFrom: z.coerce.date().nullable().optional(),
+  validTo: z.coerce.date().nullable().optional(),
+  priority: z.number().int().optional(),
   appliesTo: z.string().trim().min(1).max(120).optional(),
   isActive: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.calculationMode === TaxCalculationMode.FLAT) {
+    if (data.minTariff !== undefined && data.minTariff !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minTariff"],
+        message: "minTariff is not used for flat tax rules",
+      });
+    }
+
+    if (data.maxTariff !== undefined && data.maxTariff !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maxTariff"],
+        message: "maxTariff is not used for flat tax rules",
+      });
+    }
+  }
+
+  if (
+    data.calculationMode === TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF &&
+    (data.minTariff === undefined || data.minTariff === null)
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["minTariff"],
+      message: "minTariff is required for slab tax rules",
+    });
+  }
+
+  if (
+    data.minTariff !== undefined &&
+    data.minTariff !== null &&
+    data.maxTariff !== undefined &&
+    data.maxTariff !== null &&
+    data.maxTariff <= data.minTariff
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["maxTariff"],
+      message: "maxTariff must be greater than minTariff",
+    });
+  }
+
+  if (
+    data.validFrom !== undefined &&
+    data.validFrom !== null &&
+    data.validTo !== undefined &&
+    data.validTo !== null &&
+    data.validTo < data.validFrom
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["validTo"],
+      message: "validTo must be on or after validFrom",
+    });
+  }
 });
 
 export const updateTaxSchema = z
@@ -425,8 +526,76 @@ export const updateTaxSchema = z
     name: z.string().trim().min(1).max(120).optional(),
     rate: z.number().nonnegative().optional(),
     taxType: z.nativeEnum(TaxType).optional(),
+    category: z.nativeEnum(TaxCategory).optional(),
+    scope: z.nativeEnum(TaxScope).optional(),
+    targetType: z.nativeEnum(TaxTargetType).optional(),
+    calculationMode: z.nativeEnum(TaxCalculationMode).optional(),
+    discountTreatment: z.nativeEnum(TaxDiscountTreatment).optional(),
+    minTariff: z.number().nonnegative().nullable().optional(),
+    maxTariff: z.number().positive().nullable().optional(),
+    validFrom: z.coerce.date().nullable().optional(),
+    validTo: z.coerce.date().nullable().optional(),
+    priority: z.number().int().optional(),
     appliesTo: z.string().trim().min(1).max(120).optional(),
     isActive: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.calculationMode === TaxCalculationMode.FLAT) {
+      if (data.minTariff !== undefined && data.minTariff !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["minTariff"],
+          message: "minTariff is not used for flat tax rules",
+        });
+      }
+
+      if (data.maxTariff !== undefined && data.maxTariff !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maxTariff"],
+          message: "maxTariff is not used for flat tax rules",
+        });
+      }
+    }
+
+    if (
+      data.calculationMode === TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF &&
+      data.minTariff === null
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minTariff"],
+        message: "minTariff is required for slab tax rules",
+      });
+    }
+
+    if (
+      data.minTariff !== undefined &&
+      data.minTariff !== null &&
+      data.maxTariff !== undefined &&
+      data.maxTariff !== null &&
+      data.maxTariff <= data.minTariff
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["maxTariff"],
+        message: "maxTariff must be greater than minTariff",
+      });
+    }
+
+    if (
+      data.validFrom !== undefined &&
+      data.validFrom !== null &&
+      data.validTo !== undefined &&
+      data.validTo !== null &&
+      data.validTo < data.validFrom
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["validTo"],
+        message: "validTo must be on or after validFrom",
+      });
+    }
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
@@ -444,6 +613,7 @@ export const createCouponSchema = z
     validFrom: z.coerce.date(),
     validTo: z.coerce.date().optional(),
     isActive: z.boolean().optional(),
+    oncePerUser: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.validTo !== undefined && data.validTo < data.validFrom) {
@@ -467,6 +637,7 @@ export const updateCouponSchema = z
     validFrom: z.coerce.date().optional(),
     validTo: z.coerce.date().optional(),
     isActive: z.boolean().optional(),
+    oncePerUser: z.boolean().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",

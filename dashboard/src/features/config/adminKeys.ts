@@ -46,6 +46,32 @@ export const ADMIN_KEYS = {
       [...ADMIN_KEYS.users.all(scope), "detail", id] as const,
   },
 
+  managedUsers: {
+    all: () => [...ADMIN_KEYS.root, "managed-users"] as const,
+
+    list: (params: {
+      page: number;
+      limit: number;
+      search?: string;
+      role?: string;
+      isActive?: string;
+      mustChangePassword?: string;
+    }) => [...ADMIN_KEYS.managedUsers.all(), "list", params] as const,
+  },
+
+  sessions: {
+    all: () => [...ADMIN_KEYS.root, "sessions"] as const,
+
+    list: (params: {
+      page: number;
+      limit: number;
+      search?: string;
+      userId?: string;
+      role?: string;
+      status?: string;
+    }) => [...ADMIN_KEYS.sessions.all(), "list", params] as const,
+  },
+
   assignments: {
     all: () => [...ADMIN_KEYS.root, "assignments"] as const,
 
@@ -219,10 +245,12 @@ export const ADMIN_KEYS = {
     bookingDetail: (bookingId: string) =>
       [...ADMIN_KEYS.operations.all(), "bookings", "detail", bookingId] as const,
 
+    roomBoards: (propertyId: string) =>
+      [...ADMIN_KEYS.operations.byProperty(propertyId), "room-board"] as const,
+
     roomBoard: (params: { propertyId: string; from: string; to: string }) =>
       [
-        ...ADMIN_KEYS.operations.byProperty(params.propertyId),
-        "room-board",
+        ...ADMIN_KEYS.operations.roomBoards(params.propertyId),
         {
           from: params.from,
           to: params.to,

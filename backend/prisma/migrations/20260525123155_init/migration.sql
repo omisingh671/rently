@@ -9,6 +9,7 @@ CREATE TABLE `users` (
     `passwordHash` VARCHAR(191) NOT NULL,
     `role` ENUM('SUPER_ADMIN', 'ADMIN', 'MANAGER', 'GUEST') NOT NULL DEFAULT 'GUEST',
     `isActive` BOOLEAN NOT NULL DEFAULT true,
+    `mustChangePassword` BOOLEAN NOT NULL DEFAULT false,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
@@ -28,6 +29,8 @@ CREATE TABLE `sessions` (
 
     UNIQUE INDEX `sessions_refreshToken_key`(`refreshToken`),
     INDEX `sessions_userId_idx`(`userId`),
+    INDEX `sessions_expiresAt_idx`(`expiresAt`),
+    INDEX `sessions_createdAt_idx`(`createdAt`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -110,7 +113,6 @@ CREATE TABLE `rooms` (
     `unitId` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
     `number` VARCHAR(191) NOT NULL,
-    `rent` DOUBLE NOT NULL,
     `hasAC` BOOLEAN NOT NULL DEFAULT false,
     `maxOccupancy` INTEGER NOT NULL DEFAULT 2,
     `status` ENUM('AVAILABLE', 'OCCUPIED', 'MAINTENANCE') NOT NULL DEFAULT 'AVAILABLE',
@@ -331,14 +333,12 @@ CREATE TABLE `payments` (
 -- CreateTable
 CREATE TABLE `amenities` (
     `id` VARCHAR(191) NOT NULL,
-    `propertyId` VARCHAR(191) NOT NULL,
     `name` VARCHAR(191) NOT NULL,
     `icon` VARCHAR(191) NULL,
     `isActive` BOOLEAN NOT NULL DEFAULT true,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
-    INDEX `amenities_propertyId_idx`(`propertyId`),
-    UNIQUE INDEX `amenities_propertyId_name_key`(`propertyId`, `name`),
+    UNIQUE INDEX `amenities_name_key`(`name`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -451,6 +451,7 @@ CREATE TABLE `coupons` (
     `validFrom` DATETIME(3) NOT NULL,
     `validTo` DATETIME(3) NULL,
     `isActive` BOOLEAN NOT NULL DEFAULT true,
+    `oncePerUser` BOOLEAN NOT NULL DEFAULT false,
     `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `updatedAt` DATETIME(3) NOT NULL,
 
@@ -555,9 +556,6 @@ ALTER TABLE `payments` ADD CONSTRAINT `payments_userId_fkey` FOREIGN KEY (`userI
 
 -- AddForeignKey
 ALTER TABLE `payments` ADD CONSTRAINT `payments_receivedByUserId_fkey` FOREIGN KEY (`receivedByUserId`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE `amenities` ADD CONSTRAINT `amenities_propertyId_fkey` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `property_amenities` ADD CONSTRAINT `fk_property_amenity_property` FOREIGN KEY (`propertyId`) REFERENCES `properties`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

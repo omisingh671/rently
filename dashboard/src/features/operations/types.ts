@@ -70,6 +70,7 @@ export type AdminBooking = {
     taxType: "PERCENTAGE" | "FIXED";
     rate: number;
     appliesTo: string;
+    itemId?: string;
     taxableAmount: number;
     taxAmount: number;
     included: boolean;
@@ -106,7 +107,24 @@ export type AdminBooking = {
     guestCount: number;
     comfortOption: ComfortOption;
     pricePerNight: string;
+    pricingId: string | null;
+    subtotalAmount: string;
+    discountAmount: string;
+    taxableAmount: string;
+    taxAmount: string;
+    taxBreakdown: Array<{
+      taxId: string;
+      name: string;
+      taxType: "PERCENTAGE" | "FIXED";
+      rate: number;
+      appliesTo: string;
+      itemId?: string;
+      taxableAmount: number;
+      taxAmount: number;
+      included: boolean;
+    }>;
     totalAmount: string;
+    finalAmount: string;
   }>;
   statusHistory: Array<{
     id: string;

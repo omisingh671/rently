@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -14,6 +14,7 @@ import { useAdminUnits } from "@/features/units/hooks/useAdminUnits";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
+import { normalizeApiError } from "@/utils/errors";
 
 import type { AdminUnit, UnitStatus } from "@/features/units/types";
 
@@ -90,6 +91,28 @@ export default function UnitsPage() {
     data?.pagination && data.pagination.total > pageSize
       ? data.pagination
       : null;
+
+  const unitFormDefaultValues = useMemo(
+    () =>
+      editingUnit
+        ? {
+            propertyId: editingUnit.propertyId,
+            unitNumber: editingUnit.unitNumber,
+            floor: editingUnit.floor,
+            status: editingUnit.status,
+            isActive: editingUnit.isActive,
+            amenityIds: editingUnit.amenityIds ?? [],
+          }
+        : {
+            propertyId: filters.propertyId,
+            unitNumber: "",
+            floor: 1,
+            status: "ACTIVE" as const,
+            isActive: true,
+            amenityIds: [],
+          },
+    [editingUnit, filters.propertyId],
+  );
 
   const handleCreate = () => {
     setEditingUnit(null);
@@ -178,35 +201,21 @@ export default function UnitsPage() {
         <UnitForm
           properties={properties}
           submitLabel={editingUnit ? "Save Changes" : "Create Unit"}
-          defaultValues={
-            editingUnit
-              ? {
-                  propertyId: editingUnit.propertyId,
-                  unitNumber: editingUnit.unitNumber,
-                  floor: editingUnit.floor,
-                  status: editingUnit.status,
-                  isActive: editingUnit.isActive,
-                  amenityIds: editingUnit.amenityIds ?? [],
-                }
-              : {
-                  propertyId: filters.propertyId,
-                  unitNumber: "",
-                  floor: 1,
-                  status: "ACTIVE",
-                  isActive: true,
-                  amenityIds: [],
-                }
-          }
+          defaultValues={unitFormDefaultValues}
           isSubmitting={isCreating || isUpdating}
           onSubmit={(values, setServerError) => {
             if (editingUnit) {
               updateUnit({ unitId: editingUnit.id, payload: values })
                 .then(() => handleCloseModal())
-                .catch(() => setServerError("Failed to update unit"));
+                .catch((error) =>
+                  setServerError(normalizeApiError(error).message),
+                );
             } else {
               createUnit(values)
                 .then(() => handleCloseModal())
-                .catch(() => setServerError("Failed to create unit"));
+                .catch((error) =>
+                  setServerError(normalizeApiError(error).message),
+                );
             }
           }}
           onCancel={handleCloseModal}

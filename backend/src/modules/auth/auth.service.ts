@@ -150,6 +150,7 @@ export const loginUser = async (
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        mustChangePassword: user.mustChangePassword,
       },
       accessToken,
     },
@@ -254,6 +255,7 @@ export const refreshSession = async (
         fullName: user.fullName,
         email: user.email,
         role: user.role,
+        mustChangePassword: user.mustChangePassword,
       },
       accessToken,
     },
@@ -285,6 +287,7 @@ export const getCurrentUser = async (userId: string) => {
     fullName: user.fullName,
     email: user.email,
     role: user.role,
+    mustChangePassword: user.mustChangePassword,
   };
 };
 
@@ -338,6 +341,7 @@ export const resetPassword = async (
 
 export const changePassword = async (
   input: ChangePasswordInput,
+  currentRefreshToken?: string,
 ): Promise<void> => {
   const user = await repo.findUserById(input.userId);
   if (!user) {
@@ -356,6 +360,11 @@ export const changePassword = async (
   const newHash = await hashPassword(input.newPassword);
 
   await repo.updateUserPassword(user.id, newHash);
+
+  if (currentRefreshToken !== undefined) {
+    await repo.deleteOtherSessionsForUser(user.id, currentRefreshToken);
+    return;
+  }
 
   await repo.deleteSessionsForUser(user.id);
 };

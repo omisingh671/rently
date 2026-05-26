@@ -10,7 +10,7 @@ import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
  * - NEVER redirects while auth is resolving
  **/
 export function RequireAuth() {
-  const { status } = useAuthStore();
+  const { status, user } = useAuthStore();
   const location = useLocation();
 
   if (status === "loading") {
@@ -19,6 +19,15 @@ export function RequireAuth() {
 
   if (status === "unauthenticated") {
     return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
+  }
+
+  const changePasswordPath = adminPath(ADMIN_ROUTES.CHANGE_PASSWORD);
+  if (
+    status === "authenticated" &&
+    user?.mustChangePassword &&
+    location.pathname !== changePasswordPath
+  ) {
+    return <Navigate to={changePasswordPath} replace />;
   }
 
   return <Outlet />;

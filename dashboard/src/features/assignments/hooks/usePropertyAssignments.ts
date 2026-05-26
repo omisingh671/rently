@@ -40,23 +40,27 @@ export const usePropertyAssignments = (
     placeholderData: (prev) => prev,
   });
 
+  const invalidateAssignmentState = () => {
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.assignments.all(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.properties.all(),
+    });
+    queryClient.invalidateQueries({
+      queryKey: ADMIN_KEYS.dashboard.me(),
+    });
+  };
+
   const createMutation = useMutation({
     mutationFn: (payload: CreatePropertyAssignmentPayload) =>
       createPropertyAssignment(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.assignments.all(),
-      });
-    },
+    onSuccess: invalidateAssignmentState,
   });
 
   const deleteMutation = useMutation({
     mutationFn: deletePropertyAssignment,
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ADMIN_KEYS.assignments.all(),
-      });
-    },
+    onSuccess: invalidateAssignmentState,
   });
 
   return {

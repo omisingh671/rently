@@ -22,7 +22,9 @@ const {
   FiBriefcase,
   FiClipboard,
   FiImage,
+  FiClock,
   MdMeetingRoom,
+  FiInfo,
 } = ICON_REGISTRY;
 
 interface AdminSidebarProps {
@@ -112,7 +114,7 @@ export default function AdminSidebar({
         {/* Header */}
         <div className="flex h-20 shrink-0 items-center justify-between border-b border-white/10 px-5">
           <img
-            src="/assets/images/logo-rently.png"
+            src="/assets/images/logo.png"
             alt="Rently"
             className="h-11 w-full max-w-[180px] object-contain object-left"
           />
@@ -158,9 +160,17 @@ export default function AdminSidebar({
 
           {admin.role === "SUPER_ADMIN" && (
             <SidebarLink
-              to={adminPath(ADMIN_ROUTES.ADMINS)}
+              to={adminPath(ADMIN_ROUTES.USERS)}
               icon={FiUsers}
-              label="Admins"
+              label="Users"
+            />
+          )}
+
+          {admin.role === "SUPER_ADMIN" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.SESSIONS)}
+              icon={FiClock}
+              label="Sessions"
             />
           )}
 
@@ -272,6 +282,17 @@ export default function AdminSidebar({
             icon={FiSettings}
             label="Settings"
           />
+
+          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
+            <>
+              <p className={sectionLabel}>Support</p>
+              <SidebarLink
+                to={adminPath(ADMIN_ROUTES.SYSTEM_GUIDE)}
+                icon={FiInfo}
+                label="System Guide"
+              />
+            </>
+          )}
         </nav>
 
         {/* Footer */}

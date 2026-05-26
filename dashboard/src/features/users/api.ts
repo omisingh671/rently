@@ -5,8 +5,14 @@ import type { PaginatedResult } from "@/common/types/pagination";
 import type { ApiSuccessResponse } from "@/common/types/api";
 import type {
   AdminUser,
+  AdminSession,
+  AdminSessionsFilters,
   AdminUserScope,
   CreateUserPayload,
+  ManagedUsersFilters,
+  ManagedUserForcePasswordVariables,
+  ManagedUserRoleVariables,
+  ManagedUserStatusVariables,
   UpdateUserVariables,
 } from "./types";
 
@@ -60,4 +66,113 @@ export const updateUser = async (
   const { userId, payload } = variables;
 
   await axiosInstance.patch(scopeEndpoints(scope).updateById(userId), payload);
+};
+
+/* ---------------- GLOBAL USERS ---------------- */
+
+export const fetchManagedUsers = async (
+  page: number,
+  limit: number,
+  filters: ManagedUsersFilters,
+): Promise<PaginatedResult<AdminUser>> => {
+  const res = await axiosInstance.get<
+    ApiSuccessResponse<PaginatedResult<AdminUser>>
+  >(API_ENDPOINTS.users.list, {
+    params: {
+      page,
+      limit,
+      ...filters,
+      ...(filters.search === "" && { search: undefined }),
+      ...(filters.role === "" && { role: undefined }),
+    },
+  });
+
+  return res.data.data;
+};
+
+export const updateManagedUserStatus = async ({
+  userId,
+  isActive,
+}: ManagedUserStatusVariables): Promise<AdminUser> => {
+  const res = await axiosInstance.patch<ApiSuccessResponse<AdminUser>>(
+    API_ENDPOINTS.users.statusById(userId),
+    { isActive },
+  );
+
+  return res.data.data;
+};
+
+export const updateManagedUserRole = async ({
+  userId,
+  role,
+}: ManagedUserRoleVariables): Promise<AdminUser> => {
+  const res = await axiosInstance.patch<ApiSuccessResponse<AdminUser>>(
+    API_ENDPOINTS.users.roleById(userId),
+    { role },
+  );
+
+  return res.data.data;
+};
+
+export const triggerManagedUserPasswordReset = async (
+  userId: string,
+): Promise<void> => {
+  await axiosInstance.post(API_ENDPOINTS.users.passwordResetEmailById(userId));
+};
+
+export const updateManagedUserForcePasswordChange = async ({
+  userId,
+  mustChangePassword,
+}: ManagedUserForcePasswordVariables): Promise<AdminUser> => {
+  const res = await axiosInstance.patch<ApiSuccessResponse<AdminUser>>(
+    API_ENDPOINTS.users.forcePasswordChangeById(userId),
+    { mustChangePassword },
+  );
+
+  return res.data.data;
+};
+
+export const revokeManagedUserSessions = async (
+  userId: string,
+): Promise<void> => {
+  await axiosInstance.delete(API_ENDPOINTS.users.sessionsByUserId(userId));
+};
+
+/* ---------------- SESSIONS ---------------- */
+
+export const fetchAdminSessions = async (
+  page: number,
+  limit: number,
+  filters: AdminSessionsFilters,
+): Promise<PaginatedResult<AdminSession>> => {
+  const res = await axiosInstance.get<
+    ApiSuccessResponse<PaginatedResult<AdminSession>>
+  >(API_ENDPOINTS.sessions.list, {
+    params: {
+      page,
+      limit,
+      ...filters,
+      ...(filters.search === "" && { search: undefined }),
+      ...(filters.role === "" && { role: undefined }),
+      ...(filters.status === "" && { status: undefined }),
+    },
+  });
+
+  return res.data.data;
+};
+
+export const revokeAdminSession = async (
+  sessionId: string,
+): Promise<void> => {
+  await axiosInstance.delete(API_ENDPOINTS.sessions.deleteById(sessionId));
+};
+
+export const revokeExpiredAdminSessions = async (): Promise<{
+  count: number;
+}> => {
+  const res = await axiosInstance.delete<
+    ApiSuccessResponse<{ count: number }>
+  >(API_ENDPOINTS.sessions.deleteExpired);
+
+  return res.data.data;
 };

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const passwordSchema = z
   .string()
-  .min(10)
+  .min(8)
   .max(128)
   .regex(/[a-z]/, "Password must contain a lowercase letter")
   .regex(/[A-Z]/, "Password must contain an uppercase letter")
