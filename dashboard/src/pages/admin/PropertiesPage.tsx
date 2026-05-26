@@ -53,7 +53,7 @@ export default function PropertiesPage() {
   const [amenityProperty, setAmenityProperty] = useState<AdminProperty | null>(
     null,
   );
-  const [assignmentDraft, setAssignmentDraft] = useState<string[]>([]);
+  const [assignmentDraft, setAssignmentDraft] = useState<string[] | null>(null);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,14 +81,14 @@ export default function PropertiesPage() {
       ? data.pagination
       : null;
 
-  useEffect(() => {
-    setAssignmentDraft(propertyAssignments?.amenityIds ?? []);
-    setAssignmentError(null);
-  }, [amenityProperty?.id, propertyAssignments?.amenityIds]);
+  const selectedAmenityIds = useMemo(
+    () => assignmentDraft ?? propertyAssignments?.amenityIds ?? [],
+    [assignmentDraft, propertyAssignments?.amenityIds],
+  );
 
   const sortedDraftAmenityIds = useMemo(
-    () => sortIds(assignmentDraft),
-    [assignmentDraft],
+    () => sortIds(selectedAmenityIds),
+    [selectedAmenityIds],
   );
   const sortedAssignedAmenityIds = useMemo(
     () => sortIds(propertyAssignments?.amenityIds ?? []),
@@ -99,27 +99,34 @@ export default function PropertiesPage() {
 
   const handleCloseAmenityModal = () => {
     setAmenityProperty(null);
-    setAssignmentDraft([]);
+    setAssignmentDraft(null);
     setAssignmentError(null);
   };
 
   const toggleAssignedAmenity = (amenityId: string) => {
-    setAssignmentDraft((prev) =>
-      prev.includes(amenityId)
-        ? prev.filter((id) => id !== amenityId)
-        : [...prev, amenityId],
-    );
+    setAssignmentDraft((prev) => {
+      const current = prev ?? propertyAssignments?.amenityIds ?? [];
+      return current.includes(amenityId)
+        ? current.filter((id) => id !== amenityId)
+        : [...current, amenityId];
+    });
   };
 
   const handleSaveAssignments = () => {
     if (!amenityProperty) return;
 
     setAssignmentError(null);
-    saveAssignments({ amenityIds: assignmentDraft })
+    saveAssignments({ amenityIds: selectedAmenityIds })
       .then(() => handleCloseAmenityModal())
       .catch((error) => {
         setAssignmentError(normalizeApiError(error).message);
       });
+  };
+
+  const handleManageAmenities = (property: AdminProperty) => {
+    setAmenityProperty(property);
+    setAssignmentDraft(null);
+    setAssignmentError(null);
   };
 
   if (isError) {
@@ -156,7 +163,7 @@ export default function PropertiesPage() {
         canManageAmenities={canManageAmenities}
         propertyLinkMode={propertyLinkMode}
         onUpdate={updateProperty}
-        onManageAmenities={setAmenityProperty}
+        onManageAmenities={handleManageAmenities}
       />
 
       {/* Pagination */}
@@ -184,14 +191,14 @@ export default function PropertiesPage() {
           <PropertyAmenityAssignmentForm
             property={amenityProperty}
             amenities={activeAmenities}
-            selectedAmenityIds={assignmentDraft}
+            selectedAmenityIds={selectedAmenityIds}
             error={assignmentError}
             isLoading={isLoadingAssignments || isLoadingActiveAmenities}
             isSaving={isSaving}
             isDirty={isAssignmentDirty}
             onToggle={toggleAssignedAmenity}
             onReset={() => {
-              setAssignmentDraft(propertyAssignments?.amenityIds ?? []);
+              setAssignmentDraft(null);
               setAssignmentError(null);
             }}
             onCancel={handleCloseAmenityModal}

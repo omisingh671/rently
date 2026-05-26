@@ -12,6 +12,11 @@ import type {
   RoomProductCategory,
   RoomStatus,
   TenantStatus,
+  TaxCalculationMode,
+  TaxCategory,
+  TaxDiscountTreatment,
+  TaxScope,
+  TaxTargetType,
   TaxType,
   UnitStatus,
   UserRole,
@@ -108,6 +113,8 @@ export interface DashboardTaxListInput extends DashboardPaginationInput {
   propertyId: string;
   search?: string;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
   isActive?: boolean;
 }
 
@@ -335,6 +342,16 @@ export interface CreateDashboardTaxInput {
   name: string;
   rate: number;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
+  targetType?: TaxTargetType;
+  calculationMode?: TaxCalculationMode;
+  discountTreatment?: TaxDiscountTreatment;
+  minTariff?: number | null;
+  maxTariff?: number | null;
+  validFrom?: Date | null;
+  validTo?: Date | null;
+  priority?: number;
   appliesTo?: string;
   isActive?: boolean;
 }
@@ -343,6 +360,16 @@ export interface UpdateDashboardTaxInput {
   name?: string;
   rate?: number;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
+  targetType?: TaxTargetType;
+  calculationMode?: TaxCalculationMode;
+  discountTreatment?: TaxDiscountTreatment;
+  minTariff?: number | null;
+  maxTariff?: number | null;
+  validFrom?: Date | null;
+  validTo?: Date | null;
+  priority?: number;
   appliesTo?: string;
   isActive?: boolean;
 }

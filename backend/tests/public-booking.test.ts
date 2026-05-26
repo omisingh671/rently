@@ -19,6 +19,10 @@ import {
   RateType,
   RoomProductCategory,
   RoomStatus,
+  TaxCalculationMode,
+  TaxCategory,
+  TaxScope,
+  TaxTargetType,
   TaxType,
   UnitStatus,
   UserRole,
@@ -1087,6 +1091,224 @@ test("public final quote applies tax and booking freezes tax breakdown", async (
   } finally {
     await prisma.tax.delete({ where: { id: tax.id } });
   }
+});
+
+test("public quote applies one GST slab per booking item", async () => {
+  const lowSlab = await prisma.tax.create({
+    data: {
+      propertyId: state.propertyId,
+      name: "GST 5",
+      rate: 5,
+      taxType: TaxType.PERCENTAGE,
+      category: TaxCategory.GST,
+      scope: TaxScope.ACCOMMODATION,
+      targetType: TaxTargetType.ALL,
+      calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+      minTariff: 0,
+      maxTariff: 2000,
+      appliesTo: "ALL",
+      isActive: true,
+    },
+  });
+  const highSlab = await prisma.tax.create({
+    data: {
+      propertyId: state.propertyId,
+      name: "GST 18",
+      rate: 18,
+      taxType: TaxType.PERCENTAGE,
+      category: TaxCategory.GST,
+      scope: TaxScope.ACCOMMODATION,
+      targetType: TaxTargetType.ALL,
+      calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+      minTariff: 2000,
+      appliesTo: "ALL",
+      isActive: true,
+    },
+  });
+
+  try {
+    const quote = await publicService.getBookingQuote(
+      undefined,
+      {
+        bookingType: "MULTI_ROOM",
+        spaceIds: [state.singlePricingId, state.pricingTwoId],
+        from: new Date("2027-08-09T00:00:00.000Z"),
+        to: new Date("2027-08-10T00:00:00.000Z"),
+        guests: 3,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(quote.subtotalAmount, 4000);
+    assert.equal(quote.taxAmount, 525);
+    assert.equal(quote.totalAmount, 4525);
+    assert.equal(quote.items.length, 2);
+    assert.deepEqual(
+      quote.items.map((item) => item.taxBreakdown[0]?.taxId).sort(),
+      [highSlab.id, lowSlab.id].sort(),
+    );
+    assert.equal(
+      quote.items.reduce((total, item) => total + item.taxAmount, 0),
+      quote.taxAmount,
+    );
+  } finally {
+    await prisma.tax.deleteMany({
+      where: { id: { in: [lowSlab.id, highSlab.id] } },
+    });
+  }
+});
+
+test("public quote applies coupon before GST slab tax", async () => {
+  const couponCode = `${testId}-GST10`.toUpperCase();
+  const tax = await prisma.tax.create({
+    data: {
+      propertyId: state.propertyId,
+      name: "GST 18",
+      rate: 18,
+      taxType: TaxType.PERCENTAGE,
+      category: TaxCategory.GST,
+      scope: TaxScope.ACCOMMODATION,
+      targetType: TaxTargetType.ALL,
+      calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+      minTariff: 2000,
+      appliesTo: "ALL",
+      isActive: true,
+    },
+  });
+
+  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+    code: couponCode,
+    name: "GST Coupon",
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    isActive: true,
+  });
+
+  try {
+    const quote = await publicService.getBookingQuote(
+      state.guestOneId,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2027-08-11T00:00:00.000Z"),
+        to: new Date("2027-08-13T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        couponCode,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(quote.subtotalAmount, 5000);
+    assert.equal(quote.discountAmount, 500);
+    assert.equal(quote.taxableAmount, 4500);
+    assert.equal(quote.taxAmount, 810);
+    assert.equal(quote.totalAmount, 5310);
+    assert.equal(quote.taxBreakdown[0]?.taxId, tax.id);
+    assert.equal(quote.items[0]?.discountAmount, 500);
+    assert.equal(quote.items[0]?.taxableAmount, 4500);
+  } finally {
+    await prisma.tax.delete({ where: { id: tax.id } });
+    await prisma.coupon.deleteMany({
+      where: { propertyId: state.propertyId, code: couponCode },
+    });
+  }
+});
+
+test("dashboard rejects overlapping active GST slabs", async () => {
+  const existingTax = await dashboardService.createTax(
+    state.superAdminId,
+    state.propertyId,
+    {
+      name: "GST 5",
+      rate: 5,
+      taxType: TaxType.PERCENTAGE,
+      category: TaxCategory.GST,
+      scope: TaxScope.ACCOMMODATION,
+      targetType: TaxTargetType.ALL,
+      calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+      minTariff: 0,
+      maxTariff: 2000,
+      appliesTo: "ALL",
+      isActive: true,
+    },
+  );
+
+  try {
+    await assert.rejects(
+      () =>
+        dashboardService.createTax(state.superAdminId, state.propertyId, {
+          name: "GST overlap",
+          rate: 12,
+          taxType: TaxType.PERCENTAGE,
+          category: TaxCategory.GST,
+          scope: TaxScope.ACCOMMODATION,
+          targetType: TaxTargetType.ALL,
+          calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+          minTariff: 1500,
+          maxTariff: 3000,
+          appliesTo: "ALL",
+          isActive: true,
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 409);
+        assert.equal(error.code, "TAX_RULE_CONFLICT");
+        return true;
+      },
+    );
+  } finally {
+    await prisma.tax.delete({ where: { id: existingTax.id } });
+  }
+});
+
+test("dashboard rejects tariff fields on flat tax rules", async () => {
+  await assert.rejects(
+    () =>
+      dashboardService.createTax(state.superAdminId, state.propertyId, {
+        name: "Platform fee",
+        rate: 5,
+        taxType: TaxType.FIXED,
+        category: TaxCategory.GENERIC,
+        scope: TaxScope.BOOKING,
+        targetType: TaxTargetType.ALL,
+        calculationMode: TaxCalculationMode.FLAT,
+        minTariff: 0,
+        appliesTo: "ALL",
+        isActive: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "FLAT_TAX_TARIFF_NOT_ALLOWED");
+      return true;
+    },
+  );
+});
+
+test("dashboard rejects slab tax rules without min tariff", async () => {
+  await assert.rejects(
+    () =>
+      dashboardService.createTax(state.superAdminId, state.propertyId, {
+        name: "GST missing min",
+        rate: 5,
+        taxType: TaxType.PERCENTAGE,
+        category: TaxCategory.GST,
+        scope: TaxScope.ACCOMMODATION,
+        targetType: TaxTargetType.ALL,
+        calculationMode: TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF,
+        appliesTo: "ALL",
+        isActive: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "TAX_SLAB_MIN_TARIFF_REQUIRED");
+      return true;
+    },
+  );
 });
 
 test("public booking rejects single room when guest count exceeds capacity", async () => {

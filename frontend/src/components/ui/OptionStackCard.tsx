@@ -9,11 +9,11 @@ import {
 } from "react-icons/fi";
 import type { AvailabilityOption } from "@/features/availability/domain";
 import { OptionPricePanel } from "@/components/ui/OptionPricePanel";
+import { ImageSlider } from "@/components/ui/ImageSlider";
 import {
-  ImageSlider,
   normalizeSliderImages,
   type SliderImage,
-} from "@/components/ui/ImageSlider";
+} from "@/components/ui/imageSliderUtils";
 import Lightbox, { type LightboxImage } from "@/components/ui/Lightbox/Lightbox";
 import { OptionDetailsModal } from "@/components/ui/OptionDetailsModal";
 

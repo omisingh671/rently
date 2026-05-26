@@ -18,6 +18,11 @@ import type {
   RateType,
   RoomProductCategory,
   RoomStatus,
+  TaxCalculationMode,
+  TaxCategory,
+  TaxDiscountTreatment,
+  TaxScope,
+  TaxTargetType,
   TaxType,
   UnitStatus,
   UserRole,
@@ -302,6 +307,16 @@ export interface DashboardTaxDTO {
   name: string;
   rate: string;
   taxType: TaxType;
+  category: TaxCategory;
+  scope: TaxScope;
+  targetType: TaxTargetType;
+  calculationMode: TaxCalculationMode;
+  discountTreatment: TaxDiscountTreatment;
+  minTariff: string | null;
+  maxTariff: string | null;
+  validFrom: Date | null;
+  validTo: Date | null;
+  priority: number;
   appliesTo: string;
   isActive: boolean;
   createdAt: Date;
@@ -363,6 +378,7 @@ export interface DashboardBookingDTO {
     taxType: TaxType;
     rate: number;
     appliesTo: string;
+    itemId?: string;
     taxableAmount: number;
     taxAmount: number;
     included: boolean;
@@ -399,7 +415,24 @@ export interface DashboardBookingDTO {
     guestCount: number;
     comfortOption: ComfortOption;
     pricePerNight: string;
+    pricingId: string | null;
+    subtotalAmount: string;
+    discountAmount: string;
+    taxableAmount: string;
+    taxAmount: string;
+    taxBreakdown: Array<{
+      taxId: string;
+      name: string;
+      taxType: TaxType;
+      rate: number;
+      appliesTo: string;
+      itemId?: string;
+      taxableAmount: number;
+      taxAmount: number;
+      included: boolean;
+    }>;
     totalAmount: string;
+    finalAmount: string;
   }>;
   statusHistory: Array<{
     id: string;

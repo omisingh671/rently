@@ -796,6 +796,8 @@ export const listTaxes = async (req: AuthRequest, res: Response) => {
     limit: query.limit,
     ...(query.search !== undefined && { search: query.search }),
     ...(query.taxType !== undefined && { taxType: query.taxType }),
+    ...(query.category !== undefined && { category: query.category }),
+    ...(query.scope !== undefined && { scope: query.scope }),
     ...(query.isActive !== undefined && { isActive: query.isActive }),
   });
   res.json({ success: true, data });
@@ -808,6 +810,20 @@ export const createTax = async (req: AuthRequest, res: Response) => {
     name: body.name,
     rate: body.rate,
     ...(body.taxType !== undefined && { taxType: body.taxType }),
+    ...(body.category !== undefined && { category: body.category }),
+    ...(body.scope !== undefined && { scope: body.scope }),
+    ...(body.targetType !== undefined && { targetType: body.targetType }),
+    ...(body.calculationMode !== undefined && {
+      calculationMode: body.calculationMode,
+    }),
+    ...(body.discountTreatment !== undefined && {
+      discountTreatment: body.discountTreatment,
+    }),
+    ...(body.minTariff !== undefined && { minTariff: body.minTariff }),
+    ...(body.maxTariff !== undefined && { maxTariff: body.maxTariff }),
+    ...(body.validFrom !== undefined && { validFrom: body.validFrom }),
+    ...(body.validTo !== undefined && { validTo: body.validTo }),
+    ...(body.priority !== undefined && { priority: body.priority }),
     ...(body.appliesTo !== undefined && { appliesTo: body.appliesTo }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
   });
@@ -821,6 +837,20 @@ export const updateTax = async (req: AuthRequest, res: Response) => {
     ...(body.name !== undefined && { name: body.name }),
     ...(body.rate !== undefined && { rate: body.rate }),
     ...(body.taxType !== undefined && { taxType: body.taxType }),
+    ...(body.category !== undefined && { category: body.category }),
+    ...(body.scope !== undefined && { scope: body.scope }),
+    ...(body.targetType !== undefined && { targetType: body.targetType }),
+    ...(body.calculationMode !== undefined && {
+      calculationMode: body.calculationMode,
+    }),
+    ...(body.discountTreatment !== undefined && {
+      discountTreatment: body.discountTreatment,
+    }),
+    ...(body.minTariff !== undefined && { minTariff: body.minTariff }),
+    ...(body.maxTariff !== undefined && { maxTariff: body.maxTariff }),
+    ...(body.validFrom !== undefined && { validFrom: body.validFrom }),
+    ...(body.validTo !== undefined && { validTo: body.validTo }),
+    ...(body.priority !== undefined && { priority: body.priority }),
     ...(body.appliesTo !== undefined && { appliesTo: body.appliesTo }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
   });

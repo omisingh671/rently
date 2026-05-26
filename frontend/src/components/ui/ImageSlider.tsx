@@ -1,100 +1,43 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { FiChevronLeft, FiChevronRight, FiImage } from "react-icons/fi";
-import { API_BASE_URL } from "@/configs/appConfig";
-
-export type SliderImage =
-  | string
-  | {
-      src?: string;
-      url?: string;
-      caption?: string;
-      altText?: string;
-    };
-
-export interface NormalizedSliderImage {
-  src: string;
-  caption?: string;
-}
+import {
+  DEFAULT_SLIDER_IMAGE,
+  normalizeSliderImages,
+  type SliderImage,
+} from "@/components/ui/imageSliderUtils";
 
 interface ImageSliderProps {
   images: SliderImage[];
   onImageClick?: (index: number) => void;
 }
 
-export const resolveImageUrl = (url: string) => {
-  if (/^(https?:|data:|blob:)/i.test(url)) {
-    return url;
-  }
-
-  if (url.startsWith("/")) {
-    return `${API_BASE_URL}${url}`;
-  }
-
-  return url;
-};
-
-const DEFAULT_IMAGE = resolveImageUrl("/uploads/hah/building-placeholder.png");
-
-export const normalizeSliderImages = (
-  images: SliderImage[],
-): NormalizedSliderImage[] => {
-  const normalized = images
-    .map((image) => {
-      if (typeof image === "string") {
-        return {
-          src: resolveImageUrl(image),
-        };
-      }
-
-      const rawSrc = image.url ?? image.src;
-      if (!rawSrc) {
-        return null;
-      }
-
-      const caption = image.caption ?? image.altText;
-
-      return {
-        src: resolveImageUrl(rawSrc),
-        ...(caption !== undefined && { caption }),
-      };
-    })
-    .filter((image): image is NormalizedSliderImage => image !== null);
-
-  return normalized.length > 0 ? normalized : [{ src: DEFAULT_IMAGE }];
-};
-
 export const ImageSlider = ({ images, onImageClick }: ImageSliderProps) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const slides = normalizeSliderImages(images);
-
-  useEffect(() => {
-    if (currentIndex > slides.length - 1) {
-      setCurrentIndex(0);
-    }
-  }, [currentIndex, slides.length]);
+  const activeIndex = currentIndex > slides.length - 1 ? 0 : currentIndex;
 
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setCurrentIndex((prev) => (prev === 0 ? slides.length - 1 : prev - 1));
+    setCurrentIndex(activeIndex === 0 ? slides.length - 1 : activeIndex - 1);
   };
 
   const handleNext = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setCurrentIndex((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
+    setCurrentIndex(activeIndex === slides.length - 1 ? 0 : activeIndex + 1);
   };
 
   return (
     <div className="relative group w-full h-48 overflow-hidden rounded-xl bg-slate-100 border border-slate-100 shadow-inner">
       {/* Slides */}
       <img
-        src={slides[currentIndex]?.src ?? DEFAULT_IMAGE}
-        alt={slides[currentIndex]?.caption ?? `Room view ${currentIndex + 1}`}
+        src={slides[activeIndex]?.src ?? DEFAULT_SLIDER_IMAGE}
+        alt={slides[activeIndex]?.caption ?? `Room view ${activeIndex + 1}`}
         className={`w-full h-full object-cover transition-all duration-500 ease-out ${
           onImageClick ? "cursor-zoom-in" : ""
         }`}
-        onClick={() => onImageClick?.(currentIndex)}
+        onClick={() => onImageClick?.(activeIndex)}
         onError={(e) => {
-          (e.target as HTMLImageElement).src = DEFAULT_IMAGE;
+          (e.target as HTMLImageElement).src = DEFAULT_SLIDER_IMAGE;
         }}
       />
 
@@ -123,7 +66,7 @@ export const ImageSlider = ({ images, onImageClick }: ImageSliderProps) => {
       {/* Image Count Indicator */}
       <div className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md bg-slate-900/70 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-xs tracking-wider">
         <FiImage className="h-3 w-3" />
-        {currentIndex + 1}/{slides.length}
+        {activeIndex + 1}/{slides.length}
       </div>
 
       {/* Bottom Dot Indicators */}
@@ -138,7 +81,7 @@ export const ImageSlider = ({ images, onImageClick }: ImageSliderProps) => {
                 setCurrentIndex(idx);
               }}
               className={`h-1.5 rounded-full transition-all duration-200 ${
-                idx === currentIndex ? "w-4 bg-white" : "w-1.5 bg-white/50"
+                idx === activeIndex ? "w-4 bg-white" : "w-1.5 bg-white/50"
               }`}
               aria-label={`Go to slide ${idx + 1}`}
             />

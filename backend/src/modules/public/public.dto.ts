@@ -131,7 +131,14 @@ export interface PublicBookingItemDTO {
   guestCount: number;
   comfortOption: ComfortOption;
   pricePerNight: number;
+  pricingId: string | null;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: PublicTaxBreakdownDTO[];
   totalAmount: number;
+  finalAmount: number;
 }
 
 export interface PublicTaxBreakdownDTO {
@@ -140,6 +147,7 @@ export interface PublicTaxBreakdownDTO {
   taxType: TaxType;
   rate: number;
   appliesTo: string;
+  itemId?: string;
   taxableAmount: number;
   taxAmount: number;
   included: boolean;
@@ -156,7 +164,14 @@ export interface PublicBookingQuoteItemDTO {
   guestCount: number;
   comfortOption: ComfortOption;
   pricePerNight: number;
+  pricingId: string | null;
+  subtotalAmount: number;
+  discountAmount: number;
+  taxableAmount: number;
+  taxAmount: number;
+  taxBreakdown: PublicTaxBreakdownDTO[];
   totalAmount: number;
+  finalAmount: number;
   taxInclusive: boolean;
 }
 

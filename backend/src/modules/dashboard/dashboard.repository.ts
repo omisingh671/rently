@@ -11,6 +11,10 @@ import {
   type RateType,
   type RoomProductCategory,
   type RoomStatus,
+  type TaxCalculationMode,
+  type TaxCategory,
+  type TaxScope,
+  type TaxTargetType,
   type TaxType,
   type TenantStatus,
   UserRole,
@@ -308,6 +312,8 @@ interface TaxListFilters {
   propertyId: string;
   search?: string;
   taxType?: TaxType;
+  category?: TaxCategory;
+  scope?: TaxScope;
   isActive?: boolean;
 }
 
@@ -509,6 +515,8 @@ const buildTaxWhere = (filters: Omit<TaxListFilters, "page" | "limit">) =>
       name: { contains: filters.search },
     }),
     ...(filters.taxType !== undefined && { taxType: filters.taxType }),
+    ...(filters.category !== undefined && { category: filters.category }),
+    ...(filters.scope !== undefined && { scope: filters.scope }),
     ...(filters.isActive !== undefined && { isActive: filters.isActive }),
   }) satisfies Prisma.TaxWhereInput;
 
@@ -1573,6 +1581,33 @@ export const listTaxesPaginated = async (filters: TaxListFilters) => {
 export const findTaxById = (id: string) =>
   prisma.tax.findUnique({
     where: { id },
+    include: dashboardTaxInclude,
+  });
+
+export const listActiveTaxesForConflictCheck = (filters: {
+  propertyId: string;
+  category?: TaxCategory;
+  scope?: TaxScope;
+  targetType?: TaxTargetType;
+  calculationMode?: TaxCalculationMode;
+  excludeTaxId?: string;
+}) =>
+  prisma.tax.findMany({
+    where: {
+      propertyId: filters.propertyId,
+      isActive: true,
+      ...(filters.category !== undefined && { category: filters.category }),
+      ...(filters.scope !== undefined && { scope: filters.scope }),
+      ...(filters.targetType !== undefined && {
+        targetType: filters.targetType,
+      }),
+      ...(filters.calculationMode !== undefined && {
+        calculationMode: filters.calculationMode,
+      }),
+      ...(filters.excludeTaxId !== undefined && {
+        id: { not: filters.excludeTaxId },
+      }),
+    },
     include: dashboardTaxInclude,
   });
 
