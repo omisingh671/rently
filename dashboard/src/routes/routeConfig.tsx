@@ -9,7 +9,11 @@ import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import AdminLayout from "@/layouts/admin/AdminLayout";
 import AuthLayout from "@/layouts/AuthLayout";
 
-import { RequireAuth, RequireRole, RequireUnauthenticatedAdmin } from "./protected";
+import {
+  RequireAuth,
+  RequireRole,
+  RequireUnauthenticatedAdmin,
+} from "./protected";
 
 const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
 const ForgotPasswordPage = lazy(
@@ -28,7 +32,9 @@ const PropertiesPage = lazy(() => import("@/pages/admin/PropertiesPage"));
 const PropertyDetailsPage = lazy(
   () => import("@/pages/admin/PropertyDetailsPage"),
 );
-const CreatePropertyPage = lazy(() => import("@/pages/admin/CreatePropertyPage"));
+const CreatePropertyPage = lazy(
+  () => import("@/pages/admin/CreatePropertyPage"),
+);
 const EditPropertyPage = lazy(() => import("@/pages/admin/EditPropertyPage"));
 const AmenitiesPage = lazy(() => import("@/pages/admin/AmenitiesPage"));
 const UnitsPage = lazy(() => import("@/pages/admin/UnitsPage"));
@@ -52,6 +58,7 @@ const ProfilePage = lazy(() => import("@/pages/profile/ProfilePage"));
 const ChangePasswordPage = lazy(
   () => import("@/pages/profile/ChangePasswordPage"),
 );
+const SystemGuidePage = lazy(() => import("@/pages/admin/SystemGuidePage"));
 
 const routes: RouteObject[] = [
   {
@@ -151,6 +158,10 @@ const routes: RouteObject[] = [
                       {
                         path: ADMIN_ROUTES.PROPERTY_ASSIGNMENTS,
                         element: <PropertyAssignmentsPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.SYSTEM_GUIDE,
+                        element: <SystemGuidePage />,
                       },
                       {
                         path: ADMIN_ROUTES.MANAGERS,

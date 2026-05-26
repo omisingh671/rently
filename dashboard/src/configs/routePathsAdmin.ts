@@ -38,6 +38,7 @@ export const ADMIN_ROUTES = {
 
   PROFILE: "profile",
   CHANGE_PASSWORD: "change-password",
+  SYSTEM_GUIDE: "system-guide",
 } as const;
 
 /**

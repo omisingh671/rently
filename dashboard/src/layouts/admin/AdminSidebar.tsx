@@ -24,6 +24,7 @@ const {
   FiImage,
   FiClock,
   MdMeetingRoom,
+  FiInfo,
 } = ICON_REGISTRY;
 
 interface AdminSidebarProps {
@@ -281,6 +282,17 @@ export default function AdminSidebar({
             icon={FiSettings}
             label="Settings"
           />
+
+          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
+            <>
+              <p className={sectionLabel}>Support</p>
+              <SidebarLink
+                to={adminPath(ADMIN_ROUTES.SYSTEM_GUIDE)}
+                icon={FiInfo}
+                label="System Guide"
+              />
+            </>
+          )}
         </nav>
 
         {/* Footer */}
