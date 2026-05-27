@@ -1,6 +1,7 @@
 import type {
   BookingPaymentPolicy,
   BookingPaymentStatus,
+  BookingRefundRequestStatus,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -151,6 +152,7 @@ export interface PublicTaxBreakdownDTO {
   taxableAmount: number;
   taxAmount: number;
   included: boolean;
+  isRefundable: boolean;
 }
 
 export interface PublicBookingQuoteItemDTO {
@@ -223,6 +225,9 @@ export interface PublicBookingDTO {
   taxAmount: number;
   taxBreakdown: PublicTaxBreakdownDTO[];
   paidAmount: number;
+  refundedAmount: number;
+  netPaidAmount: number;
+  refundableAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
   items: PublicBookingItemDTO[];
@@ -230,6 +235,15 @@ export interface PublicBookingDTO {
   cancellationReason: string | null;
   cancelledAt: string | null;
   couponCode: string | null;
+  refundRequest: {
+    id: string;
+    status: BookingRefundRequestStatus;
+    reason: string;
+    adminNote: string | null;
+    reviewedAt: string | null;
+    fulfilledAt: string | null;
+    createdAt: string;
+  } | null;
   createdAt: string;
 }
 

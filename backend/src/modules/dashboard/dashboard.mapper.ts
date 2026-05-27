@@ -1,7 +1,9 @@
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import {
   BookingPaymentStatus,
+  BookingRefundRequestStatus,
   BookingStatus,
+  PaymentRefundStatus,
   PaymentStatus,
   PropertyAssignmentRole,
   Prisma,
@@ -268,6 +270,7 @@ export const mapTax = (tax: repo.DashboardTaxRecord): DashboardTaxDTO => ({
   validTo: tax.validTo ?? null,
   priority: tax.priority,
   appliesTo: tax.appliesTo,
+  isRefundable: tax.isRefundable,
   isActive: tax.isActive,
   createdAt: tax.createdAt,
   updatedAt: tax.updatedAt,
@@ -309,7 +312,8 @@ const isDashboardTaxBreakdown = (
       item !== null &&
       "taxId" in item &&
       "name" in item &&
-      "taxAmount" in item,
+      "taxAmount" in item &&
+      "isRefundable" in item,
   );
 
 const getDashboardTaxBreakdown = (
@@ -327,12 +331,60 @@ const getBookingPaidAmount = (booking: repo.DashboardBookingRecord) =>
       new Prisma.Decimal(0),
     );
 
+const refundableRefundStatuses: readonly PaymentRefundStatus[] = [
+  PaymentRefundStatus.PENDING,
+  PaymentRefundStatus.SUCCEEDED,
+] as const;
+
+const isRefundReserved = (status: PaymentRefundStatus) =>
+  refundableRefundStatuses.includes(status);
+
+const getPaymentRefundedAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) =>
+  payment.refunds
+    .filter((refund) => isRefundReserved(refund.status))
+    .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
+
+const getBookingRefundedAmount = (booking: repo.DashboardBookingRecord) =>
+  booking.payments.reduce(
+    (total, payment) => total.plus(getPaymentRefundedAmount(payment)),
+    new Prisma.Decimal(0),
+  );
+
+const getPaymentRefundableAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) => {
+  if (payment.status !== PaymentStatus.SUCCEEDED) {
+    return zeroDecimal;
+  }
+
+  return maxDecimal(zeroDecimal, payment.amount.minus(getPaymentRefundedAmount(payment)));
+};
+
+const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
+  BookingRefundRequestStatus.REQUESTED,
+  BookingRefundRequestStatus.IN_REVIEW,
+];
+
+const getBookingRefundRequest = (booking: repo.DashboardBookingRecord) =>
+  booking.refundRequests.find((request) =>
+    activeRefundRequestStatuses.includes(request.status),
+  ) ??
+  booking.refundRequests[0] ??
+  null;
+
 const getBookingPaymentStatus = (
   totalAmount: Prisma.Decimal,
   paidAmount: Prisma.Decimal,
+  refundedAmount: Prisma.Decimal,
 ) => {
   if (paidAmount.lessThanOrEqualTo(0)) {
     return BookingPaymentStatus.PENDING;
+  }
+
+  if (refundedAmount.greaterThanOrEqualTo(paidAmount)) {
+    return BookingPaymentStatus.REFUNDED;
   }
 
   if (paidAmount.lessThan(totalAmount)) {
@@ -431,11 +483,26 @@ export const mapBooking = (
   assignmentLabels?: DashboardBookingAssignmentLabels,
 ): DashboardBookingDTO => {
   const paidAmount = getBookingPaidAmount(booking);
-  const balanceAmount = maxDecimal(
-    zeroDecimal,
-    booking.totalAmount.minus(paidAmount),
-  );
+  const refundedAmount = getBookingRefundedAmount(booking);
+  const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
   const taxBreakdown = getDashboardTaxBreakdown(booking.taxBreakdown);
+  const nonRefundableAmount = taxBreakdown
+    .filter((tax) => tax.isRefundable === false)
+    .reduce((sum, tax) => sum.plus(tax.taxAmount), new Prisma.Decimal(0));
+
+  const baseRefundableAmount = booking.payments.reduce(
+    (total, payment) => total.plus(getPaymentRefundableAmount(payment)),
+    new Prisma.Decimal(0),
+  );
+  const refundableAmount = maxDecimal(zeroDecimal, baseRefundableAmount.minus(nonRefundableAmount));
+  const balanceAmount =
+    booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
+      ? zeroDecimal
+      : maxDecimal(
+          zeroDecimal,
+          booking.totalAmount.minus(netPaidAmount),
+        );
+  const refundRequest = getBookingRefundRequest(booking);
 
   return {
     id: booking.id,
@@ -474,25 +541,60 @@ export const mapBooking = (
     taxableAmount: booking.taxableAmount.toString(),
     taxAmount: booking.taxAmount.toString(),
     taxBreakdown,
-    paymentStatus: getBookingPaymentStatus(booking.totalAmount, paidAmount),
+    paymentStatus: getBookingPaymentStatus(
+      booking.totalAmount,
+      paidAmount,
+      refundedAmount,
+    ),
     paidAmount: paidAmount.toString(),
+    refundedAmount: refundedAmount.toString(),
+    netPaidAmount: netPaidAmount.toString(),
+    refundableAmount: refundableAmount.toString(),
     balanceAmount: balanceAmount.toString(),
     paymentPolicy: booking.paymentPolicy,
     upfrontAmount: booking.upfrontAmount.toString(),
     noShowEligible: isBookingNoShowEligible(booking),
     internalNotes: booking.internalNotes ?? null,
     couponCode: booking.coupon?.code ?? null,
+    refundRequest:
+      refundRequest === null
+        ? null
+        : {
+            id: refundRequest.id,
+            status: refundRequest.status,
+            reason: refundRequest.reason,
+            adminNote: refundRequest.adminNote ?? null,
+            reviewedByUserId: refundRequest.reviewedByUserId ?? null,
+            reviewedByName: refundRequest.reviewedBy?.fullName ?? null,
+            reviewedAt: refundRequest.reviewedAt ?? null,
+            fulfilledAt: refundRequest.fulfilledAt ?? null,
+            createdAt: refundRequest.createdAt,
+          },
     payments: booking.payments.map((payment) => ({
       id: payment.id,
+      provider: payment.provider,
       status: payment.status,
       purpose: payment.purpose,
       method: payment.method,
       amount: payment.amount.toString(),
+      refundedAmount: getPaymentRefundedAmount(payment).toString(),
+      refundableAmount: getPaymentRefundableAmount(payment).toString(),
       currency: payment.currency,
       note: payment.note ?? null,
       receivedByUserId: payment.receivedByUserId ?? null,
       paidAt: payment.paidAt ?? null,
       createdAt: payment.createdAt,
+      refunds: payment.refunds.map((refund) => ({
+        id: refund.id,
+        refundRequestId: refund.refundRequestId ?? null,
+        status: refund.status,
+        method: refund.method,
+        amount: refund.amount.toString(),
+        currency: refund.currency,
+        reason: refund.reason,
+        processedAt: refund.processedAt ?? null,
+        createdAt: refund.createdAt,
+      })),
     })),
     items: booking.items.map((item) => ({
       id: item.id,

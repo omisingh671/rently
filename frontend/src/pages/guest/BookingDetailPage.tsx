@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   FiArrowLeft,
@@ -7,14 +8,26 @@ import {
   FiHome,
   FiClock,
   FiCreditCard,
+  FiDownload,
   FiAlertTriangle,
   FiInfo,
+  FiFileText,
+  FiCheckCircle,
 } from "react-icons/fi";
 
-import { useBooking } from "@/features/bookings/hooks";
+import {
+  useBooking,
+  useCreateRefundRequest,
+} from "@/features/bookings/hooks";
+import {
+  useBookingBillingDocuments,
+  useDownloadBillingDocument,
+} from "@/features/billing/hooks";
 import { ROUTES } from "@/configs/routePaths";
 import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
+import { normalizeApiError } from "@/utils/errors";
 
 const bookingStatusMap: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -22,6 +35,7 @@ const bookingStatusMap: Record<string, string> = {
   CHECKED_IN: "bg-indigo-100 text-indigo-700",
   CHECKED_OUT: "bg-slate-100 text-slate-700",
   CANCELLED: "bg-red-100 text-red-700",
+  NO_SHOW: "bg-orange-100 text-orange-700",
 };
 
 const formatPrice = (price: number) =>
@@ -48,10 +62,47 @@ const formatTime = (iso?: string) => {
   });
 };
 
+const getCancellationRefundLabel = (booking: {
+  paidAmount: number;
+  refundedAmount: number;
+  refundableAmount: number;
+  refundRequest: {
+    status: string;
+  } | null;
+}) => {
+  if (booking.paidAmount <= 0) {
+    return "No payment made";
+  }
+
+  if (booking.refundRequest?.status === "REQUESTED") {
+    return "Refund request pending";
+  }
+
+  if (booking.refundRequest?.status === "IN_REVIEW") {
+    return "Refund in review";
+  }
+
+  if (booking.refundRequest?.status === "REJECTED") {
+    return "Refund rejected";
+  }
+
+  if (booking.refundableAmount > 0) {
+    return `Refund pending ${formatPrice(booking.refundableAmount)}`;
+  }
+
+  return `Refunded ${formatPrice(booking.refundedAmount)}`;
+};
+
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: booking, isLoading, error } = useBooking(id);
+  const billingDocumentsQuery = useBookingBillingDocuments(id);
+  const downloadBillingDocument = useDownloadBillingDocument();
+  const createRefundRequest = useCreateRefundRequest();
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundError, setRefundError] = useState("");
 
   if (isLoading) {
     return (
@@ -90,6 +141,33 @@ export default function BookingDetailPage() {
       </div>
     );
   }
+
+  const canRequestRefund =
+    (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+    booking.refundableAmount > 0 &&
+    (booking.refundRequest === null ||
+      booking.refundRequest.status === "REJECTED" ||
+      booking.refundRequest.status === "CANCELLED");
+
+  const submitRefundRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!refundReason.trim()) {
+      setRefundError("Reason is required.");
+      return;
+    }
+
+    try {
+      setRefundError("");
+      await createRefundRequest.mutateAsync({
+        bookingId: booking.id,
+        reason: refundReason.trim(),
+      });
+      setRefundReason("");
+      setIsRefundModalOpen(false);
+    } catch (err) {
+      setRefundError(normalizeApiError(err).message);
+    }
+  };
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-12">
@@ -256,6 +334,21 @@ export default function BookingDetailPage() {
               </div>
             </div>
           </section>
+
+          <div className="rounded-3xl bg-slate-900 p-8 text-white shadow-xl">
+            <h3 className="font-bold mb-4 text-slate-400">Need Help?</h3>
+            <p className="text-sm text-slate-300 leading-relaxed mb-6">
+              If you have any questions or need to make changes to your booking,
+              please contact our support team.
+            </p>
+            <Button
+              variant="secondary"
+              onDark
+              onClick={() => navigate(ROUTES.CONTACT)}
+            >
+              Contact Support
+            </Button>
+          </div>
         </div>
 
         {/* Right Column: Pricing & Payment */}
@@ -333,7 +426,8 @@ export default function BookingDetailPage() {
 
               {booking.remainingPayAtCheckIn > 0 &&
                 booking.status !== "PENDING" &&
-                booking.status !== "CANCELLED" && (
+                booking.status !== "CANCELLED" &&
+                booking.status !== "NO_SHOW" && (
                   <div className="mt-4 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-100">
                     <FiInfo className="mt-0.5 text-amber-500 shrink-0" />
                     <div>
@@ -353,52 +447,209 @@ export default function BookingDetailPage() {
           </section>
 
           {/* Cancellation Info */}
-          {booking.status === "CANCELLED" && (
-            <section className="rounded-3xl border border-red-100 bg-red-50 p-8">
-              <h2 className="mb-4 text-lg font-bold text-red-900 flex items-center gap-3">
-                <FiXCircle className="text-red-500" />
-                Cancellation Info
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
-                    Date Cancelled
-                  </p>
-                  <p className="font-bold text-red-900">
-                    {formatDate(booking.cancelledAt!)}
-                  </p>
-                </div>
-                {booking.cancellationReason && (
+          {(booking.status === "CANCELLED" || booking.status === "NO_SHOW") && (() => {
+            const isNoShow = booking.status === "NO_SHOW";
+            const isRefundFulfilled = booking.refundRequest?.status === "FULFILLED";
+            
+            const theme = isRefundFulfilled
+              ? {
+                  cardBg: "border-emerald-100 bg-emerald-50",
+                  heading: "text-emerald-900",
+                  icon: "text-emerald-500",
+                  label: "text-emerald-500",
+                  text: "text-emerald-900",
+                  subtext: "text-emerald-700",
+                  btn: "primary" as const,
+                }
+              : {
+                  cardBg: "border-red-100 bg-red-50",
+                  heading: "text-red-900",
+                  icon: "text-red-500",
+                  label: "text-red-400",
+                  text: "text-red-900",
+                  subtext: "text-red-700",
+                  btn: "danger" as const,
+                };
+
+            return (
+              <section className={`rounded-3xl border p-8 ${theme.cardBg}`}>
+                <h2 className={`mb-4 text-lg font-bold flex items-center gap-3 ${theme.heading}`}>
+                  {isRefundFulfilled ? (
+                    <FiCheckCircle className={theme.icon} />
+                  ) : isNoShow ? (
+                    <FiAlertTriangle className={theme.icon} />
+                  ) : (
+                    <FiXCircle className={theme.icon} />
+                  )}
+                  {isNoShow ? "No-Show Info" : "Cancellation Info"}
+                </h2>
+                <div className="space-y-4">
+                  {booking.cancelledAt && (
+                    <div>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${theme.label}`}>
+                        Date Cancelled
+                      </p>
+                      <p className={`font-bold ${theme.text}`}>
+                        {formatDate(booking.cancelledAt)}
+                      </p>
+                    </div>
+                  )}
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
-                      Reason
+                    <p className={`text-[10px] font-bold uppercase tracking-widest ${theme.label}`}>
+                      Refund Status
                     </p>
-                    <p className="mt-1 text-sm text-red-700 italic">
-                      "{booking.cancellationReason}"
+                    <p className={`font-bold ${theme.text}`}>
+                      {getCancellationRefundLabel(booking)}
                     </p>
                   </div>
-                )}
-              </div>
-            </section>
-          )}
+                  {booking.refundRequest && (
+                    <div>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${theme.label}`}>
+                        Refund Request
+                      </p>
+                      <p className={`mt-1 text-sm font-semibold ${theme.text}`}>
+                        {booking.refundRequest.status.replaceAll("_", " ")}
+                      </p>
+                      <p className={`mt-1 text-sm ${theme.subtext}`}>
+                        {booking.refundRequest.reason}
+                      </p>
+                      {booking.refundRequest.adminNote && (
+                        <p className={`mt-1 text-sm ${theme.subtext}`}>
+                          Admin note: {booking.refundRequest.adminNote}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {booking.cancellationReason && (
+                    <div>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${theme.label}`}>
+                        Reason
+                      </p>
+                      <p className={`mt-1 text-sm italic ${theme.subtext}`}>
+                        "{booking.cancellationReason}"
+                      </p>
+                    </div>
+                  )}
+                  {canRequestRefund && (
+                    <Button
+                      type="button"
+                      variant={theme.btn}
+                      size="sm"
+                      onClick={() => setIsRefundModalOpen(true)}
+                    >
+                      Request Refund
+                    </Button>
+                  )}
+                </div>
+              </section>
+            );
+          })()}
 
-          <div className="rounded-3xl bg-slate-900 p-8 text-white shadow-xl">
-            <h3 className="font-bold mb-4 text-slate-400">Need Help?</h3>
-            <p className="text-sm text-slate-300 leading-relaxed mb-6">
-              If you have any questions or need to make changes to your booking,
-              please contact our support team.
-            </p>
-            <Button
-              variant="secondary"
-              onDark
-              className="w-full"
-              onClick={() => navigate(ROUTES.CONTACT)}
-            >
-              Contact Support
-            </Button>
-          </div>
+          <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+            <h2 className="mb-6 flex items-center gap-3 text-lg font-bold text-slate-900">
+              <FiFileText className="text-indigo-500" />
+              Billing Documents
+            </h2>
+            {billingDocumentsQuery.isPending ? (
+              <p className="text-sm text-slate-500">Loading documents...</p>
+            ) : (billingDocumentsQuery.data ?? []).length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Billing documents will appear here after confirmation or
+                successful payment.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {(billingDocumentsQuery.data ?? []).map((document) => (
+                  <div
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-900">
+                        {document.documentNumber}
+                      </p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {document.type.replaceAll("_", " ")} / {document.status}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={downloadBillingDocument.isPending}
+                      onClick={() => {
+                        void downloadBillingDocument.mutateAsync(document);
+                      }}
+                    >
+                      <FiDownload className="mr-2" />
+                      Download
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
+
+      <Modal
+        isOpen={isRefundModalOpen}
+        onClose={() => {
+          if (createRefundRequest.isPending) return;
+          setIsRefundModalOpen(false);
+          setRefundError("");
+        }}
+        title="Request Refund"
+        size="md"
+        disableBackdropClose={createRefundRequest.isPending}
+        disableEscapeClose={createRefundRequest.isPending}
+      >
+        <form className="space-y-4" onSubmit={submitRefundRequest}>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
+              Refundable amount
+            </p>
+            <p className="mt-1 text-2xl font-black text-amber-900">
+              {formatPrice(booking.refundableAmount)}
+            </p>
+          </div>
+          <label className="block text-sm">
+            <span className="font-bold text-slate-700">Reason</span>
+            <textarea
+              value={refundReason}
+              maxLength={1000}
+              disabled={createRefundRequest.isPending}
+              onChange={(event) => setRefundReason(event.target.value)}
+              className="mt-2 min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+              placeholder="Tell us why you are requesting a refund..."
+            />
+          </label>
+          {refundError && (
+            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {refundError}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={createRefundRequest.isPending}
+              onClick={() => setIsRefundModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={
+                createRefundRequest.isPending || refundReason.trim().length === 0
+              }
+            >
+              {createRefundRequest.isPending ? "Submitting..." : "Submit Request"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

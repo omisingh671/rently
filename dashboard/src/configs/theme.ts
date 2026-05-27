@@ -9,6 +9,7 @@ export const STATUS_BADGE_COLORS: Record<string, string> = {
   CONFIRMED: "bg-green-600 text-white",
   PENDING: "bg-amber-500 text-white",
   CANCELLED: "bg-red-600 text-white",
+  NO_SHOW: "bg-orange-600 text-white",
   ACTIVE: "bg-green-600 text-white",
   ENABLED: "bg-green-600 text-white",
   DISABLED: "bg-gray-500 text-white",

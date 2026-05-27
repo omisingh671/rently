@@ -122,3 +122,18 @@ export const useCancelBooking = () => {
     },
   });
 };
+
+export const useCreateRefundRequest = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Booking, Error, { bookingId: string; reason: string }>({
+    mutationFn: ({ bookingId, reason }) =>
+      api.createRefundRequest(bookingId, reason),
+    onSuccess: (booking) => {
+      queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
+      queryClient.invalidateQueries({
+        queryKey: BOOKING_KEYS.detail(booking.id),
+      });
+    },
+  });
+};

@@ -314,7 +314,13 @@ export default function PricingPage() {
 
   const submitTax = async () => {
     setError(null);
-    const parsed = taxSchema.parse(taxForm);
+    const result = taxSchema.safeParse(taxForm);
+    if (!result.success) {
+      setError("Tax rate / amount is required");
+      return;
+    }
+
+    const parsed = result.data;
     const payload: TaxPayload = {
       ...parsed,
       minTariff:
@@ -324,6 +330,7 @@ export default function PricingPage() {
       validFrom: parsed.validFrom || null,
       validTo: parsed.validTo || null,
       appliesTo: parsed.targetType,
+      isRefundable: parsed.isRefundable,
     };
     try {
       if (editingTax) {
@@ -913,11 +920,14 @@ export default function PricingPage() {
                   <label className={fieldClass}>
                     <span>Tax Rate / Amount</span>
                     <input
-                      value={taxForm.rate}
+                      value={taxForm.rate === "" ? "" : taxForm.rate}
                       onChange={(event) =>
                         setTaxForm((prev) => ({
                           ...prev,
-                          rate: Number(event.target.value),
+                          rate:
+                            event.target.value === ""
+                              ? ""
+                              : Number(event.target.value),
                         }))
                       }
                       type="number"
@@ -1078,6 +1088,18 @@ export default function PricingPage() {
                     />
                   </label>
                   <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">Refundable</span>
+                    <ActiveToggle
+                      checked={taxForm.isRefundable}
+                      onChange={(checked) =>
+                        setTaxForm((prev) => ({
+                          ...prev,
+                          isRefundable: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-2">
                     <span className="text-sm font-medium text-slate-700">Enabled</span>
                     <ActiveToggle
                       checked={taxForm.isActive}
@@ -1172,6 +1194,7 @@ export default function PricingPage() {
                             validTo: dateInput(tax.validTo),
                             priority: tax.priority,
                             appliesTo: tax.targetType,
+                            isRefundable: tax.isRefundable,
                             isActive: tax.isActive,
                           });
                         }}

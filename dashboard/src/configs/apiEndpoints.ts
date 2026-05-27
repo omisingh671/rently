@@ -124,6 +124,10 @@ export const API_ENDPOINTS = {
     bookingById: (bookingId: string) => `/dashboard/bookings/${bookingId}`,
     bookingPaymentsById: (bookingId: string) =>
       `/dashboard/bookings/${bookingId}/payments`,
+    bookingRefundsById: (bookingId: string) =>
+      `/dashboard/bookings/${bookingId}/refunds`,
+    bookingRefundRequestById: (bookingId: string, requestId: string) =>
+      `/dashboard/bookings/${bookingId}/refund-requests/${requestId}`,
     roomBoardByProperty: (propertyId: string) =>
       `/dashboard/properties/${propertyId}/room-board`,
     bookingAvailabilityByProperty: (propertyId: string) =>
@@ -134,6 +138,19 @@ export const API_ENDPOINTS = {
     quotesByProperty: (propertyId: string) =>
       `/dashboard/properties/${propertyId}/quotes`,
     quoteById: (quoteId: string) => `/dashboard/quotes/${quoteId}`,
+  },
+
+  billing: {
+    list: "/dashboard/billing-documents",
+    byId: (documentId: string) => `/dashboard/billing-documents/${documentId}`,
+    invoice: "/dashboard/billing-documents/invoices",
+    receipt: "/dashboard/billing-documents/receipts",
+    download: (documentId: string) =>
+      `/dashboard/billing-documents/${documentId}/download`,
+    voidById: (documentId: string) =>
+      `/dashboard/billing-documents/${documentId}/void`,
+    settingsByProperty: (propertyId: string) =>
+      `/dashboard/properties/${propertyId}/billing-settings`,
   },
 
   galleries: {

@@ -7,6 +7,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { billingService } from "@/modules/billing/index.js";
 import type {
   CreateManualPaymentDTO,
   PaymentDTO,
@@ -118,6 +119,10 @@ export const createManualPayment = async (
         zeroDecimal,
         existingPayment.booking.totalAmount.minus(paidAmount),
       );
+      if (balanceAmount.equals(zeroDecimal)) {
+        await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
+      }
+      await billingService.createReceiptForPayment(existingPayment.id, tx);
       return mapManualPaymentResult(existingPayment, paidAmount, balanceAmount);
     }
 
@@ -280,6 +285,11 @@ export const createManualPayment = async (
       },
       tx,
     );
+
+    if (balanceAfter.equals(zeroDecimal)) {
+      await billingService.createInvoiceForBooking(booking.id, tx);
+    }
+    await billingService.createReceiptForPayment(payment.id, tx);
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });

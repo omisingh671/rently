@@ -66,6 +66,7 @@ export const taxSchema = z.object({
   validTo: z.string().nullable().optional(),
   priority: z.number().int(),
   appliesTo: z.string().trim().min(1),
+  isRefundable: z.boolean(),
   isActive: z.boolean(),
 }).superRefine((data, ctx) => {
   if (data.calculationMode === "FLAT") {
@@ -136,7 +137,9 @@ export const couponSchema = z.object({
 
 export type ProductForm = z.input<typeof productSchema>;
 export type RateForm = z.input<typeof rateSchema>;
-export type TaxForm = z.input<typeof taxSchema>;
+export type TaxForm = Omit<z.input<typeof taxSchema>, "rate"> & {
+  rate: number | "";
+};
 export type CouponForm = z.input<typeof couponSchema>;
 
 export const tabs: Array<{ key: Tab; label: string }> = [
@@ -172,7 +175,7 @@ export const emptyRate: RateForm = {
 
 export const emptyTax: TaxForm = {
   name: "GST",
-  rate: 5,
+  rate: "",
   taxType: "PERCENTAGE",
   category: "GST",
   scope: "ACCOMMODATION",
@@ -185,6 +188,7 @@ export const emptyTax: TaxForm = {
   validTo: "",
   priority: 0,
   appliesTo: "ALL",
+  isRefundable: true,
   isActive: true,
 };
 

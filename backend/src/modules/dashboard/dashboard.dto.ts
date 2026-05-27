@@ -1,6 +1,7 @@
 import type {
   BookingPaymentPolicy,
   BookingPaymentStatus,
+  BookingRefundRequestStatus,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -9,7 +10,9 @@ import type {
   LeadStatus,
   MaintenanceTargetType,
   PaymentMethod,
+  PaymentProvider,
   PaymentPurpose,
+  PaymentRefundStatus,
   PaymentStatus,
   PricingTier,
   PropertyAssignmentRole,
@@ -318,6 +321,7 @@ export interface DashboardTaxDTO {
   validTo: Date | null;
   priority: number;
   appliesTo: string;
+  isRefundable: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -372,36 +376,65 @@ export interface DashboardBookingDTO {
   discountAmount: string;
   taxableAmount: string;
   taxAmount: string;
-  taxBreakdown: Array<{
-    taxId: string;
-    name: string;
-    taxType: TaxType;
-    rate: number;
-    appliesTo: string;
-    itemId?: string;
-    taxableAmount: number;
-    taxAmount: number;
-    included: boolean;
-  }>;
+    taxBreakdown: Array<{
+      taxId: string;
+      name: string;
+      taxType: TaxType;
+      rate: number;
+      appliesTo: string;
+      itemId?: string;
+      taxableAmount: number;
+      taxAmount: number;
+      included: boolean;
+      isRefundable: boolean;
+    }>;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
+  refundedAmount: string;
+  netPaidAmount: string;
+  refundableAmount: string;
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
   noShowEligible: boolean;
   internalNotes: string | null;
   couponCode: string | null;
+  refundRequest: {
+    id: string;
+    status: BookingRefundRequestStatus;
+    reason: string;
+    adminNote: string | null;
+    reviewedByUserId: string | null;
+    reviewedByName: string | null;
+    reviewedAt: Date | null;
+    fulfilledAt: Date | null;
+    createdAt: Date;
+  } | null;
   payments: Array<{
     id: string;
+    provider: PaymentProvider;
     status: PaymentStatus;
     purpose: PaymentPurpose;
     method: PaymentMethod;
     amount: string;
+    refundedAmount: string;
+    refundableAmount: string;
     currency: string;
     note: string | null;
     receivedByUserId: string | null;
     paidAt: Date | null;
     createdAt: Date;
+    refunds: Array<{
+      id: string;
+      refundRequestId: string | null;
+      status: PaymentRefundStatus;
+      method: PaymentMethod;
+      amount: string;
+      currency: string;
+      reason: string;
+      processedAt: Date | null;
+      createdAt: Date;
+    }>;
   }>;
   items: Array<{
     id: string;
@@ -430,6 +463,7 @@ export interface DashboardBookingDTO {
       taxableAmount: number;
       taxAmount: number;
       included: boolean;
+      isRefundable: boolean;
     }>;
     totalAmount: string;
     finalAmount: string;

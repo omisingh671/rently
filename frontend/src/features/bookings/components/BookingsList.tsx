@@ -74,6 +74,30 @@ const getBookingItemLabel = (
   return item.targetLabel.replace(/^Booking option - /, "");
 };
 
+const getCancellationRefundLabel = (booking: Booking) => {
+  if (booking.paidAmount <= 0) {
+    return "No payment made";
+  }
+
+  if (booking.refundRequest?.status === "REQUESTED") {
+    return "Refund request pending";
+  }
+
+  if (booking.refundRequest?.status === "IN_REVIEW") {
+    return "Refund in review";
+  }
+
+  if (booking.refundRequest?.status === "REJECTED") {
+    return "Refund rejected";
+  }
+
+  if (booking.refundableAmount > 0) {
+    return `Refund pending ${formatPrice(booking.refundableAmount)}`;
+  }
+
+  return `Refunded ${formatPrice(booking.refundedAmount)}`;
+};
+
 export default function BookingsList({ bookings }: BookingsListProps) {
   const cancelBooking = useCancelBooking();
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
@@ -184,7 +208,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
             </div>
 
             {/* Price & Actions */}
-            <div className="flex flex-row items-center justify-between border-t border-slate-100 pt-6 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-slate-100 min-w-[160px]">
+            <div className="flex flex-row items-center justify-between border-t border-slate-100 pt-6 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-slate-100 min-w-[160px] lg:min-w-[220px]">
               <div className="lg:text-right">
                 <div className="text-xl font-bold text-slate-900">
                   {formatPrice(booking.totalPrice)}
@@ -234,10 +258,19 @@ export default function BookingsList({ bookings }: BookingsListProps) {
                 )}
 
 
-                {booking.cancelledAt && (
-                  <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1">
-                    <FiXCircle className="h-3 w-3" />
-                    Cancelled {formatDate(booking.cancelledAt)}
+                {(booking.cancelledAt || booking.status === "NO_SHOW") && (
+                  <div className="space-y-1 text-[10px] font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1 text-red-400">
+                      <FiXCircle className="h-3 w-3" />
+                      {booking.status === "NO_SHOW"
+                        ? "No-show"
+                        : `Cancelled ${formatDate(
+                            booking.cancelledAt ?? undefined,
+                          )}`}
+                    </div>
+                    <div className="text-slate-500">
+                      {getCancellationRefundLabel(booking)}
+                    </div>
                   </div>
                 )}
               </div>

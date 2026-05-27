@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  BookingRefundRequestStatus,
   BookingStatus,
   ComfortOption,
   DiscountType,
@@ -461,6 +462,7 @@ export const createTaxSchema = z.object({
   validTo: z.coerce.date().nullable().optional(),
   priority: z.number().int().optional(),
   appliesTo: z.string().trim().min(1).max(120).optional(),
+  isRefundable: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   if (data.calculationMode === TaxCalculationMode.FLAT) {
@@ -537,6 +539,7 @@ export const updateTaxSchema = z
     validTo: z.coerce.date().nullable().optional(),
     priority: z.number().int().optional(),
     appliesTo: z.string().trim().min(1).max(120).optional(),
+    isRefundable: z.boolean().optional(),
     isActive: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
@@ -669,6 +672,43 @@ export const recordBookingPaymentSchema = z.object({
   paidAt: z.coerce.date().optional(),
   idempotencyKey: z.string().trim().min(8).max(128).optional(),
 });
+
+export const recordBookingRefundSchema = z.object({
+  paymentId: idSchema,
+  amount: z.coerce.number().positive(),
+  method: z.nativeEnum(PaymentMethod),
+  reason: z.string().trim().min(1).max(1000),
+  refundRequestId: idSchema.optional(),
+  idempotencyKey: z.string().trim().min(8).max(128).optional(),
+});
+
+export const refundRequestParamsSchema = z.object({
+  id: idSchema,
+  requestId: idSchema,
+});
+
+export const updateRefundRequestSchema = z
+  .object({
+    status: z
+      .enum([
+        BookingRefundRequestStatus.IN_REVIEW,
+        BookingRefundRequestStatus.REJECTED,
+      ])
+      .optional(),
+    adminNote: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((data) => data.status !== undefined || data.adminNote !== undefined, {
+    message: "Status or admin note is required",
+  })
+  .refine(
+    (data) =>
+      data.status !== BookingRefundRequestStatus.REJECTED ||
+      Boolean(data.adminNote?.trim()),
+    {
+      message: "Admin note is required when rejecting a refund request",
+      path: ["adminNote"],
+    },
+  );
 
 export const createManualBookingSchema = contactFieldsRefine(
   z

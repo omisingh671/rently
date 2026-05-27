@@ -5,9 +5,12 @@ import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
   BookingPaymentPolicy,
+  BookingRefundRequestStatus,
+  BillingDocumentType,
   BookingStatus,
   ComfortOption,
   PaymentMethod,
+  PaymentRefundStatus,
   PaymentPurpose,
   PricingTier,
   PropertyAssignmentRole,
@@ -21,6 +24,7 @@ import {
 import * as publicService from "@/modules/public/public.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
 import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
@@ -328,6 +332,211 @@ test("manual payment confirms a pending booking", async () => {
   assert.equal(history[0]?.toStatus, BookingStatus.PENDING);
   assert.equal(history[1]?.fromStatus, BookingStatus.PENDING);
   assert.equal(history[1]?.toStatus, BookingStatus.CONFIRMED);
+
+  const billingDocuments = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id },
+    orderBy: { createdAt: "asc" },
+  });
+  assert.equal(billingDocuments.length, 1);
+  assert.equal(billingDocuments[0]?.type, BillingDocumentType.RECEIPT);
+  assert.equal(billingDocuments[0]?.paymentId, result.payment.id);
+
+  await assert.rejects(
+    () => billingService.createInvoiceForBooking(booking.id),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_BALANCE_DUE");
+      return true;
+    },
+  );
+});
+
+test("billing documents are idempotent and snapshots stay frozen", async () => {
+  const booking = await createBooking(
+    new Date("2027-03-28T00:00:00.000Z"),
+    new Date("2027-03-30T00:00:00.000Z"),
+  );
+  const payment = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-billing-idempotent-payment`,
+    amount: booking.totalPrice,
+  });
+
+  const invoice = await billingService.createInvoiceForBooking(booking.id);
+  const invoiceAgain = await billingService.createInvoiceForBooking(booking.id);
+  const receipt = await billingService.createReceiptForPayment(payment.payment.id);
+  const receiptAgain = await billingService.createReceiptForPayment(
+    payment.payment.id,
+  );
+
+  assert.equal(invoiceAgain.id, invoice.id);
+  assert.equal(receiptAgain.id, receipt.id);
+  assert.equal(invoice.total, "6000");
+  assert.equal(invoice.balance, "0");
+  assert.equal(receipt.balance, "0");
+
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: { totalAmount: 9999, taxAmount: 999 },
+  });
+
+  const frozenInvoice = await prisma.billingDocument.findUniqueOrThrow({
+    where: { id: invoice.id },
+  });
+  assert.equal(frozenInvoice.total.toString(), "6000");
+  assert.equal(frozenInvoice.tax.toString(), "0");
+
+  const documentCount = await prisma.billingDocument.count({
+    where: { bookingId: booking.id },
+  });
+  assert.equal(documentCount, 2);
+});
+
+test("manager cannot void billing documents", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-01T00:00:00.000Z"),
+    new Date("2027-04-03T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-manager-void-paid`,
+    amount: booking.totalPrice,
+  });
+  const invoice = await billingService.createInvoiceForBooking(booking.id);
+
+  await assert.rejects(
+    () =>
+      billingService.voidDashboardDocument(
+        state.managerId,
+        invoice.id,
+        "Manager attempt",
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("guest billing document access is scoped to own booking", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-04T00:00:00.000Z"),
+    new Date("2027-04-06T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-guest-billing-access`,
+  });
+
+  const ownDocuments = await billingService.listPublicBookingDocuments(
+    booking.id,
+    state.guestId,
+    undefined,
+  );
+  assert.equal(ownDocuments.length, 1);
+
+  await assert.rejects(
+    () =>
+      billingService.listPublicBookingDocuments(
+        booking.id,
+        state.otherManagerId,
+        undefined,
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("anonymous checkout token can read only its booking documents", async () => {
+  const lock = await publicService.createInventoryLock(
+    undefined,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-06-10T00:00:00.000Z"),
+      to: new Date("2027-06-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const booking = await publicService.createBooking(
+    undefined,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      inventoryLockToken: lock.lockToken,
+      from: new Date("2027-06-10T00:00:00.000Z"),
+      to: new Date("2027-06-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      guestDetails: {
+        name: "Anonymous Billing Guest",
+        email: `${testId}-anonymous@sucasa.test`,
+        contactNumber: "+919999999999",
+      },
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-anonymous-token-docs`,
+  });
+
+  const documents = await billingService.listPublicBookingDocuments(
+    booking.id,
+    undefined,
+    lock.lockToken,
+  );
+  assert.equal(documents.length, 1);
+
+  const otherBooking = await createBooking(
+    new Date("2027-06-13T00:00:00.000Z"),
+    new Date("2027-06-15T00:00:00.000Z"),
+  );
+  await assert.rejects(
+    () =>
+      billingService.listPublicBookingDocuments(
+        otherBooking.id,
+        undefined,
+        lock.lockToken,
+      ),
+    (error) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "FORBIDDEN",
+  );
+});
+
+test("concurrent invoice generation does not duplicate document numbers", async () => {
+  const booking = await createBooking(
+    new Date("2027-04-07T00:00:00.000Z"),
+    new Date("2027-04-09T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-concurrent-invoice-paid`,
+    amount: booking.totalPrice,
+  });
+
+  const [first, second] = await Promise.all([
+    billingService.createInvoiceForBooking(booking.id),
+    billingService.createInvoiceForBooking(booking.id),
+  ]);
+
+  assert.equal(first.id, second.id);
+
+  const documents = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id, type: BillingDocumentType.INVOICE },
+  });
+  assert.equal(documents.length, 1);
 });
 
 test("manual payment can confirm a pending booking with full amount", async () => {
@@ -356,6 +565,17 @@ test("manual payment can confirm a pending booking with full amount", async () =
 
   assert.equal(confirmedBooking.status, BookingStatus.CONFIRMED);
   assert.equal(confirmedBooking.paymentStatus, "PAID");
+
+  const billingDocuments = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id },
+    orderBy: { createdAt: "asc" },
+  });
+  assert.equal(billingDocuments.length, 2);
+  assert.equal(billingDocuments[0]?.type, BillingDocumentType.INVOICE);
+  assert.equal(billingDocuments[0]?.paid.toString(), "6000");
+  assert.equal(billingDocuments[0]?.balance.toString(), "0");
+  assert.equal(billingDocuments[1]?.type, BillingDocumentType.RECEIPT);
+  assert.equal(billingDocuments[1]?.paymentId, result.payment.id);
 });
 
 test("manual payment is idempotent for the same key", async () => {
@@ -400,8 +620,8 @@ test("manual payment confirms a multi-room booking", async () => {
     {
       bookingType: "MULTI_ROOM",
       spaceIds: [state.pricingId, state.pricingTwoId],
-      from: new Date("2027-06-10T00:00:00.000Z"),
-      to: new Date("2027-06-12T00:00:00.000Z"),
+      from: new Date("2027-08-10T00:00:00.000Z"),
+      to: new Date("2027-08-12T00:00:00.000Z"),
       guests: 3,
       comfortOption: ComfortOption.AC,
     },
@@ -475,8 +695,8 @@ test("dashboard can create a confirmed walk-in booking without payment", async (
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingTwoId,
-      from: new Date("2027-08-10T00:00:00.000Z"),
-      to: new Date("2027-08-12T00:00:00.000Z"),
+      from: new Date("2027-11-10T00:00:00.000Z"),
+      to: new Date("2027-11-12T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
       guestName: "Walk In Guest",
@@ -606,6 +826,21 @@ test("dashboard records remaining balance payment and marks booking paid", async
   assert.equal(updated.payments.length, 2);
   assert.equal(updated.payments[1]?.purpose, PaymentPurpose.BALANCE);
   assert.equal(updated.payments[1]?.method, PaymentMethod.CASH);
+
+  const receipts = await prisma.billingDocument.findMany({
+    where: { bookingId: booking.id, type: BillingDocumentType.RECEIPT },
+    orderBy: { issuedAt: "asc" },
+  });
+  assert.equal(receipts.length, 2);
+  assert.equal(receipts[0]?.paid.toString(), "10");
+  assert.equal(receipts[1]?.paid.toString(), "5590");
+  assert.equal(receipts[1]?.balance.toString(), "0");
+
+  const invoice = await prisma.billingDocument.findFirstOrThrow({
+    where: { bookingId: booking.id, type: BillingDocumentType.INVOICE },
+  });
+  assert.equal(invoice.paid.toString(), "5600");
+  assert.equal(invoice.balance.toString(), "0");
 });
 
 test("dashboard rejects balance overpayment", async () => {
@@ -633,6 +868,313 @@ test("dashboard rejects balance overpayment", async () => {
       return true;
     },
   );
+});
+
+test("dashboard records manual refunds with idempotency and over-refund protection", async () => {
+  const booking = await createBooking(
+    new Date("2027-05-26T00:00:00.000Z"),
+    new Date("2027-05-28T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-token`,
+  });
+  const paidBooking = await dashboardService.recordBookingBalancePayment(
+    state.superAdminId,
+    booking.id,
+    {
+      amount: 5590,
+      method: PaymentMethod.CASH,
+      idempotencyKey: `${testId}-refund-balance`,
+    },
+  );
+
+  await dashboardService.updateBooking(state.superAdminId, booking.id, {
+    status: BookingStatus.CANCELLED,
+    note: "Guest cancelled after payment",
+  });
+
+  const tokenPayment = paidBooking.payments.find(
+    (payment) => payment.purpose === PaymentPurpose.TOKEN,
+  );
+  const balancePayment = paidBooking.payments.find(
+    (payment) => payment.purpose === PaymentPurpose.BALANCE,
+  );
+  assert.ok(tokenPayment);
+  assert.ok(balancePayment);
+
+  const afterTokenRefund = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: tokenPayment.id,
+      amount: 5,
+      method: PaymentMethod.UPI_MANUAL,
+      reason: "Partial token refund",
+      idempotencyKey: `${testId}-refund-token-key`,
+    },
+  );
+
+  assert.equal(afterTokenRefund.refundedAmount, "5");
+  assert.equal(afterTokenRefund.netPaidAmount, "5595");
+  assert.equal(afterTokenRefund.refundableAmount, "5595");
+  assert.equal(afterTokenRefund.payments[0]?.refundedAmount, "5");
+  assert.equal(afterTokenRefund.payments[0]?.refundableAmount, "5");
+
+  const duplicateRefund = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: tokenPayment.id,
+      amount: 5,
+      method: PaymentMethod.UPI_MANUAL,
+      reason: "Partial token refund",
+      idempotencyKey: `${testId}-refund-token-key`,
+    },
+  );
+  assert.equal(duplicateRefund.refundedAmount, "5");
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingRefund(state.superAdminId, booking.id, {
+        paymentId: tokenPayment.id,
+        amount: 6,
+        method: PaymentMethod.UPI_MANUAL,
+        reason: "Too much",
+        idempotencyKey: `${testId}-refund-over`,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "REFUND_OVERPAYMENT");
+      return true;
+    },
+  );
+
+  const afterBalanceRefund = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: balancePayment.id,
+      amount: 5590,
+      method: PaymentMethod.CASH,
+      reason: "Cash returned at desk",
+      idempotencyKey: `${testId}-refund-balance-key`,
+    },
+  );
+  assert.equal(afterBalanceRefund.refundedAmount, "5595");
+  assert.equal(afterBalanceRefund.refundableAmount, "5");
+
+  const fullyRefunded = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: tokenPayment.id,
+      amount: 5,
+      method: PaymentMethod.UPI_MANUAL,
+      reason: "Remaining token refund",
+      idempotencyKey: `${testId}-refund-token-rest-key`,
+    },
+  );
+  assert.equal(fullyRefunded.paymentStatus, "REFUNDED");
+  assert.equal(fullyRefunded.refundedAmount, "5600");
+  assert.equal(fullyRefunded.refundableAmount, "0");
+
+  const refundRows = await prisma.paymentRefund.findMany({
+    where: { bookingId: booking.id },
+  });
+  assert.equal(refundRows.length, 3);
+  assert.ok(
+    refundRows.every((refund) => refund.status === PaymentRefundStatus.SUCCEEDED),
+  );
+});
+
+test("guest refund request can be reviewed and fulfilled by admin", async () => {
+  const booking = await createBooking(
+    new Date("2026-01-20T00:00:00.000Z"),
+    new Date("2026-01-22T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-request-token`,
+  });
+  const noShowBooking = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      status: BookingStatus.NO_SHOW,
+      note: "Guest did not arrive after cutoff",
+    },
+  );
+
+  const requested = await publicService.createRefundRequest(
+    state.guestId,
+    noShowBooking.id,
+    "Please refund because I could not travel",
+  );
+  assert.equal(requested.refundRequest?.status, BookingRefundRequestStatus.REQUESTED);
+
+  await assert.rejects(
+    () =>
+      publicService.createRefundRequest(
+        state.guestId,
+        noShowBooking.id,
+        "Duplicate request",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "REFUND_REQUEST_ALREADY_EXISTS");
+      return true;
+    },
+  );
+
+  const inReview = await dashboardService.updateRefundRequest(
+    state.superAdminId,
+    noShowBooking.id,
+    requested.refundRequest!.id,
+    {
+      status: BookingRefundRequestStatus.IN_REVIEW,
+    },
+  );
+  assert.equal(inReview.refundRequest?.status, BookingRefundRequestStatus.IN_REVIEW);
+
+  const payment = inReview.payments[0];
+  assert.ok(payment);
+
+  const partialRefund = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    noShowBooking.id,
+    {
+      paymentId: payment.id,
+      amount: 5,
+      method: PaymentMethod.MANUAL,
+      reason: "Partial refund approved",
+      refundRequestId: requested.refundRequest!.id,
+      idempotencyKey: `${testId}-request-partial-refund`,
+    },
+  );
+  assert.equal(partialRefund.refundRequest?.status, BookingRefundRequestStatus.IN_REVIEW);
+  assert.equal(partialRefund.refundedAmount, "5");
+
+  const fulfilled = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    noShowBooking.id,
+    {
+      paymentId: payment.id,
+      amount: 5,
+      method: PaymentMethod.MANUAL,
+      reason: "Remaining refund approved",
+      refundRequestId: requested.refundRequest!.id,
+      idempotencyKey: `${testId}-request-final-refund`,
+    },
+  );
+  assert.equal(fulfilled.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+  assert.equal(fulfilled.refundableAmount, "0");
+});
+
+test("guest refund request rejects non-closed or unpaid bookings", async () => {
+  const pendingBooking = await createBooking(
+    new Date("2027-06-01T00:00:00.000Z"),
+    new Date("2027-06-03T00:00:00.000Z"),
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createRefundRequest(
+        state.guestId,
+        pendingBooking.id,
+        "Refund please",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "REFUND_REQUEST_NOT_ALLOWED");
+      return true;
+    },
+  );
+
+  const unpaidCancelled = await createBooking(
+    new Date("2027-06-04T00:00:00.000Z"),
+    new Date("2027-06-06T00:00:00.000Z"),
+  );
+  await publicService.cancelBooking(
+    state.guestId,
+    unpaidCancelled.id,
+    "Changed my plan",
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.createRefundRequest(
+        state.guestId,
+        unpaidCancelled.id,
+        "Refund please",
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_NOT_REFUNDABLE");
+      return true;
+    },
+  );
+});
+
+test("admin can reject a refund request with an admin note", async () => {
+  const booking = await createBooking(
+    new Date("2027-06-08T00:00:00.000Z"),
+    new Date("2027-06-10T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-reject-token`,
+  });
+  const cancelled = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      status: BookingStatus.CANCELLED,
+      note: "Guest cancelled before arrival",
+    },
+  );
+  const requested = await publicService.createRefundRequest(
+    state.guestId,
+    cancelled.id,
+    "Refund request for cancellation",
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateRefundRequest(
+        state.superAdminId,
+        cancelled.id,
+        requested.refundRequest!.id,
+        {
+          status: BookingRefundRequestStatus.REJECTED,
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "REFUND_REJECTION_NOTE_REQUIRED");
+      return true;
+    },
+  );
+
+  const rejected = await dashboardService.updateRefundRequest(
+    state.superAdminId,
+    cancelled.id,
+    requested.refundRequest!.id,
+    {
+      status: BookingRefundRequestStatus.REJECTED,
+      adminNote: "Refund denied by policy",
+    },
+  );
+  assert.equal(rejected.refundRequest?.status, BookingRefundRequestStatus.REJECTED);
+  assert.equal(rejected.refundRequest?.adminNote, "Refund denied by policy");
 });
 
 test("dashboard rejects balance payment for cancelled and no-show bookings", async () => {

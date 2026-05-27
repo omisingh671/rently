@@ -13,7 +13,9 @@ import type {
   LeadStatus,
   ManualBookingAvailabilityResponse,
   RecordBalancePaymentPayload,
+  RecordRefundPayload,
   QuoteListResponse,
+  UpdateRefundRequestPayload,
   RoomBoardResponse,
   UpdateBookingPayload,
 } from "./types";
@@ -98,6 +100,31 @@ export const recordBalancePaymentApi = async (
 ): Promise<AdminBooking> => {
   const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
     API_ENDPOINTS.operations.bookingPaymentsById(bookingId),
+    payload,
+  );
+
+  return data.data;
+};
+
+export const recordRefundApi = async (
+  bookingId: string,
+  payload: RecordRefundPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingRefundsById(bookingId),
+    payload,
+  );
+
+  return data.data;
+};
+
+export const updateRefundRequestApi = async (
+  bookingId: string,
+  requestId: string,
+  payload: UpdateRefundRequestPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.patch<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingRefundRequestById(bookingId, requestId),
     payload,
   );
 

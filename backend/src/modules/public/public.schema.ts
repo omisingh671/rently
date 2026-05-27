@@ -148,6 +148,10 @@ export const cancelBookingSchema = z.object({
   reason: z.string().trim().min(1).max(1000).optional(),
 });
 
+export const createRefundRequestSchema = z.object({
+  reason: z.string().trim().min(1).max(1000),
+});
+
 export const publicEnquirySourceSchema = z.enum([
   "PUBLIC_WEBSITE",
   "PUBLIC_QUOTE_REQUEST",

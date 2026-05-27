@@ -4,6 +4,7 @@ import { HttpError } from "@/common/errors/http-error.js";
 import * as service from "./public.service.js";
 import {
   cancelBookingSchema,
+  createRefundRequestSchema,
   checkAvailabilitySchema,
   createInventoryLockSchema,
   createBookingSchema,
@@ -211,6 +212,20 @@ export const cancelBooking = async (req: AuthRequest, res: Response) => {
     body.reason,
   );
   res.json({ success: true, data });
+};
+
+export const createRefundRequest = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = createRefundRequestSchema.parse(req.body);
+  const data = await service.createRefundRequest(
+    getUserId(req),
+    params.id,
+    body.reason,
+  );
+  res.status(201).json({ success: true, data });
 };
 
 export const createEnquiry = async (req: AuthRequest, res: Response) => {

@@ -10,6 +10,8 @@ import {
   listEnquiriesApi,
   listQuotesApi,
   recordBalancePaymentApi,
+  recordRefundApi,
+  updateRefundRequestApi,
   updateBookingStatusApi,
   updateEnquiryStatusApi,
   updateQuoteStatusApi,
@@ -20,6 +22,8 @@ import type {
   CreateManualBookingPayload,
   LeadStatus,
   RecordBalancePaymentPayload,
+  RecordRefundPayload,
+  UpdateRefundRequestPayload,
   UpdateBookingPayload,
 } from "../types";
 
@@ -243,6 +247,28 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     onSuccess: (booking) => invalidateBooking(booking.propertyId),
   });
 
+  const recordRefund = useMutation({
+    mutationFn: (payload: RecordRefundPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return recordRefundApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const updateRefundRequest = useMutation({
+    mutationFn: ({
+      requestId,
+      payload,
+    }: {
+      requestId: string;
+      payload: UpdateRefundRequestPayload;
+    }) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return updateRefundRequestApi(bookingId, requestId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
   return {
     data: query.data,
     isPending: query.isPending,
@@ -251,6 +277,12 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     error: query.error,
     updateBooking: updateBooking.mutateAsync,
     recordBalancePayment: recordBalancePayment.mutateAsync,
-    isMutating: updateBooking.isPending || recordBalancePayment.isPending,
+    recordRefund: recordRefund.mutateAsync,
+    updateRefundRequest: updateRefundRequest.mutateAsync,
+    isMutating:
+      updateBooking.isPending ||
+      recordBalancePayment.isPending ||
+      recordRefund.isPending ||
+      updateRefundRequest.isPending,
   };
 };

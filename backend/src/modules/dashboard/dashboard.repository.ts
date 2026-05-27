@@ -107,8 +107,28 @@ const dashboardBookingInclude = {
     },
   },
   payments: {
+    include: {
+      refunds: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+    },
     orderBy: {
       createdAt: "asc",
+    },
+  },
+  refunds: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  refundRequests: {
+    include: {
+      reviewedBy: true,
+    },
+    orderBy: {
+      createdAt: "desc",
     },
   },
   statusHistory: {
@@ -1693,6 +1713,65 @@ export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =
     where: { id },
     data,
     include: dashboardBookingInclude,
+  });
+
+export const findRefundByIdempotencyKey = (idempotencyKey: string) =>
+  prisma.paymentRefund.findUnique({
+    where: { idempotencyKey },
+  });
+
+export const createPaymentRefundForBooking = (
+  data: Prisma.PaymentRefundCreateInput,
+  bookingPaymentStatus: Prisma.BookingUpdateInput["paymentStatus"],
+  refundRequestUpdate?: {
+    id: string;
+    data: Prisma.BookingRefundRequestUpdateInput;
+  },
+) =>
+  prisma.$transaction(async (tx) => {
+    const refund = await tx.paymentRefund.create({ data });
+
+    if (refundRequestUpdate !== undefined) {
+      await tx.bookingRefundRequest.update({
+        where: { id: refundRequestUpdate.id },
+        data: refundRequestUpdate.data,
+      });
+    }
+
+    if (bookingPaymentStatus !== undefined) {
+      await tx.booking.update({
+        where: { id: refund.bookingId },
+        data: {
+          paymentStatus: bookingPaymentStatus,
+        },
+      });
+    }
+
+    return tx.booking.findUniqueOrThrow({
+      where: { id: refund.bookingId },
+      include: dashboardBookingInclude,
+    });
+  });
+
+export const createBookingRefundRequest = (
+  data: Prisma.BookingRefundRequestCreateInput,
+) =>
+  prisma.bookingRefundRequest.create({
+    data,
+  });
+
+export const findRefundRequestById = (id: string) =>
+  prisma.bookingRefundRequest.findUnique({
+    where: { id },
+  });
+
+export const updateRefundRequestById = (
+  id: string,
+  data: Prisma.BookingRefundRequestUpdateInput,
+) =>
+  prisma.bookingRefundRequest.update({
+    where: { id },
+    data,
   });
 
 export const hasOverlappingRoomBooking = (input: {
