@@ -354,6 +354,7 @@ export interface CreateDashboardTaxInput {
   validTo?: Date | null;
   priority?: number;
   appliesTo?: string;
+  isRefundable?: boolean;
   isActive?: boolean;
 }
 
@@ -372,6 +373,7 @@ export interface UpdateDashboardTaxInput {
   validTo?: Date | null;
   priority?: number;
   appliesTo?: string;
+  isRefundable?: boolean;
   isActive?: boolean;
 }
 

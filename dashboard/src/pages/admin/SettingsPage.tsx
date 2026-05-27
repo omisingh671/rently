@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Button from "@/components/ui/Button";
 import { useBillingSetting } from "@/features/billing/hooks";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
@@ -129,53 +129,6 @@ function BillingSettingsSection() {
   const currentProperty = useCurrentProperty();
   const propertyId = currentProperty.selectedPropertyId || undefined;
   const billingSetting = useBillingSetting(propertyId);
-  const [form, setForm] = useState<BillingSettingsFormState>({
-    legalName: "",
-    gstin: "",
-    pan: "",
-    billingAddress: "",
-    invoicePrefix: "INV-",
-    receiptPrefix: "RCT-",
-    creditNotePrefix: "CN-",
-    footerNotes: "",
-  });
-
-  useEffect(() => {
-    if (!billingSetting.data) return;
-    setForm({
-      legalName: billingSetting.data.legalName ?? "",
-      gstin: billingSetting.data.gstin ?? "",
-      pan: billingSetting.data.pan ?? "",
-      billingAddress: billingSetting.data.billingAddress ?? "",
-      invoicePrefix: billingSetting.data.invoicePrefix,
-      receiptPrefix: billingSetting.data.receiptPrefix,
-      creditNotePrefix: billingSetting.data.creditNotePrefix,
-      footerNotes: billingSetting.data.footerNotes ?? "",
-    });
-  }, [billingSetting.data]);
-
-  const updateField = (field: keyof typeof form, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const normalizeNullable = (value: string) => {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  };
-
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await billingSetting.updateSetting({
-      legalName: normalizeNullable(form.legalName),
-      gstin: normalizeNullable(form.gstin),
-      pan: normalizeNullable(form.pan),
-      billingAddress: normalizeNullable(form.billingAddress),
-      invoicePrefix: form.invoicePrefix.trim(),
-      receiptPrefix: form.receiptPrefix.trim(),
-      creditNotePrefix: form.creditNotePrefix.trim(),
-      footerNotes: normalizeNullable(form.footerNotes),
-    });
-  };
 
   const error = billingSetting.error
     ? normalizeApiError(billingSetting.error).message
@@ -201,68 +154,130 @@ function BillingSettingsSection() {
         <div className="px-6 py-5 text-sm text-slate-500">
           Select a property to edit billing settings.
         </div>
-      ) : (
-        <form className="space-y-5 px-6 py-5" onSubmit={onSubmit}>
-          {error && (
-            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Field
-              label="Legal name"
-              value={form.legalName}
-              onChange={(value) => updateField("legalName", value)}
-            />
-            <Field
-              label="GSTIN"
-              value={form.gstin}
-              onChange={(value) => updateField("gstin", value)}
-            />
-            <Field
-              label="PAN"
-              value={form.pan}
-              onChange={(value) => updateField("pan", value)}
-            />
-            <Field
-              label="Invoice prefix"
-              value={form.invoicePrefix}
-              onChange={(value) => updateField("invoicePrefix", value)}
-            />
-            <Field
-              label="Receipt prefix"
-              value={form.receiptPrefix}
-              onChange={(value) => updateField("receiptPrefix", value)}
-            />
-            <Field
-              label="Credit note prefix"
-              value={form.creditNotePrefix}
-              onChange={(value) => updateField("creditNotePrefix", value)}
-            />
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <TextareaField
-              label="Billing address"
-              value={form.billingAddress}
-              onChange={(value) => updateField("billingAddress", value)}
-            />
-            <TextareaField
-              label="Footer notes"
-              value={form.footerNotes}
-              onChange={(value) => updateField("footerNotes", value)}
-            />
-          </div>
-          <Button
-            type="submit"
-            size="md"
-            variant="primary"
-            disabled={billingSetting.isUpdating}
-          >
-            {billingSetting.isUpdating ? "Saving..." : "Save Billing Settings"}
-          </Button>
-        </form>
-      )}
+      ) : billingSetting.isLoading ? (
+        <div className="px-6 py-5 text-sm text-slate-500">
+          Loading billing settings...
+        </div>
+      ) : billingSetting.data ? (
+        <BillingSettingsForm
+          key={propertyId}
+          initialData={billingSetting.data}
+          onSave={billingSetting.updateSetting}
+          isUpdating={billingSetting.isUpdating}
+          error={error}
+        />
+      ) : null}
     </section>
+  );
+}
+
+interface BillingSettingsFormProps {
+  initialData: NonNullable<ReturnType<typeof useBillingSetting>["data"]>;
+  onSave: ReturnType<typeof useBillingSetting>["updateSetting"];
+  isUpdating: boolean;
+  error: string | null;
+}
+
+function BillingSettingsForm({
+  initialData,
+  onSave,
+  isUpdating,
+  error,
+}: BillingSettingsFormProps) {
+  const [form, setForm] = useState<BillingSettingsFormState>({
+    legalName: initialData.legalName ?? "",
+    gstin: initialData.gstin ?? "",
+    pan: initialData.pan ?? "",
+    billingAddress: initialData.billingAddress ?? "",
+    invoicePrefix: initialData.invoicePrefix,
+    receiptPrefix: initialData.receiptPrefix,
+    creditNotePrefix: initialData.creditNotePrefix,
+    footerNotes: initialData.footerNotes ?? "",
+  });
+
+  const updateField = (field: keyof typeof form, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const normalizeNullable = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await onSave({
+      legalName: normalizeNullable(form.legalName),
+      gstin: normalizeNullable(form.gstin),
+      pan: normalizeNullable(form.pan),
+      billingAddress: normalizeNullable(form.billingAddress),
+      invoicePrefix: form.invoicePrefix.trim(),
+      receiptPrefix: form.receiptPrefix.trim(),
+      creditNotePrefix: form.creditNotePrefix.trim(),
+      footerNotes: normalizeNullable(form.footerNotes),
+    });
+  };
+
+  return (
+    <form className="space-y-5 px-6 py-5" onSubmit={onSubmit}>
+      {error && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Field
+          label="Legal name"
+          value={form.legalName}
+          onChange={(value) => updateField("legalName", value)}
+        />
+        <Field
+          label="GSTIN"
+          value={form.gstin}
+          onChange={(value) => updateField("gstin", value)}
+        />
+        <Field
+          label="PAN"
+          value={form.pan}
+          onChange={(value) => updateField("pan", value)}
+        />
+        <Field
+          label="Invoice prefix"
+          value={form.invoicePrefix}
+          onChange={(value) => updateField("invoicePrefix", value)}
+        />
+        <Field
+          label="Receipt prefix"
+          value={form.receiptPrefix}
+          onChange={(value) => updateField("receiptPrefix", value)}
+        />
+        <Field
+          label="Credit note prefix"
+          value={form.creditNotePrefix}
+          onChange={(value) => updateField("creditNotePrefix", value)}
+        />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TextareaField
+          label="Billing address"
+          value={form.billingAddress}
+          onChange={(value) => updateField("billingAddress", value)}
+        />
+        <TextareaField
+          label="Footer notes"
+          value={form.footerNotes}
+          onChange={(value) => updateField("footerNotes", value)}
+        />
+      </div>
+      <Button
+        type="submit"
+        size="md"
+        variant="primary"
+        disabled={isUpdating}
+      >
+        {isUpdating ? "Saving..." : "Save Billing Settings"}
+      </Button>
+    </form>
   );
 }
 

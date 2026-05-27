@@ -270,6 +270,7 @@ export const mapTax = (tax: repo.DashboardTaxRecord): DashboardTaxDTO => ({
   validTo: tax.validTo ?? null,
   priority: tax.priority,
   appliesTo: tax.appliesTo,
+  isRefundable: tax.isRefundable,
   isActive: tax.isActive,
   createdAt: tax.createdAt,
   updatedAt: tax.updatedAt,
@@ -311,7 +312,8 @@ const isDashboardTaxBreakdown = (
       item !== null &&
       "taxId" in item &&
       "name" in item &&
-      "taxAmount" in item,
+      "taxAmount" in item &&
+      "isRefundable" in item,
   );
 
 const getDashboardTaxBreakdown = (
@@ -483,15 +485,23 @@ export const mapBooking = (
   const paidAmount = getBookingPaidAmount(booking);
   const refundedAmount = getBookingRefundedAmount(booking);
   const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
-  const refundableAmount = booking.payments.reduce(
+  const taxBreakdown = getDashboardTaxBreakdown(booking.taxBreakdown);
+  const nonRefundableAmount = taxBreakdown
+    .filter((tax) => tax.isRefundable === false)
+    .reduce((sum, tax) => sum.plus(tax.taxAmount), new Prisma.Decimal(0));
+
+  const baseRefundableAmount = booking.payments.reduce(
     (total, payment) => total.plus(getPaymentRefundableAmount(payment)),
     new Prisma.Decimal(0),
   );
-  const balanceAmount = maxDecimal(
-    zeroDecimal,
-    booking.totalAmount.minus(netPaidAmount),
-  );
-  const taxBreakdown = getDashboardTaxBreakdown(booking.taxBreakdown);
+  const refundableAmount = maxDecimal(zeroDecimal, baseRefundableAmount.minus(nonRefundableAmount));
+  const balanceAmount =
+    booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
+      ? zeroDecimal
+      : maxDecimal(
+          zeroDecimal,
+          booking.totalAmount.minus(netPaidAmount),
+        );
   const refundRequest = getBookingRefundRequest(booking);
 
   return {

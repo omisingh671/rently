@@ -62,6 +62,7 @@ export type AdminTax = {
   validTo: string | null;
   priority: number;
   appliesTo: string;
+  isRefundable: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -123,6 +124,7 @@ export type TaxPayload = {
   validTo?: string | null;
   priority: number;
   appliesTo: string;
+  isRefundable: boolean;
   isActive: boolean;
 };
 

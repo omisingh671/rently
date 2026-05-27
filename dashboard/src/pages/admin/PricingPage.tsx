@@ -330,6 +330,7 @@ export default function PricingPage() {
       validFrom: parsed.validFrom || null,
       validTo: parsed.validTo || null,
       appliesTo: parsed.targetType,
+      isRefundable: parsed.isRefundable,
     };
     try {
       if (editingTax) {
@@ -1087,6 +1088,18 @@ export default function PricingPage() {
                     />
                   </label>
                   <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-2">
+                    <span className="text-sm font-medium text-slate-700">Refundable</span>
+                    <ActiveToggle
+                      checked={taxForm.isRefundable}
+                      onChange={(checked) =>
+                        setTaxForm((prev) => ({
+                          ...prev,
+                          isRefundable: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 sm:col-span-2">
                     <span className="text-sm font-medium text-slate-700">Enabled</span>
                     <ActiveToggle
                       checked={taxForm.isActive}
@@ -1181,6 +1194,7 @@ export default function PricingPage() {
                             validTo: dateInput(tax.validTo),
                             priority: tax.priority,
                             appliesTo: tax.targetType,
+                            isRefundable: tax.isRefundable,
                             isActive: tax.isActive,
                           });
                         }}

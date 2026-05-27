@@ -555,7 +555,7 @@ export default function BookingDetailsPage() {
         </div>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid gap-6 xl:grid-cols-[7fr_3fr]">
         <div className="space-y-6">
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">
@@ -643,10 +643,7 @@ export default function BookingDetailsPage() {
                 label="Discount"
                 value={formatMoney(booking.discountAmount)}
               />
-              <InfoItem
-                label="Tax"
-                value={formatMoney(booking.taxAmount)}
-              />
+              <InfoItem label="Tax" value={formatMoney(booking.taxAmount)} />
               <InfoItem
                 label="Coupon used"
                 value={booking.couponCode ?? "None"}
@@ -674,257 +671,6 @@ export default function BookingDetailsPage() {
                 </div>
               </div>
             )}
-            {canShowRefunds && (
-              <div className="mt-5 rounded-md border border-amber-100 bg-amber-50 px-3 py-3 text-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                      Refunds
-                    </div>
-                    {booking.refundRequest ? (
-                      <div className="mt-2 space-y-1 text-amber-900">
-                        <p className="font-semibold">
-                          Request{" "}
-                          {booking.refundRequest.status.replaceAll("_", " ")}
-                        </p>
-                        <p>{booking.refundRequest.reason}</p>
-                        {booking.refundRequest.adminNote && (
-                          <p className="text-amber-800">
-                            Admin note: {booking.refundRequest.adminNote}
-                          </p>
-                        )}
-                      </div>
-                    ) : Number(booking.refundableAmount) > 0 ? (
-                      <p className="mt-2 text-amber-900">
-                        No guest request yet. Admin can still record a refund.
-                      </p>
-                    ) : (
-                      <p className="mt-2 text-amber-900">Refund completed.</p>
-                    )}
-                  </div>
-                  {booking.refundRequest &&
-                    (booking.refundRequest.status === "REQUESTED" ||
-                      booking.refundRequest.status === "IN_REVIEW") && (
-                      <div className="flex flex-wrap gap-2">
-                        {booking.refundRequest.status === "REQUESTED" && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            disabled={isMutating}
-                            onClick={() => {
-                              void updateRefundRequest({
-                                requestId: booking.refundRequest!.id,
-                                payload: { status: "IN_REVIEW" },
-                              }).catch((err: unknown) => {
-                                setActionError(normalizeApiError(err).message);
-                              });
-                            }}
-                          >
-                            Mark In Review
-                          </Button>
-                        )}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="danger"
-                          outline
-                          disabled={isMutating}
-                          onClick={() => openAction("rejectRefundRequest")}
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    )}
-                </div>
-              </div>
-            )}
-            <div className="mt-5 space-y-3">
-              {booking.payments.length === 0 ? (
-                <p className="text-sm text-slate-500">No payments recorded.</p>
-              ) : (
-                booking.payments.map((payment) => (
-                  <div
-                    key={payment.id}
-                    className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-semibold text-slate-900">
-                        {formatMoney(payment.amount)}
-                      </div>
-                      <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600">
-                        {payment.status.replaceAll("_", " ")}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {payment.purpose.replaceAll("_", " ")} /{" "}
-                      {payment.method.replaceAll("_", " ")} /{" "}
-                      {formatDateTime(payment.paidAt ?? payment.createdAt)}
-                    </div>
-                    <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
-                      <span>Refunded: {formatMoney(payment.refundedAmount)}</span>
-                      <span>
-                        Refundable: {formatMoney(payment.refundableAmount)}
-                      </span>
-                    </div>
-                    {payment.refunds.length > 0 && (
-                      <div className="mt-2 space-y-1 rounded-md bg-white px-2 py-2 text-xs text-slate-600">
-                        {payment.refunds.map((refund) => (
-                          <div
-                            key={refund.id}
-                            className="flex flex-wrap items-center justify-between gap-2"
-                          >
-                            <span>
-                              {refund.method.replaceAll("_", " ")} refund /{" "}
-                              {refund.status.replaceAll("_", " ")}
-                            </span>
-                            <span className="font-semibold text-slate-900">
-                              {formatMoney(refund.amount)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {payment.status === "SUCCEEDED" && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {receiptByPaymentId.get(payment.id) ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<FiDownload />}
-                            disabled={isBillingMutating}
-                            onClick={() => {
-                              const receipt = receiptByPaymentId.get(payment.id);
-                              if (receipt) {
-                                void billingActions.downloadDocument(receipt);
-                              }
-                            }}
-                          >
-                            Receipt
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            icon={<FiFileText />}
-                            disabled={isBillingMutating}
-                            onClick={() => {
-                              void billingActions.generateReceipt(payment.id);
-                            }}
-                          >
-                            Generate Receipt
-                          </Button>
-                        )}
-                        {(booking.status === "CANCELLED" ||
-                          booking.status === "NO_SHOW") &&
-                          Number(payment.refundableAmount) > 0 && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="warning"
-                              icon={<FiCreditCard />}
-                              disabled={isMutating}
-                              onClick={() =>
-                                openAction("recordRefund", payment.id)
-                              }
-                            >
-                              {payment.provider === "MANUAL"
-                                ? "Record Manual Refund"
-                                : "Process Gateway Refund"}
-                            </Button>
-                          )}
-                      </div>
-                    )}
-                    {payment.note && (
-                      <p className="mt-2 text-slate-700">{payment.note}</p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Billing Documents
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Frozen invoice and receipt snapshots for this booking.
-                </p>
-              </div>
-              {invoiceDocument ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  icon={<FiDownload />}
-                  disabled={isBillingMutating}
-                  onClick={() => {
-                    void billingActions.downloadDocument(invoiceDocument);
-                  }}
-                >
-                  Download Invoice
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="primary"
-                  icon={<FiFileText />}
-                  disabled={isBillingMutating}
-                  onClick={() => {
-                    if (booking) {
-                      void billingActions.generateInvoice(booking.id);
-                    }
-                  }}
-                >
-                  Generate Invoice
-                </Button>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {billingDocumentsQuery.isPending ? (
-                <p className="text-sm text-slate-500">Loading documents...</p>
-              ) : billingDocuments.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  No billing documents generated yet.
-                </p>
-              ) : (
-                billingDocuments.map((document) => (
-                  <div
-                    key={document.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {document.documentNumber}
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        {document.type.replaceAll("_", " ")} / {document.status} /{" "}
-                        {formatMoney(document.total)}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      icon={<FiDownload />}
-                      disabled={isBillingMutating}
-                      onClick={() => {
-                        void billingActions.downloadDocument(document);
-                      }}
-                    >
-                      Download
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
           </section>
 
           <InternalNotesSection
@@ -1118,6 +864,341 @@ export default function BookingDetailsPage() {
               {getAssignedLabel(booking)}
             </div>
           </section>
+
+          {canShowRefunds && (
+            <div className="rounded-xl border border-amber-200 bg-linear-to-r from-amber-50/80 to-orange-50/50 p-5 shadow-sm">
+              <div className="flex gap-3.5 items-start">
+                <span className="rounded-lg bg-amber-100 p-2 text-amber-700 shrink-0">
+                  <FiAlertTriangle size={18} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block mb-1">
+                    Refund Request
+                  </span>
+                  {booking.refundRequest ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-slate-800">
+                          Guest requested a refund
+                        </h4>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
+                            booking.refundRequest.status === "REQUESTED"
+                              ? "bg-amber-100 text-amber-800 border-amber-200"
+                              : booking.refundRequest.status === "IN_REVIEW"
+                                ? "bg-blue-50 text-blue-700 border-blue-100"
+                                : "bg-slate-100 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          {booking.refundRequest.status
+                            .charAt(0)
+                            .toUpperCase() +
+                            booking.refundRequest.status
+                              .slice(1)
+                              .toLowerCase()
+                              .replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 font-medium italic border-l-2 border-amber-400 pl-3 py-0.5 my-1.5 bg-amber-500/5 rounded-r">
+                        "{booking.refundRequest.reason}"
+                      </p>
+                      {booking.refundRequest.adminNote && (
+                        <p className="text-xs text-amber-800 font-medium">
+                          <span className="font-semibold">Admin Note:</span>{" "}
+                          {booking.refundRequest.adminNote}
+                        </p>
+                      )}
+                    </div>
+                  ) : Number(booking.refundableAmount) > 0 ? (
+                    <p className="text-xs text-slate-600">
+                      No active guest refund request. Admin can still record a
+                      manual refund.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600 font-medium">
+                      Refund has been fully completed.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {booking.refundRequest &&
+                (booking.refundRequest.status === "REQUESTED" ||
+                  booking.refundRequest.status === "IN_REVIEW") && (
+                  <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-amber-200/50 pt-4">
+                    {booking.refundRequest.status === "REQUESTED" && (
+                      <Button
+                        type="button"
+                        size="md"
+                        variant="secondary"
+                        disabled={isMutating}
+                        onClick={() => {
+                          void updateRefundRequest({
+                            requestId: booking.refundRequest!.id,
+                            payload: { status: "IN_REVIEW" },
+                          }).catch((err: unknown) => {
+                            setActionError(normalizeApiError(err).message);
+                          });
+                        }}
+                      >
+                        Mark In Review
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      size="md"
+                      variant="danger"
+                      outline
+                      disabled={isMutating}
+                      onClick={() => openAction("rejectRefundRequest")}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                )}
+            </div>
+          )}
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <h3 className="text-base font-semibold text-slate-900">
+              Recorded Payments
+            </h3>
+            <div className="mt-4 space-y-4">
+              {booking.payments.length === 0 ? (
+                <p className="text-sm text-slate-500">No payments recorded.</p>
+              ) : (
+                booking.payments.map((payment) => {
+                  const isSucceeded = payment.status === "SUCCEEDED";
+                  const isFailed = payment.status === "FAILED";
+                  const isPending = payment.status === "PENDING";
+                  return (
+                    <div
+                      key={payment.id}
+                      className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-5 shadow-sm hover:bg-slate-50 transition duration-150"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-xl font-bold text-slate-900 tracking-tight">
+                          {formatMoney(payment.amount)}
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider border ${
+                            isSucceeded
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                              : isFailed
+                                ? "bg-rose-50 text-rose-700 border-rose-200/60"
+                                : isPending
+                                  ? "bg-amber-50 text-amber-700 border-amber-200/60"
+                                  : "bg-slate-100 text-slate-600 border-slate-200"
+                          }`}
+                        >
+                          {payment.status.replaceAll("_", " ")}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
+                        <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
+                          {payment.purpose.replaceAll("_", " ")}
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
+                          {payment.method.replaceAll("_", " ")}
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <span>
+                          {formatDateTime(payment.paidAt ?? payment.createdAt)}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-200/60 pt-4 text-xs font-medium text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400">Refunded:</span>
+                          <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
+                            {formatMoney(payment.refundedAmount)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400">Refundable:</span>
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded ${Number(payment.refundableAmount) > 0 ? "text-amber-800 bg-amber-50" : "text-slate-800 bg-slate-100"}`}
+                          >
+                            {formatMoney(payment.refundableAmount)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {payment.refunds.length > 0 && (
+                        <div className="mt-3.5 space-y-2 rounded-lg bg-white border border-slate-200/60 px-3.5 py-3 text-xs text-slate-600 shadow-inner">
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                            Refund Transactions
+                          </div>
+                          {payment.refunds.map((refund) => (
+                            <div
+                              key={refund.id}
+                              className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 last:border-0 pb-1.5 last:pb-0"
+                            >
+                              <span className="flex items-center gap-1.5 font-medium text-slate-600">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                {refund.method.replaceAll("_", " ")} refund /{" "}
+                                {refund.status.replaceAll("_", " ")}
+                              </span>
+                              <span className="font-bold text-amber-800">
+                                -{formatMoney(refund.amount)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {payment.status === "SUCCEEDED" && (
+                        <div className="mt-4 flex flex-wrap gap-2 pt-1">
+                          {receiptByPaymentId.get(payment.id) ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              icon={<FiDownload />}
+                              disabled={isBillingMutating}
+                              onClick={() => {
+                                const receipt = receiptByPaymentId.get(
+                                  payment.id,
+                                );
+                                if (receipt) {
+                                  void billingActions.downloadDocument(receipt);
+                                }
+                              }}
+                            >
+                              Receipt
+                            </Button>
+                          ) : (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="secondary"
+                              icon={<FiFileText />}
+                              disabled={isBillingMutating}
+                              onClick={() => {
+                                void billingActions.generateReceipt(payment.id);
+                              }}
+                            >
+                              Generate Receipt
+                            </Button>
+                          )}
+                          {(booking.status === "CANCELLED" ||
+                            booking.status === "NO_SHOW") &&
+                            Number(payment.refundableAmount) > 0 && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="warning"
+                                icon={<FiCreditCard />}
+                                disabled={isMutating}
+                                onClick={() =>
+                                  openAction("recordRefund", payment.id)
+                                }
+                              >
+                                {payment.provider === "MANUAL"
+                                  ? "Record Manual Refund"
+                                  : "Process Gateway Refund"}
+                              </Button>
+                            )}
+                        </div>
+                      )}
+
+                      {payment.note && (
+                        <p className="mt-3.5 text-xs font-medium text-slate-500 bg-slate-100/50 p-2.5 rounded-lg border border-slate-200/40">
+                          <span className="font-semibold text-slate-700 block mb-0.5">
+                            Note:
+                          </span>
+                          {payment.note}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Billing Documents
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Frozen invoice and receipt snapshots for this booking.
+                </p>
+              </div>
+              {invoiceDocument ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  icon={<FiDownload />}
+                  disabled={isBillingMutating}
+                  onClick={() => {
+                    void billingActions.downloadDocument(invoiceDocument);
+                  }}
+                >
+                  Download Invoice
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  icon={<FiFileText />}
+                  disabled={isBillingMutating}
+                  onClick={() => {
+                    if (booking) {
+                      void billingActions.generateInvoice(booking.id);
+                    }
+                  }}
+                >
+                  Generate Invoice
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {billingDocumentsQuery.isPending ? (
+                <p className="text-sm text-slate-500">Loading documents...</p>
+              ) : billingDocuments.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No billing documents generated yet.
+                </p>
+              ) : (
+                billingDocuments.map((document) => (
+                  <div
+                    key={document.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                  >
+                    <div>
+                      <div className="font-semibold text-slate-900">
+                        {document.documentNumber}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {document.type.replaceAll("_", " ")} / {document.status}{" "}
+                        / {formatMoney(document.total)}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      icon={<FiDownload />}
+                      disabled={isBillingMutating}
+                      onClick={() => {
+                        void billingActions.downloadDocument(document);
+                      }}
+                    >
+                      Download
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </aside>
       </div>
 
@@ -1290,7 +1371,9 @@ function ConfirmationModal({
     (action?.type !== "assignRoom" || selectedRoomId !== "") &&
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
     (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
-    (action?.type === "assignRoom" || !action?.requiresNote || note.trim().length > 0);
+    (action?.type === "assignRoom" ||
+      !action?.requiresNote ||
+      note.trim().length > 0);
 
   return (
     <Modal

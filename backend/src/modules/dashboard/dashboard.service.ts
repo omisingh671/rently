@@ -871,6 +871,10 @@ const getPaymentRefundableAmount = (
 };
 
 const getBookingBalanceAmount = (booking: repo.DashboardBookingRecord) => {
+  if (booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW) {
+    return new Prisma.Decimal(0);
+  }
+
   const netPaidAmount = getBookingPaidAmount(booking).minus(
     getBookingRefundedAmount(booking),
   );
@@ -3118,6 +3122,7 @@ export const createTax = async (
     ...(input.validTo !== undefined && { validTo: input.validTo }),
     ...(input.priority !== undefined && { priority: input.priority }),
     ...(input.appliesTo !== undefined && { appliesTo: input.appliesTo }),
+    ...(input.isRefundable !== undefined && { isRefundable: input.isRefundable }),
     ...(input.isActive !== undefined && { isActive: input.isActive }),
   });
 
@@ -3154,6 +3159,7 @@ export const updateTax = async (
     ...(input.validTo !== undefined && { validTo: input.validTo }),
     ...(input.priority !== undefined && { priority: input.priority }),
     ...(input.appliesTo !== undefined && { appliesTo: input.appliesTo }),
+    ...(input.isRefundable !== undefined && { isRefundable: input.isRefundable }),
     ...(input.isActive !== undefined && { isActive: input.isActive }),
   });
 

@@ -462,6 +462,7 @@ export const createTaxSchema = z.object({
   validTo: z.coerce.date().nullable().optional(),
   priority: z.number().int().optional(),
   appliesTo: z.string().trim().min(1).max(120).optional(),
+  isRefundable: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   if (data.calculationMode === TaxCalculationMode.FLAT) {
@@ -538,6 +539,7 @@ export const updateTaxSchema = z
     validTo: z.coerce.date().nullable().optional(),
     priority: z.number().int().optional(),
     appliesTo: z.string().trim().min(1).max(120).optional(),
+    isRefundable: z.boolean().optional(),
     isActive: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {

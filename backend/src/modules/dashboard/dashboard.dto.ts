@@ -321,6 +321,7 @@ export interface DashboardTaxDTO {
   validTo: Date | null;
   priority: number;
   appliesTo: string;
+  isRefundable: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -375,17 +376,18 @@ export interface DashboardBookingDTO {
   discountAmount: string;
   taxableAmount: string;
   taxAmount: string;
-  taxBreakdown: Array<{
-    taxId: string;
-    name: string;
-    taxType: TaxType;
-    rate: number;
-    appliesTo: string;
-    itemId?: string;
-    taxableAmount: number;
-    taxAmount: number;
-    included: boolean;
-  }>;
+    taxBreakdown: Array<{
+      taxId: string;
+      name: string;
+      taxType: TaxType;
+      rate: number;
+      appliesTo: string;
+      itemId?: string;
+      taxableAmount: number;
+      taxAmount: number;
+      included: boolean;
+      isRefundable: boolean;
+    }>;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
   refundedAmount: string;
@@ -461,6 +463,7 @@ export interface DashboardBookingDTO {
       taxableAmount: number;
       taxAmount: number;
       included: boolean;
+      isRefundable: boolean;
     }>;
     totalAmount: string;
     finalAmount: string;

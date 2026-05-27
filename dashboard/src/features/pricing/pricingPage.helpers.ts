@@ -66,6 +66,7 @@ export const taxSchema = z.object({
   validTo: z.string().nullable().optional(),
   priority: z.number().int(),
   appliesTo: z.string().trim().min(1),
+  isRefundable: z.boolean(),
   isActive: z.boolean(),
 }).superRefine((data, ctx) => {
   if (data.calculationMode === "FLAT") {
@@ -187,6 +188,7 @@ export const emptyTax: TaxForm = {
   validTo: "",
   priority: 0,
   appliesTo: "ALL",
+  isRefundable: true,
   isActive: true,
 };
 

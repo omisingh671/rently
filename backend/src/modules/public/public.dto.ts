@@ -152,6 +152,7 @@ export interface PublicTaxBreakdownDTO {
   taxableAmount: number;
   taxAmount: number;
   included: boolean;
+  isRefundable: boolean;
 }
 
 export interface PublicBookingQuoteItemDTO {

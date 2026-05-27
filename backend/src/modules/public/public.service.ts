@@ -300,10 +300,17 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
         .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
     0,
   );
-  const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
-  const refundableAmount = Math.max(0, paidAmount - refundedAmount);
-  const balanceAmount = Math.max(0, Number(booking.totalAmount) - netPaidAmount);
   const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
+  const nonRefundableAmount = taxBreakdown
+    .filter((tax) => tax.isRefundable === false)
+    .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
+  
+  const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
+  const refundableAmount = Math.max(0, paidAmount - refundedAmount - nonRefundableAmount);
+  const balanceAmount =
+    booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
+      ? 0
+      : Math.max(0, Number(booking.totalAmount) - netPaidAmount);
   const taxableAmount = Number(booking.taxableAmount);
   const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
     BookingRefundRequestStatus.REQUESTED,
@@ -1102,6 +1109,7 @@ const calculateQuoteTotals = async (
         taxableAmount: money((existing?.taxableAmount ?? 0) + lineTaxableAmount),
         taxAmount: money((existing?.taxAmount ?? 0) + taxAmount),
         included: item.taxInclusive,
+        isRefundable: (tax as any).isRefundable ?? true,
       };
 
       targetMap.set(key, next);
