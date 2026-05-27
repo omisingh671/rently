@@ -589,6 +589,14 @@ export default function BookingCheckoutPage() {
                   </div>
                 </div>
               </div>
+              {activeQuote?.policy.guestPolicyText && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-relaxed text-amber-900">
+                  <div className="font-bold uppercase tracking-wider text-amber-700">
+                    Booking policy
+                  </div>
+                  <p className="mt-1">{activeQuote.policy.guestPolicyText}</p>
+                </div>
+              )}
             </div>
           </aside>
         </div>

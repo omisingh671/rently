@@ -33,6 +33,30 @@ export type ComfortOption = "AC" | "NON_AC";
 export type BookingPaymentPolicy =
   | "TOKEN_AT_BOOKING"
   | "NO_UPFRONT_PAYMENT";
+export type AdvancePaymentType = "NONE" | "FIXED_AMOUNT" | "PERCENTAGE";
+
+export interface BookingPolicy {
+  propertyId: string;
+  advancePaymentType: AdvancePaymentType;
+  advancePaymentValue: number;
+  tokenRefundable: boolean;
+  cancellationRules: Record<string, unknown>;
+  refundRules: Record<string, unknown>;
+  earlyCheckoutRules: Record<string, unknown>;
+  noShowRules: Record<string, unknown>;
+  guestPolicyText: string;
+}
+
+export interface BookingPolicyPreview {
+  bookingId: string;
+  status: BookingStatus;
+  paidAmount: number;
+  refundedAmount: number;
+  refundableAmount: number;
+  nonRefundableAmount: number;
+  tokenRefundable: boolean;
+  guestPolicyText: string;
+}
 
 export interface BookingItem {
   id: string;
@@ -108,6 +132,7 @@ export interface BookingQuote {
   couponCode: string | null;
   taxBreakdown: TaxBreakdown[];
   items: BookingQuoteItem[];
+  policy: BookingPolicy;
 }
 
 export interface Booking {
@@ -142,6 +167,7 @@ export interface Booking {
   refundableAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
+  policy: BookingPolicy;
   items: BookingItem[];
   internalNotes: string | null;
   cancellationReason: string | null;

@@ -118,6 +118,11 @@ export const API_ENDPOINTS = {
     couponById: (couponId: string) => `/dashboard/coupons/${couponId}`,
   },
 
+  bookingPolicy: {
+    byProperty: (propertyId: string) =>
+      `/dashboard/properties/${propertyId}/booking-policy`,
+  },
+
   operations: {
     bookingsByProperty: (propertyId: string) =>
       `/dashboard/properties/${propertyId}/bookings`,

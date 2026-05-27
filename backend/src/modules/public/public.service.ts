@@ -8,6 +8,7 @@ import {
   ComfortOption,
   Prisma,
   PaymentRefundStatus,
+  PaymentPurpose,
   PaymentStatus,
   TaxCalculationMode,
   TaxCategory,
@@ -20,6 +21,15 @@ import {
 import { randomUUID } from "node:crypto";
 import { HttpError } from "@/common/errors/http-error.js";
 import { hashPassword } from "@/common/utils/password.js";
+import {
+  buildPolicySnapshot,
+  calculatePolicyAdvanceAmount,
+  defaultBookingPolicyCreateData,
+  getPaymentPolicyForAdvanceType,
+  parsePolicySnapshot,
+  type BookingPolicySnapshot,
+  type BookingPolicyShape,
+} from "@/modules/booking-policy/booking-policy.policy.js";
 import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
@@ -38,6 +48,7 @@ import type {
   PublicBookingDTO,
   PublicBookingQuoteDTO,
   PublicBookingQuoteItemDTO,
+  PublicBookingPolicyDTO,
   PublicEnquiryDTO,
   PublicInventoryLockDTO,
   PublicTaxBreakdownDTO,
@@ -84,6 +95,7 @@ interface QuoteCalculationInput {
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: number;
   currency: string;
+  policy: PublicBookingPolicyDTO;
   couponCode: string | undefined;
   items: PublicBookingQuoteItemDTO[];
   userId?: string | undefined;
@@ -94,6 +106,60 @@ interface QuoteCalculationInput {
 interface QuoteCalculationResult extends PublicBookingQuoteDTO {
   couponId: string | undefined;
 }
+
+const asRuleObject = (value: Prisma.JsonValue): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+const mapPolicy = (policy: BookingPolicyShape): PublicBookingPolicyDTO => ({
+  propertyId: policy.propertyId,
+  advancePaymentType: policy.advancePaymentType,
+  advancePaymentValue: Number(policy.advancePaymentValue),
+  tokenRefundable: policy.tokenRefundable,
+  cancellationRules: asRuleObject(policy.cancellationRules),
+  refundRules: asRuleObject(policy.refundRules),
+  earlyCheckoutRules: asRuleObject(policy.earlyCheckoutRules),
+  noShowRules: asRuleObject(policy.noShowRules),
+  guestPolicyText: policy.guestPolicyText,
+});
+
+const mapSnapshotPolicy = (
+  propertyId: string,
+  snapshot: BookingPolicySnapshot,
+): PublicBookingPolicyDTO => ({
+  propertyId,
+  advancePaymentType: snapshot.advancePaymentType,
+  advancePaymentValue: Number(snapshot.advancePaymentValue),
+  tokenRefundable: snapshot.tokenRefundable,
+  cancellationRules: snapshot.cancellationRules,
+  refundRules: snapshot.refundRules,
+  earlyCheckoutRules: snapshot.earlyCheckoutRules,
+  noShowRules: snapshot.noShowRules,
+  guestPolicyText: snapshot.guestPolicyText,
+});
+
+const ensureBookingPolicy = async (
+  propertyId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  repo.upsertDefaultBookingPolicyByPropertyId(
+    propertyId,
+    defaultBookingPolicyCreateData,
+    tx,
+  );
+
+const getBookingPolicyDto = async (
+  booking: Pick<repo.PublicBookingRecord, "propertyId" | "policySnapshot">,
+  tx?: Prisma.TransactionClient,
+) => {
+  const snapshot = parsePolicySnapshot(booking.policySnapshot);
+  if (snapshot !== null) {
+    return mapSnapshotPolicy(booking.propertyId, snapshot);
+  }
+
+  return mapPolicy(await ensureBookingPolicy(booking.propertyId, tx));
+};
 
 const mapTenantConfig = (
   tenant: NonNullable<Awaited<ReturnType<typeof repo.findDefaultTenant>>>,
@@ -109,8 +175,6 @@ const mapTenantConfig = (
   supportPhone: tenant.supportPhone ?? null,
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
-  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
-  bookingTokenAmount: Number(tenant.bookingTokenAmount),
 });
 
 export const resolveTenant = async (input: TenantResolutionInput = {}) => {
@@ -259,7 +323,23 @@ const toTaxBreakdownJson = (
   breakdown: PublicTaxBreakdownDTO[],
 ): Prisma.InputJsonValue => breakdown as unknown as Prisma.InputJsonValue;
 
-const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
+const getNonRefundableTokenAmount = (
+  booking: repo.PublicBookingRecord,
+  policy: PublicBookingPolicyDTO,
+) =>
+  policy.tokenRefundable
+    ? 0
+    : booking.payments
+        .filter(
+          (payment) =>
+            payment.status === PaymentStatus.SUCCEEDED &&
+            payment.purpose === PaymentPurpose.TOKEN,
+        )
+        .reduce((total, payment) => total + Number(payment.amount), 0);
+
+const mapBooking = async (
+  booking: repo.PublicBookingRecord,
+): Promise<PublicBookingDTO> => {
   const items = booking.items.map((item) => ({
     id: item.id,
     targetType: item.targetType,
@@ -304,9 +384,14 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
   const nonRefundableAmount = taxBreakdown
     .filter((tax) => tax.isRefundable === false)
     .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
+  const policy = await getBookingPolicyDto(booking);
+  const nonRefundableTokenAmount = getNonRefundableTokenAmount(booking, policy);
   
   const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
-  const refundableAmount = Math.max(0, paidAmount - refundedAmount - nonRefundableAmount);
+  const refundableAmount = Math.max(
+    0,
+    paidAmount - refundedAmount - nonRefundableAmount - nonRefundableTokenAmount,
+  );
   const balanceAmount =
     booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
       ? 0
@@ -364,6 +449,7 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     refundableAmount,
     balanceAmount,
     remainingPayAtCheckIn: balanceAmount,
+    policy,
     items,
     internalNotes: booking.internalNotes ?? null,
     cancellationReason: booking.cancellationReason ?? null,
@@ -477,6 +563,19 @@ export const getSpaceById = async (
   }
 
   return mapSpace(space);
+};
+
+export const getPropertyBookingPolicy = async (
+  propertyId: string,
+  input: TenantResolutionInput = {},
+): Promise<PublicBookingPolicyDTO> => {
+  const tenant = await resolveTenant(input);
+  const property = await repo.findActivePropertyById(propertyId, tenant.id);
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
+  return mapPolicy(await ensureBookingPolicy(property.id));
 };
 
 export const checkAvailability = async (
@@ -1150,7 +1249,10 @@ const calculateQuoteTotals = async (
     ),
   );
   const totalAmount = money(discountedSubtotal + exclusiveTaxAmount);
-  const upfrontAmount = money(Math.min(input.upfrontAmount, totalAmount));
+  const upfrontAmount =
+    input.paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT
+      ? 0
+      : money(Number(calculatePolicyAdvanceAmount(input.policy, totalAmount)));
 
   return {
     propertyId: input.propertyId,
@@ -1167,6 +1269,7 @@ const calculateQuoteTotals = async (
     paymentPolicy: input.paymentPolicy,
     upfrontAmount,
     remainingPayAtCheckIn: money(Math.max(0, totalAmount - upfrontAmount)),
+    policy: input.policy,
     couponCode: input.couponCode?.trim().toUpperCase() ?? null,
     taxBreakdown,
     items: calculatedItems,
@@ -1198,8 +1301,50 @@ const getRefundedAmount = (booking: repo.PublicBookingRecord) =>
     0,
   );
 
-const getRefundableAmount = (booking: repo.PublicBookingRecord) =>
-  Math.max(0, getPaidAmount(booking) - getRefundedAmount(booking));
+const getRefundableAmount = async (booking: repo.PublicBookingRecord) => {
+  const policy = await getBookingPolicyDto(booking);
+  return Math.max(
+    0,
+    getPaidAmount(booking) -
+      getRefundedAmount(booking) -
+      getNonRefundableTokenAmount(booking, policy),
+  );
+};
+
+export interface PublicBookingPolicyPreviewDTO {
+  bookingId: string;
+  status: BookingStatus;
+  paidAmount: number;
+  refundedAmount: number;
+  refundableAmount: number;
+  nonRefundableAmount: number;
+  tokenRefundable: boolean;
+  guestPolicyText: string;
+}
+
+const buildBookingPolicyPreview = async (
+  booking: repo.PublicBookingRecord,
+): Promise<PublicBookingPolicyPreviewDTO> => {
+  const policy = await getBookingPolicyDto(booking);
+  const paidAmount = getPaidAmount(booking);
+  const refundedAmount = getRefundedAmount(booking);
+  const nonRefundableAmount = getNonRefundableTokenAmount(booking, policy);
+  const refundableAmount = Math.max(
+    0,
+    paidAmount - refundedAmount - nonRefundableAmount,
+  );
+
+  return {
+    bookingId: booking.id,
+    status: booking.status,
+    paidAmount,
+    refundedAmount,
+    refundableAmount,
+    nonRefundableAmount,
+    tokenRefundable: policy.tokenRefundable,
+    guestPolicyText: policy.guestPolicyText,
+  };
+};
 
 const normalizeCouponCode = (couponCode: string | null | undefined) => {
   const trimmed = couponCode?.trim();
@@ -1288,6 +1433,7 @@ const calculateExistingBookingCheckoutQuote = async (
     booking.propertyId,
     tx,
   );
+  const policy = await getBookingPolicyDto(booking, tx);
 
   return calculateQuoteTotals(
     {
@@ -1300,6 +1446,7 @@ const calculateExistingBookingCheckoutQuote = async (
       paymentPolicy: booking.paymentPolicy,
       upfrontAmount: Number(booking.upfrontAmount),
       currency: propertyCurrency?.tenant.defaultCurrency ?? "INR",
+      policy,
       couponCode: normalizeCouponCode(couponCode),
       items: buildQuoteItemsFromBooking(booking),
       userId: booking.userId,
@@ -1509,12 +1656,6 @@ export const getBookingQuote = async (
 ): Promise<PublicBookingQuoteDTO> => {
   const tenant = await resolveTenant(tenantInput);
   const nights = getNights(input.from, input.to);
-  const paymentPolicy = tenant.payAtCheckInEnabled
-    ? BookingPaymentPolicy.TOKEN_AT_BOOKING
-    : BookingPaymentPolicy.NO_UPFRONT_PAYMENT;
-  const upfrontAmount = tenant.payAtCheckInEnabled
-    ? Number(tenant.bookingTokenAmount)
-    : 0;
 
   return repo.runSerializableTransaction(async (tx) => {
     if (input.bookingOptionId !== undefined) {
@@ -1547,6 +1688,10 @@ export const getBookingQuote = async (
         input.to,
         tx,
       );
+      const policy = await ensureBookingPolicy(option.propertyId, tx);
+      const paymentPolicy = getPaymentPolicyForAdvanceType(
+        policy.advancePaymentType,
+      );
 
       return calculateQuoteTotals(
         {
@@ -1560,8 +1705,9 @@ export const getBookingQuote = async (
           guestCount: input.guests,
           comfortOption: input.comfortOption,
           paymentPolicy,
-          upfrontAmount,
+          upfrontAmount: 0,
           currency: tenant.defaultCurrency,
+          policy: mapPolicy(policy),
           couponCode: input.couponCode,
           items: option.items.map((item) =>
             buildQuoteItemFromOptionItem(item, nights, input.comfortOption),
@@ -1698,22 +1844,26 @@ export const getBookingQuote = async (
           .guestCount,
       ),
     );
+    const propertyId = getArrayItem(
+      Array.from(propertyIds),
+      0,
+      "Missing booking property",
+    );
+    const policy = await ensureBookingPolicy(propertyId, tx);
+    const paymentPolicy = getPaymentPolicyForAdvanceType(policy.advancePaymentType);
 
     return calculateQuoteTotals(
       {
-        propertyId: getArrayItem(
-          Array.from(propertyIds),
-          0,
-          "Missing booking property",
-        ),
+        propertyId,
         bookingType: isMultiRoom ? BookingType.MULTI_ROOM : BookingType.SINGLE_TARGET,
         checkIn: input.from,
         nights,
         guestCount: input.guests,
         comfortOption: input.comfortOption,
         paymentPolicy,
-        upfrontAmount,
+        upfrontAmount: 0,
         currency: tenant.defaultCurrency,
+        policy: mapPolicy(policy),
         couponCode: input.couponCode,
         items: itemInputs.map((item, index) =>
           buildQuoteItemFromBookingInput(
@@ -1737,17 +1887,6 @@ export const createBookingForUser = async (
 ): Promise<PublicBookingDTO> => {
   const tenant = await resolveTenant(tenantInput);
   const nights = getNights(input.from, input.to);
-  const paymentPolicy =
-    options.paymentPolicy ??
-    (tenant.payAtCheckInEnabled
-      ? BookingPaymentPolicy.TOKEN_AT_BOOKING
-      : BookingPaymentPolicy.NO_UPFRONT_PAYMENT);
-  const upfrontAmount =
-    options.upfrontAmount ??
-    (tenant.payAtCheckInEnabled ? Number(tenant.bookingTokenAmount) : 0);
-  const initialStatus =
-    options.initialStatus ??
-    (tenant.payAtCheckInEnabled ? BookingStatus.PENDING : BookingStatus.CONFIRMED);
 
   for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
     try {
@@ -1798,6 +1937,16 @@ export const createBookingForUser = async (
             buildQuoteItemFromOptionItem(item, nights, input.comfortOption),
           );
           const optionTargets = option.items.map((item) => item.target);
+          const policy = await ensureBookingPolicy(option.propertyId, tx);
+          const paymentPolicy =
+            options.paymentPolicy ??
+            getPaymentPolicyForAdvanceType(policy.advancePaymentType);
+          const initialStatus =
+            options.initialStatus ??
+            (paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT
+              ? BookingStatus.CONFIRMED
+              : BookingStatus.PENDING);
+          const policySnapshot = buildPolicySnapshot(policy, createdAt);
 
           await assertInventoryLockCoversTargets(
             input.inventoryLockToken,
@@ -1819,8 +1968,9 @@ export const createBookingForUser = async (
               guestCount: input.guests,
               comfortOption: input.comfortOption,
               paymentPolicy,
-              upfrontAmount,
+              upfrontAmount: options.upfrontAmount ?? 0,
               currency: tenant.defaultCurrency,
+              policy: mapPolicy(policy),
               couponCode: input.couponCode,
               items: quoteItems,
               userId: guestSnapshot.userId,
@@ -1868,6 +2018,7 @@ export const createBookingForUser = async (
               ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
               paymentPolicy,
               upfrontAmount: quote.upfrontAmount,
+              policySnapshot: policySnapshot as unknown as Prisma.InputJsonValue,
               ...(options.internalNotes !== undefined && {
                 internalNotes: options.internalNotes,
               }),
@@ -1898,7 +2049,7 @@ export const createBookingForUser = async (
               },
               note:
                 options.statusHistoryNote ??
-                (tenant.payAtCheckInEnabled
+                (paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING
                   ? "Booking created by guest"
                   : "Booking created without upfront payment"),
             },
@@ -2094,6 +2245,16 @@ export const createBookingForUser = async (
         );
 
         const isMultiRoom = input.bookingType === "MULTI_ROOM";
+        const policy = await ensureBookingPolicy(firstSpaceRec.propertyId, tx);
+        const paymentPolicy =
+          options.paymentPolicy ??
+          getPaymentPolicyForAdvanceType(policy.advancePaymentType);
+        const initialStatus =
+          options.initialStatus ??
+          (paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT
+            ? BookingStatus.CONFIRMED
+            : BookingStatus.PENDING);
+        const policySnapshot = buildPolicySnapshot(policy, createdAt);
         const quote = await calculateQuoteTotals(
           {
             propertyId: firstSpaceRec.propertyId,
@@ -2105,8 +2266,9 @@ export const createBookingForUser = async (
             guestCount: input.guests,
             comfortOption: input.comfortOption,
             paymentPolicy,
-            upfrontAmount,
+            upfrontAmount: options.upfrontAmount ?? 0,
             currency: tenant.defaultCurrency,
+            policy: mapPolicy(policy),
             couponCode: input.couponCode,
             items: quoteItems,
             userId: guestSnapshot.userId,
@@ -2152,6 +2314,7 @@ export const createBookingForUser = async (
             ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
             paymentPolicy,
             upfrontAmount: quote.upfrontAmount,
+            policySnapshot: policySnapshot as unknown as Prisma.InputJsonValue,
             ...(options.internalNotes !== undefined && {
               internalNotes: options.internalNotes,
             }),
@@ -2182,7 +2345,7 @@ export const createBookingForUser = async (
             },
             note:
               options.statusHistoryNote ??
-              (tenant.payAtCheckInEnabled
+              (paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING
                 ? "Booking created by guest"
                 : "Booking created without upfront payment"),
           },
@@ -2258,67 +2421,89 @@ export const updateBookingCheckout = async (
   userId: string | undefined,
   bookingId: string,
   input: UpdatePublicBookingCheckoutInput,
-): Promise<PublicBookingDTO> =>
-  repo.runSerializableTransaction(async (tx) => {
-    const booking = await repo.findBookingById(bookingId, tx);
-    if (!booking) {
-      throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+): Promise<PublicBookingDTO> => {
+  for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
+    try {
+      return await repo.runSerializableTransaction(async (tx) => {
+        const booking = await repo.findBookingById(bookingId, tx);
+        if (!booking) {
+          throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+        }
+
+        await assertBookingCheckoutEditable(
+          booking,
+          userId,
+          input.editToken,
+          tx,
+        );
+
+        const quote = await calculateExistingBookingCheckoutQuote(
+          booking,
+          input.couponCode === undefined
+            ? (booking.coupon?.code ?? null)
+            : input.couponCode,
+          tx,
+        );
+        const currentCouponId = booking.couponId ?? undefined;
+        const nextCouponId = quote.couponId;
+
+        if (currentCouponId !== undefined && currentCouponId !== nextCouponId) {
+          await repo.decrementCouponUsage(currentCouponId, tx);
+        }
+
+        if (nextCouponId !== undefined && nextCouponId !== currentCouponId) {
+          await repo.incrementCouponUsage(nextCouponId, tx);
+        }
+
+        const updatedBooking = await repo.updateBookingById(
+          booking.id,
+          {
+            guestNameSnapshot: input.guestDetails.name,
+            guestEmailSnapshot: input.guestDetails.email,
+            guestContactSnapshot: input.guestDetails.contactNumber,
+            subtotalAmount: quote.subtotalAmount,
+            discountAmount: quote.discountAmount,
+            taxableAmount: quote.taxableAmount,
+            taxAmount: quote.taxAmount,
+            taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
+            totalAmount: quote.totalAmount,
+            upfrontAmount: quote.upfrontAmount,
+            ...(nextCouponId !== currentCouponId && {
+              coupon:
+                nextCouponId !== undefined
+                  ? { connect: { id: nextCouponId } }
+                  : { disconnect: true },
+            }),
+          },
+          tx,
+        );
+
+        return mapBooking(updatedBooking);
+      });
+    } catch (error) {
+      if (
+        attempt < maxBookingTransactionAttempts &&
+        isRetryableBookingTransactionError(error)
+      ) {
+        continue;
+      }
+
+      throw error;
     }
+  }
 
-    await assertBookingCheckoutEditable(
-      booking,
-      userId,
-      input.editToken,
-      tx,
-    );
-
-    const quote = await calculateExistingBookingCheckoutQuote(
-      booking,
-      input.couponCode === undefined ? (booking.coupon?.code ?? null) : input.couponCode,
-      tx,
-    );
-    const currentCouponId = booking.couponId ?? undefined;
-    const nextCouponId = quote.couponId;
-
-    if (currentCouponId !== undefined && currentCouponId !== nextCouponId) {
-      await repo.decrementCouponUsage(currentCouponId, tx);
-    }
-
-    if (nextCouponId !== undefined && nextCouponId !== currentCouponId) {
-      await repo.incrementCouponUsage(nextCouponId, tx);
-    }
-
-    const updatedBooking = await repo.updateBookingById(
-      booking.id,
-      {
-        guestNameSnapshot: input.guestDetails.name,
-        guestEmailSnapshot: input.guestDetails.email,
-        guestContactSnapshot: input.guestDetails.contactNumber,
-        subtotalAmount: quote.subtotalAmount,
-        discountAmount: quote.discountAmount,
-        taxableAmount: quote.taxableAmount,
-        taxAmount: quote.taxAmount,
-        taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
-        totalAmount: quote.totalAmount,
-        upfrontAmount: quote.upfrontAmount,
-        ...(nextCouponId !== currentCouponId && {
-          coupon:
-            nextCouponId !== undefined
-              ? { connect: { id: nextCouponId } }
-              : { disconnect: true },
-        }),
-      },
-      tx,
-    );
-
-    return mapBooking(updatedBooking);
-  });
+  throw new HttpError(
+    409,
+    "BOOKING_CONFLICT",
+    "Selected space is no longer available for these dates",
+  );
+};
 
 export const listBookings = async (
   userId: string,
 ): Promise<PublicBookingDTO[]> => {
   const bookings = await repo.listBookingsByUser(userId);
-  return bookings.map(mapBooking);
+  return Promise.all(bookings.map(mapBooking));
 };
 
 export const getBookingById = async (
@@ -2342,6 +2527,30 @@ export const getBookingByIdPublic = async (
   }
 
   return mapBooking(booking);
+};
+
+export const getCancellationPreview = async (
+  userId: string,
+  bookingId: string,
+): Promise<PublicBookingPolicyPreviewDTO> => {
+  const booking = await repo.findBookingByUser(bookingId, userId);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return buildBookingPolicyPreview(booking);
+};
+
+export const getRefundPreview = async (
+  userId: string,
+  bookingId: string,
+): Promise<PublicBookingPolicyPreviewDTO> => {
+  const booking = await repo.findBookingByUser(bookingId, userId);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return buildBookingPolicyPreview(booking);
 };
 
 export const cancelBooking = async (
@@ -2415,7 +2624,7 @@ export const createRefundRequest = async (
     );
   }
 
-  if (getRefundableAmount(booking) <= 0) {
+  if ((await getRefundableAmount(booking)) <= 0) {
     throw new HttpError(
       409,
       "BOOKING_NOT_REFUNDABLE",

@@ -272,6 +272,12 @@ export default function AdminSidebar({
           />
 
           <SidebarLink
+            to={adminPath(ADMIN_ROUTES.BOOKING_POLICY)}
+            icon={FiClipboard}
+            label="Booking Policy"
+          />
+
+          <SidebarLink
             to={adminPath(ADMIN_ROUTES.BILLING)}
             icon={FiFileText}
             label="Billing"

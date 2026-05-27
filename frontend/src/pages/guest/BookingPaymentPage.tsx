@@ -494,12 +494,19 @@ export default function BookingPaymentPage() {
                               </p>
                               <ul className="list-disc space-y-1 pl-4 text-indigo-600/80">
                                 <li>
-                                  The token amount is non-refundable upon cancellation.
+                                  {booking.policy.tokenRefundable
+                                    ? "The token amount may be refundable based on the property policy."
+                                    : "The token amount is non-refundable under the property policy."}
                                 </li>
                                 <li>
                                   Paying the full amount now guarantees your room is fully secured, clears your balance, and speeds up check-in.
                                 </li>
                               </ul>
+                              {booking.policy.guestPolicyText && (
+                                <p className="text-indigo-700/80">
+                                  {booking.policy.guestPolicyText}
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>

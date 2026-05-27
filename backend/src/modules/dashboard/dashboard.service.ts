@@ -32,12 +32,17 @@ import { env } from "@/config/env.js";
 import { createBookingForUser } from "@/modules/public/public.service.js";
 import { generateAvailabilityOptions } from "@/modules/public/public-availability.service.js";
 import { sendResetPasswordEmail } from "@/modules/auth/email/resetPassword.email.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
 import * as repo from "./dashboard.repository.js";
 import { buildDashboardRoomBoard } from "./dashboard-room-board.mapper.js";
 import {
   mapAmenity,
   mapAssignment,
   mapBooking,
+  mapBookingPolicy,
   mapCoupon,
   mapEnquiry,
   mapMaintenanceBlock,
@@ -99,6 +104,7 @@ import type {
   UpdateDashboardRoomInput,
   UpdateDashboardTaxInput,
   UpdateDashboardTenantInput,
+  UpdateDashboardBookingPolicyInput,
   UpdateDashboardUnitInput,
   UpdateDashboardBookingInput,
   RecordDashboardBookingPaymentInput,
@@ -114,6 +120,7 @@ import type {
 import type {
   DashboardAmenityDTO,
   DashboardBookingDTO,
+  DashboardBookingPolicyDTO,
   DashboardCouponDTO,
   DashboardEnquiryDTO,
   DashboardManualBookingAvailabilityDTO,
@@ -1382,12 +1389,6 @@ export const createTenant = async (
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
       }),
-      ...(input.payAtCheckInEnabled !== undefined && {
-        payAtCheckInEnabled: input.payAtCheckInEnabled,
-      }),
-      ...(input.bookingTokenAmount !== undefined && {
-        bookingTokenAmount: input.bookingTokenAmount,
-      }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
 
@@ -1442,12 +1443,6 @@ export const updateTenant = async (
       ...(input.defaultCurrency !== undefined && {
         defaultCurrency: input.defaultCurrency,
       }),
-      ...(input.payAtCheckInEnabled !== undefined && {
-        payAtCheckInEnabled: input.payAtCheckInEnabled,
-      }),
-      ...(input.bookingTokenAmount !== undefined && {
-        bookingTokenAmount: input.bookingTokenAmount,
-      }),
       ...(input.timezone !== undefined && { timezone: input.timezone }),
     });
 
@@ -1466,6 +1461,46 @@ export const updateTenant = async (
 
     throw error;
   }
+};
+
+export const getBookingPolicy = async (
+  userId: string,
+  propertyId: string,
+): Promise<DashboardBookingPolicyDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  await assertPropertyInScope(actor, propertyId);
+  await ensurePropertyExists(propertyId);
+
+  const policy = await repo.upsertBookingPolicyByPropertyId(
+    propertyId,
+    defaultBookingPolicyCreateData,
+  );
+  return mapBookingPolicy(policy);
+};
+
+export const updateBookingPolicy = async (
+  userId: string,
+  propertyId: string,
+  input: UpdateDashboardBookingPolicyInput,
+): Promise<DashboardBookingPolicyDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
+  await assertPropertyInScope(actor, propertyId);
+  await ensurePropertyExists(propertyId);
+
+  const policy = await repo.upsertBookingPolicyByPropertyId(propertyId, {
+    advancePaymentType: input.advancePaymentType,
+    advancePaymentValue: new Prisma.Decimal(input.advancePaymentValue),
+    tokenRefundable: input.tokenRefundable,
+    cancellationRules: input.cancellationRules as Prisma.InputJsonValue,
+    refundRules: input.refundRules as Prisma.InputJsonValue,
+    earlyCheckoutRules: input.earlyCheckoutRules as Prisma.InputJsonValue,
+    noShowRules: input.noShowRules as Prisma.InputJsonValue,
+    guestPolicyText: input.guestPolicyText,
+  });
+
+  return mapBookingPolicy(policy);
 };
 
 export const getDashboardSummary = async (
@@ -1621,6 +1656,9 @@ export const createProperty = async (
       },
       ...(input.status !== undefined && { status: input.status }),
       ...(input.images !== undefined && { images: input.images }),
+      bookingPolicy: {
+        create: defaultBookingPolicyCreateData,
+      },
     });
 
     return mapProperty(property);
@@ -3794,6 +3832,18 @@ export const recordBookingRefund = async (
   }
 
   assertRefundProviderAvailable(payment.provider, input.method);
+
+  const policySnapshot = parsePolicySnapshot(booking.policySnapshot);
+  if (
+    payment.purpose === PaymentPurpose.TOKEN &&
+    policySnapshot?.tokenRefundable === false
+  ) {
+    throw new HttpError(
+      422,
+      "TOKEN_NOT_REFUNDABLE",
+      "This booking policy marks the token payment as non-refundable",
+    );
+  }
 
   const refundRequest =
     input.refundRequestId !== undefined

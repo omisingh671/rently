@@ -7,6 +7,7 @@ import type {
   BookingTargetType,
   ComfortOption,
   DiscountType,
+  AdvancePaymentType,
   LeadStatus,
   MaintenanceTargetType,
   PaymentMethod,
@@ -82,8 +83,23 @@ export interface DashboardTenantDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
-  payAtCheckInEnabled: boolean;
-  bookingTokenAmount: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type BookingPolicyRulesDTO = Record<string, unknown>;
+
+export interface DashboardBookingPolicyDTO {
+  id: string;
+  propertyId: string;
+  advancePaymentType: AdvancePaymentType;
+  advancePaymentValue: string;
+  tokenRefundable: boolean;
+  cancellationRules: BookingPolicyRulesDTO;
+  refundRules: BookingPolicyRulesDTO;
+  earlyCheckoutRules: BookingPolicyRulesDTO;
+  noShowRules: BookingPolicyRulesDTO;
+  guestPolicyText: string;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -9,6 +9,7 @@ import {
   BillingDocumentType,
   BookingStatus,
   ComfortOption,
+  AdvancePaymentType,
   PaymentMethod,
   PaymentRefundStatus,
   PaymentPurpose,
@@ -28,6 +29,31 @@ import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
+
+const setPropertyTokenRefundable = (propertyId: string, tokenRefundable: boolean) =>
+  prisma.propertyBookingPolicy.upsert({
+    where: { propertyId },
+    create: {
+      propertyId,
+      advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+      advancePaymentValue: 10,
+      tokenRefundable,
+      cancellationRules: {},
+      refundRules: { tokenRefundable },
+      earlyCheckoutRules: {},
+      noShowRules: {},
+      guestPolicyText: tokenRefundable
+        ? "Token may be refundable after review."
+        : "Token is non-refundable.",
+    },
+    update: {
+      tokenRefundable,
+      refundRules: { tokenRefundable },
+      guestPolicyText: tokenRefundable
+        ? "Token may be refundable after review."
+        : "Token is non-refundable.",
+    },
+  });
 
 type TestState = {
   superAdminId: string;
@@ -640,10 +666,22 @@ test("manual payment confirms a multi-room booking", async () => {
 });
 
 test("booking is confirmed without payment when token collection is disabled", async () => {
-  await prisma.tenant.update({
-    where: { id: state.tenantId },
-    data: {
-      payAtCheckInEnabled: false,
+  await prisma.propertyBookingPolicy.upsert({
+    where: { propertyId: state.propertyId },
+    create: {
+      propertyId: state.propertyId,
+      advancePaymentType: AdvancePaymentType.NONE,
+      advancePaymentValue: 0,
+      tokenRefundable: false,
+      cancellationRules: {},
+      refundRules: {},
+      earlyCheckoutRules: {},
+      noShowRules: {},
+      guestPolicyText: "No upfront payment required.",
+    },
+    update: {
+      advancePaymentType: AdvancePaymentType.NONE,
+      advancePaymentValue: 0,
     },
   });
 
@@ -679,10 +717,11 @@ test("booking is confirmed without payment when token collection is disabled", a
       },
     );
   } finally {
-    await prisma.tenant.update({
-      where: { id: state.tenantId },
+    await prisma.propertyBookingPolicy.update({
+      where: { propertyId: state.propertyId },
       data: {
-        payAtCheckInEnabled: true,
+        advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+        advancePaymentValue: 10,
       },
     });
   }
@@ -871,6 +910,7 @@ test("dashboard rejects balance overpayment", async () => {
 });
 
 test("dashboard records manual refunds with idempotency and over-refund protection", async () => {
+  await setPropertyTokenRefundable(state.propertyId, true);
   const booking = await createBooking(
     new Date("2027-05-26T00:00:00.000Z"),
     new Date("2027-05-28T00:00:00.000Z"),
@@ -991,6 +1031,7 @@ test("dashboard records manual refunds with idempotency and over-refund protecti
 });
 
 test("guest refund request can be reviewed and fulfilled by admin", async () => {
+  await setPropertyTokenRefundable(state.propertyId, true);
   const booking = await createBooking(
     new Date("2026-01-20T00:00:00.000Z"),
     new Date("2026-01-22T00:00:00.000Z"),
@@ -1123,6 +1164,7 @@ test("guest refund request rejects non-closed or unpaid bookings", async () => {
 });
 
 test("admin can reject a refund request with an admin note", async () => {
+  await setPropertyTokenRefundable(state.propertyId, true);
   const booking = await createBooking(
     new Date("2027-06-08T00:00:00.000Z"),
     new Date("2027-06-10T00:00:00.000Z"),

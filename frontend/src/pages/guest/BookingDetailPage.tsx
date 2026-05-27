@@ -18,7 +18,9 @@ import {
 import {
   useBooking,
   useCreateRefundRequest,
+  useRefundPreview,
 } from "@/features/bookings/hooks";
+import type { BookingPolicyPreview } from "@/features/bookings/types";
 import {
   useBookingBillingDocuments,
   useDownloadBillingDocument,
@@ -100,7 +102,9 @@ export default function BookingDetailPage() {
   const billingDocumentsQuery = useBookingBillingDocuments(id);
   const downloadBillingDocument = useDownloadBillingDocument();
   const createRefundRequest = useCreateRefundRequest();
+  const refundPreview = useRefundPreview();
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [preview, setPreview] = useState<BookingPolicyPreview | null>(null);
   const [refundReason, setRefundReason] = useState("");
   const [refundError, setRefundError] = useState("");
 
@@ -164,9 +168,16 @@ export default function BookingDetailPage() {
       });
       setRefundReason("");
       setIsRefundModalOpen(false);
+      setPreview(null);
     } catch (err) {
       setRefundError(normalizeApiError(err).message);
     }
+  };
+
+  const openRefundModal = () => {
+    setIsRefundModalOpen(true);
+    setPreview(null);
+    refundPreview.mutate({ bookingId: booking.id }, { onSuccess: setPreview });
   };
 
   return (
@@ -535,7 +546,7 @@ export default function BookingDetailPage() {
                       type="button"
                       variant={theme.btn}
                       size="sm"
-                      onClick={() => setIsRefundModalOpen(true)}
+                      onClick={openRefundModal}
                     >
                       Request Refund
                     </Button>
@@ -597,6 +608,7 @@ export default function BookingDetailPage() {
         onClose={() => {
           if (createRefundRequest.isPending) return;
           setIsRefundModalOpen(false);
+          setPreview(null);
           setRefundError("");
         }}
         title="Request Refund"
@@ -610,8 +622,24 @@ export default function BookingDetailPage() {
               Refundable amount
             </p>
             <p className="mt-1 text-2xl font-black text-amber-900">
-              {formatPrice(booking.refundableAmount)}
+              {formatPrice(preview?.refundableAmount ?? booking.refundableAmount)}
             </p>
+            {refundPreview.isPending && (
+              <p className="mt-2 text-xs font-semibold text-amber-700">
+                Checking refund policy...
+              </p>
+            )}
+            {preview && (
+              <div className="mt-2 space-y-1 text-xs text-amber-800">
+                {preview.nonRefundableAmount > 0 && (
+                  <p>
+                    Non-refundable amount:{" "}
+                    {formatPrice(preview.nonRefundableAmount)}
+                  </p>
+                )}
+                <p>{preview.guestPolicyText}</p>
+              </div>
+            )}
           </div>
           <label className="block text-sm">
             <span className="font-bold text-slate-700">Reason</span>
@@ -633,8 +661,11 @@ export default function BookingDetailPage() {
             <Button
               type="button"
               variant="secondary"
-              disabled={createRefundRequest.isPending}
-              onClick={() => setIsRefundModalOpen(false)}
+              disabled={createRefundRequest.isPending || refundPreview.isPending}
+              onClick={() => {
+                setIsRefundModalOpen(false);
+                setPreview(null);
+              }}
             >
               Cancel
             </Button>
@@ -643,6 +674,7 @@ export default function BookingDetailPage() {
               variant="danger"
               disabled={
                 createRefundRequest.isPending || refundReason.trim().length === 0
+                || refundPreview.isPending
               }
             >
               {createRefundRequest.isPending ? "Submitting..." : "Submit Request"}

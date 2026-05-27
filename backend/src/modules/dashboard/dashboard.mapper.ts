@@ -3,14 +3,17 @@ import {
   BookingPaymentStatus,
   BookingRefundRequestStatus,
   BookingStatus,
+  PaymentPurpose,
   PaymentRefundStatus,
   PaymentStatus,
   PropertyAssignmentRole,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { parsePolicySnapshot } from "@/modules/booking-policy/booking-policy.policy.js";
 import type {
   DashboardAmenityDTO,
   DashboardBookingDTO,
+  DashboardBookingPolicyDTO,
   DashboardCouponDTO,
   DashboardEnquiryDTO,
   DashboardMaintenanceBlockDTO,
@@ -128,10 +131,30 @@ export const mapTenant = (
   supportPhone: tenant.supportPhone ?? null,
   defaultCurrency: tenant.defaultCurrency,
   timezone: tenant.timezone,
-  payAtCheckInEnabled: tenant.payAtCheckInEnabled,
-  bookingTokenAmount: tenant.bookingTokenAmount.toString(),
   createdAt: tenant.createdAt,
   updatedAt: tenant.updatedAt,
+});
+
+const asPolicyRuleObject = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+export const mapBookingPolicy = (
+  policy: repo.DashboardBookingPolicyRecord,
+): DashboardBookingPolicyDTO => ({
+  id: policy.id,
+  propertyId: policy.propertyId,
+  advancePaymentType: policy.advancePaymentType,
+  advancePaymentValue: policy.advancePaymentValue.toString(),
+  tokenRefundable: policy.tokenRefundable,
+  cancellationRules: asPolicyRuleObject(policy.cancellationRules),
+  refundRules: asPolicyRuleObject(policy.refundRules),
+  earlyCheckoutRules: asPolicyRuleObject(policy.earlyCheckoutRules),
+  noShowRules: asPolicyRuleObject(policy.noShowRules),
+  guestPolicyText: policy.guestPolicyText,
+  createdAt: policy.createdAt,
+  updatedAt: policy.updatedAt,
 });
 
 export const mapAssignment = (
@@ -489,12 +512,26 @@ export const mapBooking = (
   const nonRefundableAmount = taxBreakdown
     .filter((tax) => tax.isRefundable === false)
     .reduce((sum, tax) => sum.plus(tax.taxAmount), new Prisma.Decimal(0));
+  const policySnapshot = parsePolicySnapshot(booking.policySnapshot);
+  const nonRefundableTokenAmount =
+    policySnapshot?.tokenRefundable === false
+      ? booking.payments
+          .filter(
+            (payment) =>
+              payment.status === PaymentStatus.SUCCEEDED &&
+              payment.purpose === PaymentPurpose.TOKEN,
+          )
+          .reduce((sum, payment) => sum.plus(payment.amount), new Prisma.Decimal(0))
+      : zeroDecimal;
 
   const baseRefundableAmount = booking.payments.reduce(
     (total, payment) => total.plus(getPaymentRefundableAmount(payment)),
     new Prisma.Decimal(0),
   );
-  const refundableAmount = maxDecimal(zeroDecimal, baseRefundableAmount.minus(nonRefundableAmount));
+  const refundableAmount = maxDecimal(
+    zeroDecimal,
+    baseRefundableAmount.minus(nonRefundableAmount).minus(nonRefundableTokenAmount),
+  );
   const balanceAmount =
     booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
       ? zeroDecimal

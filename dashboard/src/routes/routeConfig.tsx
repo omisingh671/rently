@@ -43,6 +43,7 @@ const GalleryPage = lazy(() => import("@/pages/admin/GalleryPage"));
 const MaintenancePage = lazy(() => import("@/pages/admin/MaintenancePage"));
 const PricingPage = lazy(() => import("@/pages/admin/PricingPage"));
 const BookingsPage = lazy(() => import("@/pages/admin/BookingsPage"));
+const BookingPolicyPage = lazy(() => import("@/pages/admin/BookingPolicyPage"));
 const BillingPage = lazy(() => import("@/pages/admin/BillingPage"));
 const BookingDetailsPage = lazy(
   () => import("@/pages/admin/BookingDetailsPage"),
@@ -208,6 +209,10 @@ const routes: RouteObject[] = [
                   {
                     path: ADMIN_ROUTES.BOOKINGS,
                     element: <BookingsPage />,
+                  },
+                  {
+                    path: ADMIN_ROUTES.BOOKING_POLICY,
+                    element: <BookingPolicyPage />,
                   },
                   {
                     path: ADMIN_ROUTES.BILLING,

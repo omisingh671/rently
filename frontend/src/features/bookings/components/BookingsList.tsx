@@ -14,8 +14,8 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { ROUTES } from "@/configs/routePaths";
 import { normalizeApiError } from "@/utils/errors";
-import { useCancelBooking } from "../hooks";
-import type { Booking } from "../types";
+import { useCancelBooking, useCancellationPreview } from "../hooks";
+import type { Booking, BookingPolicyPreview } from "../types";
 
 const bookingStatusMap: Record<Booking["status"], string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -100,7 +100,9 @@ const getCancellationRefundLabel = (booking: Booking) => {
 
 export default function BookingsList({ bookings }: BookingsListProps) {
   const cancelBooking = useCancelBooking();
+  const cancellationPreview = useCancellationPreview();
   const [bookingToCancel, setBookingToCancel] = useState<Booking | null>(null);
+  const [preview, setPreview] = useState<BookingPolicyPreview | null>(null);
   const [cancellationReason, setCancellationReason] = useState("");
 
   if (bookings.length === 0) {
@@ -120,12 +122,18 @@ export default function BookingsList({ bookings }: BookingsListProps) {
 
   const openCancellationModal = (booking: Booking) => {
     setBookingToCancel(booking);
+    setPreview(null);
     setCancellationReason(booking.cancellationReason ?? "");
+    cancellationPreview.mutate(
+      { bookingId: booking.id },
+      { onSuccess: setPreview },
+    );
   };
 
   const closeCancellationModal = () => {
     if (cancelBooking.isPending) return;
     setBookingToCancel(null);
+    setPreview(null);
     setCancellationReason("");
   };
 
@@ -302,6 +310,29 @@ export default function BookingsList({ bookings }: BookingsListProps) {
               </div>
             </div>
 
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-900">
+              {cancellationPreview.isPending ? (
+                <p className="font-semibold">Checking cancellation policy...</p>
+              ) : preview ? (
+                <div className="space-y-1">
+                  <p className="font-semibold">
+                    Refund preview: {formatPrice(preview.refundableAmount)}
+                  </p>
+                  {preview.nonRefundableAmount > 0 && (
+                    <p>
+                      Non-refundable amount:{" "}
+                      {formatPrice(preview.nonRefundableAmount)}
+                    </p>
+                  )}
+                  <p>{preview.guestPolicyText}</p>
+                </div>
+              ) : (
+                <p className="font-semibold">
+                  Cancellation preview is unavailable.
+                </p>
+              )}
+            </div>
+
             <label className="block">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                 Reason
@@ -314,7 +345,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
                 rows={3}
                 className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50"
                 placeholder="Optional cancellation reason"
-                disabled={cancelBooking.isPending}
+                disabled={cancelBooking.isPending || cancellationPreview.isPending}
               />
             </label>
 
@@ -322,7 +353,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={cancelBooking.isPending}
+                disabled={cancelBooking.isPending || cancellationPreview.isPending}
                 onClick={closeCancellationModal}
               >
                 Keep Booking
@@ -330,7 +361,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
               <Button
                 type="button"
                 variant="danger"
-                disabled={cancelBooking.isPending}
+                disabled={cancelBooking.isPending || cancellationPreview.isPending}
                 onClick={() => {
                   void confirmCancellation();
                 }}

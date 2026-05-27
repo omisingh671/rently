@@ -124,6 +124,12 @@ enum BookingPaymentPolicy {
   NO_UPFRONT_PAYMENT
 }
 
+enum AdvancePaymentType {
+  NONE
+  FIXED_AMOUNT
+  PERCENTAGE
+}
+
 enum BookingPaymentStatus {
   PENDING
   PARTIALLY_PAID
@@ -294,8 +300,6 @@ model Tenant {
   supportPhone        String?
   defaultCurrency     String       @default("INR")
   timezone            String       @default("Asia/Kolkata")
-  payAtCheckInEnabled Boolean      @default(true)
-  bookingTokenAmount  Decimal      @default(10)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -328,6 +332,7 @@ model Property {
   roomProducts      RoomProduct[]
   roomPricing       RoomPricing[]
   bookings          Booking[]
+  bookingPolicy     PropertyBookingPolicy?
   bookingRefundRequests BookingRefundRequest[]
   inventoryLocks    InventoryLock[]
   payments          Payment[]
@@ -345,6 +350,25 @@ model Property {
   @@unique([tenantId, name, city, state])
   @@index([tenantId])
   @@map("properties")
+}
+
+model PropertyBookingPolicy {
+  id                  String             @id @default(uuid())
+  propertyId          String             @unique
+  advancePaymentType  AdvancePaymentType @default(FIXED_AMOUNT)
+  advancePaymentValue Decimal            @default(10)
+  tokenRefundable     Boolean            @default(false)
+  cancellationRules   Json
+  refundRules         Json
+  earlyCheckoutRules  Json
+  noShowRules         Json
+  guestPolicyText     String             @db.Text
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_booking_policies")
 }
 
 model Unit {
@@ -514,6 +538,7 @@ model Booking {
   paymentStatus      BookingPaymentStatus @default(PENDING)
   paymentPolicy      BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount      Decimal              @default(10)
+  policySnapshot     Json?
   couponId           String?
   discountAmount     Decimal              @default(0)
   internalNotes      String?              @db.Text

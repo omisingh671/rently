@@ -12,6 +12,7 @@ import * as paymentsService from "@/modules/payments/payments.service.js";
 import {
   BookingStatus,
   ComfortOption,
+  AdvancePaymentType,
   DiscountType,
   MaintenanceTargetType,
   PricingTier,
@@ -1091,6 +1092,69 @@ test("public final quote applies tax and booking freezes tax breakdown", async (
   } finally {
     await prisma.tax.delete({ where: { id: tax.id } });
   }
+});
+
+test("booking freezes property policy snapshot for future refund previews", async () => {
+  await prisma.propertyBookingPolicy.upsert({
+    where: { propertyId: state.propertyId },
+    create: {
+      propertyId: state.propertyId,
+      advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+      advancePaymentValue: 10,
+      tokenRefundable: false,
+      cancellationRules: {},
+      refundRules: {},
+      earlyCheckoutRules: {},
+      noShowRules: {},
+      guestPolicyText: "Original policy text",
+    },
+    update: {
+      advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+      advancePaymentValue: 10,
+      tokenRefundable: false,
+      guestPolicyText: "Original policy text",
+    },
+  });
+
+  const booking = await publicService.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-08-15T00:00:00.000Z"),
+      to: new Date("2027-08-17T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  assert.equal(booking.upfrontAmount, 10);
+  assert.equal(booking.policy.tokenRefundable, false);
+
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      tokenRefundable: true,
+      guestPolicyText: "Updated policy text",
+    },
+  });
+
+  const reloaded = await publicService.getBookingById(
+    state.guestOneId,
+    booking.id,
+  );
+  assert.equal(reloaded.policy.tokenRefundable, false);
+  assert.equal(reloaded.policy.guestPolicyText, "Original policy text");
+
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      tokenRefundable: false,
+      guestPolicyText:
+        "Token, cancellation, refund, early checkout, and no-show rules are governed by this property policy. Refunds may require review by the property team.",
+    },
+  });
 });
 
 test("public quote applies one GST slab per booking item", async () => {

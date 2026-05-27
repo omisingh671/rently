@@ -12,6 +12,7 @@ const router = Router();
 router.get("/spaces", controller.listSpaces);
 router.get("/tenant-config", controller.getTenantConfig);
 router.get("/spaces/:id", controller.getSpaceById);
+router.get("/properties/:id/booking-policy", controller.getPropertyBookingPolicy);
 router.post("/availability/check", controller.checkAvailability);
 router.post("/enquiries", controller.createEnquiry);
 router.post(
@@ -47,6 +48,16 @@ router.post(
   "/bookings/:id/refund-requests",
   authenticate,
   controller.createRefundRequest,
+);
+router.post(
+  "/bookings/:id/cancellation-preview",
+  authenticate,
+  controller.getCancellationPreview,
+);
+router.post(
+  "/bookings/:id/refund-preview",
+  authenticate,
+  controller.getRefundPreview,
 );
 router.get(
   "/billing-documents/:id/download",

@@ -42,6 +42,7 @@ import {
   checkManualBookingAvailabilitySchema,
   updateAmenitySchema,
   updateBookingStatusSchema,
+  updateBookingPolicySchema,
   updateCouponSchema,
   updateForcePasswordChangeSchema,
   updateRefundRequestSchema,
@@ -122,12 +123,6 @@ export const createTenant = async (req: AuthRequest, res: Response) => {
     ...(body.defaultCurrency !== undefined && {
       defaultCurrency: body.defaultCurrency,
     }),
-    ...(body.payAtCheckInEnabled !== undefined && {
-      payAtCheckInEnabled: body.payAtCheckInEnabled,
-    }),
-    ...(body.bookingTokenAmount !== undefined && {
-      bookingTokenAmount: body.bookingTokenAmount,
-    }),
     ...(body.timezone !== undefined && { timezone: body.timezone }),
   });
   res.status(201).json({ success: true, data });
@@ -154,13 +149,29 @@ export const updateTenant = async (req: AuthRequest, res: Response) => {
     ...(body.defaultCurrency !== undefined && {
       defaultCurrency: body.defaultCurrency,
     }),
-    ...(body.payAtCheckInEnabled !== undefined && {
-      payAtCheckInEnabled: body.payAtCheckInEnabled,
-    }),
-    ...(body.bookingTokenAmount !== undefined && {
-      bookingTokenAmount: body.bookingTokenAmount,
-    }),
     ...(body.timezone !== undefined && { timezone: body.timezone }),
+  });
+  res.json({ success: true, data });
+};
+
+export const getBookingPolicy = async (req: AuthRequest, res: Response) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const data = await service.getBookingPolicy(getUserId(req), params.propertyId);
+  res.json({ success: true, data });
+};
+
+export const updateBookingPolicy = async (req: AuthRequest, res: Response) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = updateBookingPolicySchema.parse(req.body);
+  const data = await service.updateBookingPolicy(getUserId(req), params.propertyId, {
+    advancePaymentType: body.advancePaymentType,
+    advancePaymentValue: body.advancePaymentValue,
+    tokenRefundable: body.tokenRefundable,
+    cancellationRules: body.cancellationRules,
+    refundRules: body.refundRules,
+    earlyCheckoutRules: body.earlyCheckoutRules,
+    noShowRules: body.noShowRules,
+    guestPolicyText: body.guestPolicyText,
   });
   res.json({ success: true, data });
 };

@@ -81,12 +81,15 @@ Current repo status:
   - Dedicated final quote/price-breakdown API is available at `POST /api/v1/public/bookings/quote`.
   - Dashboard Pricing UX improved with bulk creation and property/unit/room overrides.
   - Coupon management and validation integrated across dashboard and frontend.
-  - Payment summary now supports token and balance collection, including dashboard balance-payment recording.
+  - Payment summary now supports property-policy-driven token and balance collection, including dashboard balance-payment recording.
+  - Booking & Cancellation Policy is now property-scoped instead of tenant-scoped; Super Admins manage all property policies, Admins manage assigned property policies, and Managers have read-only access.
+  - Booking creation freezes a property policy snapshot so later policy changes do not affect old booking payment, cancellation, or refund behavior.
 - Phase 5 public frontend refinements completed:
   - Modernized BookingForm with occupancy toggles and grid layout.
   - High-end Booking Payment and Account UI (Sucasa theme).
   - Guest payment page supports both token payment and full-amount payment for pending bookings.
   - MVP cancellation flow and booking history integrated into guest account.
+  - Public checkout/payment/cancellation/refund surfaces show property policy text and use backend cancellation/refund preview APIs.
   - Account booking cancellation now uses an in-app confirmation popup with optional cancellation reason instead of native browser prompts.
   - Detailed Guest Booking Page with stay breakdown, price summary, and coupon visibility.
 - Phase 6 dashboard operations completed:
@@ -173,8 +176,6 @@ Current repo status:
   - `supportPhone`
   - `defaultCurrency`
   - `timezone`
-  - `payAtCheckInEnabled`
-  - `bookingTokenAmount`
   - `createdAt`
   - `updatedAt`
 - Completed: add `tenantId` to `Property`.
@@ -206,9 +207,8 @@ Current repo status:
   - support phone
   - default currency
   - timezone
-  - pay-at-check-in setting
-  - booking token amount
-- Deferred: public booking rules as structured tenant policy.
+- Completed: token/advance payment settings moved out of tenant config and into property booking policy.
+- Completed: public booking rules now live as structured property policy with frozen booking snapshots.
 - Completed: add dashboard page for super-admin tenant management.
 - Completed: add public endpoint for tenant config.
 

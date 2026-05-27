@@ -1,4 +1,5 @@
 import type {
+  AdvancePaymentType,
   BookingRefundRequestStatus,
   BookingStatus,
   ComfortOption,
@@ -174,8 +175,6 @@ export interface CreateDashboardTenantInput {
   supportPhone?: string;
   defaultCurrency?: string;
   timezone?: string;
-  payAtCheckInEnabled?: boolean;
-  bookingTokenAmount?: number;
 }
 
 export interface UpdateDashboardTenantInput {
@@ -191,8 +190,17 @@ export interface UpdateDashboardTenantInput {
   supportPhone?: string | null;
   defaultCurrency?: string;
   timezone?: string;
-  payAtCheckInEnabled?: boolean;
-  bookingTokenAmount?: number;
+}
+
+export interface UpdateDashboardBookingPolicyInput {
+  advancePaymentType: AdvancePaymentType;
+  advancePaymentValue: number;
+  tokenRefundable: boolean;
+  cancellationRules: Record<string, unknown>;
+  refundRules: Record<string, unknown>;
+  earlyCheckoutRules: Record<string, unknown>;
+  noShowRules: Record<string, unknown>;
+  guestPolicyText: string;
 }
 
 export interface CreateDashboardUserInput {
