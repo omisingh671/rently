@@ -1208,7 +1208,7 @@ const calculateQuoteTotals = async (
         taxableAmount: money((existing?.taxableAmount ?? 0) + lineTaxableAmount),
         taxAmount: money((existing?.taxAmount ?? 0) + taxAmount),
         included: item.taxInclusive,
-        isRefundable: (tax as any).isRefundable ?? true,
+        isRefundable: (tax as unknown as { isRefundable?: boolean }).isRefundable ?? true,
       };
 
       targetMap.set(key, next);

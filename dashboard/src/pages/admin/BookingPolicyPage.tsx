@@ -39,6 +39,7 @@ export default function BookingPolicyPage() {
 
   useEffect(() => {
     if (policy) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(mapPolicyToForm(policy));
       setServerError(null);
       setSavedMessage(null);
