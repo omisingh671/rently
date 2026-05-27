@@ -145,6 +145,21 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentRefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum BookingRefundRequestStatus {
+  REQUESTED
+  IN_REVIEW
+  REJECTED
+  FULFILLED
+  CANCELLED
+}
+
 enum PaymentPurpose {
   TOKEN
   BALANCE
@@ -207,7 +222,10 @@ model User {
   sessions                   Session[]
   resetTokens                PasswordResetToken[]
   bookings                   Booking[]
+  bookingRefundRequests      BookingRefundRequest[]
+  reviewedRefundRequests     BookingRefundRequest[] @relation("RefundRequestReviewedBy")
   payments                   Payment[]
+  refunds                    PaymentRefund[]
   paymentsReceived           Payment[]              @relation("PaymentReceivedBy")
   bookingStatusHistory       BookingStatusHistory[] @relation("BookingStatusActor")
   quotes                     QuoteRequest[]
@@ -310,8 +328,10 @@ model Property {
   roomProducts      RoomProduct[]
   roomPricing       RoomPricing[]
   bookings          Booking[]
+  bookingRefundRequests BookingRefundRequest[]
   inventoryLocks    InventoryLock[]
   payments          Payment[]
+  refunds           PaymentRefund[]
   quoteRequests     QuoteRequest[]
   enquiries         Enquiry[]
   assignments       PropertyAssignment[]
@@ -507,6 +527,8 @@ model Booking {
   coupon         Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items          BookingItem[]
   payments       Payment[]
+  refunds        PaymentRefund[]
+  refundRequests BookingRefundRequest[]
   statusHistory  BookingStatusHistory[]
   inventoryLocks InventoryLock[]
   billingDocuments BillingDocument[]
@@ -624,6 +646,7 @@ model Payment {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   receivedBy User?    @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
   billingDocuments BillingDocument[]
+  refunds PaymentRefund[]
 
   @@unique([provider, providerPaymentId])
   @@index([bookingId])
@@ -632,6 +655,70 @@ model Payment {
   @@index([receivedByUserId])
   @@index([status, createdAt])
   @@map("payments")
+}
+
+model PaymentRefund {
+  id                   String              @id @default(uuid())
+  bookingId            String
+  paymentId            String
+  propertyId           String
+  userId               String
+  refundRequestId      String?
+  provider             PaymentProvider
+  status               PaymentRefundStatus @default(PENDING)
+  method               PaymentMethod       @default(MANUAL)
+  amount               Decimal
+  currency             String              @default("INR") @db.VarChar(3)
+  reason               String              @db.Text
+  idempotencyKey       String              @unique
+  providerRefundId     String?
+  providerRefundStatus String?
+  metadata             Json?
+  processedAt          DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment  Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refundRequest BookingRefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerRefundId])
+  @@index([bookingId])
+  @@index([paymentId])
+  @@index([propertyId])
+  @@index([userId])
+  @@index([refundRequestId])
+  @@index([status, createdAt])
+  @@map("payment_refunds")
+}
+
+model BookingRefundRequest {
+  id               String                     @id @default(uuid())
+  bookingId        String
+  propertyId       String
+  userId           String
+  status           BookingRefundRequestStatus @default(REQUESTED)
+  reason           String                     @db.Text
+  adminNote        String?                    @db.Text
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  fulfilledAt      DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  booking    Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property   Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?           @relation("RefundRequestReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  refunds    PaymentRefund[]
+
+  @@index([bookingId, status])
+  @@index([propertyId, status, createdAt])
+  @@index([userId, status])
+  @@index([reviewedByUserId])
+  @@map("booking_refund_requests")
 }
 
 model BillingSetting {

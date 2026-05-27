@@ -15,6 +15,19 @@ export type PaymentStatus =
   | "CANCELLED"
   | "REFUNDED";
 
+export type BookingPaymentStatus =
+  | "PENDING"
+  | "PARTIALLY_PAID"
+  | "PAID"
+  | "REFUNDED";
+
+export type BookingRefundRequestStatus =
+  | "REQUESTED"
+  | "IN_REVIEW"
+  | "REJECTED"
+  | "FULFILLED"
+  | "CANCELLED";
+
 export type BookingType = "SINGLE_TARGET" | "MULTI_ROOM";
 export type ComfortOption = "AC" | "NON_AC";
 export type BookingPaymentPolicy =
@@ -124,6 +137,9 @@ export interface Booking {
   taxAmount: number;
   taxBreakdown: TaxBreakdown[];
   paidAmount: number;
+  refundedAmount: number;
+  netPaidAmount: number;
+  refundableAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
   items: BookingItem[];
@@ -131,6 +147,15 @@ export interface Booking {
   cancellationReason: string | null;
   cancelledAt: string | null;
   couponCode: string | null;
+  refundRequest: {
+    id: string;
+    status: BookingRefundRequestStatus;
+    reason: string;
+    adminNote: string | null;
+    reviewedAt: string | null;
+    fulfilledAt: string | null;
+    createdAt: string;
+  } | null;
   createdAt: string;
 }
 
@@ -177,8 +202,11 @@ export interface CreateManualPaymentResponse {
     id: string;
     status: BookingStatus;
     totalAmount: number;
-    paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+    paymentStatus: BookingPaymentStatus;
     paidAmount: number;
+    refundedAmount: number;
+    netPaidAmount: number;
+    refundableAmount: number;
     balanceAmount: number;
   };
 }

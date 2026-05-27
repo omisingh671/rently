@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   FiArrowLeft,
@@ -13,7 +14,10 @@ import {
   FiFileText,
 } from "react-icons/fi";
 
-import { useBooking } from "@/features/bookings/hooks";
+import {
+  useBooking,
+  useCreateRefundRequest,
+} from "@/features/bookings/hooks";
 import {
   useBookingBillingDocuments,
   useDownloadBillingDocument,
@@ -21,6 +25,8 @@ import {
 import { ROUTES } from "@/configs/routePaths";
 import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
+import { normalizeApiError } from "@/utils/errors";
 
 const bookingStatusMap: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -28,6 +34,7 @@ const bookingStatusMap: Record<string, string> = {
   CHECKED_IN: "bg-indigo-100 text-indigo-700",
   CHECKED_OUT: "bg-slate-100 text-slate-700",
   CANCELLED: "bg-red-100 text-red-700",
+  NO_SHOW: "bg-orange-100 text-orange-700",
 };
 
 const formatPrice = (price: number) =>
@@ -54,12 +61,47 @@ const formatTime = (iso?: string) => {
   });
 };
 
+const getCancellationRefundLabel = (booking: {
+  paidAmount: number;
+  refundedAmount: number;
+  refundableAmount: number;
+  refundRequest: {
+    status: string;
+  } | null;
+}) => {
+  if (booking.paidAmount <= 0) {
+    return "No payment made";
+  }
+
+  if (booking.refundRequest?.status === "REQUESTED") {
+    return "Refund request pending";
+  }
+
+  if (booking.refundRequest?.status === "IN_REVIEW") {
+    return "Refund in review";
+  }
+
+  if (booking.refundRequest?.status === "REJECTED") {
+    return "Refund rejected";
+  }
+
+  if (booking.refundableAmount > 0) {
+    return `Refund pending ${formatPrice(booking.refundableAmount)}`;
+  }
+
+  return `Refunded ${formatPrice(booking.refundedAmount)}`;
+};
+
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: booking, isLoading, error } = useBooking(id);
   const billingDocumentsQuery = useBookingBillingDocuments(id);
   const downloadBillingDocument = useDownloadBillingDocument();
+  const createRefundRequest = useCreateRefundRequest();
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundReason, setRefundReason] = useState("");
+  const [refundError, setRefundError] = useState("");
 
   if (isLoading) {
     return (
@@ -98,6 +140,33 @@ export default function BookingDetailPage() {
       </div>
     );
   }
+
+  const canRequestRefund =
+    (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+    booking.refundableAmount > 0 &&
+    (booking.refundRequest === null ||
+      booking.refundRequest.status === "REJECTED" ||
+      booking.refundRequest.status === "CANCELLED");
+
+  const submitRefundRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!refundReason.trim()) {
+      setRefundError("Reason is required.");
+      return;
+    }
+
+    try {
+      setRefundError("");
+      await createRefundRequest.mutateAsync({
+        bookingId: booking.id,
+        reason: refundReason.trim(),
+      });
+      setRefundReason("");
+      setIsRefundModalOpen(false);
+    } catch (err) {
+      setRefundError(normalizeApiError(err).message);
+    }
+  };
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-12">
@@ -406,21 +475,49 @@ export default function BookingDetailPage() {
           </section>
 
           {/* Cancellation Info */}
-          {booking.status === "CANCELLED" && (
+          {(booking.status === "CANCELLED" || booking.status === "NO_SHOW") && (
             <section className="rounded-3xl border border-red-100 bg-red-50 p-8">
               <h2 className="mb-4 text-lg font-bold text-red-900 flex items-center gap-3">
                 <FiXCircle className="text-red-500" />
-                Cancellation Info
+                {booking.status === "NO_SHOW" ? "No-Show Info" : "Cancellation Info"}
               </h2>
               <div className="space-y-4">
+                {booking.cancelledAt && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
+                      Date Cancelled
+                    </p>
+                    <p className="font-bold text-red-900">
+                      {formatDate(booking.cancelledAt)}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
-                    Date Cancelled
+                    Refund Status
                   </p>
                   <p className="font-bold text-red-900">
-                    {formatDate(booking.cancelledAt!)}
+                    {getCancellationRefundLabel(booking)}
                   </p>
                 </div>
+                {booking.refundRequest && (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
+                      Refund Request
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-red-800">
+                      {booking.refundRequest.status.replaceAll("_", " ")}
+                    </p>
+                    <p className="mt-1 text-sm text-red-700">
+                      {booking.refundRequest.reason}
+                    </p>
+                    {booking.refundRequest.adminNote && (
+                      <p className="mt-1 text-sm text-red-700">
+                        Admin note: {booking.refundRequest.adminNote}
+                      </p>
+                    )}
+                  </div>
+                )}
                 {booking.cancellationReason && (
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-red-400">
@@ -430,6 +527,16 @@ export default function BookingDetailPage() {
                       "{booking.cancellationReason}"
                     </p>
                   </div>
+                )}
+                {canRequestRefund && (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setIsRefundModalOpen(true)}
+                  >
+                    Request Refund
+                  </Button>
                 )}
               </div>
             </section>
@@ -452,6 +559,65 @@ export default function BookingDetailPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={isRefundModalOpen}
+        onClose={() => {
+          if (createRefundRequest.isPending) return;
+          setIsRefundModalOpen(false);
+          setRefundError("");
+        }}
+        title="Request Refund"
+        size="md"
+        disableBackdropClose={createRefundRequest.isPending}
+        disableEscapeClose={createRefundRequest.isPending}
+      >
+        <form className="space-y-4" onSubmit={submitRefundRequest}>
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-amber-600">
+              Refundable amount
+            </p>
+            <p className="mt-1 text-2xl font-black text-amber-900">
+              {formatPrice(booking.refundableAmount)}
+            </p>
+          </div>
+          <label className="block text-sm">
+            <span className="font-bold text-slate-700">Reason</span>
+            <textarea
+              value={refundReason}
+              maxLength={1000}
+              disabled={createRefundRequest.isPending}
+              onChange={(event) => setRefundReason(event.target.value)}
+              className="mt-2 min-h-28 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+              placeholder="Tell us why you are requesting a refund..."
+            />
+          </label>
+          {refundError && (
+            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {refundError}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={createRefundRequest.isPending}
+              onClick={() => setIsRefundModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={
+                createRefundRequest.isPending || refundReason.trim().length === 0
+              }
+            >
+              {createRefundRequest.isPending ? "Submitting..." : "Submit Request"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -1212,6 +1212,116 @@ export default function SystemGuidePage() {
                   </pre>
                 </div>
               </div>
+
+              {/* Booking and Refund Operations Guide */}
+              <div className="space-y-4 border-t border-slate-100 pt-6">
+                <h3 className="text-lg font-semibold text-slate-950">
+                  Booking & Refund Operations Guide
+                </h3>
+                <p className="text-sm text-slate-600">
+                  Rently handles bookings and financial processing through a highly controlled, multi-stage transaction framework. Review the operational guidelines below for managing booking lifecycles, processing cancellations, and tracking the status of refunds.
+                </p>
+
+                <div className="grid gap-4 md:grid-cols-2 text-xs text-slate-600">
+                  <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-3">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                      <FiCalendar className="text-indigo-600 w-3.5 h-3.5" />
+                      <span>Booking Lifecycle & Transitions</span>
+                    </h4>
+                    <p className="text-slate-600 leading-relaxed">
+                      A booking transitions between states based on payment capture and physical presence. Each change is audited and logged in the system's status history:
+                    </p>
+                    <ul className="pl-3 list-disc space-y-1 text-slate-500">
+                      <li><strong>PENDING:</strong> The booking is drafted but unpaid. Reserved rooms are held temporarily.</li>
+                      <li><strong>CONFIRMED:</strong> Payment/upfront amount is captured successfully. Physical inventory is officially blocked.</li>
+                      <li><strong>CHECKED_IN:</strong> Guest check-in has been completed. Room status dynamically shifts to occupied.</li>
+                      <li><strong>CHECKED_OUT:</strong> The stay is completed and closed. Historical data is archived.</li>
+                      <li><strong>CANCELLED:</strong> The booking is cancelled. Held inventory is released immediately.</li>
+                      <li><strong>NO_SHOW:</strong> Guest failed to arrive. Room is released back into availability.</li>
+                    </ul>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-3">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                      <FiDollarSign className="text-emerald-600 w-3.5 h-3.5" />
+                      <span>Refund Operations & Types</span>
+                    </h4>
+                    <p className="text-slate-600 leading-relaxed">
+                      Depending on how the guest originally paid, Rently supports two transaction mechanisms for processing refunds:
+                    </p>
+                    <div className="space-y-2 mt-2">
+                      <div className="p-2 bg-white border border-slate-200 rounded">
+                        <span className="font-semibold text-slate-900 block">1. Online Gateway Refund</span>
+                        <span className="text-[11px] text-slate-500">Automated refunds processed back to the customer's card or banking source via integrated gateways (e.g. Stripe, Razorpay). Runs securely inside database transactions.</span>
+                      </div>
+                      <div className="p-2 bg-white border border-slate-200 rounded">
+                        <span className="font-semibold text-slate-900 block">2. Manual Offline Refund</span>
+                        <span className="text-[11px] text-slate-500">For bookings paid via Cash, UPI Transfer, or Direct Wire. The refund is completed physically outside the system, then recorded manually by staff to reconcile balance amounts.</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Refund Request Status Workflow Visual */}
+                <div className="p-5 bg-white border border-slate-200 rounded-xl space-y-3">
+                  <h4 className="font-semibold text-slate-900 text-sm">
+                    Refund Request States & Lifecycle
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    To maintain transactional accuracy, cancellations trigger refund request records. These records progress through a strict validation workflow visible to both guests and staff:
+                  </p>
+                  
+                  <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6 mt-3">
+                    <div className="p-2.5 rounded-lg border border-slate-100 bg-slate-50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-slate-400">Step 1</span>
+                      <span className="block font-semibold text-xs text-slate-800 mt-1">No Payment Made</span>
+                      <p className="text-[10px] text-slate-500 mt-1">Paid amount is zero; no refund processed.</p>
+                    </div>
+                    
+                    <div className="p-2.5 rounded-lg border border-amber-100 bg-amber-50/50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-amber-500">Step 2</span>
+                      <span className="block font-semibold text-xs text-amber-900 mt-1">Requested</span>
+                      <p className="text-[10px] text-amber-700 mt-1">Refund request submitted by the customer; pending review.</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg border border-blue-100 bg-blue-50/50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-blue-500">Step 3</span>
+                      <span className="block font-semibold text-xs text-blue-900 mt-1">In Review</span>
+                      <p className="text-[10px] text-blue-700 mt-1">Operations team is assessing refund eligibility.</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg border border-red-100 bg-red-50/50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-red-500">Rejected</span>
+                      <span className="block font-semibold text-xs text-red-900 mt-1">Rejected</span>
+                      <p className="text-[10px] text-red-700 mt-1">Refund request is denied with explanation note.</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg border border-orange-100 bg-orange-50/50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-orange-500">Approved</span>
+                      <span className="block font-semibold text-xs text-orange-900 mt-1">Refund Pending</span>
+                      <p className="text-[10px] text-orange-700 mt-1">Approved; waiting for gateway disbursement or manual payout.</p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg border border-emerald-100 bg-emerald-50/50 text-center">
+                      <span className="block text-[10px] font-bold uppercase text-emerald-500">Completed</span>
+                      <span className="block font-semibold text-xs text-emerald-900 mt-1">Refunded</span>
+                      <p className="text-[10px] text-emerald-700 mt-1">Funds successfully credited and verified.</p>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-lg text-xs text-indigo-950 mt-4">
+                    <div className="flex gap-2">
+                      <FiInfo className="text-indigo-600 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-semibold">Financial Integrity Snapshot:</span>
+                        <p className="mt-0.5 text-indigo-900/90 leading-relaxed">
+                          The system calculates <code>netPaidAmount = paidAmount - refundedAmount</code>. Any approval changes automatically update <code>refundableAmount</code>. These attributes are secured under database constraint locks to prevent any mismatch in guest billing history.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

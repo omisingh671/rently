@@ -21,6 +21,12 @@ export type BookingPaymentStatus =
   | "PARTIALLY_PAID"
   | "PAID"
   | "REFUNDED";
+export type BookingRefundRequestStatus =
+  | "REQUESTED"
+  | "IN_REVIEW"
+  | "REJECTED"
+  | "FULFILLED"
+  | "CANCELLED";
 export type PaymentStatus =
   | "PENDING"
   | "SUCCEEDED"
@@ -28,6 +34,12 @@ export type PaymentStatus =
   | "CANCELLED"
   | "REFUNDED";
 export type PaymentPurpose = "TOKEN" | "BALANCE" | "FULL_PAYMENT";
+export type PaymentProvider = "MANUAL" | "RAZORPAY" | "STRIPE";
+export type PaymentRefundStatus =
+  | "PENDING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "CANCELLED";
 export type PaymentMethod =
   | "CASH"
   | "UPI_MANUAL"
@@ -77,23 +89,51 @@ export type AdminBooking = {
   }>;
   paymentStatus: BookingPaymentStatus;
   paidAmount: string;
+  refundedAmount: string;
+  netPaidAmount: string;
+  refundableAmount: string;
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
   noShowEligible: boolean;
   internalNotes: string | null;
   couponCode: string | null;
+  refundRequest: {
+    id: string;
+    status: BookingRefundRequestStatus;
+    reason: string;
+    adminNote: string | null;
+    reviewedByUserId: string | null;
+    reviewedByName: string | null;
+    reviewedAt: string | null;
+    fulfilledAt: string | null;
+    createdAt: string;
+  } | null;
   payments: Array<{
     id: string;
+    provider: PaymentProvider;
     status: PaymentStatus;
     purpose: PaymentPurpose;
     method: PaymentMethod;
     amount: string;
+    refundedAmount: string;
+    refundableAmount: string;
     currency: string;
     note: string | null;
     receivedByUserId: string | null;
     paidAt: string | null;
     createdAt: string;
+    refunds: Array<{
+      id: string;
+      refundRequestId: string | null;
+      status: PaymentRefundStatus;
+      method: PaymentMethod;
+      amount: string;
+      currency: string;
+      reason: string;
+      processedAt: string | null;
+      createdAt: string;
+    }>;
   }>;
   items: Array<{
     id: string;
@@ -154,6 +194,20 @@ export type RecordBalancePaymentPayload = {
   note?: string;
   paidAt?: string;
   idempotencyKey?: string;
+};
+
+export type RecordRefundPayload = {
+  paymentId: string;
+  amount: number;
+  method: PaymentMethod;
+  reason: string;
+  refundRequestId?: string;
+  idempotencyKey?: string;
+};
+
+export type UpdateRefundRequestPayload = {
+  status?: Extract<BookingRefundRequestStatus, "IN_REVIEW" | "REJECTED">;
+  adminNote?: string | null;
 };
 
 export type CreateManualBookingPayload = {

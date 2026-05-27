@@ -282,6 +282,17 @@ export const createDocument = (
     include: billingDocumentInclude,
   });
 
+export const updateDocument = (
+  documentId: string,
+  data: Prisma.BillingDocumentUpdateInput,
+  tx: Prisma.TransactionClient,
+) =>
+  tx.billingDocument.update({
+    where: { id: documentId },
+    data,
+    include: billingDocumentInclude,
+  });
+
 export const sumSucceededPaymentsByBooking = async (
   bookingId: string,
   tx?: Prisma.TransactionClient,

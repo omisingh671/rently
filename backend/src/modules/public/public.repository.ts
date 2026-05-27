@@ -32,8 +32,25 @@ export const publicBookingInclude = {
     },
   },
   payments: {
+    include: {
+      refunds: {
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
+    },
     orderBy: {
       createdAt: "asc",
+    },
+  },
+  refunds: {
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  refundRequests: {
+    orderBy: {
+      createdAt: "desc",
     },
   },
   coupon: true,
@@ -768,6 +785,13 @@ export const updateBookingById = (
     where: { id },
     data,
     include: publicBookingInclude,
+  });
+
+export const createBookingRefundRequest = (
+  data: Prisma.BookingRefundRequestCreateInput,
+) =>
+  prisma.bookingRefundRequest.create({
+    data,
   });
 
 export const updateBookingCancellationById = (

@@ -106,6 +106,37 @@ const getBookingAssignedSummary = (booking: AdminBooking) => {
   return booking.items.map((item) => item.targetLabel).join(" + ");
 };
 
+const getBookingRefundIndicator = (booking: AdminBooking) => {
+  if (booking.refundRequest?.status === "REQUESTED") {
+    return "Refund requested";
+  }
+
+  if (booking.refundRequest?.status === "IN_REVIEW") {
+    return "Refund in review";
+  }
+
+  if (booking.refundRequest?.status === "REJECTED") {
+    return "Refund rejected";
+  }
+
+  if (
+    (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+    Number(booking.paidAmount) > 0 &&
+    Number(booking.refundableAmount) <= 0
+  ) {
+    return "Refunded";
+  }
+
+  if (
+    (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+    Number(booking.refundableAmount) > 0
+  ) {
+    return "Refund pending";
+  }
+
+  return null;
+};
+
 function GuestAvatar({ name }: { name: string }) {
   const initials = name
     .split(" ")
@@ -433,6 +464,11 @@ export default function OperationsPage({ module }: Props) {
                             <span className="text-slate-400">No upfront</span>
                           )}
                         </div>
+                        {getBookingRefundIndicator(booking) && (
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                            {getBookingRefundIndicator(booking)}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">

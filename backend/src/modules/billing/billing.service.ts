@@ -252,9 +252,6 @@ export const createInvoiceForBooking = async (
 ): Promise<BillingDocumentDTO> => {
   const documentKey = documentKeyForInvoice(bookingId);
   const createInTransaction = async (client: Prisma.TransactionClient) => {
-    const existing = await repo.findDocumentByKey(documentKey, client);
-    if (existing) return existing;
-
     const booking = await repo.findBookingById(bookingId, client);
     if (!booking) {
       throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
@@ -262,6 +259,43 @@ export const createInvoiceForBooking = async (
 
     const paid = await repo.sumSucceededPaymentsByBooking(booking.id, client);
     const balance = maxDecimal(zeroDecimal, booking.totalAmount.minus(paid));
+    if (balance.greaterThan(0)) {
+      throw new HttpError(
+        409,
+        "BOOKING_BALANCE_DUE",
+        "Invoice can be generated after full payment",
+      );
+    }
+
+    const existing = await repo.findDocumentByKey(documentKey, client);
+    if (existing) {
+      if (existing.balance.greaterThan(0)) {
+        return repo.updateDocument(
+          existing.id,
+          {
+            subtotal: booking.subtotalAmount,
+            discount: booking.discountAmount,
+            taxable: booking.taxableAmount,
+            tax: booking.taxAmount,
+            total: booking.totalAmount,
+            paid,
+            balance,
+            guestSnapshot: toJson(buildGuestSnapshot(booking)),
+            propertySnapshot: toJson(buildPropertySnapshot(booking)),
+            tenantSnapshot: toJson(buildTenantSnapshot(booking)),
+            bookingSnapshot: toJson(buildBookingSnapshot(booking)),
+            priceSnapshot: toJson(buildPriceSnapshot(booking)),
+            taxSnapshot: toJson(booking.taxBreakdown ?? []),
+            lineItems: toJson(buildLineItems(booking)),
+            issuedAt: new Date(),
+          },
+          client,
+        );
+      }
+
+      return existing;
+    }
+
     const documentNumber = await repo.nextDocumentNumber(
       booking.propertyId,
       BillingDocumentType.INVOICE,
@@ -323,13 +357,16 @@ export const createReceiptForPayment = async (
       throw new HttpError(404, "PAYMENT_NOT_FOUND", "Successful payment not found");
     }
 
-    await createInvoiceForBooking(payment.bookingId, client);
     const booking = payment.booking;
     const cumulativePaid = await repo.sumSucceededPaymentsThroughPayment(
       payment,
       client,
     );
     const balance = maxDecimal(zeroDecimal, booking.totalAmount.minus(cumulativePaid));
+    if (balance.equals(zeroDecimal)) {
+      await createInvoiceForBooking(payment.bookingId, client);
+    }
+
     const documentNumber = await repo.nextDocumentNumber(
       payment.propertyId,
       BillingDocumentType.RECEIPT,

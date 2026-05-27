@@ -1,10 +1,14 @@
 import {
   BookingPaymentPolicy,
+  BookingPaymentStatus,
+  BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
   LeadStatus,
   MaintenanceTargetType,
+  PaymentProvider,
   PaymentPurpose,
+  PaymentRefundStatus,
   PaymentStatus,
   PricingTier,
   Prisma,
@@ -98,6 +102,8 @@ import type {
   UpdateDashboardUnitInput,
   UpdateDashboardBookingInput,
   RecordDashboardBookingPaymentInput,
+  RecordDashboardBookingRefundInput,
+  UpdateDashboardRefundRequestInput,
   UpdateDashboardLeadInput,
   UpdateDashboardUserInput,
   UpdateDashboardUserRoleInput,
@@ -128,7 +134,6 @@ import type {
   DashboardQuoteDTO,
 } from "./dashboard.dto.js";
 import { createManualPayment } from "@/modules/payments/payments.service.js";
-import { billingService } from "@/modules/billing/index.js";
 
 const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -833,8 +838,43 @@ const getBookingPaidAmount = (booking: repo.DashboardBookingRecord) =>
       new Prisma.Decimal(0),
     );
 
+const refundReservedStatuses: readonly PaymentRefundStatus[] = [
+  PaymentRefundStatus.PENDING,
+  PaymentRefundStatus.SUCCEEDED,
+] as const;
+
+const isRefundReserved = (status: PaymentRefundStatus) =>
+  refundReservedStatuses.includes(status);
+
+const getPaymentRefundedAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) =>
+  payment.refunds
+    .filter((refund) => isRefundReserved(refund.status))
+    .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
+
+const getBookingRefundedAmount = (booking: repo.DashboardBookingRecord) =>
+  booking.payments.reduce(
+    (total, payment) => total.plus(getPaymentRefundedAmount(payment)),
+    new Prisma.Decimal(0),
+  );
+
+const getPaymentRefundableAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) => {
+  if (payment.status !== PaymentStatus.SUCCEEDED) {
+    return new Prisma.Decimal(0);
+  }
+
+  const refundableAmount = payment.amount.minus(getPaymentRefundedAmount(payment));
+  return refundableAmount.lessThan(0) ? new Prisma.Decimal(0) : refundableAmount;
+};
+
 const getBookingBalanceAmount = (booking: repo.DashboardBookingRecord) => {
-  const balance = booking.totalAmount.minus(getBookingPaidAmount(booking));
+  const netPaidAmount = getBookingPaidAmount(booking).minus(
+    getBookingRefundedAmount(booking),
+  );
+  const balance = booking.totalAmount.minus(netPaidAmount);
   return balance.lessThan(0) ? new Prisma.Decimal(0) : balance;
 };
 
@@ -3449,8 +3489,6 @@ export const createManualBooking = async (
     );
   }
 
-  await billingService.createInvoiceForBooking(booking.id);
-
   return mapDashboardBooking(booking);
 };
 
@@ -3604,10 +3642,6 @@ export const updateBooking = async (
     await repo.releaseInventoryLocksByBooking(updatedBooking.id, new Date());
   }
 
-  if (nextStatus === BookingStatus.CONFIRMED) {
-    await billingService.createInvoiceForBooking(updatedBooking.id);
-  }
-
   return mapDashboardBooking(updatedBooking);
 };
 
@@ -3652,6 +3686,333 @@ export const recordBookingBalancePayment = async (
     method: input.method,
     ...(input.note !== undefined && { note: input.note }),
     ...(input.paidAt !== undefined && { paidAt: input.paidAt }),
+  });
+
+  const updatedBooking = await repo.findBookingById(bookingId);
+  if (!updatedBooking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return mapDashboardBooking(updatedBooking);
+};
+
+const getRefundPaymentStatus = (booking: repo.DashboardBookingRecord) => {
+  const paidAmount = getBookingPaidAmount(booking);
+  const refundedAmount = getBookingRefundedAmount(booking);
+
+  if (paidAmount.greaterThan(0) && refundedAmount.greaterThanOrEqualTo(paidAmount)) {
+    return BookingPaymentStatus.REFUNDED;
+  }
+
+  if (paidAmount.lessThanOrEqualTo(0)) {
+    return BookingPaymentStatus.PENDING;
+  }
+
+  if (paidAmount.lessThan(booking.totalAmount)) {
+    return BookingPaymentStatus.PARTIALLY_PAID;
+  }
+
+  return BookingPaymentStatus.PAID;
+};
+
+const assertRefundProviderAvailable = (
+  provider: PaymentProvider,
+  method: RecordDashboardBookingRefundInput["method"],
+) => {
+  if (provider === PaymentProvider.MANUAL) {
+    if (method === "ONLINE_GATEWAY") {
+      throw new HttpError(
+        422,
+        "REFUND_METHOD_MISMATCH",
+        "Manual payments must be refunded with a manual refund method",
+      );
+    }
+
+    return;
+  }
+
+  if (method !== "ONLINE_GATEWAY") {
+    throw new HttpError(
+      422,
+      "REFUND_METHOD_MISMATCH",
+      "Gateway payments must be refunded through the original gateway",
+    );
+  }
+
+  throw new HttpError(
+    501,
+    "REFUND_PROVIDER_NOT_CONFIGURED",
+    "Gateway refund adapter is not configured yet",
+  );
+};
+
+export const recordBookingRefund = async (
+  userId: string,
+  bookingId: string,
+  input: RecordDashboardBookingRefundInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+
+  const booking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, booking.propertyId);
+
+  if (
+    booking.status !== BookingStatus.CANCELLED &&
+    booking.status !== BookingStatus.NO_SHOW
+  ) {
+    throw new HttpError(
+      409,
+      "BOOKING_REFUND_NOT_ALLOWED",
+      "Refunds can be recorded only for cancelled or no-show bookings",
+    );
+  }
+
+  const amount = new Prisma.Decimal(input.amount);
+  const payment = booking.payments.find((item) => item.id === input.paymentId);
+
+  if (!payment || payment.bookingId !== booking.id) {
+    throw new HttpError(
+      404,
+      "PAYMENT_NOT_FOUND",
+      "Payment was not found for this booking",
+    );
+  }
+
+  if (payment.status !== PaymentStatus.SUCCEEDED) {
+    throw new HttpError(
+      409,
+      "PAYMENT_NOT_REFUNDABLE",
+      "Only successful payments can be refunded",
+    );
+  }
+
+  assertRefundProviderAvailable(payment.provider, input.method);
+
+  const refundRequest =
+    input.refundRequestId !== undefined
+      ? booking.refundRequests.find(
+          (request) => request.id === input.refundRequestId,
+        ) ?? null
+      : null;
+
+  if (input.refundRequestId !== undefined && refundRequest === null) {
+    throw new HttpError(
+      404,
+      "REFUND_REQUEST_NOT_FOUND",
+      "Refund request was not found for this booking",
+    );
+  }
+
+  if (
+    refundRequest !== null &&
+    (refundRequest.status === BookingRefundRequestStatus.REJECTED ||
+      refundRequest.status === BookingRefundRequestStatus.FULFILLED ||
+      refundRequest.status === BookingRefundRequestStatus.CANCELLED)
+  ) {
+    throw new HttpError(
+      409,
+      "REFUND_REQUEST_CLOSED",
+      "This refund request is already closed",
+    );
+  }
+
+  const existingRefund =
+    input.idempotencyKey !== undefined
+      ? await repo.findRefundByIdempotencyKey(input.idempotencyKey)
+      : null;
+
+  if (existingRefund) {
+    if (
+      existingRefund.bookingId !== booking.id ||
+      existingRefund.paymentId !== payment.id ||
+      !existingRefund.amount.equals(amount)
+    ) {
+      throw new HttpError(
+        409,
+        "REFUND_IDEMPOTENCY_CONFLICT",
+        "Idempotency key was already used for a different refund",
+      );
+    }
+
+    return mapDashboardBooking(booking);
+  }
+
+  const refundableAmount = getPaymentRefundableAmount(payment);
+  if (amount.greaterThan(refundableAmount)) {
+    throw new HttpError(
+      422,
+      "REFUND_OVERPAYMENT",
+      "Refund amount cannot exceed the refundable payment balance",
+    );
+  }
+
+  const idempotencyKey =
+    input.idempotencyKey ?? `dashboard-refund-${bookingId}-${payment.id}-${randomUUID()}`;
+
+  const projectedBooking = {
+    ...booking,
+    payments: booking.payments.map((item) =>
+      item.id === payment.id
+        ? {
+            ...item,
+            refunds: [
+              ...item.refunds,
+              {
+                id: idempotencyKey,
+                bookingId: booking.id,
+                paymentId: payment.id,
+                propertyId: booking.propertyId,
+                userId: booking.userId,
+                refundRequestId: refundRequest?.id ?? null,
+                provider: payment.provider,
+                status: PaymentRefundStatus.SUCCEEDED,
+                method: input.method,
+                amount,
+                currency: payment.currency,
+                reason: input.reason,
+                idempotencyKey,
+                providerRefundId: null,
+                providerRefundStatus: null,
+                metadata: null,
+                processedAt: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              },
+            ],
+          }
+        : item,
+    ),
+  };
+
+  const projectedRefundableAmount = projectedBooking.payments.reduce(
+    (total, item) => total.plus(getPaymentRefundableAmount(item)),
+    new Prisma.Decimal(0),
+  );
+  const refundRequestUpdate =
+    refundRequest === null
+      ? undefined
+      : {
+          id: refundRequest.id,
+          data: {
+            status: projectedRefundableAmount.lessThanOrEqualTo(0)
+              ? BookingRefundRequestStatus.FULFILLED
+              : BookingRefundRequestStatus.IN_REVIEW,
+            reviewedBy: {
+              connect: {
+                id: actor.id,
+              },
+            },
+            reviewedAt: new Date(),
+            ...(projectedRefundableAmount.lessThanOrEqualTo(0) && {
+              fulfilledAt: new Date(),
+            }),
+          },
+        };
+
+  const updatedBooking = await repo.createPaymentRefundForBooking(
+    {
+      booking: {
+        connect: {
+          id: booking.id,
+        },
+      },
+      payment: {
+        connect: {
+          id: payment.id,
+        },
+      },
+      property: {
+        connect: {
+          id: booking.propertyId,
+        },
+      },
+      user: {
+        connect: {
+          id: booking.userId,
+        },
+      },
+      ...(refundRequest !== null && {
+        refundRequest: {
+          connect: {
+            id: refundRequest.id,
+          },
+        },
+      }),
+      provider: payment.provider,
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: input.method,
+      amount,
+      currency: payment.currency,
+      reason: input.reason,
+      idempotencyKey,
+      metadata: {
+        recordedByUserId: actor.id,
+        source: "DASHBOARD_MANUAL_REFUND",
+      },
+      processedAt: new Date(),
+    },
+    getRefundPaymentStatus(projectedBooking),
+    refundRequestUpdate,
+  );
+
+  return mapDashboardBooking(updatedBooking);
+};
+
+export const updateRefundRequest = async (
+  userId: string,
+  bookingId: string,
+  requestId: string,
+  input: UpdateDashboardRefundRequestInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+
+  const booking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, booking.propertyId);
+
+  const refundRequest = booking.refundRequests.find(
+    (request) => request.id === requestId,
+  );
+  if (!refundRequest) {
+    throw new HttpError(
+      404,
+      "REFUND_REQUEST_NOT_FOUND",
+      "Refund request was not found for this booking",
+    );
+  }
+
+  if (
+    refundRequest.status === BookingRefundRequestStatus.FULFILLED ||
+    refundRequest.status === BookingRefundRequestStatus.CANCELLED
+  ) {
+    throw new HttpError(
+      409,
+      "REFUND_REQUEST_CLOSED",
+      "This refund request is already closed",
+    );
+  }
+
+  if (
+    input.status === BookingRefundRequestStatus.REJECTED &&
+    !input.adminNote?.trim()
+  ) {
+    throw new HttpError(
+      422,
+      "REFUND_REJECTION_NOTE_REQUIRED",
+      "Admin note is required when rejecting a refund request",
+    );
+  }
+
+  await repo.updateRefundRequestById(requestId, {
+    ...(input.status !== undefined && { status: input.status }),
+    ...(input.adminNote !== undefined && { adminNote: input.adminNote }),
+    reviewedBy: {
+      connect: {
+        id: actor.id,
+      },
+    },
+    reviewedAt: new Date(),
   });
 
   const updatedBooking = await repo.findBookingById(bookingId);

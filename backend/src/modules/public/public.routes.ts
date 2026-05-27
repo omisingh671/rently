@@ -43,6 +43,11 @@ router.get(
   optionalAuthenticate,
   billingController.listPublicBookingDocuments,
 );
+router.post(
+  "/bookings/:id/refund-requests",
+  authenticate,
+  controller.createRefundRequest,
+);
 router.get(
   "/billing-documents/:id/download",
   optionalAuthenticate,

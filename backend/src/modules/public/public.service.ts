@@ -1,11 +1,13 @@
 import {
   BookingPaymentPolicy,
   BookingPaymentStatus,
+  BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
   BookingType,
   ComfortOption,
   Prisma,
+  PaymentRefundStatus,
   PaymentStatus,
   TaxCalculationMode,
   TaxCategory,
@@ -18,7 +20,6 @@ import {
 import { randomUUID } from "node:crypto";
 import { HttpError } from "@/common/errors/http-error.js";
 import { hashPassword } from "@/common/utils/password.js";
-import { billingService } from "@/modules/billing/index.js";
 import * as repo from "./public.repository.js";
 import type {
   CheckAvailabilityInput,
@@ -287,13 +288,39 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
   const paidAmount = booking.payments
     .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
     .reduce((total, payment) => total + Number(payment.amount), 0);
-  const balanceAmount = Math.max(0, Number(booking.totalAmount) - paidAmount);
+  const refundedAmount = booking.payments.reduce(
+    (total, payment) =>
+      total +
+      payment.refunds
+        .filter(
+          (refund) =>
+            refund.status === PaymentRefundStatus.PENDING ||
+            refund.status === PaymentRefundStatus.SUCCEEDED,
+        )
+        .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
+    0,
+  );
+  const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
+  const refundableAmount = Math.max(0, paidAmount - refundedAmount);
+  const balanceAmount = Math.max(0, Number(booking.totalAmount) - netPaidAmount);
   const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
   const taxableAmount = Number(booking.taxableAmount);
+  const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
+    BookingRefundRequestStatus.REQUESTED,
+    BookingRefundRequestStatus.IN_REVIEW,
+  ];
+  const refundRequest =
+    booking.refundRequests.find((request) =>
+      activeRefundRequestStatuses.includes(request.status),
+    ) ??
+    booking.refundRequests[0] ??
+    null;
   const paymentStatus =
     paidAmount <= 0
       ? BookingPaymentStatus.PENDING
-      : paidAmount < Number(booking.totalAmount)
+      : refundedAmount >= paidAmount
+        ? BookingPaymentStatus.REFUNDED
+        : paidAmount < Number(booking.totalAmount)
         ? BookingPaymentStatus.PARTIALLY_PAID
         : BookingPaymentStatus.PAID;
 
@@ -325,6 +352,9 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     taxAmount: Number(booking.taxAmount),
     taxBreakdown,
     paidAmount,
+    refundedAmount,
+    netPaidAmount,
+    refundableAmount,
     balanceAmount,
     remainingPayAtCheckIn: balanceAmount,
     items,
@@ -332,6 +362,18 @@ const mapBooking = (booking: repo.PublicBookingRecord): PublicBookingDTO => {
     cancellationReason: booking.cancellationReason ?? null,
     cancelledAt: booking.cancelledAt?.toISOString() ?? null,
     couponCode: booking.coupon?.code ?? null,
+    refundRequest:
+      refundRequest === null
+        ? null
+        : {
+            id: refundRequest.id,
+            status: refundRequest.status,
+            reason: refundRequest.reason,
+            adminNote: refundRequest.adminNote ?? null,
+            reviewedAt: refundRequest.reviewedAt?.toISOString() ?? null,
+            fulfilledAt: refundRequest.fulfilledAt?.toISOString() ?? null,
+            createdAt: refundRequest.createdAt.toISOString(),
+          },
     createdAt: booking.createdAt.toISOString(),
   };
 };
@@ -1128,6 +1170,28 @@ const getPaidAmount = (booking: repo.PublicBookingRecord) =>
   booking.payments
     .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
     .reduce((total, payment) => total + Number(payment.amount), 0);
+
+const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
+  BookingRefundRequestStatus.REQUESTED,
+  BookingRefundRequestStatus.IN_REVIEW,
+];
+
+const getRefundedAmount = (booking: repo.PublicBookingRecord) =>
+  booking.payments.reduce(
+    (total, payment) =>
+      total +
+      payment.refunds
+        .filter(
+          (refund) =>
+            refund.status === PaymentRefundStatus.PENDING ||
+            refund.status === PaymentRefundStatus.SUCCEEDED,
+        )
+        .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
+    0,
+  );
+
+const getRefundableAmount = (booking: repo.PublicBookingRecord) =>
+  Math.max(0, getPaidAmount(booking) - getRefundedAmount(booking));
 
 const normalizeCouponCode = (couponCode: string | null | undefined) => {
   const trimmed = couponCode?.trim();
@@ -2122,10 +2186,6 @@ export const createBookingForUser = async (
         return booking;
       });
 
-      if (initialStatus === BookingStatus.CONFIRMED) {
-        await billingService.createInvoiceForBooking(booking.id);
-      }
-
       return mapBooking(booking);
     } catch (error) {
       if (
@@ -2297,14 +2357,6 @@ export const cancelBooking = async (
     );
   }
 
-  if (booking.checkIn <= now()) {
-    throw new HttpError(
-      409,
-      "BOOKING_CANCELLATION_CLOSED",
-      "Bookings can be cancelled only before check-in",
-    );
-  }
-
   const cancellationReason = reason?.trim() || "Cancelled by guest";
   const updatedBooking = await repo.updateBookingCancellationById(
     booking.id,
@@ -2330,6 +2382,74 @@ export const cancelBooking = async (
     },
   );
   await repo.releaseInventoryLocksByBooking(booking.id, now());
+
+  return mapBooking(updatedBooking);
+};
+
+export const createRefundRequest = async (
+  userId: string,
+  bookingId: string,
+  reason: string,
+): Promise<PublicBookingDTO> => {
+  const booking = await repo.findBookingByUser(bookingId, userId);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  if (
+    booking.status !== BookingStatus.CANCELLED &&
+    booking.status !== BookingStatus.NO_SHOW
+  ) {
+    throw new HttpError(
+      409,
+      "REFUND_REQUEST_NOT_ALLOWED",
+      "Refund can be requested only for cancelled or no-show bookings",
+    );
+  }
+
+  if (getRefundableAmount(booking) <= 0) {
+    throw new HttpError(
+      409,
+      "BOOKING_NOT_REFUNDABLE",
+      "This booking does not have a refundable payment balance",
+    );
+  }
+
+  const activeRequest = booking.refundRequests.find((request) =>
+    activeRefundRequestStatuses.includes(request.status),
+  );
+  if (activeRequest) {
+    throw new HttpError(
+      409,
+      "REFUND_REQUEST_ALREADY_EXISTS",
+      "A refund request is already active for this booking",
+    );
+  }
+
+  await repo.createBookingRefundRequest({
+    booking: {
+      connect: {
+        id: booking.id,
+      },
+    },
+    property: {
+      connect: {
+        id: booking.propertyId,
+      },
+    },
+    user: {
+      connect: {
+        id: booking.userId,
+      },
+    },
+    status: BookingRefundRequestStatus.REQUESTED,
+    reason,
+  });
+
+  const updatedBooking = await repo.findBookingByUser(bookingId, userId);
+  if (!updatedBooking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
 
   return mapBooking(updatedBooking);
 };

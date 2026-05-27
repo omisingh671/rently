@@ -1,4 +1,5 @@
 import type {
+  BookingRefundRequestStatus,
   BookingStatus,
   ComfortOption,
   DiscountType,
@@ -417,6 +418,20 @@ export interface RecordDashboardBookingPaymentInput {
   note?: string;
   paidAt?: Date;
   idempotencyKey?: string;
+}
+
+export interface RecordDashboardBookingRefundInput {
+  paymentId: string;
+  amount: number;
+  method: PaymentMethod;
+  reason: string;
+  refundRequestId?: string;
+  idempotencyKey?: string;
+}
+
+export interface UpdateDashboardRefundRequestInput {
+  status?: Extract<BookingRefundRequestStatus, "IN_REVIEW" | "REJECTED">;
+  adminNote?: string | null;
 }
 
 export interface CreateDashboardManualBookingInput {

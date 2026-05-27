@@ -14,7 +14,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import { getRoomBoardApi } from "../api";
 import { useAdminBooking } from "../hooks/useAdminOperations";
-import type { AdminBooking, BookingStatus } from "../types";
+import type { AdminBooking, BookingStatus, PaymentMethod } from "../types";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -38,7 +38,9 @@ type RiskAction =
   | "cancel"
   | "noShow"
   | "statusOverride"
-  | "recordPayment";
+  | "recordPayment"
+  | "recordRefund"
+  | "rejectRefundRequest";
 
 type PendingAction = {
   type: RiskAction;
@@ -73,6 +75,14 @@ const paymentMethods = [
   "BANK_TRANSFER",
   "MANUAL",
 ] as const;
+
+const refundMethods: PaymentMethod[] = [
+  "CASH",
+  "UPI_MANUAL",
+  "BANK_TRANSFER",
+  "MANUAL",
+  "ONLINE_GATEWAY",
+];
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat("en-IN", {
@@ -187,6 +197,28 @@ const getActionDefaults = (action: RiskAction): PendingAction => {
     };
   }
 
+  if (action === "recordRefund") {
+    return {
+      type: action,
+      title: "Record Refund",
+      message:
+        "This records returned money against the selected original payment. Manual refunds must already be returned outside the system.",
+      confirmLabel: "Record Refund",
+      requiresNote: true,
+    };
+  }
+
+  if (action === "rejectRefundRequest") {
+    return {
+      type: action,
+      title: "Reject Refund Request",
+      message:
+        "This closes the guest refund request without recording returned money. Add a clear admin note for the guest.",
+      confirmLabel: "Reject Request",
+      requiresNote: true,
+    };
+  }
+
   return {
     type: action,
     title: "Change Assigned Room",
@@ -216,6 +248,9 @@ export default function BookingDetailsPage() {
   const [paymentMethod, setPaymentMethod] =
     useState<(typeof paymentMethods)[number]>("CASH");
   const [paymentPaidAt, setPaymentPaidAt] = useState("");
+  const [refundPaymentId, setRefundPaymentId] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>("CASH");
   const [actionError, setActionError] = useState("");
 
   const {
@@ -226,6 +261,8 @@ export default function BookingDetailsPage() {
     error,
     updateBooking,
     recordBalancePayment,
+    recordRefund,
+    updateRefundRequest,
     isMutating,
   } = useAdminBooking(id);
   const billingDocumentsQuery = useBookingBillingDocuments(
@@ -277,7 +314,7 @@ export default function BookingDetailsPage() {
     [roomsQuery.data?.units],
   );
 
-  const openAction = (type: RiskAction) => {
+  const openAction = (type: RiskAction, paymentId?: string) => {
     setActionError("");
     const nextAction = getActionDefaults(type);
     if (type === "assignRoom" && booking?.status === "CHECKED_IN") {
@@ -308,6 +345,14 @@ export default function BookingDetailsPage() {
       setPaymentMethod("CASH");
       setPaymentPaidAt(new Date().toISOString().slice(0, 16));
     }
+    if (type === "recordRefund" && booking && paymentId) {
+      const payment = booking.payments.find((item) => item.id === paymentId);
+      setRefundPaymentId(paymentId);
+      setRefundAmount(payment?.refundableAmount ?? "");
+      setRefundMethod(
+        payment?.provider === "MANUAL" ? payment.method : "ONLINE_GATEWAY",
+      );
+    }
   };
 
   const closeAction = () => {
@@ -316,6 +361,9 @@ export default function BookingDetailsPage() {
     setPaymentAmount("");
     setPaymentMethod("CASH");
     setPaymentPaidAt("");
+    setRefundPaymentId("");
+    setRefundAmount("");
+    setRefundMethod("CASH");
     setActionError("");
   };
 
@@ -355,6 +403,49 @@ export default function BookingDetailsPage() {
           ...(paymentPaidAt && {
             paidAt: new Date(paymentPaidAt).toISOString(),
           }),
+        });
+      } else if (pendingAction.type === "recordRefund") {
+        const amount = Number(refundAmount);
+        if (!refundPaymentId) {
+          setActionError("Select a payment before recording refund.");
+          return;
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+          setActionError("Enter a valid refund amount.");
+          return;
+        }
+        if (!note.trim()) {
+          setActionError("Refund reason is required.");
+          return;
+        }
+
+        await recordRefund({
+          paymentId: refundPaymentId,
+          amount,
+          method: refundMethod,
+          reason: note.trim(),
+          ...(booking.refundRequest &&
+            (booking.refundRequest.status === "REQUESTED" ||
+              booking.refundRequest.status === "IN_REVIEW") && {
+              refundRequestId: booking.refundRequest.id,
+            }),
+        });
+      } else if (pendingAction.type === "rejectRefundRequest") {
+        if (!booking.refundRequest) {
+          setActionError("No refund request is active for this booking.");
+          return;
+        }
+        if (!note.trim()) {
+          setActionError("Admin note is required to reject a refund request.");
+          return;
+        }
+
+        await updateRefundRequest({
+          requestId: booking.refundRequest.id,
+          payload: {
+            status: "REJECTED",
+            adminNote: note.trim(),
+          },
         });
       } else if (pendingAction.type === "statusOverride") {
         if (!note.trim()) {
@@ -408,6 +499,10 @@ export default function BookingDetailsPage() {
     booking.status !== "CANCELLED" &&
     booking.status !== "NO_SHOW" &&
     booking.status !== "CHECKED_OUT";
+  const canShowRefunds =
+    booking !== undefined &&
+    (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+    (Number(booking.paidAmount) > 0 || booking.refundRequest !== null);
   const canAssignRoom =
     booking !== undefined &&
     booking.bookingType !== "MULTI_ROOM" &&
@@ -517,6 +612,18 @@ export default function BookingDetailsPage() {
                 value={formatMoney(booking.paidAmount)}
               />
               <InfoItem
+                label="Refunded"
+                value={formatMoney(booking.refundedAmount)}
+              />
+              <InfoItem
+                label="Net paid"
+                value={formatMoney(booking.netPaidAmount)}
+              />
+              <InfoItem
+                label="Refundable"
+                value={formatMoney(booking.refundableAmount)}
+              />
+              <InfoItem
                 label="Balance due"
                 value={formatMoney(booking.balanceAmount)}
               />
@@ -567,6 +674,71 @@ export default function BookingDetailsPage() {
                 </div>
               </div>
             )}
+            {canShowRefunds && (
+              <div className="mt-5 rounded-md border border-amber-100 bg-amber-50 px-3 py-3 text-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Refunds
+                    </div>
+                    {booking.refundRequest ? (
+                      <div className="mt-2 space-y-1 text-amber-900">
+                        <p className="font-semibold">
+                          Request{" "}
+                          {booking.refundRequest.status.replaceAll("_", " ")}
+                        </p>
+                        <p>{booking.refundRequest.reason}</p>
+                        {booking.refundRequest.adminNote && (
+                          <p className="text-amber-800">
+                            Admin note: {booking.refundRequest.adminNote}
+                          </p>
+                        )}
+                      </div>
+                    ) : Number(booking.refundableAmount) > 0 ? (
+                      <p className="mt-2 text-amber-900">
+                        No guest request yet. Admin can still record a refund.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-amber-900">Refund completed.</p>
+                    )}
+                  </div>
+                  {booking.refundRequest &&
+                    (booking.refundRequest.status === "REQUESTED" ||
+                      booking.refundRequest.status === "IN_REVIEW") && (
+                      <div className="flex flex-wrap gap-2">
+                        {booking.refundRequest.status === "REQUESTED" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={isMutating}
+                            onClick={() => {
+                              void updateRefundRequest({
+                                requestId: booking.refundRequest!.id,
+                                payload: { status: "IN_REVIEW" },
+                              }).catch((err: unknown) => {
+                                setActionError(normalizeApiError(err).message);
+                              });
+                            }}
+                          >
+                            Mark In Review
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="danger"
+                          outline
+                          disabled={isMutating}
+                          onClick={() => openAction("rejectRefundRequest")}
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                </div>
+              </div>
+            )}
             <div className="mt-5 space-y-3">
               {booking.payments.length === 0 ? (
                 <p className="text-sm text-slate-500">No payments recorded.</p>
@@ -589,6 +761,30 @@ export default function BookingDetailsPage() {
                       {payment.method.replaceAll("_", " ")} /{" "}
                       {formatDateTime(payment.paidAt ?? payment.createdAt)}
                     </div>
+                    <div className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                      <span>Refunded: {formatMoney(payment.refundedAmount)}</span>
+                      <span>
+                        Refundable: {formatMoney(payment.refundableAmount)}
+                      </span>
+                    </div>
+                    {payment.refunds.length > 0 && (
+                      <div className="mt-2 space-y-1 rounded-md bg-white px-2 py-2 text-xs text-slate-600">
+                        {payment.refunds.map((refund) => (
+                          <div
+                            key={refund.id}
+                            className="flex flex-wrap items-center justify-between gap-2"
+                          >
+                            <span>
+                              {refund.method.replaceAll("_", " ")} refund /{" "}
+                              {refund.status.replaceAll("_", " ")}
+                            </span>
+                            <span className="font-semibold text-slate-900">
+                              {formatMoney(refund.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {payment.status === "SUCCEEDED" && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {receiptByPaymentId.get(payment.id) ? (
@@ -621,6 +817,24 @@ export default function BookingDetailsPage() {
                             Generate Receipt
                           </Button>
                         )}
+                        {(booking.status === "CANCELLED" ||
+                          booking.status === "NO_SHOW") &&
+                          Number(payment.refundableAmount) > 0 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="warning"
+                              icon={<FiCreditCard />}
+                              disabled={isMutating}
+                              onClick={() =>
+                                openAction("recordRefund", payment.id)
+                              }
+                            >
+                              {payment.provider === "MANUAL"
+                                ? "Record Manual Refund"
+                                : "Process Gateway Refund"}
+                            </Button>
+                          )}
                       </div>
                     )}
                     {payment.note && (
@@ -860,15 +1074,6 @@ export default function BookingDetailsPage() {
                   >
                     Fix Status Mistake
                   </Button>
-                  <Button
-                    type="button"
-                    size="md"
-                    variant="secondary"
-                    disabled
-                    fullWidth
-                  >
-                    Payment Correction
-                  </Button>
                 </>
               )}
             </div>
@@ -896,9 +1101,13 @@ export default function BookingDetailsPage() {
                 note.
               </p>
             )}
-            <p className="mt-3 text-xs text-slate-500">
-              Refund/payment correction needs a dedicated payment operation API.
-            </p>
+            {(booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
+              Number(booking.refundableAmount) > 0 && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Refundable balance available:{" "}
+                  {formatMoney(booking.refundableAmount)}
+                </p>
+              )}
           </section>
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -920,6 +1129,8 @@ export default function BookingDetailsPage() {
         paymentAmount={paymentAmount}
         paymentMethod={paymentMethod}
         paymentPaidAt={paymentPaidAt}
+        refundAmount={refundAmount}
+        refundMethod={refundMethod}
         rooms={rooms}
         isSubmitting={isMutating}
         errorMessage={actionError}
@@ -929,6 +1140,8 @@ export default function BookingDetailsPage() {
         onPaymentAmountChange={setPaymentAmount}
         onPaymentMethodChange={setPaymentMethod}
         onPaymentPaidAtChange={setPaymentPaidAt}
+        onRefundAmountChange={setRefundAmount}
+        onRefundMethodChange={setRefundMethod}
         onClose={closeAction}
         onSubmit={submitAction}
       />
@@ -1033,6 +1246,8 @@ function ConfirmationModal({
   paymentAmount,
   paymentMethod,
   paymentPaidAt,
+  refundAmount,
+  refundMethod,
   rooms,
   isSubmitting,
   errorMessage,
@@ -1042,6 +1257,8 @@ function ConfirmationModal({
   onPaymentAmountChange,
   onPaymentMethodChange,
   onPaymentPaidAtChange,
+  onRefundAmountChange,
+  onRefundMethodChange,
   onClose,
   onSubmit,
 }: {
@@ -1052,6 +1269,8 @@ function ConfirmationModal({
   paymentAmount: string;
   paymentMethod: (typeof paymentMethods)[number];
   paymentPaidAt: string;
+  refundAmount: string;
+  refundMethod: PaymentMethod;
   rooms: AssignmentRoom[];
   isSubmitting: boolean;
   errorMessage: string;
@@ -1061,6 +1280,8 @@ function ConfirmationModal({
   onPaymentAmountChange: (value: string) => void;
   onPaymentMethodChange: (value: (typeof paymentMethods)[number]) => void;
   onPaymentPaidAtChange: (value: string) => void;
+  onRefundAmountChange: (value: string) => void;
+  onRefundMethodChange: (value: PaymentMethod) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -1068,6 +1289,7 @@ function ConfirmationModal({
     !isSubmitting &&
     (action?.type !== "assignRoom" || selectedRoomId !== "") &&
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
+    (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
     (action?.type === "assignRoom" || !action?.requiresNote || note.trim().length > 0);
 
   return (
@@ -1176,6 +1398,40 @@ function ConfirmationModal({
             </div>
           )}
 
+          {action.type === "recordRefund" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">Amount</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={refundAmount}
+                  disabled={isSubmitting}
+                  onChange={(event) => onRefundAmountChange(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700">Method</span>
+                <select
+                  value={refundMethod}
+                  disabled={isSubmitting}
+                  onChange={(event) =>
+                    onRefundMethodChange(event.target.value as PaymentMethod)
+                  }
+                  className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                >
+                  {refundMethods.map((method) => (
+                    <option key={method} value={method}>
+                      {method.replaceAll("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
           <label className="block text-sm">
             <span className="font-medium text-slate-700">
               {action.requiresNote ? "Audit note" : "Optional note"}
@@ -1210,7 +1466,12 @@ function ConfirmationModal({
             <Button
               type="submit"
               size="sm"
-              variant={action.type === "cancel" ? "danger" : "primary"}
+              variant={
+                action.type === "cancel" ||
+                action.type === "rejectRefundRequest"
+                  ? "danger"
+                  : "primary"
+              }
               icon={<FiCheckCircle />}
               disabled={!canSubmit}
             >

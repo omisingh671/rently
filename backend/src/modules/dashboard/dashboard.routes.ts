@@ -153,6 +153,11 @@ router.post("/properties/:propertyId/bookings", controller.createManualBooking);
 router.get("/bookings/:id", controller.getBookingById);
 router.patch("/bookings/:id", controller.updateBooking);
 router.post("/bookings/:id/payments", controller.recordBookingPayment);
+router.post("/bookings/:id/refunds", controller.recordBookingRefund);
+router.patch(
+  "/bookings/:id/refund-requests/:requestId",
+  controller.updateRefundRequest,
+);
 
 router.get("/billing-documents", billingController.listDashboardDocuments);
 router.post("/billing-documents/invoices", billingController.generateDashboardInvoice);

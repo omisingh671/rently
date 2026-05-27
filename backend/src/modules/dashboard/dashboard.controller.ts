@@ -37,11 +37,14 @@ import {
   propertyIdParamsSchema,
   replacePropertyAmenityAssignmentsSchema,
   recordBookingPaymentSchema,
+  recordBookingRefundSchema,
+  refundRequestParamsSchema,
   checkManualBookingAvailabilitySchema,
   updateAmenitySchema,
   updateBookingStatusSchema,
   updateCouponSchema,
   updateForcePasswordChangeSchema,
+  updateRefundRequestSchema,
   updateLeadStatusSchema,
   updateMaintenanceSchema,
   updateDashboardUserSchema,
@@ -1030,6 +1033,45 @@ export const recordBookingPayment = async (
     },
   );
   res.status(201).json({ success: true, data });
+};
+
+export const recordBookingRefund = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = recordBookingRefundSchema.parse(req.body);
+  const data = await service.recordBookingRefund(getUserId(req), params.id, {
+    paymentId: body.paymentId,
+    amount: body.amount,
+    method: body.method,
+    reason: body.reason,
+    ...(body.refundRequestId !== undefined && {
+      refundRequestId: body.refundRequestId,
+    }),
+    ...(body.idempotencyKey !== undefined && {
+      idempotencyKey: body.idempotencyKey,
+    }),
+  });
+  res.status(201).json({ success: true, data });
+};
+
+export const updateRefundRequest = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = refundRequestParamsSchema.parse(req.params);
+  const body = updateRefundRequestSchema.parse(req.body);
+  const data = await service.updateRefundRequest(
+    getUserId(req),
+    params.id,
+    params.requestId,
+    {
+      ...(body.status !== undefined && { status: body.status }),
+      ...(body.adminNote !== undefined && { adminNote: body.adminNote }),
+    },
+  );
+  res.json({ success: true, data });
 };
 
 export const listEnquiries = async (req: AuthRequest, res: Response) => {

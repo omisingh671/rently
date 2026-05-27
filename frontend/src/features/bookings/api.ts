@@ -112,6 +112,17 @@ export const cancelBooking = async (
   return res.data?.data;
 };
 
+export const createRefundRequest = async (
+  bookingId: string,
+  reason: string,
+): Promise<Booking> => {
+  const res = await axiosInstance.post(
+    `/public/bookings/${bookingId}/refund-requests`,
+    { reason },
+  );
+  return res.data?.data;
+};
+
 export const createManualPayment = async (
   bookingId: string,
   idempotencyKey: string,

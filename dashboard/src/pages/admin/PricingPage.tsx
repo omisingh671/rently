@@ -314,7 +314,13 @@ export default function PricingPage() {
 
   const submitTax = async () => {
     setError(null);
-    const parsed = taxSchema.parse(taxForm);
+    const result = taxSchema.safeParse(taxForm);
+    if (!result.success) {
+      setError("Tax rate / amount is required");
+      return;
+    }
+
+    const parsed = result.data;
     const payload: TaxPayload = {
       ...parsed,
       minTariff:
@@ -913,11 +919,14 @@ export default function PricingPage() {
                   <label className={fieldClass}>
                     <span>Tax Rate / Amount</span>
                     <input
-                      value={taxForm.rate}
+                      value={taxForm.rate === "" ? "" : taxForm.rate}
                       onChange={(event) =>
                         setTaxForm((prev) => ({
                           ...prev,
-                          rate: Number(event.target.value),
+                          rate:
+                            event.target.value === ""
+                              ? ""
+                              : Number(event.target.value),
                         }))
                       }
                       type="number"
