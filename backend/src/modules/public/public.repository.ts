@@ -56,6 +56,9 @@ export const publicBookingInclude = {
   coupon: true,
 } satisfies Prisma.BookingInclude;
 
+export type PublicBookingPolicyRecord =
+  Prisma.PropertyBookingPolicyGetPayload<Record<string, never>>;
+
 export type PublicTaxRecord = Prisma.TaxGetPayload<Record<string, never>>;
 
 const publicAvailabilityRoomInclude = {
@@ -833,6 +836,31 @@ export const findActivePropertyById = (id: string, tenantId?: string) =>
       isActive: true,
       status: PropertyStatus.ACTIVE,
     },
+  });
+
+export const findBookingPolicyByPropertyId = (
+  propertyId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).propertyBookingPolicy.findUnique({
+    where: { propertyId },
+  });
+
+export const upsertDefaultBookingPolicyByPropertyId = (
+  propertyId: string,
+  data: Omit<
+    Prisma.PropertyBookingPolicyCreateWithoutPropertyInput,
+    "id" | "createdAt" | "updatedAt"
+  >,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).propertyBookingPolicy.upsert({
+    where: { propertyId },
+    create: {
+      property: { connect: { id: propertyId } },
+      ...data,
+    },
+    update: {},
   });
 
 export const findPropertyCurrencyById = (

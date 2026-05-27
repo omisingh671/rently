@@ -157,6 +157,8 @@ export type DashboardPropertyRecord = Prisma.PropertyGetPayload<{
   include: typeof dashboardPropertyInclude;
 }>;
 export type DashboardTenantRecord = Prisma.TenantGetPayload<Record<string, never>>;
+export type DashboardBookingPolicyRecord =
+  Prisma.PropertyBookingPolicyGetPayload<Record<string, never>>;
 export type DashboardPropertyAssignmentRecord =
   Prisma.PropertyAssignmentGetPayload<{
     include: typeof dashboardAssignmentInclude;
@@ -852,6 +854,27 @@ export const updateTenantById = (id: string, data: Prisma.TenantUpdateInput) =>
   prisma.tenant.update({
     where: { id },
     data,
+  });
+
+export const findBookingPolicyByPropertyId = (propertyId: string) =>
+  prisma.propertyBookingPolicy.findUnique({
+    where: { propertyId },
+  });
+
+export const upsertBookingPolicyByPropertyId = (
+  propertyId: string,
+  data: Omit<
+    Prisma.PropertyBookingPolicyCreateWithoutPropertyInput,
+    "id" | "createdAt" | "updatedAt"
+  >,
+) =>
+  prisma.propertyBookingPolicy.upsert({
+    where: { propertyId },
+    create: {
+      property: { connect: { id: propertyId } },
+      ...data,
+    },
+    update: data,
   });
 
 export const listPropertiesPaginated = async (filters: PropertyListFilters) => {

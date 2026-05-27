@@ -1,7 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PUBLIC_QUERY_KEYS } from "@/configs/publicQueryKeys";
 import * as api from "./api";
-import type { Booking, BookingQuote, CreateManualPaymentResponse } from "./types";
+import type {
+  Booking,
+  BookingPolicyPreview,
+  BookingQuote,
+  CreateManualPaymentResponse,
+} from "./types";
 import { useAuthStore } from "@/stores/authStore";
 import type { CreateBookingPayload } from "./api";
 
@@ -122,6 +127,16 @@ export const useCancelBooking = () => {
     },
   });
 };
+
+export const useCancellationPreview = () =>
+  useMutation<BookingPolicyPreview, Error, { bookingId: string }>({
+    mutationFn: ({ bookingId }) => api.getCancellationPreview(bookingId),
+  });
+
+export const useRefundPreview = () =>
+  useMutation<BookingPolicyPreview, Error, { bookingId: string }>({
+    mutationFn: ({ bookingId }) => api.getRefundPreview(bookingId),
+  });
 
 export const useCreateRefundRequest = () => {
   const queryClient = useQueryClient();

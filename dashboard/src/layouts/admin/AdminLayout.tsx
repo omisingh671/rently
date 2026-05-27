@@ -69,6 +69,12 @@ function getAdminPageMeta(pathname: string) {
   if (pathname.includes(ADMIN_ROUTES.ROOM_BOARD))
     return { title: "Room Board", subtitle: "Room availability operations" };
 
+  if (pathname.includes(ADMIN_ROUTES.BOOKING_POLICY))
+    return {
+      title: "Booking Policy",
+      subtitle: "Manage property booking and cancellation rules",
+    };
+
   if (pathname.includes(ADMIN_ROUTES.BOOKINGS))
     return { title: "Bookings", subtitle: "Reservations overview" };
 

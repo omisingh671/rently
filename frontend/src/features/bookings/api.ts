@@ -3,6 +3,7 @@ import type {
   Booking,
   BookingGuestDetails,
   BookingQuote,
+  BookingPolicyPreview,
   ComfortOption,
   CreateOptionBookingPayload,
   InventoryLock,
@@ -119,6 +120,24 @@ export const createRefundRequest = async (
   const res = await axiosInstance.post(
     `/public/bookings/${bookingId}/refund-requests`,
     { reason },
+  );
+  return res.data?.data;
+};
+
+export const getCancellationPreview = async (
+  bookingId: string,
+): Promise<BookingPolicyPreview> => {
+  const res = await axiosInstance.post(
+    `/public/bookings/${bookingId}/cancellation-preview`,
+  );
+  return res.data?.data;
+};
+
+export const getRefundPreview = async (
+  bookingId: string,
+): Promise<BookingPolicyPreview> => {
+  const res = await axiosInstance.post(
+    `/public/bookings/${bookingId}/refund-preview`,
   );
   return res.data?.data;
 };

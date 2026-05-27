@@ -226,8 +226,6 @@ export const createTenantSchema = z.object({
   supportPhone: nullableOptionalString(40),
   defaultCurrency: z.string().trim().min(3).max(3).optional(),
   timezone: z.string().trim().min(1).max(80).optional(),
-  payAtCheckInEnabled: z.boolean().optional(),
-  bookingTokenAmount: z.number().nonnegative().optional(),
 });
 
 export const updateTenantSchema = createTenantSchema
@@ -235,6 +233,19 @@ export const updateTenantSchema = createTenantSchema
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided",
   });
+
+const bookingPolicyRulesSchema = z.record(z.string(), z.unknown());
+
+export const updateBookingPolicySchema = z.object({
+  advancePaymentType: z.enum(["NONE", "FIXED_AMOUNT", "PERCENTAGE"]),
+  advancePaymentValue: z.number().nonnegative(),
+  tokenRefundable: z.boolean(),
+  cancellationRules: bookingPolicyRulesSchema,
+  refundRules: bookingPolicyRulesSchema,
+  earlyCheckoutRules: bookingPolicyRulesSchema,
+  noShowRules: bookingPolicyRulesSchema,
+  guestPolicyText: z.string().trim().min(1).max(5000),
+});
 
 export const createDashboardUserSchema = contactFieldsRefine(
   z.object({

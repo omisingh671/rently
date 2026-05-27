@@ -45,6 +45,14 @@ router.patch("/tenants/:id", controller.updateTenant);
 
 router.get("/properties", controller.listProperties);
 router.post("/properties", controller.createProperty);
+router.get(
+  "/properties/:propertyId/booking-policy",
+  controller.getBookingPolicy,
+);
+router.put(
+  "/properties/:propertyId/booking-policy",
+  controller.updateBookingPolicy,
+);
 router.get("/properties/:id", controller.getPropertyById);
 router.patch("/properties/:id", controller.updateProperty);
 

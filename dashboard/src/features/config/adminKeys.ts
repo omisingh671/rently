@@ -233,6 +233,13 @@ export const ADMIN_KEYS = {
       [...ADMIN_KEYS.pricing.byProperty(propertyId), "coupons"] as const,
   },
 
+  bookingPolicy: {
+    all: () => [...ADMIN_KEYS.root, "booking-policy"] as const,
+
+    detail: (propertyId: string) =>
+      [...ADMIN_KEYS.bookingPolicy.all(), propertyId] as const,
+  },
+
   operations: {
     all: () => [...ADMIN_KEYS.root, "operations"] as const,
 

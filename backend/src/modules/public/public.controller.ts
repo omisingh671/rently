@@ -57,6 +57,18 @@ export const getSpaceById = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const getPropertyBookingPolicy = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.getPropertyBookingPolicy(
+    params.id,
+    resolveTenantInput(req),
+  );
+  res.json({ success: true, data });
+};
+
 export const checkAvailability = async (req: AuthRequest, res: Response) => {
   const body = checkAvailabilitySchema.parse(req.body);
   const data = await service.checkAvailability(
@@ -211,6 +223,21 @@ export const cancelBooking = async (req: AuthRequest, res: Response) => {
     params.id,
     body.reason,
   );
+  res.json({ success: true, data });
+};
+
+export const getCancellationPreview = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.getCancellationPreview(getUserId(req), params.id);
+  res.json({ success: true, data });
+};
+
+export const getRefundPreview = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.getRefundPreview(getUserId(req), params.id);
   res.json({ success: true, data });
 };
 

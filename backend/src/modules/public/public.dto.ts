@@ -6,6 +6,7 @@ import type {
   BookingStatus,
   BookingTargetType,
   ComfortOption,
+  AdvancePaymentType,
   TaxType,
 } from "@/generated/prisma/client.js";
 
@@ -21,8 +22,20 @@ export interface PublicTenantConfigDTO {
   supportPhone: string | null;
   defaultCurrency: string;
   timezone: string;
-  payAtCheckInEnabled: boolean;
-  bookingTokenAmount: number;
+}
+
+export type PublicBookingPolicyRulesDTO = Record<string, unknown>;
+
+export interface PublicBookingPolicyDTO {
+  propertyId: string;
+  advancePaymentType: AdvancePaymentType;
+  advancePaymentValue: number;
+  tokenRefundable: boolean;
+  cancellationRules: PublicBookingPolicyRulesDTO;
+  refundRules: PublicBookingPolicyRulesDTO;
+  earlyCheckoutRules: PublicBookingPolicyRulesDTO;
+  noShowRules: PublicBookingPolicyRulesDTO;
+  guestPolicyText: string;
 }
 
 export interface PublicSpaceDTO {
@@ -195,6 +208,7 @@ export interface PublicBookingQuoteDTO {
   couponCode: string | null;
   taxBreakdown: PublicTaxBreakdownDTO[];
   items: PublicBookingQuoteItemDTO[];
+  policy: PublicBookingPolicyDTO;
 }
 
 export interface PublicBookingDTO {
@@ -230,6 +244,7 @@ export interface PublicBookingDTO {
   refundableAmount: number;
   balanceAmount: number;
   remainingPayAtCheckIn: number;
+  policy: PublicBookingPolicyDTO;
   items: PublicBookingItemDTO[];
   internalNotes: string | null;
   cancellationReason: string | null;

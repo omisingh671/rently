@@ -29,6 +29,7 @@ export const ADMIN_ROUTES = {
   },
 
   BOOKINGS: "bookings",
+  BOOKING_POLICY: "booking-policy",
   BILLING: "billing",
   BOOKING_DETAIL: (id: string) => `bookings/${id}`,
   ROOM_BOARD: "room-board",
