@@ -725,8 +725,15 @@ export const generateAvailabilityOptions = async (
     );
   }
 
-  const roomAllocation = buildRoomAllocation(roomsByGroup, input.guests);
-  if (roomAllocation) {
+  for (let roomIndex = 0; roomIndex < roomsByGroup.length; roomIndex += 1) {
+    const roomAllocation = buildRoomAllocation(
+      roomsByGroup.slice(roomIndex),
+      input.guests,
+    );
+    if (!roomAllocation) {
+      continue;
+    }
+
     await addOption(
       options,
       input,

@@ -608,6 +608,338 @@ test("dashboard pricing blocks duplicate overlapping price rules", async () => {
   );
 });
 
+test("dashboard walk-in availability scopes unit override pricing to that unit", async () => {
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${testId} Unit Override Tenant`,
+      slug: `${testId}-unit-override`,
+      brandName: `${testId} Unit Override Tenant`,
+      supportEmail: `${testId}-unit-override@sucasa.test`,
+    },
+  });
+  const property = await prisma.property.create({
+    data: {
+      tenantId: tenant.id,
+      name: `${testId} Unit Override Property`,
+      address: "Unit Override Address",
+      city: "Hyderabad",
+      state: "Telangana",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+
+  try {
+    const [unit201, unit202] = await Promise.all([
+      prisma.unit.create({
+        data: {
+          propertyId: property.id,
+          unitNumber: `${testId}-201-override`,
+          floor: 2,
+          status: UnitStatus.ACTIVE,
+        },
+      }),
+      prisma.unit.create({
+        data: {
+          propertyId: property.id,
+          unitNumber: `${testId}-202-override`,
+          floor: 2,
+          status: UnitStatus.ACTIVE,
+        },
+      }),
+    ]);
+
+    await Promise.all([
+      prisma.room.create({
+        data: {
+          unitId: unit201.id,
+          name: "Unit Override Room",
+          number: "201-A",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+      }),
+      prisma.room.create({
+        data: {
+          unitId: unit202.id,
+          name: "Unit Override Room",
+          number: "202-A",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+      }),
+    ]);
+
+    const [singleProduct, unitProduct] = await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Unit Override Single AC`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Unit Override Full Unit AC`,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+
+    const [singleUnitOverridePricing, fullUnitOverridePricing] =
+      await Promise.all([
+        prisma.roomPricing.create({
+          data: {
+            propertyId: property.id,
+            unitId: unit201.id,
+            productId: singleProduct.id,
+            rateType: RateType.NIGHTLY,
+            pricingTier: PricingTier.STANDARD,
+            minNights: 1,
+            taxInclusive: false,
+            price: 1500,
+            validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        }),
+        prisma.roomPricing.create({
+          data: {
+            propertyId: property.id,
+            unitId: unit201.id,
+            productId: unitProduct.id,
+            rateType: RateType.NIGHTLY,
+            pricingTier: PricingTier.STANDARD,
+            minNights: 1,
+            taxInclusive: false,
+            price: 6000,
+            validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        }),
+      ]);
+
+    const propertyWidePricingCount = await prisma.roomPricing.count({
+      where: {
+        propertyId: property.id,
+        roomId: null,
+        unitId: null,
+      },
+    });
+
+    assert.equal(propertyWidePricingCount, 0);
+
+    const result = await dashboardService.checkManualBookingAvailability(
+      state.superAdminId,
+      property.id,
+      {
+        from: new Date("2029-03-10T00:00:00.000Z"),
+        to: new Date("2029-03-11T00:00:00.000Z"),
+        guests: 1,
+        comfortOption: ComfortOption.AC,
+      },
+    );
+
+    const roomOption = result.items.find(
+      (item) => item.targetType === "ROOM",
+    );
+    const unitOption = result.items.find(
+      (item) => item.targetType === "UNIT",
+    );
+
+    assert.ok(roomOption);
+    assert.ok(unitOption);
+    assert.equal(roomOption.spaceId, singleUnitOverridePricing.id);
+    assert.equal(unitOption.spaceId, fullUnitOverridePricing.id);
+    assert.deepEqual(
+      result.availableSpaceIds.sort(),
+      [singleUnitOverridePricing.id, fullUnitOverridePricing.id].sort(),
+    );
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: property.id },
+    });
+    await prisma.tenant.deleteMany({
+      where: { id: tenant.id },
+    });
+  }
+});
+
+test("dashboard walk-in availability prefers room, then unit, then property pricing", async () => {
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${testId} Pricing Precedence Tenant`,
+      slug: `${testId}-pricing-precedence`,
+      brandName: `${testId} Pricing Precedence Tenant`,
+      supportEmail: `${testId}-pricing-precedence@sucasa.test`,
+    },
+  });
+  const property = await prisma.property.create({
+    data: {
+      tenantId: tenant.id,
+      name: `${testId} Pricing Precedence Property`,
+      address: "Pricing Precedence Address",
+      city: "Hyderabad",
+      state: "Telangana",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+
+  try {
+    const unit = await prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: `${testId}-301-precedence`,
+        floor: 3,
+        status: UnitStatus.ACTIVE,
+      },
+    });
+    const room = await prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Pricing Precedence Room",
+        number: "301-A",
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    });
+    const [singleProduct, unitProduct] = await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Pricing Precedence Single AC`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Pricing Precedence Full Unit AC`,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+
+    const [
+      propertyWideSinglePricing,
+      unitSingleOverridePricing,
+      roomOverridePricing,
+      propertyWideUnitPricing,
+      unitOverridePricing,
+    ] = await Promise.all([
+      prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          productId: singleProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 1900,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      }),
+      prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          unitId: unit.id,
+          productId: singleProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 1700,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      }),
+      prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          unitId: unit.id,
+          roomId: room.id,
+          productId: singleProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 1500,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      }),
+      prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          productId: unitProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 7000,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      }),
+      prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          unitId: unit.id,
+          productId: unitProduct.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 6500,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      }),
+    ]);
+
+    const result = await dashboardService.checkManualBookingAvailability(
+      state.superAdminId,
+      property.id,
+      {
+        from: new Date("2029-04-10T00:00:00.000Z"),
+        to: new Date("2029-04-11T00:00:00.000Z"),
+        guests: 1,
+        comfortOption: ComfortOption.AC,
+      },
+    );
+
+    const roomOption = result.items.find(
+      (item) => item.targetType === "ROOM",
+    );
+    const unitOption = result.items.find(
+      (item) => item.targetType === "UNIT",
+    );
+
+    assert.ok(roomOption);
+    assert.ok(unitOption);
+    assert.equal(roomOption.spaceId, roomOverridePricing.id);
+    assert.equal(roomOption.pricePerNight, "1500");
+    assert.notEqual(roomOption.spaceId, unitSingleOverridePricing.id);
+    assert.notEqual(roomOption.spaceId, propertyWideSinglePricing.id);
+    assert.equal(unitOption.spaceId, unitOverridePricing.id);
+    assert.equal(unitOption.pricePerNight, "6500");
+    assert.notEqual(unitOption.spaceId, propertyWideUnitPricing.id);
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: property.id },
+    });
+    await prisma.tenant.deleteMany({
+      where: { id: tenant.id },
+    });
+  }
+});
+
 test("public booking applies coupon and freezes price snapshots", async () => {
   const couponCode = `${testId}-SAVE10`.toUpperCase();
 
