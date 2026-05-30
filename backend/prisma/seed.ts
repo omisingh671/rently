@@ -43,29 +43,63 @@ const seededAmenities = [
   icon: string;
 }>;
 
-async function main() {
-  const superAdminHash = await hashPassword(credentials.superAdmin.password);
-
-  await prisma.user.upsert({
-    where: { email: credentials.superAdmin.email },
-    update: {
-      fullName: credentials.superAdmin.fullName,
-      passwordHash: superAdminHash,
-      role: UserRole.SUPER_ADMIN,
-      createdByUserId: null,
-      countryCode: credentials.superAdmin.countryCode,
-      contactNumber: credentials.superAdmin.contactNumber,
-      isActive: true,
-    },
-    create: {
-      fullName: credentials.superAdmin.fullName,
+const findSeedSuperAdmin = async () => {
+  const superAdminByEmail = await prisma.user.findFirst({
+    where: {
       email: credentials.superAdmin.email,
-      passwordHash: superAdminHash,
       role: UserRole.SUPER_ADMIN,
-      countryCode: credentials.superAdmin.countryCode,
-      contactNumber: credentials.superAdmin.contactNumber,
     },
   });
+
+  if (superAdminByEmail) {
+    return superAdminByEmail;
+  }
+
+  return prisma.user.findFirst({
+    where: { role: UserRole.SUPER_ADMIN },
+    orderBy: { createdAt: "asc" },
+  });
+};
+
+async function main() {
+  const superAdminHash = await hashPassword(credentials.superAdmin.password);
+  const existingSuperAdmin = await findSeedSuperAdmin();
+  const emailOwner = await prisma.user.findUnique({
+    where: { email: credentials.superAdmin.email },
+  });
+
+  if (
+    emailOwner &&
+    (!existingSuperAdmin || emailOwner.id !== existingSuperAdmin.id)
+  ) {
+    throw new Error(
+      `Cannot seed SUPER_ADMIN with email ${credentials.superAdmin.email}: email is already used by another user.`,
+    );
+  }
+
+  const superAdminData = {
+    fullName: credentials.superAdmin.fullName,
+    email: credentials.superAdmin.email,
+    passwordHash: superAdminHash,
+    role: UserRole.SUPER_ADMIN,
+    countryCode: credentials.superAdmin.countryCode,
+    contactNumber: credentials.superAdmin.contactNumber,
+    isActive: true,
+  };
+
+  if (existingSuperAdmin) {
+    await prisma.user.update({
+      where: { id: existingSuperAdmin.id },
+      data: {
+        ...superAdminData,
+        createdByUserId: null,
+      },
+    });
+  } else {
+    await prisma.user.create({
+      data: superAdminData,
+    });
+  }
 
   await Promise.all(
     seededAmenities.map((amenity) =>
