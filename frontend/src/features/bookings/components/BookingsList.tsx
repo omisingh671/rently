@@ -87,6 +87,10 @@ const getCancellationRefundLabel = (booking: Booking) => {
     return "Refund in review";
   }
 
+  if (booking.refundRequest?.status === "FULFILLED") {
+    return `Refunded ${formatPrice(booking.refundedAmount)}`;
+  }
+
   if (booking.refundRequest?.status === "REJECTED") {
     return "Refund rejected";
   }

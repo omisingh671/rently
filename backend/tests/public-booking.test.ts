@@ -1434,6 +1434,8 @@ test("booking freezes property policy snapshot for future refund previews", asyn
       advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
       advancePaymentValue: 10,
       tokenRefundable: false,
+      checkInTime: "13:30",
+      checkOutTime: "10:15",
       cancellationRules: {},
       refundRules: {},
       earlyCheckoutRules: {},
@@ -1444,6 +1446,8 @@ test("booking freezes property policy snapshot for future refund previews", asyn
       advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
       advancePaymentValue: 10,
       tokenRefundable: false,
+      checkInTime: "13:30",
+      checkOutTime: "10:15",
       guestPolicyText: "Original policy text",
     },
   });
@@ -1468,6 +1472,8 @@ test("booking freezes property policy snapshot for future refund previews", asyn
     where: { propertyId: state.propertyId },
     data: {
       tokenRefundable: true,
+      checkInTime: "14:00",
+      checkOutTime: "09:30",
       guestPolicyText: "Updated policy text",
     },
   });
@@ -1478,15 +1484,181 @@ test("booking freezes property policy snapshot for future refund previews", asyn
   );
   assert.equal(reloaded.policy.tokenRefundable, false);
   assert.equal(reloaded.policy.guestPolicyText, "Original policy text");
+  assert.equal(reloaded.policy.checkInTime, "14:00");
+  assert.equal(reloaded.policy.checkOutTime, "09:30");
 
   await prisma.propertyBookingPolicy.update({
     where: { propertyId: state.propertyId },
     data: {
       tokenRefundable: false,
+      checkInTime: "12:00",
+      checkOutTime: "11:00",
       guestPolicyText:
         "Token, cancellation, refund, early checkout, and no-show rules are governed by this property policy. Refunds may require review by the property team.",
     },
   });
+});
+
+test("public quote reflects saved dashboard booking policy for new bookings", async () => {
+  const defaultGuestPolicyText =
+    "Token, cancellation, refund, early checkout, and no-show rules are governed by this property policy. Refunds may require review by the property team.";
+
+  try {
+    await dashboardService.updateBookingPolicy(
+      state.superAdminId,
+      state.propertyId,
+      {
+        advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+        advancePaymentValue: 5,
+        tokenRefundable: true,
+        checkInTime: "13:00",
+        checkOutTime: "10:00",
+        cancellationRules: {
+          guestCancellationAllowed: true,
+          allowedStatuses: ["PENDING", "CONFIRMED"],
+          beforeCheckInOnly: true,
+        },
+        refundRules: {
+          tokenRefundable: true,
+          manualReviewRequired: true,
+        },
+        earlyCheckoutRules: {
+          refundUnusedNights: false,
+          manualReviewRequired: true,
+        },
+        noShowRules: {
+          markAfterCheckInCutoff: true,
+          tokenRefundable: true,
+        },
+        guestPolicyText: "Guest-facing updated policy text",
+      },
+    );
+
+    const fixedQuote = await publicService.getBookingQuote(
+      undefined,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2031-01-05T00:00:00.000Z"),
+        to: new Date("2031-01-07T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(fixedQuote.policy.advancePaymentValue, 5);
+    assert.equal(fixedQuote.upfrontAmount, 5);
+    assert.equal(fixedQuote.policy.tokenRefundable, true);
+    assert.equal(fixedQuote.policy.checkInTime, "13:00");
+    assert.equal(fixedQuote.policy.checkOutTime, "10:00");
+    assert.equal(
+      fixedQuote.policy.guestPolicyText,
+      "Guest-facing updated policy text",
+    );
+
+    await dashboardService.updateBookingPolicy(
+      state.superAdminId,
+      state.propertyId,
+      {
+        advancePaymentType: AdvancePaymentType.NONE,
+        advancePaymentValue: 0,
+        tokenRefundable: false,
+        checkInTime: "12:00",
+        checkOutTime: "11:00",
+        cancellationRules: {
+          guestCancellationAllowed: true,
+          allowedStatuses: ["PENDING", "CONFIRMED"],
+          beforeCheckInOnly: true,
+        },
+        refundRules: {
+          tokenRefundable: false,
+          manualReviewRequired: true,
+        },
+        earlyCheckoutRules: {
+          refundUnusedNights: false,
+          manualReviewRequired: true,
+        },
+        noShowRules: {
+          markAfterCheckInCutoff: true,
+          tokenRefundable: false,
+        },
+        guestPolicyText: defaultGuestPolicyText,
+      },
+    );
+
+    const noUpfrontQuote = await publicService.getBookingQuote(
+      undefined,
+      {
+        bookingType: "SINGLE_TARGET",
+        spaceId: state.pricingId,
+        from: new Date("2031-01-08T00:00:00.000Z"),
+        to: new Date("2031-01-10T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.equal(noUpfrontQuote.policy.advancePaymentType, AdvancePaymentType.NONE);
+    assert.equal(noUpfrontQuote.paymentPolicy, "NO_UPFRONT_PAYMENT");
+    assert.equal(noUpfrontQuote.upfrontAmount, 0);
+  } finally {
+    await prisma.propertyBookingPolicy.upsert({
+      where: { propertyId: state.propertyId },
+      create: {
+        propertyId: state.propertyId,
+        advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+        advancePaymentValue: 10,
+        tokenRefundable: false,
+        checkInTime: "12:00",
+        checkOutTime: "11:00",
+        cancellationRules: {
+          guestCancellationAllowed: true,
+          allowedStatuses: ["PENDING", "CONFIRMED"],
+          beforeCheckInOnly: true,
+        },
+        refundRules: {
+          tokenRefundable: false,
+          manualReviewRequired: true,
+        },
+        earlyCheckoutRules: {
+          refundUnusedNights: false,
+          manualReviewRequired: true,
+        },
+        noShowRules: {
+          markAfterCheckInCutoff: true,
+          tokenRefundable: false,
+        },
+        guestPolicyText: defaultGuestPolicyText,
+      },
+      update: {
+        advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+        advancePaymentValue: 10,
+        tokenRefundable: false,
+        checkInTime: "12:00",
+        checkOutTime: "11:00",
+        cancellationRules: {
+          guestCancellationAllowed: true,
+          allowedStatuses: ["PENDING", "CONFIRMED"],
+          beforeCheckInOnly: true,
+        },
+        refundRules: {
+          tokenRefundable: false,
+          manualReviewRequired: true,
+        },
+        earlyCheckoutRules: {
+          refundUnusedNights: false,
+          manualReviewRequired: true,
+        },
+        noShowRules: {
+          markAfterCheckInCutoff: true,
+          tokenRefundable: false,
+        },
+        guestPolicyText: defaultGuestPolicyText,
+      },
+    });
+  }
 });
 
 test("public quote applies one GST slab per booking item", async () => {

@@ -94,6 +94,7 @@ export const createManualSucceededPayment = (
     note?: string;
     paidAt: Date;
     metadataSource: string;
+    metadata?: Prisma.InputJsonObject;
   },
   tx?: Prisma.TransactionClient,
 ) =>
@@ -116,6 +117,7 @@ export const createManualSucceededPayment = (
       paidAt: data.paidAt,
       metadata: {
         source: data.metadataSource,
+        ...(data.metadata ?? {}),
       },
     },
     include: paymentInclude,

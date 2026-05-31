@@ -7,11 +7,13 @@ import { requirePasswordChangeComplete } from "@/common/middleware/password-chan
 import { hashPassword } from "@/common/utils/password.js";
 import { prisma } from "@/db/prisma.js";
 import {
+  AdvancePaymentType,
   PropertyAssignmentRole,
   PropertyStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
 import * as authService from "@/modules/auth/auth.service.js";
+import { updateBookingPolicySchema } from "@/modules/dashboard/dashboard.schema.js";
 import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
 
 const testId = `rbac-${Date.now()}`;
@@ -214,6 +216,74 @@ test("ADMIN can access only assigned property data", async () => {
     () => dashboardService.getPropertyById(state.adminId, state.propertyBId),
     404,
     "PROPERTY_NOT_FOUND",
+  );
+});
+
+test("dashboard booking policy GET does not reset saved values", async () => {
+  const saved = await dashboardService.updateBookingPolicy(
+    state.adminId,
+    state.propertyAId,
+    {
+      advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+      advancePaymentValue: 5,
+      tokenRefundable: true,
+      checkInTime: "13:30",
+      checkOutTime: "10:15",
+      cancellationRules: {
+        guestCancellationAllowed: false,
+        allowedStatuses: ["PENDING"],
+        beforeCheckInOnly: false,
+      },
+      refundRules: {
+        tokenRefundable: true,
+        manualReviewRequired: false,
+      },
+      earlyCheckoutRules: {
+        refundUnusedNights: true,
+        manualReviewRequired: false,
+      },
+      noShowRules: {
+        markAfterCheckInCutoff: false,
+        tokenRefundable: true,
+      },
+      guestPolicyText: "Dashboard edited policy text",
+    },
+  );
+
+  assert.equal(saved.advancePaymentValue, "5");
+
+  const reloaded = await dashboardService.getBookingPolicy(
+    state.adminId,
+    state.propertyAId,
+  );
+
+  assert.equal(reloaded.advancePaymentType, AdvancePaymentType.FIXED_AMOUNT);
+  assert.equal(reloaded.advancePaymentValue, "5");
+  assert.equal(reloaded.tokenRefundable, true);
+  assert.equal(reloaded.checkInTime, "13:30");
+  assert.equal(reloaded.checkOutTime, "10:15");
+  assert.equal(reloaded.cancellationRules.guestCancellationAllowed, false);
+  assert.deepEqual(reloaded.cancellationRules.allowedStatuses, ["PENDING"]);
+  assert.equal(reloaded.refundRules.manualReviewRequired, false);
+  assert.equal(reloaded.earlyCheckoutRules.refundUnusedNights, true);
+  assert.equal(reloaded.noShowRules.markAfterCheckInCutoff, false);
+  assert.equal(reloaded.guestPolicyText, "Dashboard edited policy text");
+});
+
+test("dashboard booking policy validation rejects invalid stay times", () => {
+  assert.throws(() =>
+    updateBookingPolicySchema.parse({
+      advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
+      advancePaymentValue: 5,
+      tokenRefundable: true,
+      checkInTime: "25:00",
+      checkOutTime: "10:15",
+      cancellationRules: {},
+      refundRules: {},
+      earlyCheckoutRules: {},
+      noShowRules: {},
+      guestPolicyText: "Dashboard policy text",
+    }),
   );
 });
 

@@ -8,6 +8,7 @@ import type {
   CreateOptionBookingPayload,
   InventoryLock,
   CreateManualPaymentResponse,
+  PaymentPurpose,
 } from "./types";
 
 type GuestDetailsPayload = {
@@ -146,10 +147,11 @@ export const createManualPayment = async (
   bookingId: string,
   idempotencyKey: string,
   amount: number,
+  purpose?: PaymentPurpose,
 ): Promise<CreateManualPaymentResponse> => {
   const res = await axiosInstance.post(
     `/public/bookings/${bookingId}/payments/manual`,
-    { amount },
+    { amount, ...(purpose !== undefined && { purpose }) },
     {
       headers: {
         "Idempotency-Key": idempotencyKey,

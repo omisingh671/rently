@@ -8,6 +8,8 @@ export type BookingPolicy = {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
   earlyCheckoutRules: BookingPolicyRules;
@@ -21,6 +23,8 @@ export type BookingPolicyPayload = {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: number;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
   earlyCheckoutRules: BookingPolicyRules;
@@ -28,13 +32,26 @@ export type BookingPolicyPayload = {
   guestPolicyText: string;
 };
 
+export type BookingStatusRule = "PENDING" | "CONFIRMED";
+
 export type BookingPolicyForm = {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
-  cancellationRulesText: string;
-  refundRulesText: string;
-  earlyCheckoutRulesText: string;
-  noShowRulesText: string;
+  checkInTime: string;
+  checkOutTime: string;
+  guestCancellationAllowed: boolean;
+  allowedStatuses: BookingStatusRule[];
+  beforeCheckInOnly: boolean;
+  cancellationRulesExtra: BookingPolicyRules;
+  refundTokenRefundable: boolean;
+  refundManualReviewRequired: boolean;
+  refundRulesExtra: BookingPolicyRules;
+  refundUnusedNights: boolean;
+  earlyCheckoutManualReviewRequired: boolean;
+  earlyCheckoutRulesExtra: BookingPolicyRules;
+  markAfterCheckInCutoff: boolean;
+  noShowTokenRefundable: boolean;
+  noShowRulesExtra: BookingPolicyRules;
   guestPolicyText: string;
 };

@@ -19,16 +19,22 @@ export const useBookingPolicy = (propertyId: string | undefined) => {
   });
 
   const updatePolicy = useMutation({
+    onMutate: async () => {
+      if (!propertyId) return;
+      await queryClient.cancelQueries({
+        queryKey: ADMIN_KEYS.bookingPolicy.detail(propertyId),
+      });
+    },
     mutationFn: (payload: BookingPolicyPayload) => {
       if (!propertyId) throw new Error("PropertyId required");
       return updateBookingPolicyApi(propertyId, payload);
     },
-    onSuccess: (policy) => {
+    onSuccess: async (policy) => {
       queryClient.setQueryData(
         ADMIN_KEYS.bookingPolicy.detail(policy.propertyId),
         policy,
       );
-      queryClient.invalidateQueries({
+      await queryClient.invalidateQueries({
         queryKey: ADMIN_KEYS.bookingPolicy.detail(policy.propertyId),
       });
     },

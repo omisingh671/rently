@@ -7,6 +7,7 @@ export type BookingStatus =
   | "NO_SHOW";
 
 export type PaymentProvider = "MANUAL" | "RAZORPAY" | "STRIPE";
+export type PaymentPurpose = "TOKEN" | "BALANCE" | "FULL_PAYMENT";
 
 export type PaymentStatus =
   | "PENDING"
@@ -40,6 +41,8 @@ export interface BookingPolicy {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: number;
   tokenRefundable: boolean;
+  checkInTime?: string;
+  checkOutTime?: string;
   cancellationRules: Record<string, unknown>;
   refundRules: Record<string, unknown>;
   earlyCheckoutRules: Record<string, unknown>;
@@ -149,6 +152,8 @@ export interface Booking {
   status: BookingStatus;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: number;
+  tokenPaidAmount: number;
+  tokenPaymentStatus: "NOT_REQUIRED" | "UNPAID" | "PAID";
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;
@@ -213,6 +218,7 @@ export interface Payment {
   userId: string;
   provider: PaymentProvider;
   status: PaymentStatus;
+  purpose: PaymentPurpose;
   amount: number;
   currency: string;
   idempotencyKey: string;

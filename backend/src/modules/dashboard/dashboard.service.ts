@@ -7,6 +7,7 @@ import {
   LeadStatus,
   MaintenanceTargetType,
   PaymentProvider,
+  PaymentMethod,
   PaymentPurpose,
   PaymentRefundStatus,
   PaymentStatus,
@@ -178,6 +179,27 @@ const isAdminOverrideRole = (role: UserRole) =>
 const requireAuditNote = (note: string | undefined, message: string) => {
   if (!note?.trim()) {
     throw new HttpError(422, "AUDIT_NOTE_REQUIRED", message);
+  }
+};
+
+const paymentMethodsRequiringReference = new Set<PaymentMethod>([
+  PaymentMethod.UPI_MANUAL,
+  PaymentMethod.BANK_TRANSFER,
+  PaymentMethod.CARD_POS,
+]);
+
+const assertManualPaymentProof = (
+  input: RecordDashboardBookingPaymentInput,
+) => {
+  if (
+    paymentMethodsRequiringReference.has(input.method) &&
+    !input.referenceId?.trim()
+  ) {
+    throw new HttpError(
+      422,
+      "PAYMENT_REFERENCE_REQUIRED",
+      "Reference ID is required for this payment method",
+    );
   }
 };
 
@@ -853,6 +875,16 @@ const refundReservedStatuses: readonly PaymentRefundStatus[] = [
 const isRefundReserved = (status: PaymentRefundStatus) =>
   refundReservedStatuses.includes(status);
 
+const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
+  BookingRefundRequestStatus.REQUESTED,
+  BookingRefundRequestStatus.IN_REVIEW,
+];
+
+const getActiveRefundRequest = (booking: repo.DashboardBookingRecord) =>
+  booking.refundRequests.find((request) =>
+    activeRefundRequestStatuses.includes(request.status),
+  ) ?? null;
+
 const getPaymentRefundedAmount = (
   payment: repo.DashboardBookingRecord["payments"][number],
 ) =>
@@ -875,6 +907,96 @@ const getPaymentRefundableAmount = (
 
   const refundableAmount = payment.amount.minus(getPaymentRefundedAmount(payment));
   return refundableAmount.lessThan(0) ? new Prisma.Decimal(0) : refundableAmount;
+};
+
+const getJsonNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? new Prisma.Decimal(value)
+    : new Prisma.Decimal(0);
+
+const getBookingNonRefundableTaxAmount = (
+  booking: repo.DashboardBookingRecord,
+) => {
+  const taxBreakdown = booking.taxBreakdown;
+
+  if (!Array.isArray(taxBreakdown)) {
+    return new Prisma.Decimal(0);
+  }
+
+  return taxBreakdown.reduce((total, item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      return total;
+    }
+
+    const tax = item as Record<string, unknown>;
+
+    if (tax.isRefundable !== false) {
+      return total;
+    }
+
+    return total.plus(getJsonNumber(tax.taxAmount));
+  }, new Prisma.Decimal(0));
+};
+
+const getBookingNonRefundableTokenAmount = (
+  booking: repo.DashboardBookingRecord,
+) => {
+  const policySnapshot = parsePolicySnapshot(booking.policySnapshot);
+
+  if (policySnapshot?.tokenRefundable !== false) {
+    return new Prisma.Decimal(0);
+  }
+
+  return booking.payments
+    .filter(
+      (payment) =>
+        payment.status === PaymentStatus.SUCCEEDED &&
+        payment.purpose === PaymentPurpose.TOKEN,
+    )
+    .reduce((total, payment) => total.plus(payment.amount), new Prisma.Decimal(0));
+};
+
+const getBookingRefundableAmount = (
+  booking: repo.DashboardBookingRecord,
+) => {
+  const baseRefundableAmount = booking.payments.reduce(
+    (total, payment) => total.plus(getPaymentRefundableAmount(payment)),
+    new Prisma.Decimal(0),
+  );
+
+  const refundableAmount = baseRefundableAmount
+    .minus(getBookingNonRefundableTaxAmount(booking))
+    .minus(getBookingNonRefundableTokenAmount(booking));
+
+  return refundableAmount.lessThan(0) ? new Prisma.Decimal(0) : refundableAmount;
+};
+
+const syncFulfilledRefundRequest = async (
+  booking: repo.DashboardBookingRecord,
+) => {
+  const refundRequest = getActiveRefundRequest(booking);
+
+  if (
+    refundRequest === null ||
+    getBookingRefundedAmount(booking).lessThanOrEqualTo(0) ||
+    getBookingRefundableAmount(booking).greaterThan(0)
+  ) {
+    return booking;
+  }
+
+  const now = new Date();
+  await repo.updateRefundRequestById(refundRequest.id, {
+    status: BookingRefundRequestStatus.FULFILLED,
+    reviewedAt: refundRequest.reviewedAt ?? now,
+    fulfilledAt: refundRequest.fulfilledAt ?? now,
+  });
+
+  const updatedBooking = await repo.findBookingById(booking.id);
+  if (!updatedBooking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return updatedBooking;
 };
 
 const getBookingBalanceAmount = (booking: repo.DashboardBookingRecord) => {
@@ -1472,7 +1594,7 @@ export const getBookingPolicy = async (
   await assertPropertyInScope(actor, propertyId);
   await ensurePropertyExists(propertyId);
 
-  const policy = await repo.upsertBookingPolicyByPropertyId(
+  const policy = await repo.upsertDefaultBookingPolicyByPropertyId(
     propertyId,
     defaultBookingPolicyCreateData,
   );
@@ -1493,6 +1615,8 @@ export const updateBookingPolicy = async (
     advancePaymentType: input.advancePaymentType,
     advancePaymentValue: new Prisma.Decimal(input.advancePaymentValue),
     tokenRefundable: input.tokenRefundable,
+    checkInTime: input.checkInTime,
+    checkOutTime: input.checkOutTime,
     cancellationRules: input.cancellationRules as Prisma.InputJsonValue,
     refundRules: input.refundRules as Prisma.InputJsonValue,
     earlyCheckoutRules: input.earlyCheckoutRules as Prisma.InputJsonValue,
@@ -3350,12 +3474,16 @@ const getBookingAssignmentLabels = async (
 const mapDashboardBookings = async (
   bookings: repo.DashboardBookingRecord[],
 ) => {
+  const syncedBookings = await Promise.all(
+    bookings.map(syncFulfilledRefundRequest),
+  );
   const assignmentLabels = await getBookingAssignmentLabels(bookings);
-  return bookings.map((booking) => mapBooking(booking, assignmentLabels));
+  return syncedBookings.map((booking) => mapBooking(booking, assignmentLabels));
 };
 
 const mapDashboardBooking = async (booking: repo.DashboardBookingRecord) => {
-  const mapped = await mapDashboardBookings([booking]);
+  const syncedBooking = await syncFulfilledRefundRequest(booking);
+  const mapped = await mapDashboardBookings([syncedBooking]);
   const firstBooking = mapped[0];
 
   if (!firstBooking) {
@@ -3700,6 +3828,7 @@ export const recordBookingBalancePayment = async (
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
   assertBookingCanAcceptPayment(booking);
+  assertManualPaymentProof(input);
 
   const balanceAmount = getBookingBalanceAmount(booking);
   const amount = new Prisma.Decimal(input.amount);
@@ -3728,6 +3857,15 @@ export const recordBookingBalancePayment = async (
     amount: input.amount,
     purpose: PaymentPurpose.BALANCE,
     method: input.method,
+    metadata: {
+      recordedVia: "DASHBOARD",
+      ...(input.referenceId !== undefined && {
+        manualReferenceId: input.referenceId.trim(),
+      }),
+      ...(input.payerDetail !== undefined && {
+        manualPayerDetail: input.payerDetail.trim(),
+      }),
+    },
     ...(input.note !== undefined && { note: input.note }),
     ...(input.paidAt !== undefined && { paidAt: input.paidAt }),
   });
@@ -3850,7 +3988,7 @@ export const recordBookingRefund = async (
       ? booking.refundRequests.find(
           (request) => request.id === input.refundRequestId,
         ) ?? null
-      : null;
+      : getActiveRefundRequest(booking);
 
   if (input.refundRequestId !== undefined && refundRequest === null) {
     throw new HttpError(
@@ -3941,10 +4079,7 @@ export const recordBookingRefund = async (
     ),
   };
 
-  const projectedRefundableAmount = projectedBooking.payments.reduce(
-    (total, item) => total.plus(getPaymentRefundableAmount(item)),
-    new Prisma.Decimal(0),
-  );
+  const projectedRefundableAmount = getBookingRefundableAmount(projectedBooking);
   const refundRequestUpdate =
     refundRequest === null
       ? undefined

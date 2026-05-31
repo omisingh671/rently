@@ -148,6 +148,8 @@ export const mapBookingPolicy = (
   advancePaymentType: policy.advancePaymentType,
   advancePaymentValue: policy.advancePaymentValue.toString(),
   tokenRefundable: policy.tokenRefundable,
+  checkInTime: policy.checkInTime,
+  checkOutTime: policy.checkOutTime,
   cancellationRules: asPolicyRuleObject(policy.cancellationRules),
   refundRules: asPolicyRuleObject(policy.refundRules),
   earlyCheckoutRules: asPolicyRuleObject(policy.earlyCheckoutRules),
@@ -532,6 +534,13 @@ export const mapBooking = (
     zeroDecimal,
     baseRefundableAmount.minus(nonRefundableAmount).minus(nonRefundableTokenAmount),
   );
+const getMappedPaymentRefundableAmount = (
+    payment: repo.DashboardBookingRecord["payments"][number],
+  ) =>
+    payment.purpose === PaymentPurpose.TOKEN &&
+    policySnapshot?.tokenRefundable === false
+      ? zeroDecimal
+      : getPaymentRefundableAmount(payment);
   const balanceAmount =
     booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
       ? zeroDecimal
@@ -540,6 +549,17 @@ export const mapBooking = (
           booking.totalAmount.minus(netPaidAmount),
         );
   const refundRequest = getBookingRefundRequest(booking);
+  const getPaymentMetadataValue = (
+    metadata: Prisma.JsonValue,
+    key: "manualReferenceId" | "manualPayerDetail",
+  ) => {
+    if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return null;
+    }
+
+    const value = metadata[key];
+    return typeof value === "string" && value.trim() ? value : null;
+  };
 
   return {
     id: booking.id,
@@ -615,8 +635,16 @@ export const mapBooking = (
       method: payment.method,
       amount: payment.amount.toString(),
       refundedAmount: getPaymentRefundedAmount(payment).toString(),
-      refundableAmount: getPaymentRefundableAmount(payment).toString(),
+      refundableAmount: getMappedPaymentRefundableAmount(payment).toString(),
       currency: payment.currency,
+      referenceId: getPaymentMetadataValue(
+        payment.metadata,
+        "manualReferenceId",
+      ),
+      payerDetail: getPaymentMetadataValue(
+        payment.metadata,
+        "manualPayerDetail",
+      ),
       note: payment.note ?? null,
       receivedByUserId: payment.receivedByUserId ?? null,
       paidAt: payment.paidAt ?? null,

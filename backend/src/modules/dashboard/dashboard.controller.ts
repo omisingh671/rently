@@ -167,6 +167,8 @@ export const updateBookingPolicy = async (req: AuthRequest, res: Response) => {
     advancePaymentType: body.advancePaymentType,
     advancePaymentValue: body.advancePaymentValue,
     tokenRefundable: body.tokenRefundable,
+    checkInTime: body.checkInTime,
+    checkOutTime: body.checkOutTime,
     cancellationRules: body.cancellationRules,
     refundRules: body.refundRules,
     earlyCheckoutRules: body.earlyCheckoutRules,
@@ -1036,6 +1038,8 @@ export const recordBookingPayment = async (
     {
       amount: body.amount,
       method: body.method,
+      ...(body.referenceId !== undefined && { referenceId: body.referenceId }),
+      ...(body.payerDetail !== undefined && { payerDetail: body.payerDetail }),
       ...(body.note !== undefined && { note: body.note }),
       ...(body.paidAt !== undefined && { paidAt: body.paidAt }),
       ...(body.idempotencyKey !== undefined && {

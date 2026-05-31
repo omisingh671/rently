@@ -176,6 +176,7 @@ enum PaymentMethod {
   CASH
   UPI_MANUAL
   BANK_TRANSFER
+  CARD_POS
   MANUAL
   ONLINE_GATEWAY
 }
@@ -358,6 +359,8 @@ model PropertyBookingPolicy {
   advancePaymentType  AdvancePaymentType @default(FIXED_AMOUNT)
   advancePaymentValue Decimal            @default(10)
   tokenRefundable     Boolean            @default(false)
+  checkInTime         String             @default("12:00")
+  checkOutTime        String             @default("11:00")
   cancellationRules   Json
   refundRules         Json
   earlyCheckoutRules  Json

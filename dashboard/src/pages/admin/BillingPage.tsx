@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import Button from "@/components/ui/Button";
-import { useActiveProperties } from "@/features/properties/hooks/useActiveProperties";
 import { useBillingActions, useBillingDocuments } from "@/features/billing/hooks";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import type {
   BillingDocumentStatus,
   BillingDocumentType,
@@ -44,15 +44,19 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+type PropertyFilterMode = "current" | "all";
+
 export default function BillingPage() {
-  const propertiesQuery = useActiveProperties();
+  const { properties, selectedPropertyId, setSelectedPropertyId } =
+    useCurrentProperty();
   const billingActions = useBillingActions();
   const canVoid = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
   const [page] = useState(1);
+  const [propertyFilterMode, setPropertyFilterMode] =
+    useState<PropertyFilterMode>("current");
   const [filters, setFilters] = useState({
-    propertyId: "",
     type: "" as "" | BillingDocumentType,
     status: "" as "" | BillingDocumentStatus,
     bookingRef: "",
@@ -60,12 +64,14 @@ export default function BillingPage() {
     from: "",
     to: "",
   });
+  const activePropertyId =
+    propertyFilterMode === "all" ? "" : selectedPropertyId;
 
   const params = useMemo(
     () => ({
       page,
       limit: 20,
-      ...(filters.propertyId && { propertyId: filters.propertyId }),
+      ...(activePropertyId && { propertyId: activePropertyId }),
       ...(filters.type && { type: filters.type }),
       ...(filters.status && { status: filters.status }),
       ...(filters.bookingRef && { bookingRef: filters.bookingRef }),
@@ -73,7 +79,7 @@ export default function BillingPage() {
       ...(filters.from && { from: filters.from }),
       ...(filters.to && { to: filters.to }),
     }),
-    [filters, page],
+    [activePropertyId, filters, page],
   );
   const documentsQuery = useBillingDocuments(params);
   const error = documentsQuery.error
@@ -96,16 +102,15 @@ export default function BillingPage() {
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <select
             className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-            value={filters.propertyId}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                propertyId: event.target.value,
-              }))
-            }
+            value={activePropertyId}
+            onChange={(event) => {
+              const propertyId = event.target.value;
+              setPropertyFilterMode(propertyId === "" ? "all" : "current");
+              setSelectedPropertyId(propertyId || null);
+            }}
           >
             <option value="">All properties</option>
-            {(propertiesQuery.data ?? []).map((property) => (
+            {properties.map((property) => (
               <option key={property.id} value={property.id}>
                 {property.name}
               </option>

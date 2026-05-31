@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 import {
   FiCheckCircle,
@@ -19,23 +19,13 @@ import {
   clearBookingCheckoutDraftForBooking,
   getBookingCheckoutDraft,
 } from "@/features/bookings/bookingCheckoutDraft";
-import {
-  useBooking,
-  useCreateManualPayment,
-} from "@/features/bookings/hooks";
-import type {
-  Booking,
-  CreateManualPaymentResponse,
-} from "@/features/bookings/types";
+import { useBooking } from "@/features/bookings/hooks";
+import type { Booking } from "@/features/bookings/types";
 import { useAuthStore } from "@/stores/authStore";
 import {
   useBookingBillingDocuments,
   useDownloadBillingDocument,
 } from "@/features/billing/hooks";
-import { normalizeApiError } from "@/utils/errors";
-
-const paymentKeyPrefix = "sucasa:manual-payment";
-type PaymentChoice = "token" | "full";
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -51,41 +41,6 @@ const formatDate = (iso?: string) => {
     month: "short",
     year: "numeric",
   });
-};
-
-const createFallbackId = () =>
-  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-const createIdempotencyKey = (bookingId: string, choice: PaymentChoice) => {
-  const randomId =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : createFallbackId();
-
-  return `manual:${bookingId}:${choice}:${randomId}`;
-};
-
-const getPaymentAttemptKey = (bookingId: string, choice: PaymentChoice) => {
-  const storageKey = `${paymentKeyPrefix}:${bookingId}:${choice}`;
-
-  try {
-    const existing = window.sessionStorage.getItem(storageKey);
-    if (existing) return existing;
-
-    const next = createIdempotencyKey(bookingId, choice);
-    window.sessionStorage.setItem(storageKey, next);
-    return next;
-  } catch {
-    return createIdempotencyKey(bookingId, choice);
-  }
-};
-
-const clearPaymentAttemptKey = (bookingId: string, choice: PaymentChoice) => {
-  try {
-    window.sessionStorage.removeItem(`${paymentKeyPrefix}:${bookingId}:${choice}`);
-  } catch {
-    // Storage can be unavailable in private contexts; payment still completed.
-  }
 };
 
 function BookingSummary({ booking }: { booking: Booking }) {
@@ -223,18 +178,14 @@ function BookingSummary({ booking }: { booking: Booking }) {
 export default function BookingPaymentPage() {
   const { id } = useParams();
   const bookingQuery = useBooking(id);
-  const paymentMutation = useCreateManualPayment();
   const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
-  const [paymentResult, setPaymentResult] =
-    useState<CreateManualPaymentResponse | null>(null);
   const loadedBooking = bookingQuery.data;
   const isConfirmed =
-    paymentResult !== null ||
-    (loadedBooking !== undefined &&
-      ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status));
+    loadedBooking !== undefined &&
+    ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status);
   const checkoutToken =
     loadedBooking !== undefined &&
     checkoutDraft?.createdBookingId === loadedBooking.id
@@ -302,27 +253,6 @@ export default function BookingPaymentPage() {
     booking.paidAmount <= 0 &&
     (isAuthenticated || hasMatchingCheckoutDraft);
 
-  const paymentError = paymentMutation.error
-    ? normalizeApiError(paymentMutation.error).message
-    : null;
-
-  const confirmManualPayment = async (
-    choice: PaymentChoice,
-    amount: number,
-  ) => {
-    const idempotencyKey = getPaymentAttemptKey(booking.id, choice);
-    const result = await paymentMutation.mutateAsync({
-      bookingId: booking.id,
-      idempotencyKey,
-      amount,
-    });
-
-    clearPaymentAttemptKey(booking.id, choice);
-    clearBookingCheckoutDraftForBooking(booking.id);
-    setPaymentResult(result);
-    await bookingQuery.refetch();
-  };
-
   return (
     <section className="section bg-surface min-h-screen">
       <div className="container max-w-5xl">
@@ -375,8 +305,7 @@ export default function BookingPaymentPage() {
                   </div>
                   <h2 className="text-2xl font-bold text-emerald-900">Booking Confirmed!</h2>
                   <p className="mt-2 text-emerald-700">
-                    {paymentResult?.booking.balanceAmount === 0 ||
-                    booking.balanceAmount === 0
+                    {booking.balanceAmount === 0
                       ? "Your full payment has been recorded successfully."
                       : booking.upfrontAmount > 0
                         ? "Your token payment has been recorded successfully."
@@ -462,7 +391,7 @@ export default function BookingPaymentPage() {
                     <div>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1">
-                          <h3 className="font-bold text-slate-900">Manual / On-arrival Payment</h3>
+                          <h3 className="font-bold text-slate-900">Secure Payment</h3>
                           <p className="mt-1 text-sm text-slate-600 leading-relaxed">
                             {canPayToken ? (
                               <>
@@ -522,36 +451,21 @@ export default function BookingPaymentPage() {
                       <div className="grid gap-3 sm:grid-cols-2">
                         {canPayToken && (
                           <Button
-                            type="button"
+                            to={`${ROUTES.BOOKING_PAYMENT_PROCESS(booking.id)}?intent=token`}
                             variant="secondary"
                             className="h-12 w-full text-base"
-                            disabled={paymentMutation.isPending}
-                            onClick={() => {
-                              void confirmManualPayment(
-                                "token",
-                                tokenPaymentAmount,
-                              );
-                            }}
                           >
-                            {paymentMutation.isPending
-                              ? "Confirming..."
-                              : "Confirm & Pay Token"}
+                            Continue to Token Payment
                           </Button>
                         )}
                         <Button
-                          type="button"
+                          to={`${ROUTES.BOOKING_PAYMENT_PROCESS(booking.id)}?intent=full`}
                           variant="primary"
                           className={`h-12 w-full text-base shadow-lg shadow-indigo-200 ${
                             canPayToken ? "" : "sm:col-span-2"
                           }`}
-                          disabled={paymentMutation.isPending}
-                          onClick={() => {
-                            void confirmManualPayment("full", fullPaymentAmount);
-                          }}
                         >
-                          {paymentMutation.isPending
-                            ? "Confirming..."
-                            : "Confirm & Pay Full Amount"}
+                          Continue to Full Payment
                         </Button>
                       </div>
                       <div className="mt-4 flex items-center justify-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -561,12 +475,6 @@ export default function BookingPaymentPage() {
                     </div>
                   </div>
 
-                  {paymentError && (
-                    <div className="mt-6 rounded-xl border border-red-100 bg-red-50 p-4 flex items-start gap-3">
-                      <FiInfo className="mt-0.5 h-4 w-4 text-red-500 shrink-0" />
-                      <p className="text-sm text-red-700">{paymentError}</p>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="flex-1 rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm flex flex-col items-center justify-center">

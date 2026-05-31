@@ -44,6 +44,7 @@ export type PaymentMethod =
   | "CASH"
   | "UPI_MANUAL"
   | "BANK_TRANSFER"
+  | "CARD_POS"
   | "MANUAL"
   | "ONLINE_GATEWAY";
 
@@ -119,6 +120,8 @@ export type AdminBooking = {
     refundedAmount: string;
     refundableAmount: string;
     currency: string;
+    referenceId: string | null;
+    payerDetail: string | null;
     note: string | null;
     receivedByUserId: string | null;
     paidAt: string | null;
@@ -191,6 +194,8 @@ export type UpdateBookingPayload = {
 export type RecordBalancePaymentPayload = {
   amount: number;
   method: PaymentMethod;
+  referenceId?: string;
+  payerDetail?: string;
   note?: string;
   paidAt?: string;
   idempotencyKey?: string;

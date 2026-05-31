@@ -37,6 +37,9 @@ const BookingCheckoutPage = lazy(
 const BookingPaymentPage = lazy(
   () => import("@/pages/guest/BookingPaymentPage"),
 );
+const BookingPaymentProcessPage = lazy(
+  () => import("@/pages/guest/BookingPaymentProcessPage"),
+);
 const BookingDetailPage = lazy(
   () => import("@/pages/guest/BookingDetailPage"),
 );
@@ -79,6 +82,10 @@ const routes: RouteObject[] = [
       { path: ROUTES.AVAILABILITY_RESULT, element: <AvailabilityResultPage /> },
       { path: ROUTES.BOOKING_CHECKOUT, element: <BookingCheckoutPage /> },
       { path: ROUTES.BOOKING_PAYMENT(), element: <BookingPaymentPage /> },
+      {
+        path: ROUTES.BOOKING_PAYMENT_PROCESS(),
+        element: <BookingPaymentProcessPage />,
+      },
       {
         element: <RequireAuth />,
         children: [

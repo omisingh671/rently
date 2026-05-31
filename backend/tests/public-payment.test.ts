@@ -319,6 +319,8 @@ test("manual payment confirms a pending booking", async () => {
     new Date("2027-03-12T00:00:00.000Z"),
   );
   assert.equal(booking.status, BookingStatus.PENDING);
+  assert.equal(booking.tokenPaymentStatus, "UNPAID");
+  assert.equal(booking.tokenPaidAmount, 0);
 
   const result = await paymentsService.createManualPayment({
     userId: state.guestId,
@@ -343,6 +345,13 @@ test("manual payment confirms a pending booking", async () => {
 
   assert.equal(confirmedBooking.status, BookingStatus.CONFIRMED);
   assert.equal(confirmedBooking.paymentStatus, "PARTIALLY_PAID");
+
+  const publicBooking = await publicService.getBookingById(
+    state.guestId,
+    booking.id,
+  );
+  assert.equal(publicBooking.tokenPaymentStatus, "PAID");
+  assert.equal(publicBooking.tokenPaidAmount, 10);
 
   const history = await prisma.bookingStatusHistory.findMany({
     where: {
@@ -376,6 +385,33 @@ test("manual payment confirms a pending booking", async () => {
       return true;
     },
   );
+});
+
+test("manual balance payment can clear confirmed booking balance", async () => {
+  const booking = await createBooking(
+    new Date("2027-03-14T00:00:00.000Z"),
+    new Date("2027-03-16T00:00:00.000Z"),
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-manual-balance-token`,
+  });
+
+  const result = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-manual-balance-clear`,
+    amount: 5990,
+    purpose: PaymentPurpose.BALANCE,
+  });
+
+  assert.equal(result.payment.purpose, PaymentPurpose.BALANCE);
+  assert.equal(result.booking.status, BookingStatus.CONFIRMED);
+  assert.equal(result.booking.paymentStatus, "PAID");
+  assert.equal(result.booking.paidAmount, 6000);
+  assert.equal(result.booking.balanceAmount, 0);
 });
 
 test("billing documents are idempotent and snapshots stay frozen", async () => {
@@ -575,10 +611,11 @@ test("manual payment can confirm a pending booking with full amount", async () =
     userId: state.guestId,
     bookingId: booking.id,
     idempotencyKey: `${testId}-full-manual-payment`,
-    amount: booking.totalPrice,
+    purpose: PaymentPurpose.FULL_PAYMENT,
   });
 
   assert.equal(result.payment.status, "SUCCEEDED");
+  assert.equal(result.payment.purpose, PaymentPurpose.FULL_PAYMENT);
   assert.equal(result.payment.amount, booking.totalPrice);
   assert.equal(result.booking.status, BookingStatus.CONFIRMED);
   assert.equal(result.booking.paymentStatus, "PAID");
@@ -865,6 +902,8 @@ test("dashboard records remaining balance payment and marks booking paid", async
   assert.equal(updated.payments.length, 2);
   assert.equal(updated.payments[1]?.purpose, PaymentPurpose.BALANCE);
   assert.equal(updated.payments[1]?.method, PaymentMethod.CASH);
+  assert.equal(updated.payments[1]?.referenceId, null);
+  assert.equal(updated.payments[1]?.payerDetail, null);
 
   const receipts = await prisma.billingDocument.findMany({
     where: { bookingId: booking.id, type: BillingDocumentType.RECEIPT },
@@ -880,6 +919,89 @@ test("dashboard records remaining balance payment and marks booking paid", async
   });
   assert.equal(invoice.paid.toString(), "5600");
   assert.equal(invoice.balance.toString(), "0");
+});
+
+test("dashboard records offline payment proof metadata", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-06-02T00:00:00.000Z"),
+      to: new Date("2027-06-04T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-proof-token`,
+  });
+
+  const updated = await dashboardService.recordBookingBalancePayment(
+    state.managerId,
+    booking.id,
+    {
+      amount: 5590,
+      method: PaymentMethod.CARD_POS,
+      referenceId: "POS-TXN-12345",
+      payerDetail: "Card last 4: 4242",
+      idempotencyKey: `${testId}-proof-balance`,
+    },
+  );
+
+  const balancePayment = updated.payments.find(
+    (item) => item.purpose === PaymentPurpose.BALANCE,
+  );
+  assert.ok(balancePayment);
+  assert.equal(balancePayment.method, PaymentMethod.CARD_POS);
+  assert.equal(balancePayment.referenceId, "POS-TXN-12345");
+  assert.equal(balancePayment.payerDetail, "Card last 4: 4242");
+
+  const paymentRow = await prisma.payment.findFirstOrThrow({
+    where: {
+      bookingId: booking.id,
+      purpose: PaymentPurpose.BALANCE,
+    },
+  });
+  const metadata = paymentRow.metadata;
+  assert.ok(
+    metadata !== null && typeof metadata === "object" && !Array.isArray(metadata),
+  );
+  assert.equal(metadata.source, "DASHBOARD_BALANCE_PAYMENT");
+  assert.equal(metadata.recordedVia, "DASHBOARD");
+  assert.equal(metadata.manualReferenceId, "POS-TXN-12345");
+  assert.equal(metadata.manualPayerDetail, "Card last 4: 4242");
+});
+
+test("dashboard rejects referenced offline methods without reference id", async () => {
+  const booking = await createBooking(
+    new Date("2027-06-06T00:00:00.000Z"),
+    new Date("2027-06-08T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-missing-ref-token`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.recordBookingBalancePayment(state.superAdminId, booking.id, {
+        amount: 100,
+        method: PaymentMethod.UPI_MANUAL,
+        idempotencyKey: `${testId}-missing-ref-balance`,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "PAYMENT_REFERENCE_REQUIRED");
+      return true;
+    },
+  );
 });
 
 test("dashboard rejects balance overpayment", async () => {
@@ -898,6 +1020,7 @@ test("dashboard rejects balance overpayment", async () => {
       dashboardService.recordBookingBalancePayment(state.superAdminId, booking.id, {
         amount: 5991,
         method: PaymentMethod.UPI_MANUAL,
+        referenceId: "UPI-OVERPAYMENT-REF",
         idempotencyKey: `${testId}-overpayment-balance`,
       }),
     (error: unknown) => {
@@ -1114,6 +1237,182 @@ test("guest refund request can be reviewed and fulfilled by admin", async () => 
   );
   assert.equal(fulfilled.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
   assert.equal(fulfilled.refundableAmount, "0");
+
+  const publicBooking = await publicService.getBookingById(
+    state.guestId,
+    noShowBooking.id,
+  );
+  assert.equal(publicBooking.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+});
+
+test("refund request is fulfilled when non-refundable token is the only remainder", async () => {
+  await setPropertyTokenRefundable(state.propertyId, false);
+  const booking = await createBooking(
+    new Date("2027-06-16T00:00:00.000Z"),
+    new Date("2027-06-18T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-nonref-request-token`,
+  });
+  const paidBooking = await dashboardService.recordBookingBalancePayment(
+    state.superAdminId,
+    booking.id,
+    {
+      amount: 5990,
+      method: PaymentMethod.CASH,
+      idempotencyKey: `${testId}-nonref-request-balance`,
+    },
+  );
+  await dashboardService.updateBooking(state.superAdminId, booking.id, {
+    status: BookingStatus.CANCELLED,
+    note: "Guest cancelled after paying",
+  });
+  const requested = await publicService.createRefundRequest(
+    state.guestId,
+    booking.id,
+    "Please refund eligible amount",
+  );
+  const balancePayment = paidBooking.payments.find(
+    (payment) => payment.purpose === PaymentPurpose.BALANCE,
+  );
+  assert.ok(balancePayment);
+
+  const fulfilled = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: balancePayment.id,
+      amount: 5990,
+      method: PaymentMethod.CASH,
+      reason: "Eligible balance refund",
+      refundRequestId: requested.refundRequest!.id,
+      idempotencyKey: `${testId}-nonref-request-refund`,
+    },
+  );
+  assert.equal(fulfilled.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+  assert.equal(fulfilled.refundableAmount, "0");
+
+  const publicBooking = await publicService.getBookingById(
+    state.guestId,
+    booking.id,
+  );
+  assert.equal(publicBooking.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+  assert.equal(publicBooking.refundableAmount, 0);
+});
+
+test("dashboard refund auto-links active request when request id is omitted", async () => {
+  await setPropertyTokenRefundable(state.propertyId, true);
+  const booking = await createBooking(
+    new Date("2027-06-20T00:00:00.000Z"),
+    new Date("2027-06-22T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-auto-link-token`,
+  });
+  await dashboardService.updateBooking(state.superAdminId, booking.id, {
+    status: BookingStatus.CANCELLED,
+    note: "Guest cancelled after token",
+  });
+  const requested = await publicService.createRefundRequest(
+    state.guestId,
+    booking.id,
+    "Please refund token",
+  );
+  assert.equal(requested.refundRequest?.status, BookingRefundRequestStatus.REQUESTED);
+  const tokenPayment = await prisma.payment.findFirstOrThrow({
+    where: { bookingId: booking.id, purpose: PaymentPurpose.TOKEN },
+  });
+
+  const fulfilled = await dashboardService.recordBookingRefund(
+    state.superAdminId,
+    booking.id,
+    {
+      paymentId: tokenPayment.id,
+      amount: 10,
+      method: PaymentMethod.MANUAL,
+      reason: "Token refunded",
+      idempotencyKey: `${testId}-auto-link-refund`,
+    },
+  );
+
+  assert.equal(fulfilled.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+  const fulfilledTokenPayment = fulfilled.payments.find(
+    (item) => item.id === tokenPayment.id,
+  );
+  assert.equal(
+    fulfilledTokenPayment?.refunds[0]?.refundRequestId,
+    requested.refundRequest?.id,
+  );
+});
+
+test("stale fulfilled refund requests are repaired when booking is loaded", async () => {
+  await setPropertyTokenRefundable(state.propertyId, true);
+  const booking = await createBooking(
+    new Date("2027-06-24T00:00:00.000Z"),
+    new Date("2027-06-26T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-stale-request-token`,
+  });
+  await dashboardService.updateBooking(state.superAdminId, booking.id, {
+    status: BookingStatus.CANCELLED,
+    note: "Guest cancelled after token",
+  });
+  const requested = await publicService.createRefundRequest(
+    state.guestId,
+    booking.id,
+    "Please refund token",
+  );
+  await dashboardService.updateRefundRequest(
+    state.superAdminId,
+    booking.id,
+    requested.refundRequest!.id,
+    {
+      status: BookingRefundRequestStatus.IN_REVIEW,
+    },
+  );
+  const payment = await prisma.payment.findFirstOrThrow({
+    where: { bookingId: booking.id, purpose: PaymentPurpose.TOKEN },
+  });
+  await prisma.paymentRefund.create({
+    data: {
+      bookingId: booking.id,
+      paymentId: payment.id,
+      propertyId: booking.propertyId,
+      userId: state.guestId,
+      provider: payment.provider,
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: PaymentMethod.MANUAL,
+      amount: payment.amount,
+      currency: payment.currency,
+      reason: "Legacy unlinked refund",
+      idempotencyKey: `${testId}-stale-request-refund`,
+      processedAt: new Date(),
+    },
+  });
+
+  const dashboardBooking = await dashboardService.getBookingById(
+    state.superAdminId,
+    booking.id,
+  );
+  assert.equal(dashboardBooking.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+
+  const publicBooking = await publicService.getBookingById(
+    state.guestId,
+    booking.id,
+  );
+  assert.equal(publicBooking.refundRequest?.status, BookingRefundRequestStatus.FULFILLED);
+
+  const requestRow = await prisma.bookingRefundRequest.findUniqueOrThrow({
+    where: { id: requested.refundRequest!.id },
+  });
+  assert.equal(requestRow.status, BookingRefundRequestStatus.FULFILLED);
 });
 
 test("guest refund request rejects non-closed or unpaid bookings", async () => {
