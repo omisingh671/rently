@@ -235,11 +235,16 @@ export const updateTenantSchema = createTenantSchema
   });
 
 const bookingPolicyRulesSchema = z.record(z.string(), z.unknown());
+const bookingPolicyTimeSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must use HH:mm 24-hour format");
 
 export const updateBookingPolicySchema = z.object({
   advancePaymentType: z.enum(["NONE", "FIXED_AMOUNT", "PERCENTAGE"]),
   advancePaymentValue: z.number().nonnegative(),
   tokenRefundable: z.boolean(),
+  checkInTime: bookingPolicyTimeSchema,
+  checkOutTime: bookingPolicyTimeSchema,
   cancellationRules: bookingPolicyRulesSchema,
   refundRules: bookingPolicyRulesSchema,
   earlyCheckoutRules: bookingPolicyRulesSchema,
@@ -676,13 +681,34 @@ export const updateBookingStatusSchema = z
     },
   );
 
-export const recordBookingPaymentSchema = z.object({
-  amount: z.coerce.number().positive(),
-  method: z.nativeEnum(PaymentMethod),
-  note: z.string().trim().max(1000).optional(),
-  paidAt: z.coerce.date().optional(),
-  idempotencyKey: z.string().trim().min(8).max(128).optional(),
-});
+const paymentMethodsRequiringReference = new Set<PaymentMethod>([
+  PaymentMethod.UPI_MANUAL,
+  PaymentMethod.BANK_TRANSFER,
+  PaymentMethod.CARD_POS,
+]);
+
+export const recordBookingPaymentSchema = z
+  .object({
+    amount: z.coerce.number().positive(),
+    method: z.nativeEnum(PaymentMethod),
+    referenceId: z.string().trim().min(1).max(100).optional(),
+    payerDetail: z.string().trim().min(1).max(100).optional(),
+    note: z.string().trim().max(1000).optional(),
+    paidAt: z.coerce.date().optional(),
+    idempotencyKey: z.string().trim().min(8).max(128).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (
+      paymentMethodsRequiringReference.has(data.method) &&
+      data.referenceId === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["referenceId"],
+        message: "Reference ID is required for this payment method",
+      });
+    }
+  });
 
 export const recordBookingRefundSchema = z.object({
   paymentId: idSchema,

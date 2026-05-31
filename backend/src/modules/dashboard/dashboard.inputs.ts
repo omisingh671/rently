@@ -196,6 +196,8 @@ export interface UpdateDashboardBookingPolicyInput {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: number;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: Record<string, unknown>;
   refundRules: Record<string, unknown>;
   earlyCheckoutRules: Record<string, unknown>;
@@ -425,6 +427,8 @@ export interface UpdateDashboardBookingInput {
 export interface RecordDashboardBookingPaymentInput {
   amount: number;
   method: PaymentMethod;
+  referenceId?: string;
+  payerDetail?: string;
   note?: string;
   paidAt?: Date;
   idempotencyKey?: string;

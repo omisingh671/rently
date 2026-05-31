@@ -95,6 +95,8 @@ export interface DashboardBookingPolicyDTO {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: BookingPolicyRulesDTO;
   refundRules: BookingPolicyRulesDTO;
   earlyCheckoutRules: BookingPolicyRulesDTO;
@@ -436,6 +438,8 @@ export interface DashboardBookingDTO {
     refundedAmount: string;
     refundableAmount: string;
     currency: string;
+    referenceId: string | null;
+    payerDetail: string | null;
     note: string | null;
     receivedByUserId: string | null;
     paidAt: Date | null;

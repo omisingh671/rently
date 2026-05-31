@@ -21,7 +21,6 @@ const {
   FiMail,
   FiPlus,
   FiSearch,
-  FiUser,
 } = ICON_REGISTRY;
 import { normalizeApiError } from "@/utils/errors";
 
@@ -65,38 +64,6 @@ const formatDate = (value: string) =>
     month: "short",
     year: "numeric",
   }).format(new Date(value));
-
-const getBookingStayLabel = (booking: AdminBooking) => {
-  const itemCount = Math.max(booking.items.length, 1);
-
-  if (booking.bookingType === "MULTI_ROOM" || itemCount > 1) {
-    return `${itemCount}-room stay`;
-  }
-
-  if (booking.productName === "Booking option") {
-    const target = booking.targetLabel.toLowerCase();
-    if (target.includes("unit")) return "Private unit stay";
-    if (target.includes("room")) return "Room stay";
-  }
-
-  return booking.productName;
-};
-
-const getBookingTargetSummary = (booking: AdminBooking) => {
-  if (booking.items.length > 1) {
-    return booking.items
-      .map((item, index) =>
-        item.targetType === "UNIT" ? `Unit ${index + 1}` : `Room ${index + 1}`,
-      )
-      .join(" + ");
-  }
-
-  if (booking.productName === "Booking option") {
-    return booking.targetType === "UNIT" ? "Private unit" : "Private room";
-  }
-
-  return booking.targetLabel;
-};
 
 const getBookingAssignedSummary = (booking: AdminBooking) => {
   if (booking.items.length === 0) {
@@ -358,7 +325,6 @@ export default function OperationsPage({ module }: Props) {
                   <tr>
                     <th className="whitespace-nowrap px-6 py-4 w-16 text-center">#SN</th>
                     <th className="whitespace-nowrap px-6 py-4">Guest</th>
-                    <th className="whitespace-nowrap px-6 py-4">Stay & Product</th>
                     <th className="whitespace-nowrap px-6 py-4">Assigned Room/Unit</th>
                     <th className="whitespace-nowrap px-6 py-4">Dates</th>
                     <th className="whitespace-nowrap px-6 py-4">Financials</th>
@@ -389,17 +355,17 @@ export default function OperationsPage({ module }: Props) {
               {isPending && items.length === 0 ? (
                 <EmptyRow
                   message="Loading records..."
-                  colSpan={module === "bookings" ? 8 : 6}
+                  colSpan={module === "bookings" ? 7 : 6}
                 />
               ) : isError ? (
                 <EmptyRow
                   message="Could not load records."
-                  colSpan={module === "bookings" ? 8 : 6}
+                  colSpan={module === "bookings" ? 7 : 6}
                 />
               ) : items.length === 0 ? (
                 <EmptyRow
                   message="No records found."
-                  colSpan={module === "bookings" ? 8 : 6}
+                  colSpan={module === "bookings" ? 7 : 6}
                 />
               ) : module === "bookings" ? (
                 (items as AdminBooking[]).map((booking, index) => (
@@ -421,24 +387,12 @@ export default function OperationsPage({ module }: Props) {
                             <FiMail className="shrink-0" />
                             <span className="truncate">{booking.guestEmail}</span>
                           </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-1.5 font-medium text-slate-700">
-                          <FiHome className="h-3.5 w-3.5 text-slate-400" />
-                          <span>{getBookingStayLabel(booking)}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <span>{getBookingTargetSummary(booking)}</span>
-                        </div>
-                        <div className="text-xs font-semibold text-slate-500">
-                          Ref: {booking.bookingRef}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <FiUser className="h-3.5 w-3.5 text-slate-400" />
-                          <span>Guests: {booking.guestCount}</span>
+                          <div className="text-xs font-semibold text-slate-500">
+                            Ref: {booking.bookingRef}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Guests: {booking.guestCount}
+                          </div>
                         </div>
                       </div>
                     </td>

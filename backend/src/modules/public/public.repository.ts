@@ -797,6 +797,15 @@ export const createBookingRefundRequest = (
     data,
   });
 
+export const updateRefundRequestById = (
+  id: string,
+  data: Prisma.BookingRefundRequestUpdateInput,
+) =>
+  prisma.bookingRefundRequest.update({
+    where: { id },
+    data,
+  });
+
 export const updateBookingCancellationById = (
   id: string,
   data: Prisma.BookingUpdateInput,

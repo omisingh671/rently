@@ -6,6 +6,7 @@ import type {
   BookingPolicyPreview,
   BookingQuote,
   CreateManualPaymentResponse,
+  PaymentPurpose,
 } from "./types";
 import { useAuthStore } from "@/stores/authStore";
 import type { CreateBookingPayload } from "./api";
@@ -98,10 +99,15 @@ export const useCreateManualPayment = () => {
   return useMutation<
     CreateManualPaymentResponse,
     Error,
-    { bookingId: string; idempotencyKey: string; amount: number }
+    {
+      bookingId: string;
+      idempotencyKey: string;
+      amount: number;
+      purpose?: PaymentPurpose;
+    }
   >({
-    mutationFn: ({ bookingId, idempotencyKey, amount }) =>
-      api.createManualPayment(bookingId, idempotencyKey, amount),
+    mutationFn: ({ bookingId, idempotencyKey, amount, purpose }) =>
+      api.createManualPayment(bookingId, idempotencyKey, amount, purpose),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({

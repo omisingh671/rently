@@ -877,6 +877,22 @@ export const upsertBookingPolicyByPropertyId = (
     update: data,
   });
 
+export const upsertDefaultBookingPolicyByPropertyId = (
+  propertyId: string,
+  data: Omit<
+    Prisma.PropertyBookingPolicyCreateWithoutPropertyInput,
+    "id" | "createdAt" | "updatedAt"
+  >,
+) =>
+  prisma.propertyBookingPolicy.upsert({
+    where: { propertyId },
+    create: {
+      property: { connect: { id: propertyId } },
+      ...data,
+    },
+    update: {},
+  });
+
 export const listPropertiesPaginated = async (filters: PropertyListFilters) => {
   const where = buildPropertyWhere(filters);
   const skip = (filters.page - 1) * filters.limit;

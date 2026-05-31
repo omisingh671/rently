@@ -117,6 +117,8 @@ const mapPolicy = (policy: BookingPolicyShape): PublicBookingPolicyDTO => ({
   advancePaymentType: policy.advancePaymentType,
   advancePaymentValue: Number(policy.advancePaymentValue),
   tokenRefundable: policy.tokenRefundable,
+  checkInTime: policy.checkInTime,
+  checkOutTime: policy.checkOutTime,
   cancellationRules: asRuleObject(policy.cancellationRules),
   refundRules: asRuleObject(policy.refundRules),
   earlyCheckoutRules: asRuleObject(policy.earlyCheckoutRules),
@@ -132,6 +134,8 @@ const mapSnapshotPolicy = (
   advancePaymentType: snapshot.advancePaymentType,
   advancePaymentValue: Number(snapshot.advancePaymentValue),
   tokenRefundable: snapshot.tokenRefundable,
+  checkInTime: "12:00",
+  checkOutTime: "11:00",
   cancellationRules: snapshot.cancellationRules,
   refundRules: snapshot.refundRules,
   earlyCheckoutRules: snapshot.earlyCheckoutRules,
@@ -155,7 +159,12 @@ const getBookingPolicyDto = async (
 ) => {
   const snapshot = parsePolicySnapshot(booking.policySnapshot);
   if (snapshot !== null) {
-    return mapSnapshotPolicy(booking.propertyId, snapshot);
+    const currentPolicy = await ensureBookingPolicy(booking.propertyId, tx);
+    return {
+      ...mapSnapshotPolicy(booking.propertyId, snapshot),
+      checkInTime: currentPolicy.checkInTime,
+      checkOutTime: currentPolicy.checkOutTime,
+    };
   }
 
   return mapPolicy(await ensureBookingPolicy(booking.propertyId, tx));
@@ -337,6 +346,29 @@ const getNonRefundableTokenAmount = (
         )
         .reduce((total, payment) => total + Number(payment.amount), 0);
 
+const getTokenPaidAmount = (booking: repo.PublicBookingRecord) =>
+  booking.payments
+    .filter(
+      (payment) =>
+        payment.status === PaymentStatus.SUCCEEDED &&
+        payment.purpose === PaymentPurpose.TOKEN,
+    )
+    .reduce((total, payment) => total + Number(payment.amount), 0);
+
+const getTokenPaymentStatus = (
+  booking: repo.PublicBookingRecord,
+  tokenPaidAmount: number,
+) => {
+  if (
+    booking.paymentPolicy !== BookingPaymentPolicy.TOKEN_AT_BOOKING ||
+    Number(booking.upfrontAmount) <= 0
+  ) {
+    return "NOT_REQUIRED" as const;
+  }
+
+  return tokenPaidAmount > 0 ? "PAID" as const : "UNPAID" as const;
+};
+
 const mapBooking = async (
   booking: repo.PublicBookingRecord,
 ): Promise<PublicBookingDTO> => {
@@ -386,6 +418,7 @@ const mapBooking = async (
     .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
   const policy = await getBookingPolicyDto(booking);
   const nonRefundableTokenAmount = getNonRefundableTokenAmount(booking, policy);
+  const tokenPaidAmount = getTokenPaidAmount(booking);
   
   const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
   const refundableAmount = Math.max(
@@ -431,6 +464,8 @@ const mapBooking = async (
     paymentPolicy: booking.paymentPolicy,
     paymentStatus,
     upfrontAmount: Number(booking.upfrontAmount),
+    tokenPaidAmount,
+    tokenPaymentStatus: getTokenPaymentStatus(booking, tokenPaidAmount),
     guestName: booking.guestNameSnapshot,
     guestEmail: booking.guestEmailSnapshot,
     guestContactNumber: booking.guestContactSnapshot ?? null,
@@ -1309,6 +1344,53 @@ const getRefundableAmount = async (booking: repo.PublicBookingRecord) => {
       getRefundedAmount(booking) -
       getNonRefundableTokenAmount(booking, policy),
   );
+};
+
+const getMappedRefundableAmount = async (booking: repo.PublicBookingRecord) => {
+  const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
+  const nonRefundableAmount = taxBreakdown
+    .filter((tax) => tax.isRefundable === false)
+    .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
+  const policy = await getBookingPolicyDto(booking);
+
+  return Math.max(
+    0,
+    getPaidAmount(booking) -
+      getRefundedAmount(booking) -
+      nonRefundableAmount -
+      getNonRefundableTokenAmount(booking, policy),
+  );
+};
+
+const syncFulfilledRefundRequest = async (
+  booking: repo.PublicBookingRecord,
+) => {
+  const refundRequest =
+    booking.refundRequests.find((request) =>
+      activeRefundRequestStatuses.includes(request.status),
+    ) ?? null;
+
+  if (
+    refundRequest === null ||
+    getRefundedAmount(booking) <= 0 ||
+    (await getMappedRefundableAmount(booking)) > 0
+  ) {
+    return booking;
+  }
+
+  const now = new Date();
+  await repo.updateRefundRequestById(refundRequest.id, {
+    status: BookingRefundRequestStatus.FULFILLED,
+    reviewedAt: refundRequest.reviewedAt ?? now,
+    fulfilledAt: refundRequest.fulfilledAt ?? now,
+  });
+
+  const updatedBooking = await repo.findBookingById(booking.id);
+  if (!updatedBooking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+
+  return updatedBooking;
 };
 
 export interface PublicBookingPolicyPreviewDTO {
@@ -2503,7 +2585,10 @@ export const listBookings = async (
   userId: string,
 ): Promise<PublicBookingDTO[]> => {
   const bookings = await repo.listBookingsByUser(userId);
-  return Promise.all(bookings.map(mapBooking));
+  const syncedBookings = await Promise.all(
+    bookings.map(syncFulfilledRefundRequest),
+  );
+  return Promise.all(syncedBookings.map(mapBooking));
 };
 
 export const getBookingById = async (
@@ -2515,7 +2600,7 @@ export const getBookingById = async (
     throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   }
 
-  return mapBooking(booking);
+  return mapBooking(await syncFulfilledRefundRequest(booking));
 };
 
 export const getBookingByIdPublic = async (
@@ -2526,7 +2611,7 @@ export const getBookingByIdPublic = async (
     throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   }
 
-  return mapBooking(booking);
+  return mapBooking(await syncFulfilledRefundRequest(booking));
 };
 
 export const getCancellationPreview = async (

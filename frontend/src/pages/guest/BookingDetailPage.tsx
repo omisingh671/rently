@@ -17,6 +17,8 @@ import {
 
 import {
   useBooking,
+  useCancelBooking,
+  useCancellationPreview,
   useCreateRefundRequest,
   useRefundPreview,
 } from "@/features/bookings/hooks";
@@ -64,6 +66,26 @@ const formatTime = (iso?: string) => {
   });
 };
 
+const formatPolicyTime = (time: string | undefined, fallback: string) => {
+  const [hourValue, minuteValue] = (time ?? fallback).split(":").map(Number);
+  if (
+    !Number.isInteger(hourValue) ||
+    !Number.isInteger(minuteValue) ||
+    hourValue < 0 ||
+    hourValue > 23 ||
+    minuteValue < 0 ||
+    minuteValue > 59
+  ) {
+    return fallback === "12:00" ? "12:00 PM" : "11:00 AM";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(2000, 0, 1, hourValue, minuteValue));
+};
+
 const getCancellationRefundLabel = (booking: {
   paidAmount: number;
   refundedAmount: number;
@@ -84,6 +106,10 @@ const getCancellationRefundLabel = (booking: {
     return "Refund in review";
   }
 
+  if (booking.refundRequest?.status === "FULFILLED") {
+    return `Refunded ${formatPrice(booking.refundedAmount)}`;
+  }
+
   if (booking.refundRequest?.status === "REJECTED") {
     return "Refund rejected";
   }
@@ -101,12 +127,20 @@ export default function BookingDetailPage() {
   const { data: booking, isLoading, error } = useBooking(id);
   const billingDocumentsQuery = useBookingBillingDocuments(id);
   const downloadBillingDocument = useDownloadBillingDocument();
+  const cancelBooking = useCancelBooking();
+  const cancellationPreview = useCancellationPreview();
   const createRefundRequest = useCreateRefundRequest();
   const refundPreview = useRefundPreview();
+  const [isCancellationModalOpen, setIsCancellationModalOpen] = useState(false);
+  const [cancellationPreviewData, setCancellationPreviewData] =
+    useState<BookingPolicyPreview | null>(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancellationError, setCancellationError] = useState("");
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [preview, setPreview] = useState<BookingPolicyPreview | null>(null);
   const [refundReason, setRefundReason] = useState("");
   const [refundError, setRefundError] = useState("");
+  const [billingDownloadError, setBillingDownloadError] = useState("");
 
   if (isLoading) {
     return (
@@ -152,6 +186,16 @@ export default function BookingDetailPage() {
     (booking.refundRequest === null ||
       booking.refundRequest.status === "REJECTED" ||
       booking.refundRequest.status === "CANCELLED");
+  const canPayPendingBalance =
+    booking.balanceAmount > 0 &&
+    (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN");
+  const canCancelBooking =
+    booking.status === "PENDING" || booking.status === "CONFIRMED";
+  const checkInTimeLabel = formatPolicyTime(booking.policy.checkInTime, "12:00");
+  const checkOutTimeLabel = formatPolicyTime(
+    booking.policy.checkOutTime,
+    "11:00",
+  );
 
   const submitRefundRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -178,6 +222,38 @@ export default function BookingDetailPage() {
     setIsRefundModalOpen(true);
     setPreview(null);
     refundPreview.mutate({ bookingId: booking.id }, { onSuccess: setPreview });
+  };
+
+  const openCancellationModal = () => {
+    setIsCancellationModalOpen(true);
+    setCancellationPreviewData(null);
+    setCancellationReason(booking.cancellationReason ?? "");
+    setCancellationError("");
+    cancellationPreview.mutate(
+      { bookingId: booking.id },
+      { onSuccess: setCancellationPreviewData },
+    );
+  };
+
+  const closeCancellationModal = () => {
+    if (cancelBooking.isPending) return;
+    setIsCancellationModalOpen(false);
+    setCancellationPreviewData(null);
+    setCancellationReason("");
+    setCancellationError("");
+  };
+
+  const confirmCancellation = async () => {
+    try {
+      setCancellationError("");
+      await cancelBooking.mutateAsync({
+        bookingId: booking.id,
+        reason: cancellationReason.trim() || undefined,
+      });
+      closeCancellationModal();
+    } catch (err) {
+      setCancellationError(normalizeApiError(err).message);
+    }
   };
 
   return (
@@ -247,7 +323,7 @@ export default function BookingDetailPage() {
                     icon={<FiCalendar className="text-slate-400" />}
                     label="Check-in"
                     value={formatDate(booking.from)}
-                    subValue="After 12:00 PM"
+                    subValue={`After ${checkInTimeLabel}`}
                   />
                   <DetailItem
                     icon={<FiUsers className="text-slate-400" />}
@@ -265,7 +341,7 @@ export default function BookingDetailPage() {
                     icon={<FiCalendar className="text-slate-400" />}
                     label="Check-out"
                     value={formatDate(booking.to)}
-                    subValue="Before 11:00 AM"
+                    subValue={`Before ${checkOutTimeLabel}`}
                   />
                   <DetailItem
                     icon={<FiClock className="text-slate-400" />}
@@ -420,6 +496,41 @@ export default function BookingDetailPage() {
                 </div>
               </div>
 
+              {booking.paymentPolicy === "TOKEN_AT_BOOKING" && (
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Token Amount
+                      </p>
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {formatPrice(booking.upfrontAmount)}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wider ${
+                        booking.tokenPaymentStatus === "PAID"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : booking.tokenPaymentStatus === "UNPAID"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {booking.tokenPaymentStatus === "PAID"
+                        ? "Paid"
+                        : booking.tokenPaymentStatus === "UNPAID"
+                          ? "Unpaid"
+                          : "Not required"}
+                    </span>
+                  </div>
+                  {booking.tokenPaymentStatus === "PAID" && (
+                    <p className="mt-2 text-xs font-semibold text-emerald-700">
+                      Received {formatPrice(booking.tokenPaidAmount)}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {booking.status === "PENDING" &&
                 booking.paymentPolicy === "TOKEN_AT_BOOKING" && (
                   <div className="mt-6 rounded-2xl bg-indigo-50 p-4 border border-indigo-100">
@@ -441,7 +552,7 @@ export default function BookingDetailPage() {
                 booking.status !== "NO_SHOW" && (
                   <div className="mt-4 flex items-start gap-3 rounded-2xl bg-amber-50 p-4 border border-amber-100">
                     <FiInfo className="mt-0.5 text-amber-500 shrink-0" />
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-amber-900">
                         Pay at Property
                       </p>
@@ -451,6 +562,17 @@ export default function BookingDetailPage() {
                       <p className="text-[10px] font-medium text-amber-700 mt-0.5">
                         Pay this balance during check-in
                       </p>
+                      {canPayPendingBalance && (
+                        <Button
+                          to={`${ROUTES.BOOKING_PAYMENT_PROCESS(booking.id)}?intent=balance`}
+                          size="sm"
+                          variant="primary"
+                          className="mt-4"
+                        >
+                          <FiCreditCard className="mr-2" />
+                          Pay Pending Balance
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -561,6 +683,11 @@ export default function BookingDetailPage() {
               <FiFileText className="text-indigo-500" />
               Billing Documents
             </h2>
+            {billingDownloadError && (
+              <div className="mb-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                {billingDownloadError}
+              </div>
+            )}
             {billingDocumentsQuery.isPending ? (
               <p className="text-sm text-slate-500">Loading documents...</p>
             ) : (billingDocumentsQuery.data ?? []).length === 0 ? (
@@ -589,7 +716,14 @@ export default function BookingDetailPage() {
                       variant="secondary"
                       disabled={downloadBillingDocument.isPending}
                       onClick={() => {
-                        void downloadBillingDocument.mutateAsync(document);
+                        setBillingDownloadError("");
+                        void downloadBillingDocument
+                          .mutateAsync(document)
+                          .catch((err: unknown) => {
+                            setBillingDownloadError(
+                              normalizeApiError(err).message,
+                            );
+                          });
                       }}
                     >
                       <FiDownload className="mr-2" />
@@ -600,8 +734,111 @@ export default function BookingDetailPage() {
               </div>
             )}
           </section>
+
+          {canCancelBooking && (
+            <div className="rounded-3xl border border-red-100 bg-white p-4 shadow-sm">
+              <Button
+                type="button"
+                variant="danger"
+                outline
+                className="w-full"
+                onClick={openCancellationModal}
+              >
+                <FiXCircle className="mr-2" />
+                Cancel Booking
+              </Button>
+            </div>
+          )}
         </div>
       </div>
+
+      <Modal
+        isOpen={isCancellationModalOpen}
+        onClose={closeCancellationModal}
+        title="Cancel Booking"
+        size="md"
+        disableBackdropClose={cancelBooking.isPending}
+        disableEscapeClose={cancelBooking.isPending}
+      >
+        <div className="space-y-5">
+          <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-900">
+              Are you sure you want to cancel this booking?
+            </p>
+            <div className="mt-1 space-y-1 text-xs text-red-700">
+              <p>Ref: {booking.bookingRef}</p>
+              <p>
+                {formatDate(booking.from)} - {formatDate(booking.to)}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 text-xs text-amber-900">
+            {cancellationPreview.isPending ? (
+              <p className="font-semibold">Checking cancellation policy...</p>
+            ) : cancellationPreviewData ? (
+              <div className="space-y-1">
+                <p className="font-semibold">
+                  Refund preview:{" "}
+                  {formatPrice(cancellationPreviewData.refundableAmount)}
+                </p>
+                {cancellationPreviewData.nonRefundableAmount > 0 && (
+                  <p>
+                    Non-refundable amount:{" "}
+                    {formatPrice(cancellationPreviewData.nonRefundableAmount)}
+                  </p>
+                )}
+                <p>{cancellationPreviewData.guestPolicyText}</p>
+              </div>
+            ) : (
+              <p className="font-semibold">
+                Cancellation preview is unavailable.
+              </p>
+            )}
+          </div>
+
+          <label className="block">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Reason
+            </span>
+            <textarea
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              rows={3}
+              className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50"
+              placeholder="Optional cancellation reason"
+              disabled={cancelBooking.isPending || cancellationPreview.isPending}
+            />
+          </label>
+
+          {cancellationError && (
+            <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {cancellationError}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={cancelBooking.isPending || cancellationPreview.isPending}
+              onClick={closeCancellationModal}
+            >
+              Keep Booking
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={cancelBooking.isPending || cancellationPreview.isPending}
+              onClick={() => {
+                void confirmCancellation();
+              }}
+            >
+              {cancelBooking.isPending ? "Cancelling..." : "Confirm Cancel"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isRefundModalOpen}

@@ -12,6 +12,8 @@ export interface BookingPolicyShape {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string | number | Prisma.Decimal;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: Prisma.JsonValue;
   refundRules: Prisma.JsonValue;
   earlyCheckoutRules: Prisma.JsonValue;
@@ -67,6 +69,8 @@ export const defaultBookingPolicyCreateData: Omit<
   advancePaymentType: AdvancePaymentType.FIXED_AMOUNT,
   advancePaymentValue: new Prisma.Decimal(10),
   tokenRefundable: false,
+  checkInTime: "12:00",
+  checkOutTime: "11:00",
   cancellationRules: toInputJson(defaultCancellationRules),
   refundRules: toInputJson(defaultRefundRules),
   earlyCheckoutRules: toInputJson(defaultEarlyCheckoutRules),

@@ -363,9 +363,6 @@ export const createReceiptForPayment = async (
       client,
     );
     const balance = maxDecimal(zeroDecimal, booking.totalAmount.minus(cumulativePaid));
-    if (balance.equals(zeroDecimal)) {
-      await createInvoiceForBooking(payment.bookingId, client);
-    }
 
     const documentNumber = await repo.nextDocumentNumber(
       payment.propertyId,
@@ -595,7 +592,13 @@ export const renderDocumentPdf = async (document: BillingDocumentDTO) => {
     } finally {
       await browser.close();
     }
-  } catch {
+  } catch (error) {
+    console.error("Billing PDF render failed", {
+      documentId: document.id,
+      documentNumber: document.documentNumber,
+      error,
+    });
+
     throw new HttpError(
       503,
       "PDF_RENDER_UNAVAILABLE",

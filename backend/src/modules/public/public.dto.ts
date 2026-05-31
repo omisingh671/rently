@@ -31,6 +31,8 @@ export interface PublicBookingPolicyDTO {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: number;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
   cancellationRules: PublicBookingPolicyRulesDTO;
   refundRules: PublicBookingPolicyRulesDTO;
   earlyCheckoutRules: PublicBookingPolicyRulesDTO;
@@ -226,6 +228,8 @@ export interface PublicBookingDTO {
   paymentPolicy: BookingPaymentPolicy;
   paymentStatus: BookingPaymentStatus;
   upfrontAmount: number;
+  tokenPaidAmount: number;
+  tokenPaymentStatus: "NOT_REQUIRED" | "UNPAID" | "PAID";
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;

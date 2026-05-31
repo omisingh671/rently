@@ -191,7 +191,8 @@ export const createManualPayment = async (
     }
 
     const fallbackAmount =
-      purpose === PaymentPurpose.BALANCE
+      purpose === PaymentPurpose.BALANCE ||
+      purpose === PaymentPurpose.FULL_PAYMENT
         ? balanceBefore
         : minDecimal(booking.upfrontAmount, balanceBefore);
     const amount = input.amount !== undefined
@@ -279,9 +280,10 @@ export const createManualPayment = async (
         ...(input.note !== undefined && { note: input.note }),
         paidAt: input.paidAt ?? new Date(),
         metadataSource:
-          purpose === PaymentPurpose.BALANCE
+          purpose === PaymentPurpose.BALANCE && input.actorUserId !== undefined
             ? "DASHBOARD_BALANCE_PAYMENT"
             : "PUBLIC_MANUAL_PAYMENT",
+        ...(input.metadata !== undefined && { metadata: input.metadata }),
       },
       tx,
     );

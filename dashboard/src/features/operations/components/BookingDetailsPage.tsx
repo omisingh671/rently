@@ -69,20 +69,47 @@ const bookingStatuses: BookingStatus[] = [
   "NO_SHOW",
 ];
 
-const paymentMethods = [
+const paymentMethods: PaymentMethod[] = [
   "CASH",
   "UPI_MANUAL",
   "BANK_TRANSFER",
+  "CARD_POS",
   "MANUAL",
-] as const;
+];
 
 const refundMethods: PaymentMethod[] = [
   "CASH",
   "UPI_MANUAL",
   "BANK_TRANSFER",
+  "CARD_POS",
   "MANUAL",
   "ONLINE_GATEWAY",
 ];
+
+const paymentMethodsRequiringReference = new Set<PaymentMethod>([
+  "UPI_MANUAL",
+  "BANK_TRANSFER",
+  "CARD_POS",
+]);
+
+const getPaymentMethodLabel = (method: PaymentMethod) => {
+  if (method === "CARD_POS") return "Card / POS";
+  return method.replaceAll("_", " ");
+};
+
+const getPaymentReferenceLabel = (method: PaymentMethod) => {
+  if (method === "UPI_MANUAL") return "UPI transaction/reference ID";
+  if (method === "BANK_TRANSFER") return "Bank UTR/reference number";
+  if (method === "CARD_POS") return "POS/card machine transaction ID";
+  return "Reference ID";
+};
+
+const getPayerDetailLabel = (method: PaymentMethod) => {
+  if (method === "UPI_MANUAL") return "Payer UPI VPA";
+  if (method === "BANK_TRANSFER") return "Bank account hint";
+  if (method === "CARD_POS") return "Card last 4";
+  return "Payer detail";
+};
 
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat("en-IN", {
@@ -245,8 +272,9 @@ export default function BookingDetailsPage() {
   const [selectedStatus, setSelectedStatus] =
     useState<BookingStatus>("PENDING");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] =
-    useState<(typeof paymentMethods)[number]>("CASH");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [paymentReferenceId, setPaymentReferenceId] = useState("");
+  const [paymentPayerDetail, setPaymentPayerDetail] = useState("");
   const [paymentPaidAt, setPaymentPaidAt] = useState("");
   const [refundPaymentId, setRefundPaymentId] = useState("");
   const [refundAmount, setRefundAmount] = useState("");
@@ -280,6 +308,11 @@ export default function BookingDetailsPage() {
       .map((document) => [document.paymentId, document]),
   );
   const isBillingMutating = billingActions.isMutating;
+  const canGenerateInvoice =
+    booking !== undefined && Number(booking.balanceAmount) <= 0;
+  const handleBillingError = (err: unknown) => {
+    setActionError(normalizeApiError(err).message);
+  };
 
   const roomsQuery = useQuery({
     queryKey: booking
@@ -343,6 +376,8 @@ export default function BookingDetailsPage() {
     if (type === "recordPayment" && booking) {
       setPaymentAmount(booking.balanceAmount);
       setPaymentMethod("CASH");
+      setPaymentReferenceId("");
+      setPaymentPayerDetail("");
       setPaymentPaidAt(new Date().toISOString().slice(0, 16));
     }
     if (type === "recordRefund" && booking && paymentId) {
@@ -360,6 +395,8 @@ export default function BookingDetailsPage() {
     setNote("");
     setPaymentAmount("");
     setPaymentMethod("CASH");
+    setPaymentReferenceId("");
+    setPaymentPayerDetail("");
     setPaymentPaidAt("");
     setRefundPaymentId("");
     setRefundAmount("");
@@ -395,10 +432,22 @@ export default function BookingDetailsPage() {
           setActionError("Enter a valid payment amount.");
           return;
         }
+        const requiresPaymentReference =
+          paymentMethodsRequiringReference.has(paymentMethod);
+        if (requiresPaymentReference && !paymentReferenceId.trim()) {
+          setActionError("Reference ID is required for this payment method.");
+          return;
+        }
 
         await recordBalancePayment({
           amount,
           method: paymentMethod,
+          ...(requiresPaymentReference && paymentReferenceId.trim()
+            ? { referenceId: paymentReferenceId.trim() }
+            : {}),
+          ...(requiresPaymentReference && paymentPayerDetail.trim()
+            ? { payerDetail: paymentPayerDetail.trim() }
+            : {}),
           ...(note.trim() && { note: note.trim() }),
           ...(paymentPaidAt && {
             paidAt: new Date(paymentPaidAt).toISOString(),
@@ -503,6 +552,12 @@ export default function BookingDetailsPage() {
     booking !== undefined &&
     (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
     (Number(booking.paidAmount) > 0 || booking.refundRequest !== null);
+  const canActOnRefundRequest =
+    booking?.refundRequest !== null &&
+    booking?.refundRequest !== undefined &&
+    (booking.refundRequest.status === "REQUESTED" ||
+      booking.refundRequest.status === "IN_REVIEW") &&
+    Number(booking.refundableAmount) > 0;
   const canAssignRoom =
     booking !== undefined &&
     booking.bookingType !== "MULTI_ROOM" &&
@@ -887,6 +942,8 @@ export default function BookingDetailsPage() {
                               ? "bg-amber-100 text-amber-800 border-amber-200"
                               : booking.refundRequest.status === "IN_REVIEW"
                                 ? "bg-blue-50 text-blue-700 border-blue-100"
+                                : booking.refundRequest.status === "FULFILLED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-100"
                                 : "bg-slate-100 text-slate-700 border-slate-200"
                           }`}
                         >
@@ -922,40 +979,38 @@ export default function BookingDetailsPage() {
                 </div>
               </div>
 
-              {booking.refundRequest &&
-                (booking.refundRequest.status === "REQUESTED" ||
-                  booking.refundRequest.status === "IN_REVIEW") && (
-                  <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-amber-200/50 pt-4">
-                    {booking.refundRequest.status === "REQUESTED" && (
-                      <Button
-                        type="button"
-                        size="md"
-                        variant="secondary"
-                        disabled={isMutating}
-                        onClick={() => {
-                          void updateRefundRequest({
-                            requestId: booking.refundRequest!.id,
-                            payload: { status: "IN_REVIEW" },
-                          }).catch((err: unknown) => {
-                            setActionError(normalizeApiError(err).message);
-                          });
-                        }}
-                      >
-                        Mark In Review
-                      </Button>
-                    )}
+              {canActOnRefundRequest && (
+                <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-amber-200/50 pt-4">
+                  {booking.refundRequest!.status === "REQUESTED" && (
                     <Button
                       type="button"
                       size="md"
-                      variant="danger"
-                      outline
+                      variant="secondary"
                       disabled={isMutating}
-                      onClick={() => openAction("rejectRefundRequest")}
+                      onClick={() => {
+                        void updateRefundRequest({
+                          requestId: booking.refundRequest!.id,
+                          payload: { status: "IN_REVIEW" },
+                        }).catch((err: unknown) => {
+                          setActionError(normalizeApiError(err).message);
+                        });
+                      }}
                     >
-                      Reject
+                      Mark In Review
                     </Button>
-                  </div>
-                )}
+                  )}
+                  <Button
+                    type="button"
+                    size="md"
+                    variant="danger"
+                    outline
+                    disabled={isMutating}
+                    onClick={() => openAction("rejectRefundRequest")}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1001,13 +1056,38 @@ export default function BookingDetailsPage() {
                         </span>
                         <span className="text-slate-300">•</span>
                         <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
-                          {payment.method.replaceAll("_", " ")}
+                          {getPaymentMethodLabel(payment.method)}
                         </span>
                         <span className="text-slate-300">•</span>
                         <span>
                           {formatDateTime(payment.paidAt ?? payment.createdAt)}
                         </span>
                       </div>
+
+                      {(payment.referenceId || payment.payerDetail) && (
+                        <div className="mt-3 grid gap-2 rounded-lg border border-slate-200/60 bg-white px-3.5 py-3 text-xs text-slate-600 sm:grid-cols-2">
+                          {payment.referenceId && (
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                Reference
+                              </span>
+                              <span className="mt-0.5 block font-semibold text-slate-800">
+                                {payment.referenceId}
+                              </span>
+                            </div>
+                          )}
+                          {payment.payerDetail && (
+                            <div>
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                Payer detail
+                              </span>
+                              <span className="mt-0.5 block font-semibold text-slate-800">
+                                {payment.payerDetail}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-200/60 pt-4 text-xs font-medium text-slate-600">
                         <div className="flex items-center gap-1.5">
@@ -1038,7 +1118,7 @@ export default function BookingDetailsPage() {
                             >
                               <span className="flex items-center gap-1.5 font-medium text-slate-600">
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                {refund.method.replaceAll("_", " ")} refund /{" "}
+                                {getPaymentMethodLabel(refund.method)} refund /{" "}
                                 {refund.status.replaceAll("_", " ")}
                               </span>
                               <span className="font-bold text-amber-800">
@@ -1063,7 +1143,10 @@ export default function BookingDetailsPage() {
                                   payment.id,
                                 );
                                 if (receipt) {
-                                  void billingActions.downloadDocument(receipt);
+                                  setActionError("");
+                                  void billingActions
+                                    .downloadDocument(receipt)
+                                    .catch(handleBillingError);
                                 }
                               }}
                             >
@@ -1077,7 +1160,10 @@ export default function BookingDetailsPage() {
                               icon={<FiFileText />}
                               disabled={isBillingMutating}
                               onClick={() => {
-                                void billingActions.generateReceipt(payment.id);
+                                setActionError("");
+                                void billingActions
+                                  .generateReceipt(payment.id)
+                                  .catch(handleBillingError);
                               }}
                             >
                               Generate Receipt
@@ -1137,11 +1223,18 @@ export default function BookingDetailsPage() {
                   icon={<FiDownload />}
                   disabled={isBillingMutating}
                   onClick={() => {
-                    void billingActions.downloadDocument(invoiceDocument);
+                    setActionError("");
+                    void billingActions
+                      .downloadDocument(invoiceDocument)
+                      .catch(handleBillingError);
                   }}
                 >
                   Download Invoice
                 </Button>
+              ) : !canGenerateInvoice ? (
+                <p className="text-right text-xs text-slate-500">
+                  Full payment is required before invoice generation.
+                </p>
               ) : (
                 <Button
                   type="button"
@@ -1151,7 +1244,10 @@ export default function BookingDetailsPage() {
                   disabled={isBillingMutating}
                   onClick={() => {
                     if (booking) {
-                      void billingActions.generateInvoice(booking.id);
+                      setActionError("");
+                      void billingActions
+                        .generateInvoice(booking.id)
+                        .catch(handleBillingError);
                     }
                   }}
                 >
@@ -1189,7 +1285,10 @@ export default function BookingDetailsPage() {
                       icon={<FiDownload />}
                       disabled={isBillingMutating}
                       onClick={() => {
-                        void billingActions.downloadDocument(document);
+                        setActionError("");
+                        void billingActions
+                          .downloadDocument(document)
+                          .catch(handleBillingError);
                       }}
                     >
                       Download
@@ -1209,6 +1308,8 @@ export default function BookingDetailsPage() {
         selectedStatus={selectedStatus}
         paymentAmount={paymentAmount}
         paymentMethod={paymentMethod}
+        paymentReferenceId={paymentReferenceId}
+        paymentPayerDetail={paymentPayerDetail}
         paymentPaidAt={paymentPaidAt}
         refundAmount={refundAmount}
         refundMethod={refundMethod}
@@ -1220,6 +1321,8 @@ export default function BookingDetailsPage() {
         onStatusChange={setSelectedStatus}
         onPaymentAmountChange={setPaymentAmount}
         onPaymentMethodChange={setPaymentMethod}
+        onPaymentReferenceIdChange={setPaymentReferenceId}
+        onPaymentPayerDetailChange={setPaymentPayerDetail}
         onPaymentPaidAtChange={setPaymentPaidAt}
         onRefundAmountChange={setRefundAmount}
         onRefundMethodChange={setRefundMethod}
@@ -1326,6 +1429,8 @@ function ConfirmationModal({
   selectedStatus,
   paymentAmount,
   paymentMethod,
+  paymentReferenceId,
+  paymentPayerDetail,
   paymentPaidAt,
   refundAmount,
   refundMethod,
@@ -1337,6 +1442,8 @@ function ConfirmationModal({
   onStatusChange,
   onPaymentAmountChange,
   onPaymentMethodChange,
+  onPaymentReferenceIdChange,
+  onPaymentPayerDetailChange,
   onPaymentPaidAtChange,
   onRefundAmountChange,
   onRefundMethodChange,
@@ -1348,7 +1455,9 @@ function ConfirmationModal({
   selectedRoomId: string;
   selectedStatus: BookingStatus;
   paymentAmount: string;
-  paymentMethod: (typeof paymentMethods)[number];
+  paymentMethod: PaymentMethod;
+  paymentReferenceId: string;
+  paymentPayerDetail: string;
   paymentPaidAt: string;
   refundAmount: string;
   refundMethod: PaymentMethod;
@@ -1359,17 +1468,23 @@ function ConfirmationModal({
   onRoomChange: (value: string) => void;
   onStatusChange: (value: BookingStatus) => void;
   onPaymentAmountChange: (value: string) => void;
-  onPaymentMethodChange: (value: (typeof paymentMethods)[number]) => void;
+  onPaymentMethodChange: (value: PaymentMethod) => void;
+  onPaymentReferenceIdChange: (value: string) => void;
+  onPaymentPayerDetailChange: (value: string) => void;
   onPaymentPaidAtChange: (value: string) => void;
   onRefundAmountChange: (value: string) => void;
   onRefundMethodChange: (value: PaymentMethod) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const paymentReferenceRequired =
+    action?.type === "recordPayment" &&
+    paymentMethodsRequiringReference.has(paymentMethod);
   const canSubmit =
     !isSubmitting &&
     (action?.type !== "assignRoom" || selectedRoomId !== "") &&
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
+    (!paymentReferenceRequired || paymentReferenceId.trim().length > 0) &&
     (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
     (action?.type === "assignRoom" ||
       !action?.requiresNote ||
@@ -1453,19 +1568,55 @@ function ConfirmationModal({
                   value={paymentMethod}
                   disabled={isSubmitting}
                   onChange={(event) =>
-                    onPaymentMethodChange(
-                      event.target.value as (typeof paymentMethods)[number],
-                    )
+                    onPaymentMethodChange(event.target.value as PaymentMethod)
                   }
                   className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
                 >
                   {paymentMethods.map((method) => (
                     <option key={method} value={method}>
-                      {method.replaceAll("_", " ")}
+                      {getPaymentMethodLabel(method)}
                     </option>
                   ))}
                 </select>
               </label>
+              {paymentReferenceRequired && (
+                <>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="font-medium text-slate-700">
+                      {getPaymentReferenceLabel(paymentMethod)}
+                    </span>
+                    <input
+                      type="text"
+                      value={paymentReferenceId}
+                      required
+                      maxLength={100}
+                      disabled={isSubmitting}
+                      onChange={(event) =>
+                        onPaymentReferenceIdChange(event.target.value)
+                      }
+                      className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                    />
+                  </label>
+                  <label className="block text-sm sm:col-span-2">
+                    <span className="font-medium text-slate-700">
+                      {getPayerDetailLabel(paymentMethod)}{" "}
+                      <span className="font-normal text-slate-400">
+                        optional
+                      </span>
+                    </span>
+                    <input
+                      type="text"
+                      value={paymentPayerDetail}
+                      maxLength={100}
+                      disabled={isSubmitting}
+                      onChange={(event) =>
+                        onPaymentPayerDetailChange(event.target.value)
+                      }
+                      className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
+                    />
+                  </label>
+                </>
+              )}
               <label className="block text-sm sm:col-span-2">
                 <span className="font-medium text-slate-700">Paid at</span>
                 <input
@@ -1507,7 +1658,7 @@ function ConfirmationModal({
                 >
                   {refundMethods.map((method) => (
                     <option key={method} value={method}>
-                      {method.replaceAll("_", " ")}
+                      {getPaymentMethodLabel(method)}
                     </option>
                   ))}
                 </select>
