@@ -196,6 +196,24 @@ export default function BookingDetailPage() {
     booking.policy.checkOutTime,
     "11:00",
   );
+  const paidDisplayAmount = booking.tokenPaidAmount;
+  const balancePaidDisplayAmount = Math.max(
+    0,
+    Math.min(
+      booking.totalPrice - paidDisplayAmount,
+      booking.paidAmount - paidDisplayAmount,
+    ),
+  );
+  const fullPaidDisplayAmount =
+    paidDisplayAmount <= 0 ? Math.min(booking.paidAmount, booking.totalPrice) : 0;
+  const showTokenAmountCard =
+    booking.paymentPolicy === "TOKEN_AT_BOOKING" &&
+    (paidDisplayAmount > 0 ||
+      (booking.status === "PENDING" &&
+        booking.tokenPaymentStatus === "UNPAID" &&
+        booking.paidAmount <= 0));
+  const showBalanceAmountCard = paidDisplayAmount > 0 && balancePaidDisplayAmount > 0;
+  const showPaidAmountCard = paidDisplayAmount <= 0 && fullPaidDisplayAmount > 0;
 
   const submitRefundRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -488,7 +506,7 @@ export default function BookingDetailPage() {
               ))}
 
               <div className="border-t border-slate-100 pt-4 mt-2">
-                <div className="flex justify-between text-base font-extrabold text-slate-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-base font-extrabold text-slate-900">
                   <span>Grand Total</span>
                   <span className="text-xl text-indigo-600">
                     {formatPrice(booking.totalPrice)}
@@ -496,7 +514,7 @@ export default function BookingDetailPage() {
                 </div>
               </div>
 
-              {booking.paymentPolicy === "TOKEN_AT_BOOKING" && (
+              {showTokenAmountCard && (
                 <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -528,6 +546,48 @@ export default function BookingDetailPage() {
                       Received {formatPrice(booking.tokenPaidAmount)}
                     </p>
                   )}
+                </div>
+              )}
+
+              {showBalanceAmountCard && (
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Balance Amount
+                      </p>
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {formatPrice(balancePaidDisplayAmount)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                      Paid
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">
+                    Received {formatPrice(balancePaidDisplayAmount)}
+                  </p>
+                </div>
+              )}
+
+              {showPaidAmountCard && (
+                <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Paid Amount
+                      </p>
+                      <p className="mt-1 text-lg font-black text-slate-900">
+                        {formatPrice(fullPaidDisplayAmount)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                      Paid
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">
+                    Received {formatPrice(fullPaidDisplayAmount)}
+                  </p>
                 </div>
               )}
 
