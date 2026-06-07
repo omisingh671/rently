@@ -58,7 +58,7 @@ export default function AmenitiesGrid({ iconSize = 20 }: AmenitiesGridProps) {
             key={a.id}
             type="button"
             onClick={() => toggleAmenity(a.id)}
-            className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:max-w-[250px] ${isSelected ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+            className={`group inline-flex max-w-full items-center gap-2 rounded-xl border px-4 py-2 text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:max-w-62.5 ${isSelected ? "border-indigo-500 bg-indigo-50 text-indigo-700 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
           >
             {Icon && (
               <Icon

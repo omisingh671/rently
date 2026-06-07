@@ -160,7 +160,7 @@ export default function VerticalStepsJourney({
                 {/* connector + card */}
                 <div className="flex items-center">
                   <div
-                    className="w-[30px] lg:w-[60px] border-t"
+                    className="w-7.5 lg:w-15 border-t"
                     style={{ borderColor: "var(--vsj-line)" }}
                   />
 

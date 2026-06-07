@@ -20,6 +20,7 @@
     "test:rbac": "tsx tests/dashboard-rbac.test.ts",
     "test:booking": "tsx tests/public-booking.test.ts",
     "test:payment": "tsx tests/public-payment.test.ts",
+    "test:reporting": "tsx tests/reporting-analytics.test.ts",
     "build:scripts": "tsc -p tsconfig.scripts.json"
   },
   "keywords": [],
@@ -46,6 +47,7 @@
     "typescript-eslint": "^8.59.1"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1058.0",
     "@prisma/adapter-mariadb": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "bcrypt": "^6.0.0",

@@ -261,7 +261,12 @@ export default function PricingPage() {
 
   const submitProduct = async () => {
     setError(null);
-    const payload = productSchema.parse(productForm) satisfies ProductPayload;
+    const result = productSchema.safeParse(productForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const payload = result.data satisfies ProductPayload;
     try {
       if (editingProduct) {
         await actions.updateProduct({
@@ -273,14 +278,19 @@ export default function PricingPage() {
       }
       setProductForm(emptyProduct);
       setEditingProduct(null);
-    } catch {
-      setError("Could not save product");
+    } catch (error) {
+      setError(normalizeApiError(error).message);
     }
   };
 
   const submitRate = async () => {
     setError(null);
-    const parsed = rateSchema.parse(rateForm);
+    const result = rateSchema.safeParse(rateForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const parsed = result.data;
     const payload: RatePayload = {
       productId: parsed.productId,
       rateType: parsed.rateType,
@@ -318,7 +328,7 @@ export default function PricingPage() {
     setError(null);
     const result = taxSchema.safeParse(taxForm);
     if (!result.success) {
-      setError("Tax rate / amount is required");
+      setError(result.error.issues.map((e) => e.message).join(", "));
       return;
     }
 
@@ -349,7 +359,12 @@ export default function PricingPage() {
 
   const submitCoupon = async () => {
     setError(null);
-    const parsed = couponSchema.parse(couponForm);
+    const result = couponSchema.safeParse(couponForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const parsed = result.data;
     const payload: CouponPayload = {
       code: parsed.code,
       name: parsed.name,
@@ -372,8 +387,8 @@ export default function PricingPage() {
       }
       setCouponForm(emptyCoupon);
       setEditingCoupon(null);
-    } catch {
-      setError("Could not save coupon");
+    } catch (error) {
+      setError(normalizeApiError(error).message);
     }
   };
 

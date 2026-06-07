@@ -49,7 +49,7 @@ export default function PropertySnapshot() {
               <img
                 src={propertySnapshot}
                 alt="Interior preview of property"
-                className="w-full h-[420px] md:h-[520px] object-cover block"
+                className="w-full h-105 md:h-130 object-cover block"
               />
             </div>
 

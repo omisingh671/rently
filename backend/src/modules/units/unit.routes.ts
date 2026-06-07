@@ -4,19 +4,21 @@ import * as controller from "./unit.controller.js";
 
 import { authenticate } from "@/common/middleware/auth.middleware.js";
 import { authorize } from "@/common/middleware/role.middleware.js";
+import { requirePasswordChangeComplete } from "@/common/middleware/password-change.middleware.js";
+import { UserRole } from "@/generated/prisma/enums.js";
 
 const router = Router();
 
 /**
  * All Unit routes require authentication
  */
-router.use(authenticate);
+router.use(authenticate, requirePasswordChangeComplete);
 
 /**
  * Admin-only routes
- * Adjust roles later if MANAGER should be allowed
  */
-router.use(authorize(["ADMIN"]));
+router.use(authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]));
+
 
 /**
  * Nested under Property

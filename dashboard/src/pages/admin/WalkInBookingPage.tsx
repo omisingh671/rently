@@ -24,6 +24,7 @@ import type {
   ManualBookingAvailabilityItem,
 } from "@/features/operations/types";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
+import { normalizeApiError } from "@/utils/errors";
 
 type ManualBookingForm = {
   guestName: string;
@@ -178,9 +179,9 @@ export default function WalkInBookingPage() {
       setAvailabilityError("");
       setSelectedSpaceIds([]);
     },
-    onError: () => {
+    onError: (error) => {
       setAvailability(null);
-      setAvailabilityError("Could not check availability. Try again.");
+      setAvailabilityError(normalizeApiError(error).message);
       setSelectedSpaceIds([]);
     },
   });
@@ -219,8 +220,8 @@ export default function WalkInBookingPage() {
       });
       navigate(adminPath(ADMIN_ROUTES.BOOKINGS));
     },
-    onError: () => {
-      setSubmitError("Could not create booking. Recheck availability and try again.");
+    onError: (error) => {
+      setSubmitError(normalizeApiError(error).message);
     },
   });
 
@@ -398,6 +399,32 @@ export default function WalkInBookingPage() {
             <StayFields form={form} disabled={createBooking.isPending} onChange={updateForm} />
           </div>
 
+          <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-end">
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700">Coupon code</span>
+              <input
+                type="text"
+                value={form.couponCode}
+                disabled={createBooking.isPending}
+                placeholder="DISCOUNT20"
+                onChange={(event) =>
+                  updateForm({ couponCode: event.target.value.toUpperCase() })
+                }
+                className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100"
+              />
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant="info"
+              className="h-10 whitespace-nowrap shadow-md shadow-sky-100 lg:justify-self-end"
+              disabled={!canCheckAvailability}
+              onClick={() => checkAvailability.mutate()}
+            >
+              {checkAvailability.isPending ? "Checking..." : "Check availability"}
+            </Button>
+          </div>
+
           <div className="mt-5">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -410,15 +437,6 @@ export default function WalkInBookingPage() {
                     : "Select dates and check availability."}
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!canCheckAvailability}
-                onClick={() => checkAvailability.mutate()}
-              >
-                {checkAvailability.isPending ? "Checking..." : "Check availability"}
-              </Button>
             </div>
 
             {availabilityError && (
@@ -634,19 +652,6 @@ function StayFields({
           <option value="AC">AC</option>
         </select>
       </label>
-      <label className="block text-sm">
-        <span className="font-medium text-slate-700">Coupon code</span>
-        <input
-          type="text"
-          value={form.couponCode}
-          disabled={disabled}
-          placeholder="DISCOUNT20"
-          onChange={(event) =>
-            onChange({ couponCode: event.target.value.toUpperCase() })
-          }
-          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        />
-      </label>
     </div>
   );
 }
@@ -685,7 +690,7 @@ function SpaceAvailabilityList({
   }
 
   return (
-    <div className="max-h-[750px] overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
+    <div className="max-h-187.5 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
       <div className="grid gap-2 xl:grid-cols-2">
         {availability.items.map((item) => (
           <SpaceRow

@@ -13,8 +13,14 @@ import {
   UserRole,
 } from "@/generated/prisma/client.js";
 import * as authService from "@/modules/auth/auth.service.js";
-import { updateBookingPolicySchema } from "@/modules/dashboard/dashboard.schema.js";
-import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import { updateBookingPolicySchema } from "@/modules/booking-policy/booking-policy.validation.js";
+import * as bookingsService from "@/modules/bookings/bookings.service.js";
+import * as usersService from "@/modules/users/users.service.js";
+import * as sessionsService from "@/modules/sessions/sessions.service.js";
+import * as propertyAssignmentsService from "@/modules/property-assignments/property-assignments.service.js";
+import * as bookingPolicyService from "@/modules/booking-policy/booking-policy.service.js";
+import * as amenitiesService from "@/modules/amenities/amenities.service.js";
+import * as propertiesService from "@/modules/properties/properties.service.js";
 
 const testId = `rbac-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
@@ -97,6 +103,7 @@ before(async () => {
   const propertyA = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-property-a`,
       name: `${testId} Property A`,
       address: "Test Address A",
       city: "Hyderabad",
@@ -109,6 +116,7 @@ before(async () => {
   const propertyB = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-property-b`,
       name: `${testId} Property B`,
       address: "Test Address B",
       city: "Hyderabad",
@@ -191,7 +199,7 @@ after(async () => {
 });
 
 test("SUPER_ADMIN can access all dashboard properties", async () => {
-  const result = await dashboardService.listProperties(state.superAdminId, {
+  const result = await propertiesService.listProperties(state.superAdminId, {
     page: 1,
     limit: 50,
   });
@@ -202,7 +210,7 @@ test("SUPER_ADMIN can access all dashboard properties", async () => {
 });
 
 test("ADMIN can access only assigned property data", async () => {
-  const result = await dashboardService.listProperties(state.adminId, {
+  const result = await propertiesService.listProperties(state.adminId, {
     page: 1,
     limit: 50,
   });
@@ -213,14 +221,14 @@ test("ADMIN can access only assigned property data", async () => {
   );
 
   await assertHttpError(
-    () => dashboardService.getPropertyById(state.adminId, state.propertyBId),
+    () => propertiesService.getPropertyById(state.adminId, state.propertyBId),
     404,
     "PROPERTY_NOT_FOUND",
   );
 });
 
 test("dashboard booking policy GET does not reset saved values", async () => {
-  const saved = await dashboardService.updateBookingPolicy(
+  const saved = await bookingPolicyService.updateBookingPolicy(
     state.adminId,
     state.propertyAId,
     {
@@ -252,7 +260,7 @@ test("dashboard booking policy GET does not reset saved values", async () => {
 
   assert.equal(saved.advancePaymentValue, "5");
 
-  const reloaded = await dashboardService.getBookingPolicy(
+  const reloaded = await bookingPolicyService.getBookingPolicy(
     state.adminId,
     state.propertyAId,
   );
@@ -288,7 +296,7 @@ test("dashboard booking policy validation rejects invalid stay times", () => {
 });
 
 test("MANAGER can access operations modules only", async () => {
-  await dashboardService.listBookings(state.managerId, {
+  await bookingsService.listBookings(state.managerId, {
     propertyId: state.propertyAId,
     page: 1,
     limit: 10,
@@ -296,7 +304,7 @@ test("MANAGER can access operations modules only", async () => {
 
   await assertHttpError(
     () =>
-      dashboardService.listAmenities(state.managerId, {
+      amenitiesService.listAmenities(state.managerId, {
         page: 1,
         limit: 10,
       }),
@@ -306,12 +314,12 @@ test("MANAGER can access operations modules only", async () => {
 });
 
 test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
-  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+  const amenity = await amenitiesService.createAmenity(state.superAdminId, {
     name: `${testId} Catalog WiFi`,
     icon: "wifi",
   });
 
-  const listResult = await dashboardService.listAmenities(state.adminId, {
+  const listResult = await amenitiesService.listAmenities(state.adminId, {
     page: 1,
     limit: 50,
   });
@@ -319,7 +327,7 @@ test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
 
   await assertHttpError(
     () =>
-      dashboardService.createAmenity(state.adminId, {
+      amenitiesService.createAmenity(state.adminId, {
         name: `${testId} Pool`,
         icon: "waves",
       }),
@@ -329,7 +337,7 @@ test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
 
   await assertHttpError(
     () =>
-      dashboardService.updateAmenity(state.adminId, amenity.id, {
+      amenitiesService.updateAmenity(state.adminId, amenity.id, {
         name: `${testId} Fast WiFi`,
       }),
     403,
@@ -338,13 +346,13 @@ test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
 });
 
 test("property amenity assignments are scoped to assigned properties", async () => {
-  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+  const amenity = await amenitiesService.createAmenity(state.superAdminId, {
     name: `${testId} Assignment WiFi`,
     icon: "wifi",
   });
 
   const assigned =
-    await dashboardService.replacePropertyAmenityAssignments(
+    await amenitiesService.replacePropertyAmenityAssignments(
       state.adminId,
       state.propertyAId,
       {
@@ -354,7 +362,7 @@ test("property amenity assignments are scoped to assigned properties", async () 
 
   assert.deepEqual(assigned.amenityIds, [amenity.id]);
 
-  const reloaded = await dashboardService.getPropertyAmenityAssignments(
+  const reloaded = await amenitiesService.getPropertyAmenityAssignments(
     state.adminId,
     state.propertyAId,
   );
@@ -362,7 +370,7 @@ test("property amenity assignments are scoped to assigned properties", async () 
 
   await assertHttpError(
     () =>
-      dashboardService.replacePropertyAmenityAssignments(
+      amenitiesService.replacePropertyAmenityAssignments(
         state.adminId,
         state.propertyBId,
         {
@@ -375,18 +383,18 @@ test("property amenity assignments are scoped to assigned properties", async () 
 });
 
 test("property amenity assignments reject inactive amenities", async () => {
-  const amenity = await dashboardService.createAmenity(state.superAdminId, {
+  const amenity = await amenitiesService.createAmenity(state.superAdminId, {
     name: `${testId} Inactive Amenity`,
     icon: "wifi",
   });
 
-  await dashboardService.updateAmenity(state.superAdminId, amenity.id, {
+  await amenitiesService.updateAmenity(state.superAdminId, amenity.id, {
     isActive: false,
   });
 
   await assertHttpError(
     () =>
-      dashboardService.replacePropertyAmenityAssignments(
+      amenitiesService.replacePropertyAmenityAssignments(
         state.adminId,
         state.propertyAId,
         {
@@ -401,7 +409,7 @@ test("property amenity assignments reject inactive amenities", async () => {
 test("direct ID access is blocked across property boundaries", async () => {
   await assertHttpError(
     () =>
-      dashboardService.listBookings(state.adminId, {
+      bookingsService.listBookings(state.adminId, {
         propertyId: state.propertyBId,
         page: 1,
         limit: 10,
@@ -414,7 +422,7 @@ test("direct ID access is blocked across property boundaries", async () => {
 test("ADMIN cannot access inventory, pricing, or assignments outside scope", async () => {
   await assertHttpError(
     () =>
-      dashboardService.createPropertyAssignment(state.adminId, {
+      propertyAssignmentsService.createPropertyAssignment(state.adminId, {
         propertyId: state.propertyBId,
         userId: state.managerId,
         role: PropertyAssignmentRole.MANAGER,
@@ -427,7 +435,7 @@ test("ADMIN cannot access inventory, pricing, or assignments outside scope", asy
 test("property can have only one primary admin assignment", async () => {
   await assertHttpError(
     () =>
-      dashboardService.createPropertyAssignment(state.superAdminId, {
+      propertyAssignmentsService.createPropertyAssignment(state.superAdminId, {
         propertyId: state.propertyAId,
         userId: state.otherAdminId,
         role: PropertyAssignmentRole.ADMIN,
@@ -459,17 +467,17 @@ test("SUPER_ADMIN can list all users and non-super-admin roles cannot", async ()
     },
   });
 
-  const result = await dashboardService.listUsers(state.superAdminId, {
+  const result = await usersService.listUsersForDashboard(state.superAdminId, {
     page: 1,
     limit: 50,
     role: UserRole.GUEST,
   });
 
-  assert.ok(result.items.some((user) => user.id === guest.id));
+  assert.ok(result.items.some((user: { id: string }) => user.id === guest.id));
 
   await assertHttpError(
     () =>
-      dashboardService.listUsers(state.adminId, {
+      usersService.listUsersForDashboard(state.adminId, {
         page: 1,
         limit: 10,
       }),
@@ -515,7 +523,7 @@ test("SUPER_ADMIN role changes are conservative and clean incompatible assignmen
     },
   });
 
-  const updated = await dashboardService.updateUserRole(
+  const updated = await usersService.updateUserRole(
     state.superAdminId,
     managedAdmin.id,
     { role: UserRole.GUEST },
@@ -535,7 +543,7 @@ test("SUPER_ADMIN role changes are conservative and clean incompatible assignmen
 
   await assertHttpError(
     () =>
-      dashboardService.updateUserRole(state.superAdminId, state.superAdminId, {
+      usersService.updateUserRole(state.superAdminId, state.superAdminId, {
         role: UserRole.ADMIN,
       }),
     400,
@@ -544,7 +552,7 @@ test("SUPER_ADMIN role changes are conservative and clean incompatible assignmen
 
   await assertHttpError(
     () =>
-      dashboardService.updateUserRole(
+      usersService.updateUserRole(
         state.superAdminId,
         protectedSuperAdmin.id,
         {
@@ -568,7 +576,7 @@ test("SUPER_ADMIN can trigger reset tokens and manage forced password change", a
     },
   });
 
-  await dashboardService.sendUserPasswordResetEmail(
+  await usersService.sendUserPasswordResetEmail(
     state.superAdminId,
     forceUser.id,
   );
@@ -578,7 +586,7 @@ test("SUPER_ADMIN can trigger reset tokens and manage forced password change", a
     1,
   );
 
-  const updated = await dashboardService.updateForcePasswordChange(
+  const updated = await usersService.updateForcePasswordChange(
     state.superAdminId,
     forceUser.id,
     { mustChangePassword: true },
@@ -654,7 +662,7 @@ test("SUPER_ADMIN session management preserves current self session", async () =
     ],
   });
 
-  const sessions = await dashboardService.listSessions(
+  const sessions = await sessionsService.listSessions(
     state.superAdminId,
     { page: 1, limit: 50 },
     currentRefreshToken,
@@ -666,7 +674,7 @@ test("SUPER_ADMIN session management preserves current self session", async () =
     ),
   );
 
-  await dashboardService.revokeUserSessions(
+  await usersService.revokeUserSessions(
     state.superAdminId,
     state.superAdminId,
     currentRefreshToken,
@@ -685,6 +693,6 @@ test("SUPER_ADMIN session management preserves current self session", async () =
     0,
   );
 
-  await dashboardService.revokeUserSessions(state.superAdminId, target.id);
+  await usersService.revokeUserSessions(state.superAdminId, target.id);
   assert.equal(await prisma.session.count({ where: { userId: target.id } }), 0);
 });

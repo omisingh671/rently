@@ -150,7 +150,7 @@ export default function Button({
     sizeMap[size],
     variantClasses,
     widthClass,
-    "cursor-pointer",
+    "cursor-pointer disabled:cursor-not-allowed disabled:opacity-60",
     className
   );
 

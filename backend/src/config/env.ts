@@ -27,17 +27,56 @@ const rawEnvSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
   PUBLIC_ENQUIRY_RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
   PUBLIC_BOOKING_RATE_LIMIT_MAX: z.coerce.number().int().positive().optional(),
+
+  // Storage
+  STORAGE_PROVIDER: z.enum(["local", "s3"]).optional(),
+  AWS_REGION: z.string().min(1).optional(),
+  S3_UPLOAD_BUCKET: z.string().min(1).optional(),
+  S3_UPLOAD_PUBLIC_BASE_URL: z.string().url().optional(),
+  S3_UPLOAD_PREFIX: z.string().min(1).optional(),
 });
 
-const raw = rawEnvSchema.superRefine((value, ctx) => {
-  if (value.NODE_ENV !== "development" && !value.DASHBOARD_URL) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["DASHBOARD_URL"],
-      message: "DASHBOARD_URL is required outside development.",
-    });
-  }
-}).parse(process.env);
+const raw = rawEnvSchema
+  .superRefine((value, ctx) => {
+    if (value.NODE_ENV !== "development" && !value.DASHBOARD_URL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["DASHBOARD_URL"],
+        message: "DASHBOARD_URL is required outside development.",
+      });
+    }
+
+    const storageProvider =
+      value.STORAGE_PROVIDER ??
+      (value.NODE_ENV === "production" ? "s3" : "local");
+
+    if (value.NODE_ENV === "production" && storageProvider !== "s3") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STORAGE_PROVIDER"],
+        message: "STORAGE_PROVIDER must be s3 in production.",
+      });
+    }
+
+    if (storageProvider === "s3") {
+      const requiredS3Vars = [
+        "AWS_REGION",
+        "S3_UPLOAD_BUCKET",
+        "S3_UPLOAD_PUBLIC_BASE_URL",
+      ] as const;
+
+      for (const key of requiredS3Vars) {
+        if (!value[key]) {
+          ctx.addIssue({
+            code: "custom",
+            path: [key],
+            message: `${key} is required when STORAGE_PROVIDER is s3.`,
+          });
+        }
+      }
+    }
+  })
+  .parse(process.env);
 
 /**
  * Convert JWT expiry into seconds (number)
@@ -97,6 +136,13 @@ export const env = {
   AUTH_RATE_LIMIT_MAX: raw.AUTH_RATE_LIMIT_MAX ?? 20,
   PUBLIC_ENQUIRY_RATE_LIMIT_MAX: raw.PUBLIC_ENQUIRY_RATE_LIMIT_MAX ?? 8,
   PUBLIC_BOOKING_RATE_LIMIT_MAX: raw.PUBLIC_BOOKING_RATE_LIMIT_MAX ?? 12,
+
+  STORAGE_PROVIDER:
+    raw.STORAGE_PROVIDER ?? (raw.NODE_ENV === "production" ? "s3" : "local"),
+  AWS_REGION: raw.AWS_REGION ?? "",
+  S3_UPLOAD_BUCKET: raw.S3_UPLOAD_BUCKET ?? "",
+  S3_UPLOAD_PUBLIC_BASE_URL: raw.S3_UPLOAD_PUBLIC_BASE_URL ?? "",
+  S3_UPLOAD_PREFIX: raw.S3_UPLOAD_PREFIX ?? "uploads",
 
   // FINAL TYPES: number
   JWT_ACCESS_EXPIRES_IN: parseJwtExpiresIn(raw.JWT_ACCESS_EXPIRES_IN),

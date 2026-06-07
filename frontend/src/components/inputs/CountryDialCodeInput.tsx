@@ -73,7 +73,7 @@ export default function CountryDialCodeInput<
   control,
   wrapperClass,
   selectClass = "w-full h-full appearance-none bg-transparent border-0",
-  searchInputClass = "w-[60px] border-0 bg-transparent text-sm outline-none",
+  searchInputClass = "w-15 border-0 bg-transparent text-sm outline-none",
   listClass = "absolute top-full mt-1 left-0 z-50 min-w-full sm:min-w-0 sm:w-max max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-md shadow-lg px-1 py-1 box-border divide-y divide-slate-200",
   itemClass = "text-sm py-2 px-2 rounded text-slate-800 whitespace-nowrap cursor-pointer flex-none hover:bg-indigo-50",
   defaultDialCode = "+91",

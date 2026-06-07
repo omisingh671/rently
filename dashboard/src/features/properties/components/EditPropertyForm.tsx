@@ -7,6 +7,19 @@ import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { useAdminProperty } from "../hooks/useAdminProperty";
 import { useActiveTenants } from "@/features/tenants/hooks/useAdminTenants";
 
+const optionalText = (value: string | undefined) =>
+  value?.trim() ? value.trim() : null;
+
+const optionalNumber = (value: string | undefined) =>
+  value?.trim() ? Number(value) : null;
+
+type ApiErrorResponse = {
+  error?: {
+    code?: string;
+    message?: string;
+  };
+};
+
 export default function EditPropertyForm({ id }: { id: string }) {
   const navigate = useNavigate();
 
@@ -28,15 +41,23 @@ export default function EditPropertyForm({ id }: { id: string }) {
 
   const handleSubmit = (
     values: PropertyFormValues,
-    setServerError: (msg: string) => void,
+    setServerError: (
+      msg: string,
+      field?: keyof PropertyFormValues,
+    ) => void,
   ) => {
     updateProperty(
       {
         tenantId: values.tenantId,
+        slug: values.slug,
         name: values.name,
         address: values.address,
         city: values.city,
         state: values.state,
+        supportEmail: optionalText(values.supportEmail),
+        supportPhone: optionalText(values.supportPhone),
+        latitude: optionalNumber(values.latitude),
+        longitude: optionalNumber(values.longitude),
         status: values.status,
         isActive: values.isActive === "true",
       },
@@ -45,11 +66,14 @@ export default function EditPropertyForm({ id }: { id: string }) {
           navigate(adminPath(ADMIN_ROUTES.PROPERTIES));
         },
         onError: (err) => {
-          const message =
-            (err as AxiosError<{ error?: { message?: string } }>)?.response
-              ?.data?.error?.message ?? "Failed to update property";
+          const apiError = (err as AxiosError<ApiErrorResponse>).response?.data
+            ?.error;
+          const message = apiError?.message ?? "Failed to update property";
 
-          setServerError(message);
+          setServerError(
+            message,
+            apiError?.code === "PROPERTY_EXISTS" ? "slug" : undefined,
+          );
         },
       },
     );
@@ -62,10 +86,16 @@ export default function EditPropertyForm({ id }: { id: string }) {
       tenantOptions={tenants}
       defaultValues={{
         tenantId: property.tenantId,
+        slug: property.slug,
         name: property.name,
         address: property.address,
         city: property.city,
         state: property.state,
+        supportEmail: property.supportEmail ?? "",
+        supportPhone: property.supportPhone ?? "",
+        latitude: property.latitude === null ? "" : String(property.latitude),
+        longitude:
+          property.longitude === null ? "" : String(property.longitude),
         status: property.status,
         isActive: property.isActive ? "true" : "false",
       }}

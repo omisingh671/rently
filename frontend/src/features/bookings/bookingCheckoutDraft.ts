@@ -68,7 +68,9 @@ const isCreateBookingPayload = (
     return false;
   }
 
-  if (typeof value.bookingOptionId === "string") return true;
+  if (typeof value.bookingOptionId === "string") {
+    return typeof value.propertyId === "string";
+  }
 
   if (value.bookingType === "MULTI_ROOM") {
     return (

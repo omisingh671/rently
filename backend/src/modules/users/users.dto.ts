@@ -6,11 +6,11 @@ export interface UserEntity {
   fullName: string;
   email: string;
   role: UserRole;
-
+  createdByUserId: string | null;
   countryCode: string | null;
   contactNumber: string | null;
-
   isActive: boolean;
+  mustChangePassword: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,12 +20,9 @@ export interface BaseUserDTO {
   fullName: string;
   email: string;
   role: UserRole;
-
   countryCode: string | null;
   contactNumber: string | null;
-
   isActive: boolean;
-
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,9 +30,23 @@ export interface BaseUserDTO {
 export type UserDTO = BaseUserDTO;
 export type UserProfileDTO = BaseUserDTO;
 
+export interface DashboardUserDTO {
+  id: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  createdByUserId: string | null;
+  countryCode: string | null;
+  contactNumber: string | null;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /**
  * DTOs are OUTPUT / internal shapes only
- **/
+ */
 export interface UpdateUserDTO {
   fullName?: string;
   role?: UserRole;
@@ -49,3 +60,4 @@ export interface UpdateUserProfileDTO {
   countryCode?: string;
   contactNumber?: string;
 }
+

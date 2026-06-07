@@ -9,6 +9,7 @@ export interface CheckAvailabilityPayload {
   checkOut: string;
   guests: number;
   comfortOption: ComfortOption;
+  city?: string;
   name?: string;
   email?: string;
   countryCode?: string;

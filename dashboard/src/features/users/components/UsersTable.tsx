@@ -9,8 +9,10 @@ import AdminTableCell from "@/components/admin-table/AdminTableCell";
 import AdminTableEmpty from "@/components/admin-table/AdminTableEmpty";
 import AdminTableLoadingOverlay from "@/components/admin-table/AdminTableLoadingOverlay";
 import AdminTableError from "@/components/admin-table/AdminTableError";
+import ActiveToggle from "@/components/common/ActiveToggle";
 
 import { highlightText } from "@/utils/highlightText";
+import { useAuthStore } from "@/stores/authStore";
 
 type Props = {
   users: AdminUser[];
@@ -37,6 +39,7 @@ export default function UsersTable({
   onEditUser,
   onUpdateUser,
 }: Props) {
+  const currentUser = useAuthStore((state) => state.user);
   const isInitialLoading = Boolean(isPending && users.length === 0);
   const isEmpty = !isInitialLoading && users.length === 0;
 
@@ -55,10 +58,12 @@ export default function UsersTable({
             <AdminTableCell as="th">Name</AdminTableCell>
             <AdminTableCell as="th">Email</AdminTableCell>
             <AdminTableCell as="th">Role</AdminTableCell>
-            <AdminTableCell as="th">Active</AdminTableCell>
             <AdminTableCell as="th">Created</AdminTableCell>
             <AdminTableCell as="th" align="right">
               Actions
+            </AdminTableCell>
+            <AdminTableCell as="th" align="right">
+              Active
             </AdminTableCell>
           </tr>
         </AdminTableHeader>
@@ -89,10 +94,6 @@ export default function UsersTable({
                   <AdminTableCell>{user.role}</AdminTableCell>
 
                   <AdminTableCell>
-                    {user.isActive ? "Active" : "Inactive"}
-                  </AdminTableCell>
-
-                  <AdminTableCell>
                     {new Date(user.createdAt).toLocaleDateString()}
                   </AdminTableCell>
 
@@ -101,7 +102,19 @@ export default function UsersTable({
                       user={user}
                       isUpdating={isUpdating}
                       onEdit={onEditUser}
-                      onUpdateUser={onUpdateUser}
+                    />
+                  </AdminTableCell>
+
+                  <AdminTableCell align="right">
+                    <ActiveToggle
+                      checked={user.isActive}
+                      disabled={currentUser?.id === user.id || isUpdating}
+                      onChange={(next) =>
+                        onUpdateUser({
+                          userId: user.id,
+                          payload: { isActive: next },
+                        })
+                      }
                     />
                   </AdminTableCell>
                 </AdminTableRow>

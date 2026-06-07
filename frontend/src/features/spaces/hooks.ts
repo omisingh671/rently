@@ -10,7 +10,7 @@ import type { Space } from "./types";
 
 export const useSpaces = (enabled = true) => {
   return useQuery<Space[], Error>({
-    queryKey: PUBLIC_QUERY_KEYS.spaces.all,
+    queryKey: PUBLIC_QUERY_KEYS.spaces.all(),
     queryFn: async () => {
       return api.listSpaces();
     },

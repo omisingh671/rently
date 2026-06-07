@@ -15,3 +15,7 @@ export type ListAmenitiesFilters = {
   search?: string;
   isActive?: boolean;
 };
+
+export type ReplacePropertyAmenityAssignmentsInput = {
+  amenityIds: string[];
+};

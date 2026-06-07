@@ -35,33 +35,33 @@ export default function GaleryHero() {
         </div>
 
         {/* RIGHT: Artistic Gallery Collage */}
-        <div className="relative hidden lg:block h-[520px]">
+        <div className="relative hidden lg:block h-130">
           {/* Large main image */}
           <img
             src="/assets/images/sucasa-homes/living-area.jpg"
             alt="Living room"
-            className="absolute right-0 bottom-0 w-[360px] h-[260px] object-cover rounded-3xl shadow-xl"
+            className="absolute right-0 bottom-0 w-90 h-65 object-cover rounded-3xl shadow-xl"
           />
 
           {/* Top image */}
           <img
             src="/assets/images/sucasa-homes/double_occupancy-mobile.jpg"
             alt="Bedroom"
-            className="absolute top-0 left-24 w-[220px] h-40 object-cover rounded-2xl shadow-lg"
+            className="absolute top-0 left-24 w-55 h-40 object-cover rounded-2xl shadow-lg"
           />
 
           {/* Middle image */}
           <img
             src="/assets/images/sucasa-homes/kitchen.jpg"
             alt="Kitchen"
-            className="absolute top-32 right-48 w-[250px] h-[180px] object-cover rounded-2xl shadow-lg"
+            className="absolute top-32 right-48 w-62.5 h-45 object-cover rounded-2xl shadow-lg"
           />
 
           {/* Small bottom image */}
           <img
             src="/assets/images/sucasa-homes/bathroom.jpg"
             alt="Bathroom"
-            className="absolute bottom-0 left-30 w-[180px] h-[195px] object-cover rounded-xl shadow-md"
+            className="absolute bottom-0 left-30 w-45 h-[195px] object-cover rounded-xl shadow-md"
           />
 
           {/* Decorative circle */}

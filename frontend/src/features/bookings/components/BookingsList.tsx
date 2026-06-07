@@ -220,7 +220,7 @@ export default function BookingsList({ bookings }: BookingsListProps) {
             </div>
 
             {/* Price & Actions */}
-            <div className="flex flex-row items-center justify-between border-t border-slate-100 pt-6 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-slate-100 min-w-[160px] lg:min-w-[220px]">
+            <div className="flex flex-row items-center justify-between border-t border-slate-100 pt-6 lg:flex-col lg:items-end lg:border-t-0 lg:pt-0 lg:pl-6 lg:border-l lg:border-slate-100 min-w-40 lg:min-w-55">
               <div className="lg:text-right">
                 <div className="text-xl font-bold text-slate-900">
                   {formatPrice(booking.totalPrice)}

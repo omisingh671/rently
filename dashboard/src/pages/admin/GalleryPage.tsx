@@ -311,7 +311,7 @@ export default function GalleryPage() {
                     </button>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-white border-t border-slate-100">
-                    <span className="text-xs font-medium text-slate-600 truncate max-w-[200px]">
+                    <span className="text-xs font-medium text-slate-600 truncate max-w-50">
                       {selectedFile?.name}
                     </span>
                     <button

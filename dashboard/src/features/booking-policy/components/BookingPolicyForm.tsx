@@ -54,7 +54,7 @@ function SectionHeader({ title, description }: SectionHeaderProps) {
 
 function FieldPanel({ label, description, children }: FieldPanelProps) {
   return (
-    <div className="flex min-h-[132px] flex-col justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
+    <div className="flex min-h-33 flex-col justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
       <div>
         <p className="text-sm font-semibold text-slate-800">{label}</p>
         <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>

@@ -12,6 +12,10 @@ import type { UnitResponseDto } from "./unit.dto.js";
 
 import type { UnitStatus } from "@/generated/prisma/enums.js";
 import { findPropertyById } from "../properties/properties.repository.js";
+import {
+  getActor,
+  assertCanManageInventory,
+} from "@/common/services/scoping.service.js";
 
 const unitRepository = new UnitRepository();
 
@@ -44,8 +48,12 @@ interface UpdateUnitInput {
  * Create unit
  */
 export const create = async (
+  userId: string,
   input: CreateUnitInput,
 ): Promise<UnitResponseDto> => {
+  const actor = await getActor(userId);
+  await assertCanManageInventory(actor, input.propertyId);
+
   const property = await findPropertyById(input.propertyId);
 
   if (!property) {
@@ -101,14 +109,18 @@ export const create = async (
  * Update unit
  */
 export const update = async (
+  userId: string,
   id: string,
   input: UpdateUnitInput,
 ): Promise<UnitResponseDto> => {
+  const actor = await getActor(userId);
   const existing = await unitRepository.findById(id);
 
   if (!existing) {
     throw new HttpError(404, "UNIT_NOT_FOUND", "Unit not found");
   }
+
+  await assertCanManageInventory(actor, existing.propertyId);
 
   /**
    * Prevent duplicate unit numbers
@@ -171,12 +183,15 @@ export const update = async (
 /**
  * Soft delete
  */
-export const softDelete = async (id: string): Promise<void> => {
+export const softDelete = async (userId: string, id: string): Promise<void> => {
+  const actor = await getActor(userId);
   const existing = await unitRepository.findById(id);
 
   if (!existing) {
     throw new HttpError(404, "UNIT_NOT_FOUND", "Unit not found");
   }
+
+  await assertCanManageInventory(actor, existing.propertyId);
 
   await unitRepository.softDelete(id);
 };
@@ -185,8 +200,12 @@ export const softDelete = async (id: string): Promise<void> => {
  * List units by property
  */
 export const listByProperty = async (
+  userId: string,
   params: ListUnitsParams,
 ): Promise<PaginatedResult<UnitResponseDto>> => {
+  const actor = await getActor(userId);
+  await assertCanManageInventory(actor, params.propertyId);
+
   const property = await findPropertyById(params.propertyId);
 
   if (!property) {
@@ -211,12 +230,18 @@ export const listByProperty = async (
 /**
  * Get unit by id
  */
-export const getById = async (id: string): Promise<UnitResponseDto> => {
+export const getById = async (
+  userId: string,
+  id: string,
+): Promise<UnitResponseDto> => {
+  const actor = await getActor(userId);
   const unit = await unitRepository.findById(id);
 
   if (!unit) {
     throw new HttpError(404, "UNIT_NOT_FOUND", "Unit not found");
   }
+
+  await assertCanManageInventory(actor, unit.propertyId);
 
   return toUnitResponseDto(unit);
 };

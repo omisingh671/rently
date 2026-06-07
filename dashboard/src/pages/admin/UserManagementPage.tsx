@@ -9,6 +9,7 @@ import AdminTableError from "@/components/admin-table/AdminTableError";
 import AdminTableHeader from "@/components/admin-table/AdminTableHeader";
 import AdminTableLoadingOverlay from "@/components/admin-table/AdminTableLoadingOverlay";
 import AdminTableRow from "@/components/admin-table/AdminTableRow";
+import ActiveToggle from "@/components/common/ActiveToggle";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Pagination from "@/components/common/Pagination";
 import Button from "@/components/ui/Button";
@@ -43,10 +44,27 @@ const mutableRoles: MutableManagedUserRole[] = ["ADMIN", "MANAGER", "GUEST"];
 const toBool = (value: "" | "true" | "false") =>
   value === "" ? undefined : value === "true";
 
+type PendingActionType = "status" | "role" | "password" | "reset" | "logout";
+
+type PendingAction = {
+  userId: string;
+  type: PendingActionType;
+};
+
+const getPendingActionKey = ({ userId, type }: PendingAction) =>
+  `${userId}:${type}`;
+
+function InlineSpinner() {
+  return (
+    <span className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+  );
+}
+
 export default function UserManagementPage() {
   const currentUser = useAuthStore((state) => state.user);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [pendingActionKeys, setPendingActionKeys] = useState<string[]>([]);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const {
@@ -80,11 +98,6 @@ export default function UserManagementPage() {
     updateForcePasswordChange,
     revokeSessions,
     isCreatingAdmin,
-    isUpdatingStatus,
-    isUpdatingRole,
-    isTriggeringPasswordReset,
-    isUpdatingForcePasswordChange,
-    isRevokingSessions,
   } = useManagedUsers(page, pageSize, {
     search: debouncedSearch,
     ...(filters.role && { role: filters.role }),
@@ -98,23 +111,32 @@ export default function UserManagementPage() {
   const pagination = data?.pagination;
   const visiblePagination =
     pagination && pagination.total > pageSize ? pagination : null;
-  const isBusy =
-    isUpdatingStatus ||
-    isUpdatingRole ||
-    isTriggeringPasswordReset ||
-    isUpdatingForcePasswordChange ||
-    isRevokingSessions;
 
-  const runAction = async (action: () => Promise<unknown>, success: string) => {
+  const runAction = async (
+    pending: PendingAction,
+    action: () => Promise<unknown>,
+    success: string,
+  ) => {
+    const pendingKey = getPendingActionKey(pending);
+    if (pendingActionKeys.includes(pendingKey)) {
+      return;
+    }
+
     setActionError(null);
     setActionSuccess(null);
+    setPendingActionKeys((keys) => [...keys, pendingKey]);
     try {
       await action();
       setActionSuccess(success);
     } catch (error) {
       setActionError(normalizeApiError(error).message);
+    } finally {
+      setPendingActionKeys((keys) => keys.filter((key) => key !== pendingKey));
     }
   };
+
+  const isPendingAction = (userId: string, type: PendingActionType) =>
+    pendingActionKeys.includes(getPendingActionKey({ userId, type }));
 
   const canChangeRole = (user: AdminUser) =>
     user.role !== "SUPER_ADMIN" && currentUser?.id !== user.id;
@@ -233,20 +255,21 @@ export default function UserManagementPage() {
               <AdminTableCell as="th">#</AdminTableCell>
               <AdminTableCell as="th">User</AdminTableCell>
               <AdminTableCell as="th">Role</AdminTableCell>
-              <AdminTableCell as="th">Status</AdminTableCell>
-              <AdminTableCell as="th">Password Change</AdminTableCell>
               <AdminTableCell as="th">Created</AdminTableCell>
               <AdminTableCell as="th" align="right">
                 Actions
+              </AdminTableCell>
+              <AdminTableCell as="th" align="right">
+                Status
               </AdminTableCell>
             </tr>
           </AdminTableHeader>
 
           <tbody className={isFetching ? "opacity-70" : ""}>
             {isPending && users.length === 0 ? (
-              <AdminTableEmpty colSpan={7} message="Loading users..." />
+              <AdminTableEmpty colSpan={6} message="Loading users..." />
             ) : users.length === 0 ? (
-              <AdminTableEmpty colSpan={7} message="No users found." />
+              <AdminTableEmpty colSpan={6} message="No users found." />
             ) : (
               users.map((user, index) => {
                 const isSelf = currentUser?.id === user.id;
@@ -266,9 +289,10 @@ export default function UserManagementPage() {
                       {canChangeRole(user) ? (
                         <select
                           value={user.role}
-                          disabled={isBusy}
+                          disabled={isPendingAction(user.id, "role")}
                           onChange={(event) =>
                             runAction(
+                              { userId: user.id, type: "role" },
                               () =>
                                 updateRole({
                                   userId: user.id,
@@ -293,55 +317,6 @@ export default function UserManagementPage() {
                       )}
                     </AdminTableCell>
                     <AdminTableCell>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={user.isActive ? "success" : "secondary"}
-                        disabled={isSelf || isBusy}
-                        onClick={() =>
-                          runAction(
-                            () =>
-                              updateStatus({
-                                userId: user.id,
-                                isActive: !user.isActive,
-                              }),
-                            user.isActive
-                              ? "User disabled and sessions revoked."
-                              : "User enabled.",
-                          )
-                        }
-                      >
-                        {user.isActive ? "Active" : "Inactive"}
-                      </Button>
-                    </AdminTableCell>
-                    <AdminTableCell>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={
-                          user.mustChangePassword ? "warning" : "secondary"
-                        }
-                        disabled={isBusy}
-                        onClick={() =>
-                          runAction(
-                            () =>
-                              updateForcePasswordChange({
-                                userId: user.id,
-                                mustChangePassword:
-                                  !user.mustChangePassword,
-                              }),
-                            user.mustChangePassword
-                              ? "Password-change requirement cleared."
-                              : "Password change will be required on next login.",
-                          )
-                        }
-                      >
-                        {user.mustChangePassword
-                          ? "Change Required"
-                          : "Force Change"}
-                      </Button>
-                    </AdminTableCell>
-                    <AdminTableCell>
                       {new Date(user.createdAt).toLocaleDateString()}
                     </AdminTableCell>
                     <AdminTableCell align="right">
@@ -350,11 +325,19 @@ export default function UserManagementPage() {
                           type="button"
                           size="sm"
                           variant="secondary"
-                          icon={<FiMail />}
-                          disabled={isBusy}
+                          className="h-9"
+                          icon={
+                            isPendingAction(user.id, "reset") ? (
+                              <InlineSpinner />
+                            ) : (
+                              <FiMail />
+                            )
+                          }
+                          disabled={isPendingAction(user.id, "reset")}
                           title="Send a password reset link to this user's email address"
                           onClick={() =>
                             runAction(
+                              { userId: user.id, type: "reset" },
                               () => triggerPasswordReset(user.id),
                               "Password reset email triggered.",
                             )
@@ -365,12 +348,52 @@ export default function UserManagementPage() {
                         <Button
                           type="button"
                           size="sm"
+                          variant={
+                            user.mustChangePassword ? "warning" : "secondary"
+                          }
+                          className="h-9"
+                          icon={
+                            isPendingAction(user.id, "password") ? (
+                              <InlineSpinner />
+                            ) : undefined
+                          }
+                          disabled={isPendingAction(user.id, "password")}
+                          onClick={() =>
+                            runAction(
+                              { userId: user.id, type: "password" },
+                              () =>
+                                updateForcePasswordChange({
+                                  userId: user.id,
+                                  mustChangePassword:
+                                    !user.mustChangePassword,
+                                }),
+                              user.mustChangePassword
+                                ? "Password-change requirement cleared."
+                                : "Password change will be required on next login.",
+                            )
+                          }
+                        >
+                          {user.mustChangePassword
+                            ? "Change Required"
+                            : "Force Change"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
                           variant="danger"
-                          icon={<FiUsers />}
-                          disabled={isBusy}
+                          className="h-9"
+                          icon={
+                            isPendingAction(user.id, "logout") ? (
+                              <InlineSpinner />
+                            ) : (
+                              <FiUsers />
+                            )
+                          }
+                          disabled={isPendingAction(user.id, "logout")}
                           title="Force log out this user from all devices by terminating all of their active sessions"
                           onClick={() =>
                             runAction(
+                              { userId: user.id, type: "logout" },
                               () => revokeSessions(user.id),
                               "User sessions revoked.",
                             )
@@ -379,6 +402,25 @@ export default function UserManagementPage() {
                           Force Logout
                         </Button>
                       </div>
+                    </AdminTableCell>
+                    <AdminTableCell align="right">
+                      <ActiveToggle
+                        checked={user.isActive}
+                        disabled={isSelf || isPendingAction(user.id, "status")}
+                        onChange={(next) =>
+                          runAction(
+                            { userId: user.id, type: "status" },
+                            () =>
+                              updateStatus({
+                                userId: user.id,
+                                isActive: next,
+                              }),
+                            user.isActive
+                              ? "User disabled and sessions revoked."
+                              : "User enabled.",
+                          )
+                        }
+                      />
                     </AdminTableCell>
                   </AdminTableRow>
                 );

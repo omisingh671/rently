@@ -104,10 +104,11 @@ export const useCreateManualPayment = () => {
       idempotencyKey: string;
       amount: number;
       purpose?: PaymentPurpose;
+      status?: string;
     }
   >({
-    mutationFn: ({ bookingId, idempotencyKey, amount, purpose }) =>
-      api.createManualPayment(bookingId, idempotencyKey, amount, purpose),
+    mutationFn: ({ bookingId, idempotencyKey, amount, purpose, status }) =>
+      api.createManualPayment(bookingId, idempotencyKey, amount, purpose, status),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({

@@ -10,6 +10,7 @@ import {
   BookingStatus,
   ComfortOption,
   AdvancePaymentType,
+  MaintenanceTargetType,
   PaymentMethod,
   PaymentRefundStatus,
   PaymentPurpose,
@@ -20,15 +21,26 @@ import {
   RoomProductCategory,
   RoomStatus,
   UnitStatus,
+  PaymentStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
-import * as publicService from "@/modules/public/public.service.js";
+import * as publicService from "@/modules/public/bookings/bookings.service.js";
+import { createInventoryLock } from "@/modules/public/availability/availability.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
-import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import * as dashboardService from "@/modules/bookings/bookings.service.js";
 import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
+
+const utcDateOnly = (date: Date) =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+const addUtcDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setUTCDate(nextDate.getUTCDate() + days);
+  return nextDate;
+};
 
 const setPropertyTokenRefundable = (propertyId: string, tokenRefundable: boolean) =>
   prisma.propertyBookingPolicy.upsert({
@@ -63,6 +75,10 @@ type TestState = {
   tenantId: string;
   tenantSlug: string;
   propertyId: string;
+  otherPropertyId: string;
+  assignmentRoomId: string;
+  assignmentRoomTwoId: string;
+  otherPropertyRoomId: string;
   pricingId: string;
   pricingTwoId: string;
 };
@@ -138,8 +154,22 @@ before(async () => {
   const property = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-property`,
       name: `${testId} Property`,
       address: "Test Address",
+      city: "Hyderabad",
+      state: "Telangana",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: superAdmin.id,
+    },
+  });
+
+  const otherProperty = await prisma.property.create({
+    data: {
+      tenantId: tenant.id,
+      slug: `${testId}-other-property`,
+      name: `${testId} Other Property`,
+      address: "Other Test Address",
       city: "Hyderabad",
       state: "Telangana",
       status: PropertyStatus.ACTIVE,
@@ -156,6 +186,15 @@ before(async () => {
     },
   });
 
+  const otherUnit = await prisma.unit.create({
+    data: {
+      propertyId: otherProperty.id,
+      unitNumber: `${testId}-201`,
+      floor: 2,
+      status: UnitStatus.ACTIVE,
+    },
+  });
+
   await prisma.propertyAssignment.create({
     data: {
       propertyId: property.id,
@@ -165,7 +204,8 @@ before(async () => {
     },
   });
 
-  const [room, roomTwo] = await Promise.all([
+  const [room, roomTwo, assignmentRoom, assignmentRoomTwo, otherPropertyRoom] =
+    await Promise.all([
     prisma.room.create({
       data: {
         unitId: unit.id,
@@ -181,6 +221,36 @@ before(async () => {
         unitId: unit.id,
         name: "Payment Test Room",
         number: "102",
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Payment Test Reassignment Room",
+        number: "103",
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Payment Test Reassignment Room",
+        number: "104",
+        hasAC: true,
+        maxOccupancy: 2,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: otherUnit.id,
+        name: "Payment Test Other Property Room",
+        number: "201",
         hasAC: true,
         maxOccupancy: 2,
         status: RoomStatus.AVAILABLE,
@@ -281,6 +351,10 @@ before(async () => {
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
     propertyId: property.id,
+    otherPropertyId: otherProperty.id,
+    assignmentRoomId: assignmentRoom.id,
+    assignmentRoomTwoId: assignmentRoomTwo.id,
+    otherPropertyRoomId: otherPropertyRoom.id,
     pricingId: pricing.id,
     pricingTwoId: pricingTwo.id,
   };
@@ -289,18 +363,17 @@ before(async () => {
 after(async () => {
   if (state !== undefined) {
     await prisma.property.deleteMany({
-      where: { id: state.propertyId },
+      where: {
+        id: {
+          in: [state.propertyId, state.otherPropertyId],
+        },
+      },
     });
 
     await prisma.user.deleteMany({
       where: {
-        id: {
-          in: [
-            state.guestId,
-            state.managerId,
-            state.otherManagerId,
-            state.superAdminId,
-          ],
+        email: {
+          contains: testId,
         },
       },
     });
@@ -516,7 +589,7 @@ test("guest billing document access is scoped to own booking", async () => {
 });
 
 test("anonymous checkout token can read only its booking documents", async () => {
-  const lock = await publicService.createInventoryLock(
+  const lock = await createInventoryLock(
     undefined,
     {
       bookingType: "SINGLE_TARGET",
@@ -791,14 +864,124 @@ test("dashboard can create a confirmed walk-in booking without payment", async (
   assert.equal(booking.internalNotes, "Created at reception");
 });
 
+test("dashboard can create a scoped walk-in booking option beyond tenant-wide option cap", async () => {
+  const checkIn = new Date("2027-12-10T00:00:00.000Z");
+  const checkOut = new Date("2027-12-11T00:00:00.000Z");
+  const cheaperPropertyIds: string[] = [];
+
+  try {
+    for (let index = 0; index < 6; index += 1) {
+      const property = await prisma.property.create({
+        data: {
+          tenantId: state.tenantId,
+          slug: `${testId}-cheap-option-${index}`,
+          name: `${testId} Cheap Option ${index}`,
+          address: "Cheap Option Address",
+          city: "Hyderabad",
+          state: "Telangana",
+          status: PropertyStatus.ACTIVE,
+          createdByUserId: state.superAdminId,
+        },
+      });
+      cheaperPropertyIds.push(property.id);
+
+      const unit = await prisma.unit.create({
+        data: {
+          propertyId: property.id,
+          unitNumber: `${testId}-cheap-${index}`,
+          floor: 1,
+          status: UnitStatus.ACTIVE,
+        },
+      });
+
+      const room = await prisma.room.create({
+        data: {
+          unitId: unit.id,
+          name: "Cheap Option Room",
+          number: `${index + 1}`,
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+      });
+
+      const product = await prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Cheap Option Double ${index}`,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      });
+
+      await prisma.roomPricing.create({
+        data: {
+          propertyId: property.id,
+          roomId: room.id,
+          unitId: unit.id,
+          productId: product.id,
+          rateType: RateType.NIGHTLY,
+          pricingTier: PricingTier.STANDARD,
+          minNights: 1,
+          taxInclusive: false,
+          price: 1000 + index,
+          validFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      });
+    }
+
+    const availability = await dashboardService.checkManualBookingAvailability(
+      state.superAdminId,
+      state.propertyId,
+      {
+        from: checkIn,
+        to: checkOut,
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+    );
+    const option = availability.items.find((item) => item.available);
+
+    assert.ok(option);
+
+    const booking = await dashboardService.createManualBooking(
+      state.superAdminId,
+      state.propertyId,
+      {
+        bookingType: "SINGLE_TARGET",
+        bookingOptionId: option.bookingOptionId,
+        from: checkIn,
+        to: checkOut,
+        guests: 2,
+        comfortOption: option.comfortOption,
+        guestName: "Scoped Walk In Guest",
+        guestEmail: `${testId}-scoped-walk-in@sucasa.test`,
+      },
+    );
+
+    assert.equal(booking.status, BookingStatus.CONFIRMED);
+    assert.equal(booking.propertyId, state.propertyId);
+    assert.equal(booking.items.length, option.itemCount);
+  } finally {
+    await prisma.property.deleteMany({
+      where: {
+        id: {
+          in: cheaperPropertyIds,
+        },
+      },
+    });
+  }
+});
+
 test("dashboard availability check marks booked spaces unavailable", async () => {
   await publicService.createBooking(
     state.guestId,
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
-      from: new Date("2027-10-10T00:00:00.000Z"),
-      to: new Date("2027-10-12T00:00:00.000Z"),
+      from: new Date("2027-11-10T00:00:00.000Z"),
+      to: new Date("2027-11-12T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -1673,14 +1856,232 @@ test("manager payment actions are property scoped", async () => {
   );
 });
 
-test("dashboard booking status updates append audit history and notes", async () => {
+test("dashboard can reassign a single-room booking", async () => {
   const booking = await publicService.createBooking(
     state.guestId,
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
-      from: new Date("2027-07-10T00:00:00.000Z"),
-      to: new Date("2027-07-12T00:00:00.000Z"),
+      from: new Date("2027-10-01T00:00:00.000Z"),
+      to: new Date("2027-10-03T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const updated = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      roomIds: [state.assignmentRoomId],
+    },
+  );
+
+  assert.equal(updated.items.length, 1);
+  assert.equal(updated.items[0]?.roomId, state.assignmentRoomId);
+  assert.equal(updated.roomId, state.assignmentRoomId);
+});
+
+test("dashboard can reassign all rooms on a multi-room booking", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "MULTI_ROOM",
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-10-10T00:00:00.000Z"),
+      to: new Date("2027-10-12T00:00:00.000Z"),
+      guests: 3,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const updated = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      roomIds: [state.assignmentRoomId, state.assignmentRoomTwoId],
+    },
+  );
+
+  assert.deepEqual(
+    updated.items.map((item) => item.roomId).sort(),
+    [state.assignmentRoomId, state.assignmentRoomTwoId].sort(),
+  );
+});
+
+test("dashboard multi-room reassignment requires exact unique room count", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "MULTI_ROOM",
+      spaceIds: [state.pricingId, state.pricingTwoId],
+      from: new Date("2027-10-20T00:00:00.000Z"),
+      to: new Date("2027-10-22T00:00:00.000Z"),
+      guests: 3,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.assignmentRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "ROOM_ASSIGNMENT_COUNT_MISMATCH");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [
+          state.assignmentRoomId,
+          state.assignmentRoomTwoId,
+          state.otherPropertyRoomId,
+        ],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "ROOM_ASSIGNMENT_COUNT_MISMATCH");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.assignmentRoomId, state.assignmentRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 422);
+      assert.equal(error.code, "DUPLICATE_ROOM_ASSIGNMENT");
+      return true;
+    },
+  );
+});
+
+test("dashboard room reassignment rejects wrong property and unavailable rooms", async () => {
+  const checkIn = new Date("2027-07-01T00:00:00.000Z");
+  const checkOut = new Date("2027-07-03T00:00:00.000Z");
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.otherPropertyRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 400);
+      assert.equal(error.code, "INVALID_ROOM");
+      return true;
+    },
+  );
+
+  const maintenanceRoom = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  await prisma.maintenanceBlock.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: maintenanceRoom.unitId,
+      roomId: maintenanceRoom.id,
+      targetType: MaintenanceTargetType.ROOM,
+      reason: "Assignment test maintenance",
+      startDate: checkIn,
+      endDate: checkOut,
+      createdByUserId: state.superAdminId,
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.assignmentRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "ROOM_NOT_AVAILABLE");
+      return true;
+    },
+  );
+});
+
+test("dashboard room reassignment rejects overlapping bookings", async () => {
+  const checkIn = new Date("2027-07-10T00:00:00.000Z");
+  const checkOut = new Date("2027-07-12T00:00:00.000Z");
+  const existingBooking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const occupiedRoomId = existingBooking.items[0]?.roomId;
+  assert.ok(occupiedRoomId);
+
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [occupiedRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "ROOM_NOT_AVAILABLE");
+      return true;
+    },
+  );
+});
+
+test("dashboard booking status updates append audit history and notes", async () => {
+  const checkIn = utcDateOnly(new Date());
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: addUtcDays(checkIn, 2),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -1735,6 +2136,103 @@ test("dashboard booking status updates append audit history and notes", async ()
   );
 });
 
+test("dashboard booking status update rejects check-in before check-in date", async () => {
+  const checkIn = addUtcDays(utcDateOnly(new Date()), 30);
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: checkIn,
+      to: addUtcDays(checkIn, 2),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-early-check-in-payment`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        status: BookingStatus.CHECKED_IN,
+        note: "Tried check-in before arrival date.",
+        allowBalanceDueCheckIn: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "CHECK_IN_TOO_EARLY");
+      assert.equal(
+        error.message,
+        "Guest can be checked in only on or after the check-in date",
+      );
+      return true;
+    },
+  );
+});
+
+test("dashboard booking status update allows checkout before checkout date", async () => {
+  const checkIn = utcDateOnly(new Date());
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: checkIn,
+      to: addUtcDays(checkIn, 2),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-early-check-out-payment`,
+  });
+
+  const checkedIn = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      status: BookingStatus.CHECKED_IN,
+      note: "Guest arrived on check-in date.",
+      allowBalanceDueCheckIn: true,
+    },
+  );
+  assert.equal(checkedIn.status, BookingStatus.CHECKED_IN);
+
+  const checkedOut = await dashboardService.updateBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      status: BookingStatus.CHECKED_OUT,
+      note: "Guest left before scheduled departure date.",
+    },
+  );
+
+  assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+  assert.equal(
+    checkedOut.statusHistory[checkedOut.statusHistory.length - 1]?.fromStatus,
+    BookingStatus.CHECKED_IN,
+  );
+  assert.equal(
+    checkedOut.statusHistory[checkedOut.statusHistory.length - 1]?.toStatus,
+    BookingStatus.CHECKED_OUT,
+  );
+  assert.equal(
+    checkedOut.statusHistory[checkedOut.statusHistory.length - 1]?.note,
+    "Guest left before scheduled departure date.",
+  );
+});
+
 test("dashboard booking status update rejects invalid lifecycle jumps", async () => {
   const booking = await publicService.createBooking(
     state.guestId,
@@ -1759,6 +2257,115 @@ test("dashboard booking status update rejects invalid lifecycle jumps", async ()
       assert.ok(error instanceof HttpError);
       assert.equal(error.statusCode, 409);
       assert.equal(error.code, "INVALID_BOOKING_STATUS_TRANSITION");
+      return true;
+    },
+  );
+});
+
+test("simulated failed payment leaves booking pending and creates failed payment record", async () => {
+  const booking = await createBooking(
+    new Date("2027-09-01T00:00:00.000Z"),
+    new Date("2027-09-03T00:00:00.000Z"),
+  );
+  assert.equal(booking.status, BookingStatus.PENDING);
+
+  const result = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-failed-payment-simulation`,
+    status: PaymentStatus.FAILED,
+  });
+
+  assert.equal(result.payment.status, PaymentStatus.FAILED);
+  assert.equal(result.payment.provider, "MANUAL");
+  assert.equal(result.booking.status, BookingStatus.PENDING);
+  assert.equal(result.booking.paymentStatus, "PENDING");
+
+  const failedPayment = await prisma.payment.findUniqueOrThrow({
+    where: { idempotencyKey: `${testId}-failed-payment-simulation` },
+  });
+  assert.equal(failedPayment.status, PaymentStatus.FAILED);
+  assert.equal(failedPayment.failureCode, "SIMULATED_FAILURE");
+
+  const successResult = await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-failed-payment-simulation-retry`,
+    status: PaymentStatus.SUCCEEDED,
+  });
+  assert.equal(successResult.payment.status, PaymentStatus.SUCCEEDED);
+  assert.equal(successResult.booking.status, BookingStatus.CONFIRMED);
+});
+
+test("dashboard booking status update rejects check-in after check-in date has passed", async () => {
+  const checkIn = addUtcDays(utcDateOnly(new Date()), -4);
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: checkIn,
+      to: addUtcDays(checkIn, 2),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-late-check-in-payment`,
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        status: BookingStatus.CHECKED_IN,
+        note: "Tried check-in after arrival date passed.",
+        allowBalanceDueCheckIn: true,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "CHECK_IN_TOO_LATE");
+      assert.equal(
+        error.message,
+        "Guest cannot be checked in after the check-in date has passed",
+      );
+      return true;
+    },
+  );
+});
+
+test("dashboard booking status update rejects room assignment after check-in date has passed", async () => {
+  const checkIn = addUtcDays(utcDateOnly(new Date()), -8);
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: checkIn,
+      to: addUtcDays(checkIn, 2),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.assignmentRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "BOOKING_ASSIGNMENT_CLOSED");
+      assert.equal(
+        error.message,
+        "Cannot change room assignment after the check-in date has passed",
+      );
       return true;
     },
   );

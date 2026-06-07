@@ -1,6 +1,5 @@
-import type { Request, Response } from "express";
+import type { Response } from "express";
 import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
-import type { IdParams } from "@/common/types/params.js";
 import type { PropertyStatus } from "@/generated/prisma/enums.js";
 import { HttpError } from "@/common/errors/http-error.js";
 
@@ -10,52 +9,79 @@ import {
   updatePropertySchema,
 } from "./properties.schema.js";
 
-/**
- * Create property
- */
-export const create = async (req: AuthRequest, res: Response) => {
-  const parsed = createPropertySchema.parse(req.body);
+const getUserId = (req: AuthRequest) => {
   const userId = req.user?.userId;
   if (!userId) {
     throw new HttpError(401, "UNAUTHORIZED", "Unauthorized");
   }
 
+  return userId;
+};
+
+/**
+ * Create property
+ */
+export const create = async (req: AuthRequest, res: Response) => {
+  const parsed = createPropertySchema.parse(req.body);
+  const userId = getUserId(req);
+
   const input = {
     tenantId: parsed.tenantId,
     createdByUserId: userId,
+    ...(parsed.slug !== undefined && { slug: parsed.slug }),
     name: parsed.name,
     address: parsed.address,
     city: parsed.city,
     state: parsed.state,
+    ...(parsed.supportEmail !== undefined && {
+      supportEmail: parsed.supportEmail,
+    }),
+    ...(parsed.supportPhone !== undefined && {
+      supportPhone: parsed.supportPhone,
+    }),
+    ...(parsed.latitude !== undefined && { latitude: parsed.latitude }),
+    ...(parsed.longitude !== undefined && { longitude: parsed.longitude }),
     ...(parsed.status !== undefined && { status: parsed.status }),
     ...(parsed.amenityIds !== undefined && {
       amenityIds: parsed.amenityIds,
     }),
   };
 
-  const property = await service.createProperty(input);
+  const property = await service.createProperty(userId, input);
   res.status(201).json({ success: true, data: property });
 };
 
 /**
  * Get property by id
  */
-export const getById = async (req: Request<IdParams>, res: Response) => {
-  const property = await service.getPropertyById(req.params.id);
+export const getById = async (req: AuthRequest, res: Response) => {
+  const userId = getUserId(req);
+  const property = await service.getPropertyById(userId, req.params.id!);
   res.json({ success: true, data: property });
 };
 
 /**
  * Update property
  */
-export const update = async (req: Request<IdParams>, res: Response) => {
+export const update = async (req: AuthRequest, res: Response) => {
   const parsed = updatePropertySchema.parse(req.body);
+  const userId = getUserId(req);
 
   const input = {
+    ...(parsed.tenantId !== undefined && { tenantId: parsed.tenantId }),
+    ...(parsed.slug !== undefined && { slug: parsed.slug }),
     ...(parsed.name !== undefined && { name: parsed.name }),
     ...(parsed.address !== undefined && { address: parsed.address }),
     ...(parsed.city !== undefined && { city: parsed.city }),
     ...(parsed.state !== undefined && { state: parsed.state }),
+    ...(parsed.supportEmail !== undefined && {
+      supportEmail: parsed.supportEmail,
+    }),
+    ...(parsed.supportPhone !== undefined && {
+      supportPhone: parsed.supportPhone,
+    }),
+    ...(parsed.latitude !== undefined && { latitude: parsed.latitude }),
+    ...(parsed.longitude !== undefined && { longitude: parsed.longitude }),
     ...(parsed.status !== undefined && { status: parsed.status }),
     ...(parsed.isActive !== undefined && { isActive: parsed.isActive }),
     ...(parsed.amenityIds !== undefined && {
@@ -63,14 +89,15 @@ export const update = async (req: Request<IdParams>, res: Response) => {
     }),
   };
 
-  const property = await service.updateProperty(req.params.id, input);
+  const property = await service.updateProperty(userId, req.params.id!, input);
   res.json({ success: true, data: property });
 };
 
 /**
  * Admin list properties
  */
-export const list = async (req: Request, res: Response) => {
+export const list = async (req: AuthRequest, res: Response) => {
+  const userId = getUserId(req);
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 10);
 
@@ -86,10 +113,14 @@ export const list = async (req: Request, res: Response) => {
       status: req.query.status as PropertyStatus,
     }),
 
+    ...(typeof req.query.tenantId === "string" && {
+      tenantId: req.query.tenantId,
+    }),
+
     ...(req.query.isActive === "true" && { isActive: true }),
     ...(req.query.isActive === "false" && { isActive: false }),
   };
 
-  const result = await service.listProperties(filters);
+  const result = await service.listProperties(userId, filters);
   res.json({ success: true, data: result });
 };

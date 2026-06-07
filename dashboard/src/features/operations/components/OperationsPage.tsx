@@ -305,7 +305,7 @@ export default function OperationsPage({ module }: Props) {
             <FiHome className="h-8 w-8 text-slate-300" />
           </div>
           <h3 className="mt-4 text-base font-semibold text-slate-900">No Property Selected</h3>
-          <p className="mt-1 max-w-[200px] text-sm text-slate-500">
+          <p className="mt-1 max-w-50 text-sm text-slate-500">
             No accessible properties found for this account.
           </p>
         </div>

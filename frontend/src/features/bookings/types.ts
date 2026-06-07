@@ -192,6 +192,7 @@ export interface Booking {
 
 export interface CreateOptionBookingPayload {
   bookingOptionId: string;
+  propertyId: string;
   inventoryLockToken?: string;
   from: string;
   to: string;
@@ -224,6 +225,8 @@ export interface Payment {
   idempotencyKey: string;
   providerOrderId: string | null;
   providerPaymentId: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
   paidAt: string | null;
   createdAt: string;
 }

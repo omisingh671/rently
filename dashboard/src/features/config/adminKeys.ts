@@ -8,6 +8,8 @@ export const ADMIN_KEYS = {
   dashboard: {
     me: () => [...ADMIN_KEYS.root, "dashboard", "me"] as const,
     summary: () => [...ADMIN_KEYS.root, "dashboard", "summary"] as const,
+    analytics: (params: { startDate: string; endDate: string; propertyId?: string }) =>
+      [...ADMIN_KEYS.root, "dashboard", "analytics", params] as const,
   },
 
   tenants: {

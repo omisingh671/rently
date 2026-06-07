@@ -36,9 +36,9 @@ export function DashboardStats({
       value: `${occupancyRate}%`,
       helper: "Occupied rooms today",
       icon: <FiActivity />,
-      iconTone: "bg-gradient-to-br from-[#33365b] to-[#45497a] text-white",
+      iconTone: "bg-linear-to-br from-[#33365b] to-[#45497a] text-white",
       valueTone: "text-[#33365b]",
-      railTone: "bg-gradient-to-b from-[#33365b] to-[#45497a]",
+      railTone: "bg-linear-to-b from-[#33365b] to-[#45497a]",
       chipTone: "bg-[#33365b]/10 text-[#33365b]",
       bgGradient: "from-slate-50/50 to-white",
     },
@@ -47,9 +47,9 @@ export function DashboardStats({
       value: String(todayCheckIns),
       helper: "Arrivals due today",
       icon: <FiLogIn />,
-      iconTone: "bg-gradient-to-br from-emerald-500 to-emerald-700 text-white",
+      iconTone: "bg-linear-to-br from-emerald-500 to-emerald-700 text-white",
       valueTone: "text-emerald-700",
-      railTone: "bg-gradient-to-b from-emerald-400 to-emerald-600",
+      railTone: "bg-linear-to-b from-emerald-400 to-emerald-600",
       chipTone: "bg-emerald-50 text-emerald-700",
       bgGradient: "from-emerald-50/40 to-white",
     },
@@ -58,9 +58,9 @@ export function DashboardStats({
       value: String(todayCheckOuts),
       helper: "Departures due today",
       icon: <FiLogOut />,
-      iconTone: "bg-gradient-to-br from-sky-500 to-sky-700 text-white",
+      iconTone: "bg-linear-to-br from-sky-500 to-sky-700 text-white",
       valueTone: "text-sky-700",
-      railTone: "bg-gradient-to-b from-sky-400 to-sky-600",
+      railTone: "bg-linear-to-b from-sky-400 to-sky-600",
       chipTone: "bg-sky-50 text-sky-700",
       bgGradient: "from-sky-50/40 to-white",
     },
@@ -71,13 +71,13 @@ export function DashboardStats({
       icon: <FiCalendar />,
       iconTone:
         healthIssues > 0
-          ? "bg-gradient-to-br from-rose-500 to-rose-700 text-white"
-          : "bg-gradient-to-br from-amber-400 to-amber-500 text-[#33365b]",
+          ? "bg-linear-to-br from-rose-500 to-rose-700 text-white"
+          : "bg-linear-to-br from-amber-400 to-amber-500 text-[#33365b]",
       valueTone: healthIssues > 0 ? "text-rose-700" : "text-[#33365b]",
       railTone:
         healthIssues > 0
-          ? "bg-gradient-to-b from-rose-400 to-rose-600"
-          : "bg-gradient-to-b from-amber-300 to-amber-500",
+          ? "bg-linear-to-b from-rose-400 to-rose-600"
+          : "bg-linear-to-b from-amber-300 to-amber-500",
       chipTone:
         healthIssues > 0
           ? "bg-rose-50 text-rose-700"
@@ -91,7 +91,7 @@ export function DashboardStats({
       {stats.map((stat) => (
         <article
           key={stat.label}
-          className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br ${stat.bgGradient} p-5 pl-8 shadow-sm transition-all hover:-translate-y-1 hover:border-[#45497a]/30 hover:shadow-lg`}
+          className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-linear-to-br ${stat.bgGradient} p-5 pl-8 shadow-sm transition-all hover:-translate-y-1 hover:border-[#45497a]/30 hover:shadow-lg`}
         >
           <div className={`absolute inset-y-0 left-0 w-3 ${stat.railTone}`} />
           <div className="flex items-start justify-between gap-4">

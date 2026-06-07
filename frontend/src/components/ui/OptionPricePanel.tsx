@@ -56,7 +56,7 @@ export const OptionPricePanel = ({
             {formatPrice(option.nightlyTotal)}
           </div>
           {breakdownText && (
-            <div className="mt-1 max-w-[13rem] truncate text-xs font-medium text-slate-500">
+            <div className="mt-1 max-w-52 truncate text-xs font-medium text-slate-500">
               {breakdownText}
             </div>
           )}

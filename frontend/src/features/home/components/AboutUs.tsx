@@ -85,7 +85,7 @@ export default function AboutUs() {
             <img
               src={sucasaHomeImg}
               alt="Luxury apartment lobby"
-              className="w-full h-full max-h-[650px] 2xl:max-h-[750px] object-cover transform rotate-3 scale-105 transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:rotate-0 group-hover:scale-100"
+              className="w-full h-full max-h-162.5 2xl:max-h-187.5 object-cover transform rotate-3 scale-105 transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:rotate-0 group-hover:scale-100"
             />
 
             <div className="absolute bottom-6 left-6 right-6">

@@ -14,7 +14,9 @@ import {
   normalizeSliderImages,
   type SliderImage,
 } from "@/components/ui/imageSliderUtils";
-import Lightbox, { type LightboxImage } from "@/components/ui/Lightbox/Lightbox";
+import Lightbox, {
+  type LightboxImage,
+} from "@/components/ui/Lightbox/Lightbox";
 import { OptionDetailsModal } from "@/components/ui/OptionDetailsModal";
 
 interface OptionGridCardProps {
@@ -44,6 +46,7 @@ export const OptionGridCard = ({
   isBooking,
   formatPrice,
 }: OptionGridCardProps) => {
+  const { propertyLabel } = option;
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -55,7 +58,7 @@ export const OptionGridCard = ({
   );
 
   return (
-    <article className="flex min-h-[22rem] flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg">
+    <article className="flex min-h-88 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg">
       <div className="mb-4">
         <ImageSlider
           images={sliderImages}
@@ -90,9 +93,16 @@ export const OptionGridCard = ({
                 {option.comfortOption === "AC" ? "AC" : "Non-AC"}
               </div>
             </div>
-            <h2 className="mt-3 text-lg font-bold leading-snug text-slate-900">
-              {option.title}
-            </h2>
+            {propertyLabel && (
+              <h2 className="mt-3 text-lg font-bold leading-snug text-slate-900">
+                {option.title}
+              </h2>
+            )}
+            <p
+              className={`${propertyLabel ? "mt-1 text-sm font-semibold text-slate-500" : "mt-3 text-lg font-bold leading-snug text-slate-900"}`}
+            >
+              {propertyLabel}
+            </p>
           </div>
         </div>
 

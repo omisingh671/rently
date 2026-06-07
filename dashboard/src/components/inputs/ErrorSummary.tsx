@@ -6,10 +6,8 @@ import {
 
 export function ErrorSummary() {
   const {
-    formState: { errors, isSubmitted },
+    formState: { errors },
   } = useFormContext();
-
-  if (!isSubmitted) return null;
 
   const messages = collectErrorMessages(errors);
   if (messages.length === 0) return null;

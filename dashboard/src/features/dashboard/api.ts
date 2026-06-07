@@ -55,3 +55,84 @@ export const fetchDashboardSummary = async (): Promise<DashboardSummary> => {
 
   return res.data.data;
 };
+
+export type DailyOccupancy = {
+  date: string;
+  totalRooms: number;
+  availableNights: number;
+  occupiedNights: number;
+  occupancyRate: number;
+};
+
+export type DailyRevenue = {
+  date: string;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  paid: number;
+  refunds: number;
+  netRevenue: number;
+};
+
+export type BookingSource = {
+  source: "PUBLIC" | "WALK_IN";
+  count: number;
+  revenue: number;
+};
+
+export type EnquiryConversion = {
+  totalEnquiries: number;
+  convertedEnquiries: number;
+  enquiryConversionRate: number;
+  totalQuotes: number;
+  convertedQuotes: number;
+  quoteConversionRate: number;
+  totalBookings: number;
+};
+
+export type PropertyPerformance = {
+  propertyId: string;
+  propertyName: string;
+  occupancyRate: number;
+  totalRooms: number;
+  availableNights: number;
+  occupiedNights: number;
+  grossRevenue: number;
+  netRevenue: number;
+  adr: number;
+  revpar: number;
+};
+
+export type ManagerActivity = {
+  managerId: string;
+  managerName: string;
+  email: string;
+  role: string;
+  walkinsCreated: number;
+  checkInsProcessed: number;
+  checkOutsProcessed: number;
+  paymentsRecorded: number;
+};
+
+export type ReportingAnalytics = {
+  occupancy: DailyOccupancy[];
+  revenue: DailyRevenue[];
+  sources: BookingSource[];
+  conversions: EnquiryConversion;
+  properties: PropertyPerformance[];
+  managers: ManagerActivity[];
+};
+
+export const fetchDashboardAnalytics = async (params: {
+  startDate: string;
+  endDate: string;
+  propertyId?: string;
+}): Promise<ReportingAnalytics> => {
+  const res = await axiosInstance.get<ApiSuccessResponse<ReportingAnalytics>>(
+    API_ENDPOINTS.dashboard.analytics,
+    { params },
+  );
+  return res.data.data;
+};
+

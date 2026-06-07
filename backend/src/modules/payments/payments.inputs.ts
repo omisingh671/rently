@@ -1,6 +1,7 @@
 import type {
   PaymentMethod,
   PaymentPurpose,
+  PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
 
@@ -15,4 +16,5 @@ export interface CreateManualPaymentInput {
   note?: string;
   paidAt?: Date;
   metadata?: Prisma.InputJsonObject;
+  status?: PaymentStatus;
 }

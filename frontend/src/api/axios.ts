@@ -15,6 +15,8 @@ import {
   TOKEN_TYPE,
   APP_HEADER_CLIENT_NAME_KEY,
   TENANT_HEADER_SLUG_KEY,
+  PROPERTY_HEADER_SLUG_KEY,
+  PROPERTY_SLUG,
 } from "@/configs/appConfig";
 
 import { API_ENDPOINTS } from "@/configs/apiEndpoints";
@@ -64,6 +66,9 @@ axiosInstance.interceptors.request.use(
     if (config.headers) {
       config.headers[APP_HEADER_CLIENT_NAME_KEY] = APP_NAME;
       config.headers[TENANT_HEADER_SLUG_KEY] = TENANT_SLUG;
+      if (PROPERTY_SLUG !== null) {
+        config.headers[PROPERTY_HEADER_SLUG_KEY] = PROPERTY_SLUG;
+      }
     }
 
     return config;

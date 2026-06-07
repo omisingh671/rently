@@ -40,7 +40,7 @@ export function RoomCard({ room }: RoomCardProps) {
 
   return (
     <article
-      className={`flex min-h-[132px] min-w-[112px] flex-1 flex-col justify-between rounded-xl border px-4 py-4 shadow-sm transition-all hover:shadow-md ${bgClass} ${borderClass} ${textClass}`}
+      className={`flex min-h-33 min-w-28 flex-1 flex-col justify-between rounded-xl border px-4 py-4 shadow-sm transition-all hover:shadow-md ${bgClass} ${borderClass} ${textClass}`}
       title={`${room.roomNumber} - ${statusLabel(room.boardStatus)}`}
     >
       <div className="flex items-start justify-between gap-2">

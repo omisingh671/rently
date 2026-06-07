@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { FormProvider, useForm } from "react-hook-form";
+import { useEffect, useState } from "react";
+import { FormProvider, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import Button from "@/components/ui/Button";
@@ -19,11 +19,15 @@ type Props = {
   }>;
   submitLabel: string;
   isSubmitting?: boolean;
+  isCreateMode?: boolean;
   onCancel?: () => void;
 
   onSubmit: (
     values: PropertyFormValues,
-    setServerError: (message: string) => void,
+    setServerError: (
+      message: string,
+      field?: keyof PropertyFormValues,
+    ) => void,
   ) => void;
 };
 
@@ -33,25 +37,91 @@ export default function PropertyForm({
   submitLabel,
   onSubmit,
   onCancel,
+  isCreateMode = false,
   isSubmitting = false,
 }: Props) {
   const methods = useForm<PropertyFormValues>({
     resolver: zodResolver(propertyFormSchema),
-    defaultValues,
+    defaultValues: {
+      slug: "",
+      status: "ACTIVE",
+      supportEmail: "",
+      supportPhone: "",
+      latitude: "",
+      longitude: "",
+      ...defaultValues,
+    },
   });
 
-  const { handleSubmit, setError, clearErrors, reset } = methods;
+  const {
+    control,
+    handleSubmit,
+    setError,
+    clearErrors,
+    reset,
+    setValue,
+    formState,
+  } = methods;
+  const name = useWatch({ control, name: "name" });
+  const city = useWatch({ control, name: "city" });
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
+
+  const toSlug = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 80)
+      .replace(/-+$/g, "");
 
   useEffect(() => {
     if (defaultValues) {
-      reset(defaultValues);
+      reset({
+        slug: "",
+        status: "ACTIVE",
+        supportEmail: "",
+        supportPhone: "",
+        latitude: "",
+        longitude: "",
+        ...defaultValues,
+      });
     }
   }, [defaultValues, reset]);
 
+  useEffect(() => {
+    if (!isCreateMode || defaultValues?.slug || formState.dirtyFields.slug) {
+      return;
+    }
+
+    const nextSlug = toSlug(`${name ?? ""}-${city ?? ""}`);
+    if (nextSlug) {
+      setValue("slug", nextSlug, { shouldDirty: false, shouldValidate: true });
+    }
+  }, [
+    city,
+    defaultValues?.slug,
+    formState.dirtyFields.slug,
+    isCreateMode,
+    name,
+    setValue,
+  ]);
+
   const submitHandler = (values: PropertyFormValues) => {
+    setServerMessage(null);
     clearErrors("root.server");
 
-    onSubmit(values, (message) => {
+    onSubmit(values, (message, field) => {
+      setServerMessage(message);
+
+      if (field) {
+        setError(field, {
+          type: "server",
+          message,
+        });
+        return;
+      }
+
       setError("root.server", {
         type: "server",
         message,
@@ -67,6 +137,15 @@ export default function PropertyForm({
         noValidate
       >
         <ErrorSummary />
+        {serverMessage && (
+          <div
+            className="rounded-md bg-danger/10 px-3 py-2 text-sm text-danger"
+            role="alert"
+            aria-live="assertive"
+          >
+            {serverMessage}
+          </div>
+        )}
 
         <div className="bg-white space-y-6">
           <SelectField name="tenantId" label="Tenant">
@@ -78,7 +157,17 @@ export default function PropertyForm({
             ))}
           </SelectField>
 
-          <InputField name="name" label="Property Name" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            <InputField name="name" label="Property Name" />
+            <InputField
+              name="slug"
+              label="Property Slug"
+              readOnly={isCreateMode}
+              className={
+                isCreateMode ? "bg-slate-50 text-slate-600" : undefined
+              }
+            />
+          </div>
           <InputField name="address" label="Address" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -101,6 +190,23 @@ export default function PropertyForm({
             )}
           </div>
 
+          <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Property contact
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <InputField name="supportEmail" label="Support Email" />
+              <InputField name="supportPhone" label="Support Phone" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <InputField name="latitude" label="Latitude" />
+              <InputField name="longitude" label="Longitude" />
+            </div>
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-3 border-t border-slate-200 py-4">
             {onCancel && (

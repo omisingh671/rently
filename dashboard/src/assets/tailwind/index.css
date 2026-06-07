@@ -453,9 +453,8 @@
     @apply relative flex w-full rounded-md border border-slate-300 bg-white;
   }
 
-  /* Remove inner rounding and borders */
   .input-group > .pre-input {
-    @apply box-border flex items-center justify-center shrink-0 min-w-[75px] max-w-[90px] px-4 py-3 border-r border-slate-200 bg-white rounded-md rounded-r-none;
+    @apply box-border flex items-center justify-center shrink-0 min-w-18.75 max-w-22.5 px-4 py-3 border-r border-slate-200 bg-white rounded-md rounded-r-none;
   }
 
   .input-group > .pre-input > * {

@@ -3,6 +3,8 @@ import { publicEnv } from "./env";
 // Public app meta. Values can be overridden with VITE_* env vars.
 export const APP_NAME = publicEnv.appName;
 export const TENANT_SLUG = publicEnv.tenantSlug;
+export const PROPERTY_SLUG = publicEnv.propertySlug;
+export const IS_PROPERTY_SPECIFIC_MODE = PROPERTY_SLUG !== null;
 export const SUPPORT_EMAIL = publicEnv.supportEmail;
 export const SUPPORT_PHONE = publicEnv.supportPhone;
 export const SUPPORT_PHONE_WA = SUPPORT_PHONE.replace(/\D/g, "");
@@ -16,6 +18,7 @@ export const TOKEN_TYPE = "Bearer";
 export const REQUEST_HEADER_AUTH_KEY = "Authorization";
 export const APP_HEADER_CLIENT_NAME_KEY = "X-APP-NAME";
 export const TENANT_HEADER_SLUG_KEY = "x-tenant-slug";
+export const PROPERTY_HEADER_SLUG_KEY = "x-property-slug";
 
 // Storage keys
 export const TOKEN_NAME_IN_STORAGE = "token";

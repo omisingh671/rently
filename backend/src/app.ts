@@ -19,8 +19,26 @@ import { HttpError } from "@/common/errors/http-error.js";
 // Routers
 import authRouter from "@/modules/auth/auth.routes.js";
 import usersRouter from "@/modules/users/users.routes.js";
-import { dashboardRouter } from "@/modules/dashboard/index.js";
+import { sessionsRouter } from "@/modules/sessions/index.js";
+import { propertyAssignmentsRouter } from "@/modules/property-assignments/index.js";
+import { reportingRouter } from "@/modules/reporting/index.js";
 import { publicRouter } from "@/modules/public/index.js";
+import { galleriesRouter } from "@/modules/galleries/index.js";
+import { tenantsRouter } from "@/modules/tenants/index.js";
+import { amenitiesRouter } from "@/modules/amenities/index.js";
+import { propertiesRouter } from "@/modules/properties/index.js";
+import { unitRouter } from "@/modules/units/index.js";
+import { roomRouter } from "@/modules/rooms/index.js";
+import { maintenanceRouter } from "@/modules/maintenance/index.js";
+import { roomProductRouter } from "@/modules/room-products/index.js";
+import { bookingPolicyRouter } from "@/modules/booking-policy/index.js";
+import { billingRouter } from "@/modules/billing/index.js";
+import { pricingRouter } from "@/modules/pricing/index.js";
+import { taxesRouter } from "@/modules/taxes/index.js";
+import { couponsRouter } from "@/modules/coupons/index.js";
+import { leadsRouter } from "@/modules/leads/index.js";
+import bookingsRouter from "@/modules/bookings/index.js";
+
 
 const API_PREFIX = env.API_PREFIX;
 const allowedOrigins = Array.from(
@@ -121,6 +139,7 @@ app.use(
       "Authorization",
       "x-app-name",
       "x-tenant-slug",
+      "x-property-slug",
       "Idempotency-Key",
     ],
   }),
@@ -159,8 +178,26 @@ app.get("/health", (_req: Request, res: Response) => {
  */
 app.use(`${API_PREFIX}/auth`, authRouter);
 app.use(`${API_PREFIX}/users`, usersRouter);
-app.use(`${API_PREFIX}/dashboard`, dashboardRouter);
+app.use(`${API_PREFIX}/sessions`, sessionsRouter);
+app.use(`${API_PREFIX}/property-assignments`, propertyAssignmentsRouter);
+app.use(`${API_PREFIX}/reporting`, reportingRouter);
 app.use(`${API_PREFIX}/public`, publicRouter);
+app.use(`${API_PREFIX}/galleries`, galleriesRouter);
+app.use(`${API_PREFIX}/tenants`, tenantsRouter);
+app.use(`${API_PREFIX}/amenities`, amenitiesRouter);
+app.use(`${API_PREFIX}/properties`, propertiesRouter);
+app.use(`${API_PREFIX}`, unitRouter);
+app.use(`${API_PREFIX}`, roomRouter);
+app.use(`${API_PREFIX}`, maintenanceRouter);
+app.use(`${API_PREFIX}`, roomProductRouter);
+app.use(`${API_PREFIX}`, bookingPolicyRouter);
+app.use(`${API_PREFIX}`, billingRouter);
+app.use(`${API_PREFIX}`, pricingRouter);
+app.use(`${API_PREFIX}`, taxesRouter);
+app.use(`${API_PREFIX}`, couponsRouter);
+app.use(`${API_PREFIX}`, leadsRouter);
+app.use(`${API_PREFIX}`, bookingsRouter);
+
 
 /**
  * --------------------------------------------------

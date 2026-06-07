@@ -4,10 +4,15 @@ export type AdminProperty = {
   id: string;
   tenantId: string;
   tenantName: string;
+  slug: string;
   name: string;
   address: string;
   city: string;
   state: string;
+  supportEmail: string | null;
+  supportPhone: string | null;
+  latitude: number | null;
+  longitude: number | null;
   status: PropertyStatus;
   amenityIds?: string[];
   isActive: boolean;
@@ -28,20 +33,30 @@ export interface PaginatedPropertiesResponse {
 
 export interface CreatePropertyPayload {
   tenantId: string;
+  slug?: string;
   name: string;
   address: string;
   city: string;
   state: string;
+  supportEmail?: string | null;
+  supportPhone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status?: PropertyStatus;
   amenityIds?: string[];
 }
 
 export interface UpdatePropertyPayload {
   tenantId?: string;
+  slug?: string;
   name?: string;
   address?: string;
   city?: string;
   state?: string;
+  supportEmail?: string | null;
+  supportPhone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status?: PropertyStatus;
   amenityIds?: string[];
   isActive?: boolean;

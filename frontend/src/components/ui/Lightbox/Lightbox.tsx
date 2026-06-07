@@ -130,7 +130,7 @@ export default function Lightbox({
         onClick={onClose}
       />
 
-      <div className="relative z-10 max-w-[1200px] w-[95%] md:w-[90%] lg:w-[80%]">
+      <div className="relative z-10 max-w-300 w-[95%] md:w-[90%] lg:w-[80%]">
         {/* Close */}
         <button
           onClick={onClose}

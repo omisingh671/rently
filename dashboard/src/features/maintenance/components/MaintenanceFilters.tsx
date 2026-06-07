@@ -98,7 +98,7 @@ export default function MaintenanceFilters({
           }
           variant="dark"
           icon={<HiXMark className="h-4 w-4" />}
-          className="h-[42px]"
+          className="h-10.5"
         >
           Clear
         </Button>

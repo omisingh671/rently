@@ -7,7 +7,25 @@ type BackendErrorResponse = {
   error?: {
     code?: string;
     message?: string;
+    details?: unknown;
   };
+};
+
+const getValidationDetailMessage = (details: unknown): string | null => {
+  if (!Array.isArray(details)) {
+    return null;
+  }
+
+  const issue = details.find(
+    (detail): detail is { message: string } =>
+      typeof detail === "object" &&
+      detail !== null &&
+      "message" in detail &&
+      typeof detail.message === "string" &&
+      detail.message.trim().length > 0,
+  );
+
+  return issue?.message ?? null;
 };
 
 export function normalizeApiError(err: unknown): AppError {
@@ -16,6 +34,7 @@ export function normalizeApiError(err: unknown): AppError {
     const status = axiosErr.response?.status;
 
     const backendMessage =
+      getValidationDetailMessage(axiosErr.response?.data?.error?.details) ||
       axiosErr.response?.data?.error?.message ||
       axiosErr.response?.data?.message ||
       axiosErr.message ||
