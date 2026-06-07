@@ -33,6 +33,18 @@ export interface AvailabilityResult {
   options: AvailabilityOption[];
 }
 
+export interface AvailabilityOptionGroup {
+  groupId: string;
+  displayTitle: string;
+  variants: AvailabilityOption[];
+}
+
+export interface AvailabilityComfortVariant {
+  comfortOption: ComfortOption;
+  label: string;
+  priceLabel: string;
+}
+
 export interface GalleryImage {
   id: string;
   url: string;
@@ -55,6 +67,7 @@ export interface AvailabilityOptionItem {
   roomId: string | null;
   label: string;
   guestCount: number;
+  priceGuestCount: number;
   capacity: number;
   pricePerNight: number;
   images: GalleryImage[];

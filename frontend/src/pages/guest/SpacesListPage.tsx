@@ -15,8 +15,10 @@ import { IS_PROPERTY_SPECIFIC_MODE } from "@/configs/appConfig";
 import { ROUTES } from "@/configs/routePaths";
 import { checkAvailability } from "@/features/availability/api";
 import type {
+  AvailabilityOptionGroup,
   AvailabilityOption,
   AvailabilityResult,
+  BookingTargetType,
   ComfortFilter,
   ComfortOption,
 } from "@/features/availability/domain";
@@ -44,7 +46,7 @@ type LayoutMode = "grid" | "stack";
 
 const layoutPreferenceKey = "rently:availability-layout";
 const initialVisibleOptionCount = 6;
-const maxVisibleOptionCount = 10;
+const maxVisibleOptionCount = 12;
 
 const getInitialLayoutMode = (): LayoutMode => {
   if (typeof window === "undefined") return "grid";
@@ -108,14 +110,172 @@ const mergeAvailabilityResults = (
         left.totalCapacity - right.totalCapacity ||
         left.itemCount - right.itemCount ||
         left.stayTotal - right.stayTotal,
-    )
-    .slice(0, maxVisibleOptionCount);
+    );
 
   return {
     available: options.length > 0,
     options,
   };
 };
+
+const comfortOrder: Record<ComfortOption, number> = {
+  NON_AC: 0,
+  AC: 1,
+};
+
+const comfortLabels: Record<ComfortOption, string> = {
+  AC: "AC",
+  NON_AC: "Non-AC",
+};
+
+const getTargetMix = (option: AvailabilityOption) =>
+  option.items
+    .map(
+      (item) =>
+        `${item.targetType}:${item.priceGuestCount}:${item.guestCount}`,
+    )
+    .join("+");
+
+const getRoomDisplayTitle = (pricedOccupancy: number) => {
+  if (pricedOccupancy === 1) return "Single Room";
+  if (pricedOccupancy === 2) return "Double Room";
+  return `${pricedOccupancy}-Guest Room`;
+};
+
+const getDisplayTitle = (option: AvailabilityOption) => {
+  const firstItem = option.items[0];
+  if (
+    option.itemCount === 1 &&
+    firstItem?.targetType === ("ROOM" satisfies BookingTargetType)
+  ) {
+    return getRoomDisplayTitle(firstItem.priceGuestCount);
+  }
+
+  return option.title;
+};
+
+const getAvailabilityGroupKey = (option: AvailabilityOption) =>
+  [
+    option.propertyId,
+    getDisplayTitle(option),
+    option.items.map((item) => item.priceGuestCount).join("+"),
+    option.guestSplit,
+    option.itemCount,
+    getTargetMix(option),
+  ].join("|");
+
+const sortOptions = (left: AvailabilityOption, right: AvailabilityOption) =>
+  left.totalCapacity - right.totalCapacity ||
+  left.itemCount - right.itemCount ||
+  left.stayTotal - right.stayTotal ||
+  comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption];
+
+const sortGroups = (
+  left: AvailabilityOptionGroup,
+  right: AvailabilityOptionGroup,
+) => sortOptions(left.variants[0]!, right.variants[0]!);
+
+const groupAvailabilityOptions = (
+  options: AvailabilityOption[],
+): AvailabilityOptionGroup[] => {
+  const groupsByKey = new Map<string, AvailabilityOptionGroup>();
+
+  for (const option of options) {
+    const groupId = getAvailabilityGroupKey(option);
+    const displayTitle = getDisplayTitle(option);
+    const existingGroup = groupsByKey.get(groupId);
+
+    if (!existingGroup) {
+      groupsByKey.set(groupId, {
+        groupId,
+        displayTitle,
+        variants: [option],
+      });
+      continue;
+    }
+
+    const existingVariantIndex = existingGroup.variants.findIndex(
+      (variant) => variant.comfortOption === option.comfortOption,
+    );
+
+    if (existingVariantIndex === -1) {
+      existingGroup.variants.push(option);
+      existingGroup.variants.sort(sortOptions);
+      continue;
+    }
+
+    const existingVariant = existingGroup.variants[existingVariantIndex];
+    if (existingVariant && option.stayTotal < existingVariant.stayTotal) {
+      existingGroup.variants[existingVariantIndex] = option;
+      existingGroup.variants.sort(sortOptions);
+    }
+  }
+
+  return [...groupsByKey.values()].sort(sortGroups).slice(0, maxVisibleOptionCount);
+};
+
+const getDefaultComfort = (
+  group: AvailabilityOptionGroup,
+  comfort: ComfortFilter,
+): ComfortOption => {
+  if (
+    comfort !== "ALL" &&
+    group.variants.some((variant) => variant.comfortOption === comfort)
+  ) {
+    return comfort;
+  }
+
+  return [...group.variants].sort(
+    (left, right) =>
+      left.stayTotal - right.stayTotal ||
+      comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption],
+  )[0]!.comfortOption;
+};
+
+const getSelectedComfort = (
+  group: AvailabilityOptionGroup,
+  comfort: ComfortFilter,
+  selectedComfortByGroup: Record<string, ComfortOption>,
+) => {
+  const selectedComfort = selectedComfortByGroup[group.groupId];
+
+  if (
+    selectedComfort &&
+    group.variants.some(
+      (variant) => variant.comfortOption === selectedComfort,
+    )
+  ) {
+    return selectedComfort;
+  }
+
+  return getDefaultComfort(group, comfort);
+};
+
+const getSelectedOption = (
+  group: AvailabilityOptionGroup,
+  selectedComfort: ComfortOption,
+): AvailabilityOption => {
+  const option =
+    group.variants.find((variant) => variant.comfortOption === selectedComfort) ??
+    group.variants[0]!;
+
+  return {
+    ...option,
+    title: group.displayTitle,
+  };
+};
+
+const getComfortVariants = (group: AvailabilityOptionGroup) =>
+  group.variants
+    .map((variant) => ({
+      comfortOption: variant.comfortOption,
+      label: comfortLabels[variant.comfortOption],
+      priceLabel: formatPrice(variant.nightlyTotal),
+    }))
+    .sort(
+      (left, right) =>
+        comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption],
+    );
 
 export default function SpacesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,6 +288,9 @@ export default function SpacesListPage() {
     filterKey: "",
     count: initialVisibleOptionCount,
   });
+  const [selectedComfortByGroup, setSelectedComfortByGroup] = useState<
+    Record<string, ComfortOption>
+  >({});
   const hasTriedGeoCityRef = useRef(false);
   const { data: tenantConfig } = usePublicTenantConfig();
 
@@ -299,17 +462,31 @@ export default function SpacesListPage() {
   };
 
   const options = availabilityQuery.data?.options ?? [];
+  const optionGroups = useMemo(
+    () => groupAvailabilityOptions(options),
+    [options],
+  );
   const availabilityFilterKey = [from, to, city, guests, comfort].join("|");
   const visibleOptionCount =
     visibleOptionState.filterKey === availabilityFilterKey
       ? visibleOptionState.count
       : initialVisibleOptionCount;
-  const visibleOptions = options.slice(0, visibleOptionCount);
-  const canShowMoreOptions = options.length > visibleOptionCount;
+  const visibleOptionGroups = optionGroups.slice(0, visibleOptionCount);
+  const canShowMoreOptions = optionGroups.length > visibleOptionCount;
 
   const updateLayoutMode = (nextLayoutMode: LayoutMode) => {
     setLayoutMode(nextLayoutMode);
     window.localStorage.setItem(layoutPreferenceKey, nextLayoutMode);
+  };
+
+  const selectComfortVariant = (
+    groupId: string,
+    nextComfortOption: ComfortOption,
+  ) => {
+    setSelectedComfortByGroup((current) => ({
+      ...current,
+      [groupId]: nextComfortOption,
+    }));
   };
 
   return (
@@ -574,25 +751,43 @@ export default function SpacesListPage() {
                   : "flex flex-col gap-4"
               }
             >
-              {visibleOptions.map((option) =>
-                layoutMode === "grid" ? (
+              {visibleOptionGroups.map((group) => {
+                const selectedComfort = getSelectedComfort(
+                  group,
+                  comfort,
+                  selectedComfortByGroup,
+                );
+                const selectedOption = getSelectedOption(group, selectedComfort);
+                const comfortVariants = getComfortVariants(group);
+
+                return layoutMode === "grid" ? (
                   <OptionGridCard
-                    key={option.optionId}
-                    option={option}
+                    key={group.groupId}
+                    option={selectedOption}
+                    comfortVariants={comfortVariants}
+                    selectedComfort={selectedComfort}
+                    onSelectComfort={(nextComfortOption) =>
+                      selectComfortVariant(group.groupId, nextComfortOption)
+                    }
                     onBook={bookOption}
                     isBooking={false}
                     formatPrice={formatPrice}
                   />
                 ) : (
                   <OptionStackCard
-                    key={option.optionId}
-                    option={option}
+                    key={group.groupId}
+                    option={selectedOption}
+                    comfortVariants={comfortVariants}
+                    selectedComfort={selectedComfort}
+                    onSelectComfort={(nextComfortOption) =>
+                      selectComfortVariant(group.groupId, nextComfortOption)
+                    }
                     onBook={bookOption}
                     isBooking={false}
                     formatPrice={formatPrice}
                   />
-                ),
-              )}
+                );
+              })}
             </div>
 
             {canShowMoreOptions && (

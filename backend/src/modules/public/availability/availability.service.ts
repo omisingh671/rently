@@ -28,8 +28,7 @@ import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.input
 
 const maxBookingTransactionAttempts = 3;
 const inventoryLockTtlMs = 10 * 60 * 1000;
-const maxPublicOptions = 10;
-const publicRoomCapacityCap = 2;
+const maxPublicOptions = 12;
 
 const now = () => new Date();
 
@@ -62,6 +61,10 @@ interface StayScope {
   checkIn: Date;
   checkOut: Date;
   nights: number;
+}
+
+interface GenerateAvailabilityOptionsConfig {
+  pricePrivateRoomsByCapacity?: boolean;
 }
 
 export interface PublicInventoryItem {
@@ -120,7 +123,7 @@ type AmenityLinkSource = {
 };
 
 const getRoomCapacity = (room: { maxOccupancy: number }) =>
-  Math.max(1, Math.min(room.maxOccupancy, publicRoomCapacityCap));
+  Math.max(1, room.maxOccupancy);
 
 const getUnitCapacity = (unit: repo.PublicAvailabilityUnitRecord) =>
   unit.rooms
@@ -157,6 +160,7 @@ const buildOptionSignature = (
       roomId: item.target.roomId,
       unitId: item.target.unitId,
       guestCount: item.guestCount,
+      priceGuestCount: item.priceGuestCount,
       productId: item.productId,
       pricePerNight: item.pricePerNight,
       taxInclusive: item.taxInclusive,
@@ -200,6 +204,7 @@ const mapOptionItemDTO = (
   roomId: null,
   label: item.publicLabel,
   guestCount: item.guestCount,
+  priceGuestCount: item.priceGuestCount,
   capacity: item.capacity,
   pricePerNight: item.pricePerNight,
   images: item.images,
@@ -238,9 +243,37 @@ const sortOptions = (
   return (
     leftRank.capacityFit - rightRank.capacityFit ||
     leftRank.itemCount - rightRank.itemCount ||
-    leftRank.grouping - rightRank.grouping ||
-    leftRank.nightlyTotal - rightRank.nightlyTotal
+    leftRank.nightlyTotal - rightRank.nightlyTotal ||
+    leftRank.grouping - rightRank.grouping
   );
+};
+
+const getPublicOptionShapeKey = (option: PublicAvailabilityOptionInternal) =>
+  [
+    option.propertyId,
+    option.title,
+    option.guestSplit,
+    option.comfortOption,
+    option.items.map((item) => item.priceGuestCount).join("+"),
+  ].join("|");
+
+const curatePublicOptions = (
+  options: PublicAvailabilityOptionInternal[],
+  requestedGuests: number,
+) => {
+  const deduped = new Map<string, PublicAvailabilityOptionInternal>();
+
+  for (const option of options) {
+    const key = getPublicOptionShapeKey(option);
+    const existing = deduped.get(key);
+    if (!existing || sortOptions(option, existing, requestedGuests) < 0) {
+      deduped.set(key, option);
+    }
+  }
+
+  return [...deduped.values()]
+    .sort((left, right) => sortOptions(left, right, requestedGuests))
+    .slice(0, maxPublicOptions);
 };
 
 const hasInventoryOverlap = async (
@@ -446,6 +479,7 @@ const mapUnitRooms = (
 const toPricedRoomItem = async (
   room: repo.PublicAvailabilityRoomRecord,
   guestCount: number,
+  priceGuestCount: number,
   index: number,
   tenantId: string,
   comfortOption: ComfortOption,
@@ -463,7 +497,7 @@ const toPricedRoomItem = async (
     new Date(),
     tenantId,
     {
-      guestCount,
+      guestCount: priceGuestCount,
       comfortOption,
     },
     stay,
@@ -489,7 +523,7 @@ const toPricedRoomItem = async (
     floor: room.unit.floor,
     capacity: getRoomCapacity(room),
     guestCount,
-    priceGuestCount: guestCount,
+    priceGuestCount,
     pricePerNight: Number(pricing.price),
     taxInclusive: pricing.taxInclusive,
     productId: pricing.productId,
@@ -682,7 +716,10 @@ export const generateAvailabilityOptions = async (
   scope: spacesRepo.PublicPropertyScope = {},
   tx?: Prisma.TransactionClient,
   ignoreLockToken?: string,
+  config: GenerateAvailabilityOptionsConfig = {},
 ): Promise<PublicAvailabilityOptionInternal[]> => {
+  const pricePrivateRoomsByCapacity =
+    config.pricePrivateRoomsByCapacity ?? true;
   const stay = {
     checkIn: input.checkIn,
     checkOut: input.checkOut,
@@ -774,22 +811,50 @@ export const generateAvailabilityOptions = async (
       continue;
     }
 
+    if (
+      roomAllocation.length === 1 &&
+      pricePrivateRoomsByCapacity &&
+      roomAllocation[0] !== undefined &&
+      roomAllocation[0].guestCount < getRoomCapacity(roomAllocation[0].room)
+    ) {
+      await addOption(options, input, stay, [
+        () =>
+          toPricedRoomItem(
+            roomAllocation[0].room,
+            roomAllocation[0].guestCount,
+            roomAllocation[0].guestCount,
+            0,
+            tenantId,
+            input.comfortOption,
+            stay,
+            tx,
+            scope,
+          ),
+      ]);
+    }
+
     await addOption(
       options,
       input,
       stay,
-      roomAllocation.map((allocation, index) => () =>
-        toPricedRoomItem(
-          allocation.room,
-          allocation.guestCount,
-          index,
-          tenantId,
-          input.comfortOption,
-          stay,
-          tx,
-          scope,
-        ),
-      ),
+      roomAllocation.map((allocation, index) => {
+        const isSinglePrivateRoomOption = roomAllocation.length === 1;
+
+        return () =>
+          toPricedRoomItem(
+            allocation.room,
+            allocation.guestCount,
+            isSinglePrivateRoomOption && pricePrivateRoomsByCapacity
+              ? getRoomCapacity(allocation.room)
+              : allocation.guestCount,
+            index,
+            tenantId,
+            input.comfortOption,
+            stay,
+            tx,
+            scope,
+          );
+      }),
     );
   }
 
@@ -825,6 +890,7 @@ export const generateAvailabilityOptions = async (
         toPricedRoomItem(
           allocation.room,
           allocation.guestCount,
+          allocation.guestCount,
           index,
           tenantId,
           input.comfortOption,
@@ -836,26 +902,7 @@ export const generateAvailabilityOptions = async (
     ]);
   }
 
-  const deduped = new Map<string, PublicAvailabilityOptionInternal>();
-  for (const option of options.sort((left, right) =>
-    sortOptions(left, right, input.guests),
-  )) {
-    const key = [
-      option.propertyId,
-      option.title,
-      option.guestSplit,
-      option.totalCapacity,
-      option.comfortOption,
-    ].join("|");
-    const existing = deduped.get(key);
-    if (!existing || option.nightlyTotal < existing.nightlyTotal) {
-      deduped.set(key, option);
-    }
-  }
-
-  return [...deduped.values()]
-    .sort((left, right) => sortOptions(left, right, input.guests))
-    .slice(0, maxPublicOptions);
+  return curatePublicOptions(options, input.guests);
 };
 
 export const getPublicAvailabilityOptions = async (

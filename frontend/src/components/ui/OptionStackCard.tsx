@@ -7,7 +7,11 @@ import {
   FiUsers,
   FiWind,
 } from "react-icons/fi";
-import type { AvailabilityOption } from "@/features/availability/domain";
+import type {
+  AvailabilityComfortVariant,
+  AvailabilityOption,
+  ComfortOption,
+} from "@/features/availability/domain";
 import { OptionPricePanel } from "@/components/ui/OptionPricePanel";
 import { ImageSlider } from "@/components/ui/ImageSlider";
 import {
@@ -21,6 +25,9 @@ import { OptionDetailsModal } from "@/components/ui/OptionDetailsModal";
 
 interface OptionStackCardProps {
   option: AvailabilityOption;
+  comfortVariants: AvailabilityComfortVariant[];
+  selectedComfort: ComfortOption;
+  onSelectComfort: (comfortOption: ComfortOption) => void;
   onBook: (option: AvailabilityOption) => void;
   isBooking: boolean;
   formatPrice: (price: number) => string;
@@ -40,8 +47,16 @@ const getLightboxImages = (images: SliderImage[]): LightboxImage[] =>
       }))
     : [];
 
+const formatAllocation = (guestSplit: string) =>
+  guestSplit.includes("+")
+    ? `Allocated as ${guestSplit} guests`
+    : `Allocated for ${guestSplit} guest${guestSplit === "1" ? "" : "s"}`;
+
 export const OptionStackCard = ({
   option,
+  comfortVariants,
+  selectedComfort,
+  onSelectComfort,
   onBook,
   isBooking,
   formatPrice,
@@ -108,14 +123,14 @@ export const OptionStackCard = ({
             <div className="flex items-center gap-2 text-xs text-slate-600">
               <FiUsers className="shrink-0 text-slate-400" />
               <span className="font-semibold text-slate-700">
-                Fits up to {option.totalCapacity} guests
+                Total capacity {option.totalCapacity} guests
               </span>
             </div>
 
             <div className="flex items-center gap-2 text-xs text-slate-600">
               <FiBookOpen className="shrink-0 text-slate-400" />
               <span className="font-semibold text-slate-700">
-                {option.guestSplit} guest allocation
+                {formatAllocation(option.guestSplit)}
               </span>
             </div>
           </div>
@@ -131,6 +146,29 @@ export const OptionStackCard = ({
         </div>
 
         <div className="flex w-full flex-col justify-between self-stretch md:w-72 md:shrink-0 md:border-l md:border-slate-100 md:pl-6">
+          {comfortVariants.length > 1 && (
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {comfortVariants.map((variant) => (
+                <button
+                  key={variant.comfortOption}
+                  type="button"
+                  onClick={() => onSelectComfort(variant.comfortOption)}
+                  className={`rounded-lg border px-2.5 py-2 text-left transition ${
+                    selectedComfort === variant.comfortOption
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="block text-[10px] font-bold uppercase tracking-wide">
+                    {variant.label}
+                  </span>
+                  <span className="mt-0.5 block text-xs font-bold">
+                    {variant.priceLabel}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <OptionPricePanel
             option={option}
             formatPrice={formatPrice}

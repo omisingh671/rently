@@ -35,6 +35,7 @@ export interface AvailabilityOptionItemDTO {
   roomId: string | null;
   label: string;
   guestCount: number;
+  priceGuestCount: number;
   capacity: number;
   pricePerNight: number;
   images: GalleryImageDTO[];

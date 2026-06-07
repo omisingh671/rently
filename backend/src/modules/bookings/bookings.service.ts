@@ -780,6 +780,9 @@ export const checkManualBookingAvailability = async (
     property.tenantId,
     nights,
     { propertyId },
+    undefined,
+    undefined,
+    { pricePrivateRoomsByCapacity: false },
   );
   const propertyOptions = options.filter(
     (option) => option.propertyId === propertyId,

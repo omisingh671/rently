@@ -68,7 +68,7 @@ export const OptionDetailsModal = ({
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
               <FiUsers />
-              Fits up to {option.totalCapacity} guests
+              Total capacity {option.totalCapacity} guests
             </span>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-3 py-1 ${
@@ -117,13 +117,24 @@ export const OptionDetailsModal = ({
                     <FiHome className="text-slate-400" />
                     {item.label}
                   </div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    {item.guestCount} guest{item.guestCount === 1 ? "" : "s"} /
-                    capacity {item.capacity}
+                  <div className="mt-1 space-y-0.5 text-sm text-slate-600">
+                    <div>
+                      Allocated: {item.guestCount} guest
+                      {item.guestCount === 1 ? "" : "s"}
+                    </div>
+                    <div>
+                      Capacity: {item.capacity} guest
+                      {item.capacity === 1 ? "" : "s"}
+                    </div>
+                    <div>
+                      Priced as: {item.priceGuestCount} guest
+                      {item.priceGuestCount === 1 ? "" : "s"}
+                    </div>
                   </div>
                 </div>
 
                 <div className="text-sm font-bold text-slate-800">
+                  <span className="font-normal text-slate-500">Rate: </span>
                   {formatPrice(item.pricePerNight)}
                   <span className="font-normal text-slate-400">/night</span>
                 </div>
