@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "@/components/ui/Button";
@@ -58,6 +58,8 @@ type AssignmentRoom = {
   name: string;
   status: string;
   isActive: boolean;
+  maxOccupancy: number;
+  unitId: string;
 };
 
 const bookingStatuses: BookingStatus[] = [
@@ -155,8 +157,7 @@ const getAssignedLabel = (booking: AdminBooking) =>
 
 const hasAssignedTarget = (booking: AdminBooking) =>
   booking.items.length > 0 &&
-  booking.items.every((item) => item.roomId !== null || item.unitId !== null) &&
-  (booking.roomId !== null || booking.unitId !== null);
+  booking.items.every((item) => item.roomId !== null || item.unitId !== null);
 
 const getActionDefaults = (action: RiskAction): PendingAction => {
   if (action === "checkIn") {
@@ -268,7 +269,7 @@ export default function BookingDetailsPage() {
     null,
   );
   const [note, setNote] = useState("");
-  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] =
     useState<BookingStatus>("PENDING");
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -280,6 +281,7 @@ export default function BookingDetailsPage() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>("CASH");
   const [actionError, setActionError] = useState("");
+  const [hasInitializedRoomIds, setHasInitializedRoomIds] = useState(false);
 
   const {
     data: booking,
@@ -342,10 +344,33 @@ export default function BookingDetailsPage() {
           name: room.roomName,
           status: room.boardStatus,
           isActive: room.isActive,
+          maxOccupancy: room.maxOccupancy,
+          unitId: room.unitId,
         })),
       ) ?? [],
     [roomsQuery.data?.units],
   );
+
+  useEffect(() => {
+    if (pendingAction?.type === "assignRoom" && !hasInitializedRoomIds && booking && rooms.length > 0) {
+      let initialSelectedRoomIds: string[] = [];
+      if (booking.targetType === "UNIT" && booking.unitId) {
+        const firstRoom = rooms.find((r) => r.unitId === booking.unitId);
+        if (firstRoom) {
+          initialSelectedRoomIds = [firstRoom.id];
+        }
+      } else {
+        initialSelectedRoomIds = booking.items
+          .map((item) => item.roomId)
+          .filter((roomId): roomId is string => roomId !== null);
+      }
+      const timer = setTimeout(() => {
+        setSelectedRoomIds(initialSelectedRoomIds);
+        setHasInitializedRoomIds(true);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingAction?.type, booking, rooms, hasInitializedRoomIds]);
 
   const openAction = (type: RiskAction, paymentId?: string) => {
     setActionError("");
@@ -355,6 +380,11 @@ export default function BookingDetailsPage() {
       nextAction.message =
         "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
     }
+    if (type === "assignRoom" && booking && booking.items.length > 1) {
+      nextAction.title = "Change Assigned Rooms";
+      nextAction.message = `Select exactly ${booking.items.length} rooms for this booking. Current rooms are preselected.`;
+      nextAction.confirmLabel = "Confirm Room Changes";
+    }
     if (type === "checkIn" && booking && Number(booking.balanceAmount) > 0) {
       nextAction.requiresNote = true;
       nextAction.message =
@@ -363,12 +393,19 @@ export default function BookingDetailsPage() {
     setPendingAction(nextAction);
     setNote("");
     if (type === "assignRoom" && booking) {
-      const preselect =
-        booking.roomId ??
-        rooms.find((r) => r.status === "AVAILABLE" && r.isActive)?.id ??
-        rooms[0]?.id ??
-        "";
-      setSelectedRoomId(preselect);
+      setHasInitializedRoomIds(false);
+      let initialSelectedRoomIds: string[] = [];
+      if (booking.targetType === "UNIT" && booking.unitId) {
+        const firstRoom = rooms.find((r) => r.unitId === booking.unitId);
+        if (firstRoom) {
+          initialSelectedRoomIds = [firstRoom.id];
+        }
+      } else {
+        initialSelectedRoomIds = booking.items
+          .map((item) => item.roomId)
+          .filter((roomId): roomId is string => roomId !== null);
+      }
+      setSelectedRoomIds(initialSelectedRoomIds);
     }
     if (type === "statusOverride" && booking) {
       setSelectedStatus(booking.status);
@@ -401,7 +438,9 @@ export default function BookingDetailsPage() {
     setRefundPaymentId("");
     setRefundAmount("");
     setRefundMethod("CASH");
+    setSelectedRoomIds([]);
     setActionError("");
+    setHasInitializedRoomIds(false);
   };
 
   const submitAction = async (event: FormEvent<HTMLFormElement>) => {
@@ -412,8 +451,11 @@ export default function BookingDetailsPage() {
       setActionError("");
 
       if (pendingAction.type === "assignRoom") {
-        if (!selectedRoomId) {
-          setActionError("Select a room before confirming.");
+        const requiredRoomCount = booking.items.length;
+        if (selectedRoomIds.length !== requiredRoomCount) {
+          setActionError(
+            `This booking requires exactly ${requiredRoomCount} rooms. Keep ${requiredRoomCount} rooms selected.`,
+          );
           return;
         }
 
@@ -423,7 +465,7 @@ export default function BookingDetailsPage() {
         }
 
         await updateBooking({
-          roomId: selectedRoomId,
+          roomIds: selectedRoomIds,
           ...(note.trim() && { note: note.trim() }),
         });
       } else if (pendingAction.type === "recordPayment") {
@@ -532,7 +574,8 @@ export default function BookingDetailsPage() {
   const canCheckIn =
     booking?.status === "CONFIRMED" &&
     booking !== undefined &&
-    hasAssignedTarget(booking);
+    hasAssignedTarget(booking) &&
+    !booking.isCheckInDatePassed;
   const canCheckOut = booking?.status === "CHECKED_IN";
   const canAdminCancelAfterCheckIn =
     booking?.status === "CHECKED_IN" && canUseAdminCorrection;
@@ -547,7 +590,8 @@ export default function BookingDetailsPage() {
     Number(booking.balanceAmount) > 0 &&
     booking.status !== "CANCELLED" &&
     booking.status !== "NO_SHOW" &&
-    booking.status !== "CHECKED_OUT";
+    booking.status !== "CHECKED_OUT" &&
+    (booking.status === "CHECKED_IN" || !booking.isCheckInDatePassed);
   const canShowRefunds =
     booking !== undefined &&
     (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
@@ -560,10 +604,44 @@ export default function BookingDetailsPage() {
     Number(booking.refundableAmount) > 0;
   const canAssignRoom =
     booking !== undefined &&
-    booking.bookingType !== "MULTI_ROOM" &&
     booking.status !== "CHECKED_OUT" &&
     booking.status !== "CANCELLED" &&
-    booking.status !== "NO_SHOW";
+    booking.status !== "NO_SHOW" &&
+    (booking.status === "CHECKED_IN" || !booking.isCheckInDatePassed);
+  const toggleAssignedRoom = (roomId: string) => {
+    if (!booking) return;
+
+    const requiredRoomCount = booking.items.length;
+    const isUnitBooking = booking.targetType === "UNIT";
+    setActionError("");
+
+    if (isUnitBooking) {
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room) return;
+      const isSelected = selectedRoomIds.some(
+        (id) => rooms.find((r) => r.id === id)?.unitId === room.unitId,
+      );
+      setSelectedRoomIds(isSelected ? [] : [room.id]);
+      return;
+    }
+
+    if (requiredRoomCount === 1) {
+      setSelectedRoomIds([roomId]);
+      return;
+    }
+
+    const isSelected = selectedRoomIds.includes(roomId);
+    if (isSelected && selectedRoomIds.length <= requiredRoomCount) {
+      setActionError(
+        `This booking requires exactly ${requiredRoomCount} rooms. Keep ${requiredRoomCount} rooms selected.`,
+      );
+      return;
+    }
+
+    setSelectedRoomIds((current) =>
+      isSelected ? current.filter((id) => id !== roomId) : [...current, roomId],
+    );
+  };
 
   if (isPending) {
     return <PageState message="Loading booking details..." />;
@@ -781,109 +859,80 @@ export default function BookingDetailsPage() {
             </h3>
             <div className="mt-4 grid gap-3">
               {canRecordBalance && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="primary"
+                <ActionButton
+                  theme="indigo"
                   icon={<FiCreditCard />}
                   disabled={isMutating}
                   onClick={() => openAction("recordPayment")}
-                  fullWidth
                 >
                   Record Balance Payment
-                </Button>
+                </ActionButton>
               )}
               {canAssignRoom && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="secondary"
+                <ActionButton
+                  theme="sky"
                   icon={<FiHome />}
                   disabled={isMutating}
                   onClick={() => openAction("assignRoom")}
-                  fullWidth
                 >
-                  {booking.roomId ? "Change Room" : "Assign Room"}
-                </Button>
+                  {booking.items.length > 1
+                    ? "Change Rooms"
+                    : booking.roomId !== null || (booking.targetType === "UNIT" && booking.unitId !== null)
+                      ? "Change Room"
+                      : "Assign Room"}
+                </ActionButton>
               )}
               {canCheckIn && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="success"
-                  outline
+                <ActionButton
+                  theme="emerald"
                   icon={<FiLogIn />}
                   disabled={isMutating}
                   onClick={() => openAction("checkIn")}
-                  fullWidth
                 >
                   Check In
-                </Button>
+                </ActionButton>
               )}
               {canCheckOut && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="info"
-                  outline
+                <ActionButton
+                  theme="slate"
                   icon={<FiLogOut />}
                   disabled={isMutating}
                   onClick={() => openAction("checkOut")}
-                  fullWidth
                 >
                   Check Out
-                </Button>
+                </ActionButton>
               )}
               {canMarkNoShow && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="warning"
-                  outline
+                <ActionButton
+                  theme="amber"
                   icon={<FiAlertTriangle />}
                   disabled={isMutating}
                   onClick={() => openAction("noShow")}
-                  fullWidth
                 >
                   Mark No-Show
-                </Button>
+                </ActionButton>
               )}
               {canCancel && (
-                <Button
-                  type="button"
-                  size="md"
-                  variant="danger"
-                  outline
+                <ActionButton
+                  theme="rose"
                   icon={<FiSlash />}
                   disabled={isMutating}
                   onClick={() => openAction("cancel")}
-                  fullWidth
                 >
                   Cancel Booking
-                </Button>
+                </ActionButton>
               )}
               {canUseAdminCorrection && (
-                <>
-                  <Button
-                    type="button"
-                    size="md"
-                    variant="secondary"
-                    icon={<FiEdit3 />}
-                    disabled={isMutating}
-                    onClick={() => openAction("statusOverride")}
-                    fullWidth
-                  >
-                    Fix Status Mistake
-                  </Button>
-                </>
+                <ActionButton
+                  theme="orange"
+                  icon={<FiEdit3 />}
+                  disabled={isMutating}
+                  onClick={() => openAction("statusOverride")}
+                >
+                  Fix Status Mistake
+                </ActionButton>
               )}
             </div>
-            {booking.bookingType === "MULTI_ROOM" && (
-              <p className="mt-3 text-xs text-slate-500">
-                Multi-room assignment changes should be handled from the room
-                board.
-              </p>
-            )}
             {booking.status === "CONFIRMED" && booking.noShowEligible && (
               <p className="mt-3 text-xs font-semibold text-amber-700">
                 No-show eligible
@@ -1304,7 +1353,16 @@ export default function BookingDetailsPage() {
       <ConfirmationModal
         action={pendingAction}
         note={note}
-        selectedRoomId={selectedRoomId}
+        selectedRoomIds={selectedRoomIds}
+        assignedRoomIds={
+          booking.targetType === "UNIT" && booking.unitId
+            ? rooms.filter((r) => r.unitId === booking.unitId).map((r) => r.id)
+            : booking.items
+                .map((item) => item.roomId)
+                .filter((roomId): roomId is string => roomId !== null)
+        }
+        requiredRoomCount={booking.items.length}
+        isUnitBooking={booking.targetType === "UNIT"}
         selectedStatus={selectedStatus}
         paymentAmount={paymentAmount}
         paymentMethod={paymentMethod}
@@ -1317,7 +1375,7 @@ export default function BookingDetailsPage() {
         isSubmitting={isMutating}
         errorMessage={actionError}
         onNoteChange={setNote}
-        onRoomChange={setSelectedRoomId}
+        onRoomToggle={toggleAssignedRoom}
         onStatusChange={setSelectedStatus}
         onPaymentAmountChange={setPaymentAmount}
         onPaymentMethodChange={setPaymentMethod}
@@ -1425,7 +1483,9 @@ function InternalNotesSection({
 function ConfirmationModal({
   action,
   note,
-  selectedRoomId,
+  selectedRoomIds,
+  assignedRoomIds,
+  requiredRoomCount,
   selectedStatus,
   paymentAmount,
   paymentMethod,
@@ -1438,7 +1498,7 @@ function ConfirmationModal({
   isSubmitting,
   errorMessage,
   onNoteChange,
-  onRoomChange,
+  onRoomToggle,
   onStatusChange,
   onPaymentAmountChange,
   onPaymentMethodChange,
@@ -1449,10 +1509,13 @@ function ConfirmationModal({
   onRefundMethodChange,
   onClose,
   onSubmit,
+  isUnitBooking,
 }: {
   action: PendingAction | null;
   note: string;
-  selectedRoomId: string;
+  selectedRoomIds: string[];
+  assignedRoomIds: string[];
+  requiredRoomCount: number;
   selectedStatus: BookingStatus;
   paymentAmount: string;
   paymentMethod: PaymentMethod;
@@ -1465,7 +1528,7 @@ function ConfirmationModal({
   isSubmitting: boolean;
   errorMessage: string;
   onNoteChange: (value: string) => void;
-  onRoomChange: (value: string) => void;
+  onRoomToggle: (roomId: string) => void;
   onStatusChange: (value: BookingStatus) => void;
   onPaymentAmountChange: (value: string) => void;
   onPaymentMethodChange: (value: PaymentMethod) => void;
@@ -1476,13 +1539,15 @@ function ConfirmationModal({
   onRefundMethodChange: (value: PaymentMethod) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  isUnitBooking: boolean;
 }) {
   const paymentReferenceRequired =
     action?.type === "recordPayment" &&
     paymentMethodsRequiringReference.has(paymentMethod);
   const canSubmit =
     !isSubmitting &&
-    (action?.type !== "assignRoom" || selectedRoomId !== "") &&
+    (action?.type !== "assignRoom" ||
+      selectedRoomIds.length === requiredRoomCount) &&
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
     (!paymentReferenceRequired || paymentReferenceId.trim().length > 0) &&
     (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
@@ -1495,7 +1560,7 @@ function ConfirmationModal({
       isOpen={action !== null}
       onClose={onClose}
       title={action?.title}
-      size="md"
+      size={action?.type === "assignRoom" ? "xl" : "md"}
       disableBackdropClose={isSubmitting}
       disableEscapeClose={isSubmitting}
     >
@@ -1507,23 +1572,15 @@ function ConfirmationModal({
           </div>
 
           {action.type === "assignRoom" && (
-            <label className="block text-sm">
-              <span className="font-medium text-slate-700">Room</span>
-              <select
-                value={selectedRoomId}
-                disabled={isSubmitting}
-                onChange={(event) => onRoomChange(event.target.value)}
-                className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
-              >
-                <option value="">Select room</option>
-                {rooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    Unit {room.unitNumber} / Room {room.number} ({room.name}) -{" "}
-                    {room.status}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <RoomAssignmentPicker
+              rooms={rooms}
+              selectedRoomIds={selectedRoomIds}
+              assignedRoomIds={assignedRoomIds}
+              requiredRoomCount={requiredRoomCount}
+              isSubmitting={isSubmitting}
+              onRoomToggle={onRoomToggle}
+              isUnitBooking={isUnitBooking}
+            />
           )}
 
           {action.type === "statusOverride" && (
@@ -1717,3 +1774,156 @@ function ConfirmationModal({
     </Modal>
   );
 }
+
+function RoomAssignmentPicker({
+  rooms,
+  selectedRoomIds,
+  assignedRoomIds,
+  requiredRoomCount,
+  isSubmitting,
+  onRoomToggle,
+  isUnitBooking = false,
+}: {
+  rooms: AssignmentRoom[];
+  selectedRoomIds: string[];
+  assignedRoomIds: string[];
+  requiredRoomCount: number;
+  isSubmitting: boolean;
+  onRoomToggle: (roomId: string) => void;
+  isUnitBooking?: boolean;
+}) {
+  const assignedRoomIdSet = new Set(assignedRoomIds);
+  const selectedRoomIdSet = new Set(selectedRoomIds);
+  const visibleRooms = rooms
+    .filter(
+      (room) =>
+        assignedRoomIdSet.has(room.id) ||
+        (room.status === "AVAILABLE" && room.isActive),
+    )
+    .sort((left, right) => {
+      const leftAssigned = assignedRoomIdSet.has(left.id);
+      const rightAssigned = assignedRoomIdSet.has(right.id);
+      if (leftAssigned !== rightAssigned) return leftAssigned ? -1 : 1;
+      return (
+        left.unitNumber.localeCompare(right.unitNumber) ||
+        left.number.localeCompare(right.number)
+      );
+    });
+  const countIsValid = selectedRoomIds.length === requiredRoomCount;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-medium text-slate-700">Rooms</span>
+        <span
+          className={`text-xs font-semibold ${
+            countIsValid ? "text-emerald-700" : "text-amber-700"
+          }`}
+        >
+          {selectedRoomIds.length} / {requiredRoomCount} selected
+        </span>
+      </div>
+
+      {!countIsValid && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+          This booking requires exactly {requiredRoomCount} rooms. Keep{" "}
+          {requiredRoomCount} rooms selected.
+        </p>
+      )}
+
+      <div className="grid max-h-112 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+        {visibleRooms.length === 0 ? (
+          <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
+            No available rooms found for these stay dates.
+          </p>
+        ) : (
+          visibleRooms.map((room) => {
+            const isAssigned = assignedRoomIdSet.has(room.id);
+            const isSelected = isUnitBooking
+              ? selectedRoomIds.some(
+                  (id) => rooms.find((r) => r.id === id)?.unitId === room.unitId,
+                )
+              : selectedRoomIdSet.has(room.id);
+            return (
+              <label
+                key={room.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 text-sm transition ${
+                  isSelected
+                    ? "border-sky-300 bg-sky-50"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                } ${isSubmitting ? "cursor-not-allowed opacity-70" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  disabled={isSubmitting}
+                  onChange={() => onRoomToggle(room.id)}
+                  className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold text-slate-900">
+                    Unit {room.unitNumber} / Room {room.number}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {room.name} / Capacity {room.maxOccupancy} / {room.status}
+                  </span>
+                </span>
+                {isAssigned && (
+                  <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700">
+                    Assigned
+                  </span>
+                )}
+              </label>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface ActionButtonProps {
+  onClick: () => void;
+  disabled?: boolean;
+  icon: ReactNode;
+  children: ReactNode;
+  theme: "indigo" | "sky" | "emerald" | "slate" | "amber" | "rose" | "orange";
+}
+
+function ActionButton({
+  onClick,
+  disabled = false,
+  icon,
+  children,
+  theme,
+}: ActionButtonProps) {
+  const themeClasses: Record<ActionButtonProps["theme"], string> = {
+    indigo: "border-indigo-200 bg-indigo-50/45 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-800 hover:shadow-xs focus:ring-indigo-400/30",
+    sky: "border-sky-200 bg-sky-50/45 text-sky-700 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800 hover:shadow-xs focus:ring-sky-400/30",
+    emerald: "border-emerald-200 bg-emerald-50/45 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 hover:shadow-xs focus:ring-emerald-400/30",
+    slate: "border-slate-200 bg-slate-50/60 text-slate-700 hover:bg-slate-100 hover:border-slate-300 hover:text-slate-900 hover:shadow-xs focus:ring-slate-400/30",
+    amber: "border-amber-200 bg-amber-50/45 text-amber-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 hover:shadow-xs focus:ring-amber-400/30",
+    rose: "border-rose-200 bg-rose-50/45 text-rose-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800 hover:shadow-xs focus:ring-rose-400/30",
+    orange: "border-orange-200 bg-orange-50/45 text-orange-700 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-800 hover:shadow-xs focus:ring-orange-400/30",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        w-full inline-flex items-center justify-center gap-2.5 rounded-lg border px-4 py-2.5 text-sm font-semibold cursor-pointer
+        transition-all duration-200 ease-in-out
+        hover:-translate-y-0.5 active:translate-y-0
+        focus:outline-none focus:ring-2 focus:ring-offset-1
+        disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none disabled:shadow-none
+        ${themeClasses[theme]}
+      `}
+    >
+      <span className="shrink-0 text-lg">{icon}</span>
+      <span>{children}</span>
+    </button>
+  );
+}
+

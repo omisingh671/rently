@@ -1,0 +1,30 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - echo "Installing dependencies..."
+      - cd frontend
+      - npm ci
+
+  pre_build:
+    commands:
+      - echo "Checking required environment variables..."
+      - test -n "$VITE_API_BASE_URL" || (echo "VITE_API_BASE_URL is required" && exit 1)
+      - test -n "$VITE_API_PREFIX" || (echo "VITE_API_PREFIX is required" && exit 1)
+
+  build:
+    commands:
+      - echo "Building frontend..."
+      - npm run build
+      - ls -la dist
+
+artifacts:
+  base-directory: frontend/dist
+  files:
+    - '**/*'

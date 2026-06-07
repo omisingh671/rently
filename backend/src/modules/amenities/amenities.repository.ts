@@ -80,3 +80,47 @@ export const countAmenities = ({
 
   return prisma.amenity.count({ where });
 };
+
+export const countActiveAmenitiesByIds = (ids: string[]) =>
+  prisma.amenity.count({
+    where: {
+      id: { in: ids },
+      isActive: true,
+    },
+  });
+
+export const listPropertyAmenityIds = async (propertyId: string) => {
+  const rows = await prisma.propertyAmenity.findMany({
+    where: { propertyId },
+    select: { amenityId: true },
+  });
+
+  return rows.map((row) => row.amenityId);
+};
+
+export const replacePropertyAmenities = async (
+  propertyId: string,
+  amenityIds: string[],
+) => {
+  return prisma.$transaction(async (tx) => {
+    await tx.propertyAmenity.deleteMany({
+      where: { propertyId },
+    });
+
+    if (amenityIds.length > 0) {
+      await tx.propertyAmenity.createMany({
+        data: amenityIds.map((amenityId) => ({
+          propertyId,
+          amenityId,
+        })),
+      });
+    }
+
+    const rows = await tx.propertyAmenity.findMany({
+      where: { propertyId },
+      select: { amenityId: true },
+    });
+
+    return rows.map((row) => row.amenityId);
+  });
+};

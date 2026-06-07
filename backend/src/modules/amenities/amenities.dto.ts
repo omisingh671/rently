@@ -5,3 +5,7 @@ export type AmenityDTO = {
   isActive: boolean;
   createdAt: Date;
 };
+
+export type PropertyAmenityAssignmentsDTO = {
+  amenityIds: string[];
+};

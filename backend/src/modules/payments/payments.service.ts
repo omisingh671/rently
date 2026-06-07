@@ -4,6 +4,7 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentPurpose,
+  PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -119,10 +120,12 @@ export const createManualPayment = async (
         zeroDecimal,
         existingPayment.booking.totalAmount.minus(paidAmount),
       );
-      if (balanceAmount.equals(zeroDecimal)) {
-        await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
+      if (existingPayment.status === PaymentStatus.SUCCEEDED) {
+        if (balanceAmount.equals(zeroDecimal)) {
+          await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
+        }
+        await billingService.createReceiptForPayment(existingPayment.id, tx);
       }
-      await billingService.createReceiptForPayment(existingPayment.id, tx);
       return mapManualPaymentResult(existingPayment, paidAmount, balanceAmount);
     }
 
@@ -224,6 +227,34 @@ export const createManualPayment = async (
         "BOOKING_PAYMENT_NOT_REQUIRED",
         "This booking does not require upfront payment",
       );
+    }
+
+    if (input.status === PaymentStatus.FAILED) {
+      const payment = await repo.createManualPaymentRecord(
+        {
+          bookingId: booking.id,
+          propertyId: booking.propertyId,
+          userId: booking.userId,
+          ...(input.actorUserId !== undefined && {
+            actorUserId: input.actorUserId,
+          }),
+          amount,
+          currency: booking.property.tenant.defaultCurrency,
+          idempotencyKey: input.idempotencyKey,
+          purpose,
+          method,
+          status: PaymentStatus.FAILED,
+          failureCode: "SIMULATED_FAILURE",
+          failureMessage: "User simulated a failed payment on the test page.",
+          ...(input.note !== undefined && { note: input.note }),
+          paidAt: null,
+          metadataSource: "PUBLIC_MANUAL_PAYMENT_SIMULATION",
+          ...(input.metadata !== undefined && { metadata: input.metadata }),
+        },
+        tx,
+      );
+
+      return mapManualPaymentResult(payment, paidBefore, balanceBefore);
     }
 
     const paidAfter = paidBefore.plus(amount);

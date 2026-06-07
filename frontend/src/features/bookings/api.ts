@@ -148,10 +148,15 @@ export const createManualPayment = async (
   idempotencyKey: string,
   amount: number,
   purpose?: PaymentPurpose,
+  status?: string,
 ): Promise<CreateManualPaymentResponse> => {
   const res = await axiosInstance.post(
     `/public/bookings/${bookingId}/payments/manual`,
-    { amount, ...(purpose !== undefined && { purpose }) },
+    {
+      amount,
+      ...(purpose !== undefined && { purpose }),
+      ...(status !== undefined && { status }),
+    },
     {
       headers: {
         "Idempotency-Key": idempotencyKey,

@@ -11,12 +11,16 @@ export type RepoListFilters = {
   search?: string;
   status?: PropertyStatus;
   isActive?: boolean;
+  tenantId?: string;
+  propertyIds?: string[];
 };
 
 type WhereFilters = {
   search?: string;
   status?: PropertyStatus;
   isActive?: boolean;
+  tenantId?: string;
+  propertyIds?: string[];
 };
 
 /* ----------------------------------
@@ -24,6 +28,10 @@ type WhereFilters = {
 ----------------------------------- */
 
 const buildWhere = (filters: WhereFilters) => ({
+  ...(filters.tenantId !== undefined && { tenantId: filters.tenantId }),
+  ...(filters.propertyIds !== undefined && {
+    id: { in: filters.propertyIds },
+  }),
   ...(filters.search && {
     OR: [
       { name: { contains: filters.search } },
@@ -41,10 +49,15 @@ const buildWhere = (filters: WhereFilters) => ({
 export const createProperty = (data: {
   tenantId: string;
   createdByUserId: string;
+  slug: string;
   name: string;
   address: string;
   city: string;
   state: string;
+  supportEmail?: string | null;
+  supportPhone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   status?: PropertyStatus;
   amenities?: {
     createMany: {
@@ -59,10 +72,19 @@ export const createProperty = (data: {
           id: data.tenantId,
         },
       },
+      slug: data.slug,
       name: data.name,
       address: data.address,
       city: data.city,
       state: data.state,
+      ...(data.supportEmail !== undefined && {
+        supportEmail: data.supportEmail,
+      }),
+      ...(data.supportPhone !== undefined && {
+        supportPhone: data.supportPhone,
+      }),
+      ...(data.latitude !== undefined && { latitude: data.latitude }),
+      ...(data.longitude !== undefined && { longitude: data.longitude }),
       createdBy: {
         connect: {
           id: data.createdByUserId,
@@ -71,24 +93,30 @@ export const createProperty = (data: {
       ...(data.status !== undefined && { status: data.status }),
       ...(data.amenities !== undefined && { amenities: data.amenities }),
     },
-    include: { amenities: true },
+    include: { amenities: true, tenant: true },
   });
 };
 
 export const findPropertyById = (id: string) => {
   return prisma.property.findUnique({
     where: { id },
-    include: { amenities: true },
+    include: { amenities: true, tenant: true },
   });
 };
 
 export const updatePropertyById = (
   id: string,
   data: Partial<{
+    tenantId: string;
     name: string;
+    slug: string;
     address: string;
     city: string;
     state: string;
+    supportEmail: string | null;
+    supportPhone: string | null;
+    latitude: number | null;
+    longitude: number | null;
     status: PropertyStatus;
     isActive: boolean;
   }>,
@@ -99,37 +127,22 @@ export const updatePropertyById = (
   });
 };
 
-export const listProperties = ({
-  page,
-  limit,
-  search,
-  status,
-  isActive,
-}: RepoListFilters) => {
-  const where = buildWhere({
-    ...(search !== undefined && { search }),
-    ...(status !== undefined && { status }),
-    ...(isActive !== undefined && { isActive }),
-  });
+export const listProperties = (filters: RepoListFilters) => {
+  const where = buildWhere(filters);
 
   return prisma.property.findMany({
     where,
-    skip: (page - 1) * limit,
-    take: limit,
+    include: { amenities: true, tenant: true },
+    skip: (filters.page - 1) * filters.limit,
+    take: filters.limit,
     orderBy: { createdAt: "desc" },
   });
 };
 
-export const countProperties = ({
-  search,
-  status,
-  isActive,
-}: Omit<RepoListFilters, "page" | "limit">) => {
-  const where = buildWhere({
-    ...(search !== undefined && { search }),
-    ...(status !== undefined && { status }),
-    ...(isActive !== undefined && { isActive }),
-  });
+export const countProperties = (
+  filters: Omit<RepoListFilters, "page" | "limit">,
+) => {
+  const where = buildWhere(filters);
 
   return prisma.property.count({ where });
 };
@@ -170,7 +183,7 @@ export const replacePropertyAmenities = async (
     // Return updated property with amenities
     return tx.property.findUnique({
       where: { id: propertyId },
-      include: { amenities: true },
+      include: { amenities: true, tenant: true },
     });
   });
 };

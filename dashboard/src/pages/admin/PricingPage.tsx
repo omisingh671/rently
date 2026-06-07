@@ -53,6 +53,8 @@ import type {
 
 const formCardClass =
   "rounded-md border border-slate-200 bg-white p-6 shadow-sm";
+const pricingSectionGridClass =
+  "grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]";
 const formGridClass = "mt-5 grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2";
 const fieldClass =
   "flex flex-col gap-2 text-sm font-medium text-slate-700 [&>span]:leading-none";
@@ -259,7 +261,12 @@ export default function PricingPage() {
 
   const submitProduct = async () => {
     setError(null);
-    const payload = productSchema.parse(productForm) satisfies ProductPayload;
+    const result = productSchema.safeParse(productForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const payload = result.data satisfies ProductPayload;
     try {
       if (editingProduct) {
         await actions.updateProduct({
@@ -271,14 +278,19 @@ export default function PricingPage() {
       }
       setProductForm(emptyProduct);
       setEditingProduct(null);
-    } catch {
-      setError("Could not save product");
+    } catch (error) {
+      setError(normalizeApiError(error).message);
     }
   };
 
   const submitRate = async () => {
     setError(null);
-    const parsed = rateSchema.parse(rateForm);
+    const result = rateSchema.safeParse(rateForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const parsed = result.data;
     const payload: RatePayload = {
       productId: parsed.productId,
       rateType: parsed.rateType,
@@ -316,7 +328,7 @@ export default function PricingPage() {
     setError(null);
     const result = taxSchema.safeParse(taxForm);
     if (!result.success) {
-      setError("Tax rate / amount is required");
+      setError(result.error.issues.map((e) => e.message).join(", "));
       return;
     }
 
@@ -347,7 +359,12 @@ export default function PricingPage() {
 
   const submitCoupon = async () => {
     setError(null);
-    const parsed = couponSchema.parse(couponForm);
+    const result = couponSchema.safeParse(couponForm);
+    if (!result.success) {
+      setError(result.error.issues.map((e) => e.message).join(", "));
+      return;
+    }
+    const parsed = result.data;
     const payload: CouponPayload = {
       code: parsed.code,
       name: parsed.name,
@@ -370,19 +387,15 @@ export default function PricingPage() {
       }
       setCouponForm(emptyCoupon);
       setEditingCoupon(null);
-    } catch {
-      setError("Could not save coupon");
+    } catch (error) {
+      setError(normalizeApiError(error).message);
     }
   };
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className={`relative py-1 rounded-md text-sm bg-white text-slate-700 transition-all duration-300 border border-slate-300 focus-within:ring-2 focus-within:ring-slate-300 ${
-          activeTab === "products" || activeTab === "taxes"
-            ? "w-full sm:w-64 xl:w-[380px]"
-            : "w-full sm:w-64 xl:w-[420px]"
-        }`}>
+        <div className="relative w-full rounded-md border border-slate-300 bg-white py-1 text-sm text-slate-700 transition-all duration-300 focus-within:ring-2 focus-within:ring-slate-300 sm:w-64 xl:w-[30%]">
           <select
             value={selectedPropertyId || ""}
             onChange={(event) => {
@@ -435,7 +448,7 @@ export default function PricingPage() {
       ) : (
         <>
           {activeTab === "products" && (
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[380px_1fr]">
+            <section className={pricingSectionGridClass}>
               <div className={formCardClass}>
                 <FormHeader
                   title={editingProduct ? "Edit Rate Product" : "Create Rate Product"}
@@ -563,7 +576,7 @@ export default function PricingPage() {
           )}
 
           {activeTab === "rates" && (
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[420px_1fr]">
+            <section className={pricingSectionGridClass}>
               <div className={formCardClass}>
                 <FormHeader
                   title={editingRate ? "Edit Price Rule" : "Create Price Rule"}
@@ -862,7 +875,7 @@ export default function PricingPage() {
           )}
 
           {activeTab === "taxes" && (
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[380px_1fr]">
+            <section className={pricingSectionGridClass}>
               <div className={formCardClass}>
                 <FormHeader
                   title={editingTax ? "Edit Tax" : "Create Tax"}
@@ -1209,7 +1222,7 @@ export default function PricingPage() {
           )}
 
           {activeTab === "coupons" && (
-            <section className="grid grid-cols-1 gap-5 xl:grid-cols-[420px_1fr]">
+            <section className={pricingSectionGridClass}>
               <div className={formCardClass}>
                 <FormHeader
                   title={editingCoupon ? "Edit Coupon" : "Create Coupon"}

@@ -4,25 +4,25 @@ import type { AdminRoomPricing } from "./types";
 export type Tab = "products" | "rates" | "taxes" | "coupons";
 
 export const productSchema = z.object({
-  name: z.string().trim().min(1),
-  occupancy: z.number().int().min(1),
+  name: z.string().trim().min(1, "Product Name is required"),
+  occupancy: z.number().int().min(1, "Occupancy must be at least 1"),
   hasAC: z.boolean(),
   category: z.enum(["NIGHTLY", "LONG_STAY", "CORPORATE"]),
 });
 
 export const rateSchema = z
   .object({
-    productId: z.string().min(1),
+    productId: z.string().min(1, "Rate Product is required"),
     targetType: z.enum(["PROPERTY", "UNIT", "ROOM"]),
     unitId: z.string().optional(),
     roomId: z.string().optional(),
     rateType: z.enum(["NIGHTLY", "WEEKLY", "MONTHLY"]),
     pricingTier: z.enum(["STANDARD", "CORPORATE", "SEASONAL"]),
-    minNights: z.number().int().min(1),
+    minNights: z.number().int().min(1, "Minimum nights must be at least 1"),
     maxNights: z.number().int().min(1).optional(),
     taxInclusive: z.boolean(),
-    price: z.number().positive(),
-    validFrom: z.string().min(1),
+    price: z.number().positive("Price must be greater than 0"),
+    validFrom: z.string().min(1, "Valid From date is required"),
     validTo: z.string().optional(),
   })
   .superRefine((data, ctx) => {
@@ -52,8 +52,8 @@ export const rateSchema = z
   });
 
 export const taxSchema = z.object({
-  name: z.string().trim().min(1),
-  rate: z.number().nonnegative(),
+  name: z.string().trim().min(1, "Tax Name is required"),
+  rate: z.number().nonnegative("Tax rate / amount must be non-negative"),
   taxType: z.enum(["PERCENTAGE", "FIXED"]),
   category: z.enum(["GENERIC", "GST"]),
   scope: z.enum(["BOOKING", "ACCOMMODATION"]),
@@ -122,14 +122,14 @@ export const taxSchema = z.object({
 });
 
 export const couponSchema = z.object({
-  code: z.string().trim().min(1),
-  name: z.string().trim().min(1),
+  code: z.string().trim().min(1, "Coupon Code is required"),
+  name: z.string().trim().min(1, "Coupon Name is required"),
   discountType: z.enum(["PERCENTAGE", "FIXED"]),
-  discountValue: z.number().positive(),
-  maxUses: z.number().int().positive().optional(),
-  minNights: z.number().int().positive().optional(),
-  minAmount: z.number().positive().optional(),
-  validFrom: z.string().min(1),
+  discountValue: z.number().positive("Discount Value must be greater than 0"),
+  maxUses: z.number().int().positive("Maximum uses must be greater than 0").optional(),
+  minNights: z.number().int().positive("Minimum nights must be greater than 0").optional(),
+  minAmount: z.number().positive("Minimum booking amount must be greater than 0").optional(),
+  validFrom: z.string().min(1, "Valid From date is required"),
   validTo: z.string().optional(),
   isActive: z.boolean(),
   oncePerUser: z.boolean(),

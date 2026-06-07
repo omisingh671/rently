@@ -25,6 +25,7 @@ const {
   FiClock,
   MdMeetingRoom,
   FiInfo,
+  FiActivity,
 } = ICON_REGISTRY;
 
 interface AdminSidebarProps {
@@ -116,7 +117,7 @@ export default function AdminSidebar({
           <img
             src="/assets/images/logo.png"
             alt="Rently"
-            className="h-11 w-full max-w-[180px] object-contain object-left"
+            className="h-11 w-full max-w-45 object-contain object-left"
           />
           <button
             onClick={onClose}
@@ -152,6 +153,12 @@ export default function AdminSidebar({
             to={adminPath(ADMIN_ROUTES.BILLING)}
             icon={FiFileText}
             label="Billing"
+          />
+
+          <SidebarLink
+            to={adminPath(ADMIN_ROUTES.REPORTS)}
+            icon={FiActivity}
+            label="Reports"
           />
 
           <p className={sectionLabel}>Leads</p>

@@ -12,6 +12,8 @@ export interface AvailabilityCriteria {
 
 export interface AvailabilityOption {
   optionId: string;
+  propertyId: string;
+  propertyLabel: string;
   title: string;
   guestSplit: string;
   totalCapacity: number;

@@ -22,146 +22,147 @@ export const API_ENDPOINTS = {
   },
 
   dashboard: {
-    me: "/dashboard/me",
-    summary: "/dashboard/summary",
+    me: "/reporting/context",
+    summary: "/reporting/summary",
+    analytics: "/reporting/analytics",
   },
 
   tenants: {
-    list: "/dashboard/tenants",
-    options: "/dashboard/tenants/options",
-    create: "/dashboard/tenants",
-    byId: (tenantId: string) => `/dashboard/tenants/${tenantId}`,
-    updateById: (tenantId: string) => `/dashboard/tenants/${tenantId}`,
+    list: "/tenants",
+    options: "/tenants/options",
+    create: "/tenants",
+    byId: (tenantId: string) => `/tenants/${tenantId}`,
+    updateById: (tenantId: string) => `/tenants/${tenantId}`,
   },
 
   admins: {
-    list: "/dashboard/admins",
-    create: "/dashboard/admins",
-    updateById: (userId: string) => `/dashboard/admins/${userId}`,
+    list: "/users/admins",
+    create: "/users/admins",
+    updateById: (userId: string) => `/users/admins/${userId}`,
   },
 
   managers: {
-    list: "/dashboard/managers",
-    create: "/dashboard/managers",
-    updateById: (userId: string) => `/dashboard/managers/${userId}`,
+    list: "/users/managers",
+    create: "/users/managers",
+    updateById: (userId: string) => `/users/managers/${userId}`,
   },
 
   users: {
-    list: "/dashboard/users",
-    statusById: (userId: string) => `/dashboard/users/${userId}/status`,
-    roleById: (userId: string) => `/dashboard/users/${userId}/role`,
+    list: "/users",
+    statusById: (userId: string) => `/users/${userId}/status`,
+    roleById: (userId: string) => `/users/${userId}/role`,
     passwordResetEmailById: (userId: string) =>
-      `/dashboard/users/${userId}/password-reset-email`,
+      `/users/${userId}/password-reset-email`,
     forcePasswordChangeById: (userId: string) =>
-      `/dashboard/users/${userId}/force-password-change`,
-    sessionsByUserId: (userId: string) => `/dashboard/users/${userId}/sessions`,
+      `/users/${userId}/force-password-change`,
+    sessionsByUserId: (userId: string) => `/users/${userId}/sessions`,
   },
 
   sessions: {
-    list: "/dashboard/sessions",
-    deleteById: (sessionId: string) => `/dashboard/sessions/${sessionId}`,
-    deleteExpired: "/dashboard/sessions/expired",
+    list: "/sessions",
+    deleteById: (sessionId: string) => `/sessions/${sessionId}`,
+    deleteExpired: "/sessions/expired",
   },
 
   propertyAssignments: {
-    list: "/dashboard/property-assignments",
-    create: "/dashboard/property-assignments",
+    list: "/property-assignments",
+    create: "/property-assignments",
     deleteById: (assignmentId: string) =>
-      `/dashboard/property-assignments/${assignmentId}`,
+      `/property-assignments/${assignmentId}`,
   },
 
   properties: {
-    list: "/dashboard/properties",
-    create: "/dashboard/properties",
-    byId: (propertyId: string) => `/dashboard/properties/${propertyId}`,
-    updateById: (propertyId: string) => `/dashboard/properties/${propertyId}`,
+    list: "/properties",
+    create: "/properties",
+    byId: (propertyId: string) => `/properties/${propertyId}`,
+    updateById: (propertyId: string) => `/properties/${propertyId}`,
   },
 
   amenities: {
-    list: "/dashboard/amenities",
-    create: "/dashboard/amenities",
-    byId: (amenityId: string) => `/dashboard/amenities/${amenityId}`,
-    updateById: (amenityId: string) => `/dashboard/amenities/${amenityId}`,
+    list: "/amenities",
+    create: "/amenities",
+    byId: (amenityId: string) => `/amenities/${amenityId}`,
+    updateById: (amenityId: string) => `/amenities/${amenityId}`,
     assignmentsByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/amenity-assignments`,
+      `/properties/${propertyId}/amenity-assignments`,
   },
 
   units: {
-    byProperty: (propertyId: string) => `/dashboard/properties/${propertyId}/units`,
-    byId: (unitId: string) => `/dashboard/units/${unitId}`,
+    byProperty: (propertyId: string) => `/properties/${propertyId}/units`,
+    byId: (unitId: string) => `/units/${unitId}`,
   },
 
   rooms: {
-    byProperty: (propertyId: string) => `/dashboard/properties/${propertyId}/rooms`,
-    byId: (roomId: string) => `/dashboard/rooms/${roomId}`,
+    byProperty: (propertyId: string) => `/properties/${propertyId}/rooms`,
+    byId: (roomId: string) => `/rooms/${roomId}`,
   },
 
   maintenance: {
     byProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/maintenance-blocks`,
+      `/properties/${propertyId}/maintenance-blocks`,
     byId: (maintenanceId: string) =>
-      `/dashboard/maintenance-blocks/${maintenanceId}`,
+      `/maintenance-blocks/${maintenanceId}`,
   },
 
   pricing: {
     productsByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/room-products`,
-    productById: (productId: string) => `/dashboard/room-products/${productId}`,
+      `/properties/${propertyId}/room-products`,
+    productById: (productId: string) => `/room-products/${productId}`,
     ratesByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/pricing`,
-    rateById: (pricingId: string) => `/dashboard/pricing/${pricingId}`,
+      `/properties/${propertyId}/pricing`,
+    rateById: (pricingId: string) => `/pricing/${pricingId}`,
     taxesByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/taxes`,
-    taxById: (taxId: string) => `/dashboard/taxes/${taxId}`,
+      `/properties/${propertyId}/taxes`,
+    taxById: (taxId: string) => `/taxes/${taxId}`,
     couponsByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/coupons`,
-    couponById: (couponId: string) => `/dashboard/coupons/${couponId}`,
+      `/properties/${propertyId}/coupons`,
+    couponById: (couponId: string) => `/coupons/${couponId}`,
   },
 
   bookingPolicy: {
     byProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/booking-policy`,
+      `/properties/${propertyId}/booking-policy`,
   },
 
   operations: {
     bookingsByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/bookings`,
-    bookingById: (bookingId: string) => `/dashboard/bookings/${bookingId}`,
+      `/properties/${propertyId}/bookings`,
+    bookingById: (bookingId: string) => `/bookings/${bookingId}`,
     bookingPaymentsById: (bookingId: string) =>
-      `/dashboard/bookings/${bookingId}/payments`,
+      `/bookings/${bookingId}/payments`,
     bookingRefundsById: (bookingId: string) =>
-      `/dashboard/bookings/${bookingId}/refunds`,
+      `/bookings/${bookingId}/refunds`,
     bookingRefundRequestById: (bookingId: string, requestId: string) =>
-      `/dashboard/bookings/${bookingId}/refund-requests/${requestId}`,
+      `/bookings/${bookingId}/refund-requests/${requestId}`,
     roomBoardByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/room-board`,
+      `/properties/${propertyId}/room-board`,
     bookingAvailabilityByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/bookings/availability`,
+      `/properties/${propertyId}/bookings/availability`,
     enquiriesByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/enquiries`,
-    enquiryById: (enquiryId: string) => `/dashboard/enquiries/${enquiryId}`,
+      `/properties/${propertyId}/enquiries`,
+    enquiryById: (enquiryId: string) => `/enquiries/${enquiryId}`,
     quotesByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/quotes`,
-    quoteById: (quoteId: string) => `/dashboard/quotes/${quoteId}`,
+      `/properties/${propertyId}/quotes`,
+    quoteById: (quoteId: string) => `/quotes/${quoteId}`,
   },
 
   billing: {
-    list: "/dashboard/billing-documents",
-    byId: (documentId: string) => `/dashboard/billing-documents/${documentId}`,
-    invoice: "/dashboard/billing-documents/invoices",
-    receipt: "/dashboard/billing-documents/receipts",
+    list: "/billing-documents",
+    byId: (documentId: string) => `/billing-documents/${documentId}`,
+    invoice: "/billing-documents/invoices",
+    receipt: "/billing-documents/receipts",
     download: (documentId: string) =>
-      `/dashboard/billing-documents/${documentId}/download`,
+      `/billing-documents/${documentId}/download`,
     voidById: (documentId: string) =>
-      `/dashboard/billing-documents/${documentId}/void`,
+      `/billing-documents/${documentId}/void`,
     settingsByProperty: (propertyId: string) =>
-      `/dashboard/properties/${propertyId}/billing-settings`,
+      `/properties/${propertyId}/billing-settings`,
   },
 
   galleries: {
-    list: "/dashboard/galleries",
-    upload: "/dashboard/galleries/upload",
-    create: "/dashboard/galleries",
-    deleteById: (galleryId: string) => `/dashboard/galleries/${galleryId}`,
+    list: "/galleries",
+    upload: "/galleries/upload",
+    create: "/galleries",
+    deleteById: (galleryId: string) => `/galleries/${galleryId}`,
   },
 } as const;

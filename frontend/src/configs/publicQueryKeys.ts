@@ -1,21 +1,27 @@
-import { TENANT_SLUG } from "./appConfig";
+import { PROPERTY_SLUG, TENANT_SLUG } from "./appConfig";
 
-const tenantScope = ["tenant", TENANT_SLUG] as const;
-const availabilityScope = [...tenantScope, "availability"] as const;
+const publicScope = [
+  "tenant",
+  TENANT_SLUG,
+  "property",
+  PROPERTY_SLUG ?? "all",
+] as const;
+const availabilityScope = [...publicScope, "availability"] as const;
 
 export const PUBLIC_QUERY_KEYS = {
+  config: [...publicScope, "config"] as const,
   spaces: {
-    all: [...tenantScope, "spaces"] as const,
-    detail: (id: string) => [...tenantScope, "spaces", id] as const,
+    all: (city?: string) => [...publicScope, "spaces", city ?? "all"] as const,
+    detail: (id: string) => [...publicScope, "spaces", id] as const,
   },
   bookings: {
-    all: [...tenantScope, "bookings"] as const,
-    detail: (id: string) => [...tenantScope, "bookings", id] as const,
+    all: [...publicScope, "bookings"] as const,
+    detail: (id: string) => [...publicScope, "bookings", id] as const,
   },
   billing: {
     booking: (bookingId: string, checkoutToken?: string) =>
       [
-        ...tenantScope,
+        ...publicScope,
         "billing-documents",
         bookingId,
         checkoutToken ?? "auth",
@@ -29,6 +35,7 @@ export const PUBLIC_QUERY_KEYS = {
       checkOut: string;
       guests: number;
       comfort: string;
+      city?: string;
     }) =>
       [
         ...availabilityScope,
@@ -37,6 +44,7 @@ export const PUBLIC_QUERY_KEYS = {
         criteria.checkOut,
         criteria.guests,
         criteria.comfort,
+        criteria.city ?? "all",
       ] as const,
   },
 } as const;

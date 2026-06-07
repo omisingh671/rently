@@ -80,6 +80,54 @@ export const findSucceededPaymentByBookingPurpose = (
     include: paymentInclude,
   });
 
+export const createManualPaymentRecord = (
+  data: {
+    bookingId: string;
+    propertyId: string;
+    userId: string;
+    actorUserId?: string;
+    amount: Prisma.Decimal | number | string;
+    currency: string;
+    idempotencyKey: string;
+    purpose: PaymentPurpose;
+    method: PaymentMethod;
+    status: PaymentStatus;
+    failureCode?: string | null;
+    failureMessage?: string | null;
+    note?: string;
+    paidAt?: Date | null;
+    metadataSource: string;
+    metadata?: Prisma.InputJsonObject;
+  },
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.create({
+    data: {
+      bookingId: data.bookingId,
+      propertyId: data.propertyId,
+      userId: data.userId,
+      provider: PaymentProvider.MANUAL,
+      status: data.status,
+      purpose: data.purpose,
+      method: data.method,
+      amount: data.amount,
+      currency: data.currency,
+      idempotencyKey: data.idempotencyKey,
+      ...(data.actorUserId !== undefined && {
+        receivedByUserId: data.actorUserId,
+      }),
+      ...(data.note !== undefined && { note: data.note }),
+      paidAt: data.paidAt ?? null,
+      failureCode: data.failureCode ?? null,
+      failureMessage: data.failureMessage ?? null,
+      metadata: {
+        source: data.metadataSource,
+        ...(data.metadata ?? {}),
+      },
+    },
+    include: paymentInclude,
+  });
+
 export const createManualSucceededPayment = (
   data: {
     bookingId: string;
@@ -98,30 +146,13 @@ export const createManualSucceededPayment = (
   },
   tx?: Prisma.TransactionClient,
 ) =>
-  client(tx).payment.create({
-    data: {
-      bookingId: data.bookingId,
-      propertyId: data.propertyId,
-      userId: data.userId,
-      provider: PaymentProvider.MANUAL,
+  createManualPaymentRecord(
+    {
+      ...data,
       status: PaymentStatus.SUCCEEDED,
-      purpose: data.purpose,
-      method: data.method,
-      amount: data.amount,
-      currency: data.currency,
-      idempotencyKey: data.idempotencyKey,
-      ...(data.actorUserId !== undefined && {
-        receivedByUserId: data.actorUserId,
-      }),
-      ...(data.note !== undefined && { note: data.note }),
-      paidAt: data.paidAt,
-      metadata: {
-        source: data.metadataSource,
-        ...(data.metadata ?? {}),
-      },
     },
-    include: paymentInclude,
-  });
+    tx,
+  );
 
 export const updateBookingPaymentState = (
   bookingId: string,

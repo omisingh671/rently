@@ -9,36 +9,38 @@ import EnquiryForm from "@/forms/enquiry/Form";
 import { useCreateEnquiry } from "@/features/enquire/hooks";
 import type { Enquiry, EnquirySubmitPayload } from "@/features/enquire/types";
 
-import { SUPPORT_PHONE, SUPPORT_EMAIL } from "@/configs/appConfig";
-
-const OPTIONS = [
-  {
-    icon: RiPhoneLine,
-    title: "Call Us",
-    desc: SUPPORT_PHONE || "+91 8099480994",
-    action: SUPPORT_PHONE ? `tel:${SUPPORT_PHONE.replace(/\s/g, "")}` : "#",
-    type: "link",
-  },
-  {
-    icon: RiWhatsappLine,
-    title: "WhatsApp",
-    desc: "Chat with us instantly",
-    type: "whatsapp",
-  },
-  {
-    icon: RiMailLine,
-    title: "Email",
-    desc: SUPPORT_EMAIL || "support@sucasahomes.com",
-    action: SUPPORT_EMAIL ? `mailto:${SUPPORT_EMAIL}` : "#",
-    type: "link",
-  },
-];
+import { usePublicTenantConfig } from "@/features/public-config/hooks";
 
 export default function ContactForm() {
   const [searchParams] = useSearchParams();
-  const whatsappNumber = SUPPORT_PHONE?.replace(/\D/g, "");
   const createEnquiry = useCreateEnquiry();
+  const { data: tenantConfig } = usePublicTenantConfig();
   const isQuoteIntent = searchParams.get("intent") === "quote";
+  const supportPhone = tenantConfig?.contact.supportPhone ?? "";
+  const supportEmail = tenantConfig?.contact.supportEmail ?? "";
+  const whatsappNumber = supportPhone?.replace(/\D/g, "");
+  const options = [
+    {
+      icon: RiPhoneLine,
+      title: "Call Us",
+      desc: supportPhone,
+      action: supportPhone ? `tel:${supportPhone.replace(/\s/g, "")}` : "#",
+      type: "link",
+    },
+    {
+      icon: RiWhatsappLine,
+      title: "WhatsApp",
+      desc: "Chat with us instantly",
+      type: "whatsapp",
+    },
+    {
+      icon: RiMailLine,
+      title: "Email",
+      desc: supportEmail,
+      action: supportEmail ? `mailto:${supportEmail}` : "#",
+      type: "link",
+    },
+  ];
 
   const handleEnquiry = useCallback(
     async (data: EnquirySubmitPayload) => {
@@ -82,7 +84,7 @@ export default function ContactForm() {
       <div className="container">
         <div className="mx-auto max-w-4xl">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-            {OPTIONS.map((item) => {
+            {options.map((item) => {
               const Card = (
                 <FeatureCard
                   iconPosition="top"

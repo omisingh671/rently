@@ -14,7 +14,9 @@ import {
   normalizeSliderImages,
   type SliderImage,
 } from "@/components/ui/imageSliderUtils";
-import Lightbox, { type LightboxImage } from "@/components/ui/Lightbox/Lightbox";
+import Lightbox, {
+  type LightboxImage,
+} from "@/components/ui/Lightbox/Lightbox";
 import { OptionDetailsModal } from "@/components/ui/OptionDetailsModal";
 
 interface OptionStackCardProps {
@@ -44,6 +46,7 @@ export const OptionStackCard = ({
   isBooking,
   formatPrice,
 }: OptionStackCardProps) => {
+  const { propertyLabel } = option;
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -90,9 +93,16 @@ export const OptionStackCard = ({
             </div>
           </div>
 
-          <h2 className="mt-3 text-lg font-bold leading-snug text-slate-900">
-            {option.title}
-          </h2>
+          {propertyLabel && (
+            <h2 className="mt-3 text-lg font-bold leading-snug text-slate-900">
+              {option.title}
+            </h2>
+          )}
+          <p
+            className={`${propertyLabel ? "mt-1 text-sm font-semibold text-slate-500" : "mt-3 text-lg font-bold leading-snug text-slate-900"}`}
+          >
+            {propertyLabel}
+          </p>
 
           <div className="mt-4 space-y-2">
             <div className="flex items-center gap-2 text-xs text-slate-600">

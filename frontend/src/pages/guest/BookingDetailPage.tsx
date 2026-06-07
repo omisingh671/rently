@@ -42,6 +42,8 @@ const bookingStatusMap: Record<string, string> = {
   NO_SHOW: "bg-orange-100 text-orange-700",
 };
 
+const accountBookingsPath = `${ROUTES.ACCOUNT}?tab=bookings`;
+
 const formatPrice = (price: number) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -169,7 +171,7 @@ export default function BookingDetailPage() {
               : "We couldn't find the booking you're looking for."}
           </p>
           <Button
-            onClick={() => navigate(ROUTES.ACCOUNT)}
+            onClick={() => navigate(accountBookingsPath)}
             className="mt-8"
             variant="secondary"
           >
@@ -279,7 +281,7 @@ export default function BookingDetailPage() {
       {/* Header */}
       <div className="mb-8">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate(accountBookingsPath)}
           className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-indigo-600 transition-colors"
         >
           <FiArrowLeft />

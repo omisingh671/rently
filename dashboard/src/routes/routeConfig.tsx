@@ -45,6 +45,7 @@ const PricingPage = lazy(() => import("@/pages/admin/PricingPage"));
 const BookingsPage = lazy(() => import("@/pages/admin/BookingsPage"));
 const BookingPolicyPage = lazy(() => import("@/pages/admin/BookingPolicyPage"));
 const BillingPage = lazy(() => import("@/pages/admin/BillingPage"));
+const ReportsPage = lazy(() => import("@/pages/admin/ReportsPage"));
 const BookingDetailsPage = lazy(
   () => import("@/pages/admin/BookingDetailsPage"),
 );
@@ -217,6 +218,10 @@ const routes: RouteObject[] = [
                   {
                     path: ADMIN_ROUTES.BILLING,
                     element: <BillingPage />,
+                  },
+                  {
+                    path: ADMIN_ROUTES.REPORTS,
+                    element: <ReportsPage />,
                   },
                   {
                     path: ADMIN_ROUTES.BOOKING_DETAIL(":id"),

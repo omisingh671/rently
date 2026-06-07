@@ -27,7 +27,7 @@ export default function CurrentPropertySwitcher() {
   }
 
   return (
-    <label className="relative hidden min-w-[220px] max-w-[340px] sm:block">
+    <label className="relative hidden min-w-55 max-w-85 sm:block">
       <span className="sr-only">Current Property</span>
       <select
         value={selectedPropertyId}

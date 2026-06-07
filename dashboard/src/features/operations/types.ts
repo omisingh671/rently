@@ -97,6 +97,7 @@ export type AdminBooking = {
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
   noShowEligible: boolean;
+  isCheckInDatePassed: boolean;
   internalNotes: string | null;
   couponCode: string | null;
   refundRequest: {
@@ -187,6 +188,7 @@ export type UpdateBookingPayload = {
   note?: string;
   internalNotes?: string | null;
   roomId?: string;
+  roomIds?: string[];
   statusOverride?: boolean;
   allowBalanceDueCheckIn?: boolean;
 };

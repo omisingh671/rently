@@ -1,8 +1,5 @@
 import type { UserRole } from "@/generated/prisma/enums.js";
 
-/**
- * These match Zod output exactly
- **/
 export interface CreateUserInput {
   fullName: string;
   email: string;
@@ -18,4 +15,31 @@ export interface UpdateUserInput {
   isActive?: boolean | undefined;
   countryCode?: string | undefined;
   contactNumber?: string | undefined;
+}
+
+export interface CreateDashboardUserInput {
+  fullName: string;
+  email: string;
+  password: string;
+  countryCode?: string;
+  contactNumber?: string;
+}
+
+export interface UpdateDashboardUserInput {
+  fullName?: string;
+  isActive?: boolean;
+  countryCode?: string;
+  contactNumber?: string;
+}
+
+export interface UpdateDashboardUserStatusInput {
+  isActive: boolean;
+}
+
+export interface UpdateDashboardUserRoleInput {
+  role: "ADMIN" | "MANAGER" | "GUEST";
+}
+
+export interface UpdateDashboardForcePasswordChangeInput {
+  mustChangePassword: boolean;
 }

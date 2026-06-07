@@ -129,7 +129,7 @@ export default function BookingPolicyPage() {
             </p>
           </div>
 
-          <label className="block w-full text-sm font-semibold text-slate-700 lg:w-[320px]">
+          <label className="block w-full text-sm font-semibold text-slate-700 lg:w-80">
             Property
             <select
               value={selectedPropertyId}

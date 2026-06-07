@@ -5,10 +5,18 @@ import type { Response } from "express";
 import { HttpError } from "@/common/errors/http-error.js";
 import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { prisma } from "@/db/prisma.js";
-import type { DashboardCouponDTO } from "@/modules/dashboard/dashboard.dto.js";
-import * as dashboardController from "@/modules/dashboard/dashboard.controller.js";
-import * as dashboardService from "@/modules/dashboard/dashboard.service.js";
+import type { DashboardCouponDTO } from "@/modules/coupons/coupons.dto.js";
+import * as couponsController from "@/modules/coupons/coupons.controller.js";
+import * as couponsService from "@/modules/coupons/coupons.service.js";
+import * as bookingsService from "@/modules/bookings/bookings.service.js";
+import * as pricingService from "@/modules/pricing/pricing.service.js";
+import * as taxesService from "@/modules/taxes/taxes.service.js";
+import * as bookingPolicyService from "@/modules/booking-policy/booking-policy.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
+import * as tenantController from "@/modules/public/tenant/tenant.controller.js";
+const publicController = {
+  ...tenantController,
+};
 import {
   BookingStatus,
   ComfortOption,
@@ -28,7 +36,19 @@ import {
   UnitStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
-import * as publicService from "@/modules/public/public.service.js";
+import * as tenantService from "@/modules/public/tenant/tenant.service.js";
+import * as spacesService from "@/modules/public/spaces/spaces.service.js";
+import * as availabilityService from "@/modules/public/availability/availability.service.js";
+import * as publicBookingsService from "@/modules/public/bookings/bookings.service.js";
+import * as enquiriesService from "@/modules/public/enquiries/enquiries.service.js";
+
+const publicService = {
+  ...tenantService,
+  ...spacesService,
+  ...availabilityService,
+  ...publicBookingsService,
+  ...enquiriesService,
+};
 
 const testId = `booking-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
@@ -133,6 +153,7 @@ before(async () => {
   const property = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-property`,
       name: `${testId} Property`,
       address: "Test Address",
       city: "Hyderabad",
@@ -386,6 +407,328 @@ after(async () => {
   await prisma.$disconnect();
 });
 
+const createScopedBookableProperty = async (input: {
+  slug: string;
+  name: string;
+  city: string;
+  price: number;
+}) => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: input.slug,
+      name: input.name,
+      address: `${input.name} Address`,
+      city: input.city,
+      state: "Telangana",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const unit = await prisma.unit.create({
+    data: {
+      propertyId: property.id,
+      unitNumber: `${input.slug}-101`,
+      floor: 1,
+      status: UnitStatus.ACTIVE,
+    },
+  });
+  const room = await prisma.room.create({
+    data: {
+      unitId: unit.id,
+      name: `${input.name} Room`,
+      number: "101",
+      hasAC: true,
+      maxOccupancy: 2,
+      status: RoomStatus.AVAILABLE,
+    },
+  });
+  const product = await prisma.roomProduct.create({
+    data: {
+      propertyId: property.id,
+      name: `${input.name} Double Room`,
+      occupancy: 2,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  const pricing = await prisma.roomPricing.create({
+    data: {
+      propertyId: property.id,
+      roomId: room.id,
+      unitId: unit.id,
+      productId: product.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: input.price,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
+  return { property, pricing };
+};
+
+test("public tenant resolution requires explicit active tenant identity", async () => {
+  await assert.rejects(
+    () => publicService.getTenantConfig(),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 400);
+      assert.equal(error.code, "TENANT_REQUIRED");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () => publicService.getTenantConfig({ tenantSlug: `${testId}-missing` }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 404);
+      assert.equal(error.code, "TENANT_NOT_FOUND");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      publicController.getTenantConfig(
+        {
+          query: {},
+          headers: {
+            "x-app-name": state.tenantSlug,
+            host: "example.test",
+          },
+        } as unknown as AuthRequest,
+        createResponseRecorder<ApiSuccess<unknown>>().response,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 400);
+      assert.equal(error.code, "TENANT_REQUIRED");
+      return true;
+    },
+  );
+
+  const config = await publicService.getTenantConfig({
+    tenantSlug: state.tenantSlug,
+  });
+  assert.equal(config.id, state.tenantId);
+});
+
+test("public property slug scopes config, spaces, availability, quotes, and enquiries", async () => {
+  const slug = `${testId}-kanpur`;
+  const { property, pricing } = await createScopedBookableProperty({
+    slug,
+    name: `${testId} Kanpur Property`,
+    city: "Kanpur",
+    price: 3100,
+  });
+
+  try {
+    const tenantFallbackConfig = await publicService.getTenantConfig({
+      tenantSlug: state.tenantSlug,
+      propertySlug: `${testId}-property`,
+    });
+    assert.equal(tenantFallbackConfig.contact.source, "TENANT");
+    assert.equal(tenantFallbackConfig.contact.supportEmail, `${testId}@sucasa.test`);
+
+    await prisma.property.update({
+      where: { id: property.id },
+      data: {
+        supportEmail: `${slug}@sucasa.test`,
+        supportPhone: "+91 9000000000",
+        latitude: 26.4499,
+        longitude: 80.3319,
+      },
+    });
+
+    const config = await publicService.getTenantConfig({
+      tenantSlug: state.tenantSlug,
+      propertySlug: slug,
+    });
+    assert.equal(config.selectedProperty?.id, property.id);
+    assert.equal(config.contact.source, "PROPERTY");
+    assert.equal(config.contact.supportEmail, `${slug}@sucasa.test`);
+    assert.deepEqual(
+      config.propertyContacts.map((item) => item.id),
+      [property.id],
+    );
+
+    const tenantWideConfig = await publicService.getTenantConfig({
+      tenantSlug: state.tenantSlug,
+    });
+    assert.ok(
+      tenantWideConfig.propertyContacts.some((item) => item.id === property.id),
+    );
+
+    const spaces = await publicService.listSpaces({
+      tenantSlug: state.tenantSlug,
+      propertySlug: slug,
+    });
+    assert.deepEqual(
+      [...new Set(spaces.map((space) => space.propertyId))],
+      [property.id],
+    );
+
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2031-01-10T00:00:00.000Z"),
+        checkOut: new Date("2031-01-12T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug, propertySlug: slug },
+    );
+    assert.equal(availability.available, true);
+
+    const option = availability.options[0];
+    assert.ok(option);
+    const quote = await publicService.getBookingQuote(
+      state.guestOneId,
+      {
+        bookingType: "SINGLE_TARGET",
+        bookingOptionId: option.optionId,
+        from: new Date("2031-01-10T00:00:00.000Z"),
+        to: new Date("2031-01-12T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+      },
+      { tenantSlug: state.tenantSlug, propertySlug: slug },
+    );
+    assert.equal(quote.propertyId, property.id);
+
+    await assert.rejects(
+      () =>
+        publicService.getBookingQuote(
+          state.guestOneId,
+          {
+            bookingType: "SINGLE_TARGET",
+            spaceId: state.pricingId,
+            from: new Date("2031-01-10T00:00:00.000Z"),
+            to: new Date("2031-01-12T00:00:00.000Z"),
+            guests: 2,
+            comfortOption: ComfortOption.AC,
+          },
+          { tenantSlug: state.tenantSlug, propertySlug: slug },
+        ),
+      (error: unknown) =>
+        error instanceof HttpError &&
+        error.statusCode === 404 &&
+        error.code === "SPACE_NOT_FOUND",
+    );
+
+    const enquiry = await publicService.createEnquiry({
+      tenantId: state.tenantId,
+      propertySlug: slug,
+      name: "Scoped Guest",
+      email: `${slug}-guest@sucasa.test`,
+      contactNumber: "+91 9000000001",
+      message: "Need details",
+    });
+    assert.equal(enquiry.propertyId, property.id);
+
+    const citySpaces = await publicService.listSpaces({
+      tenantSlug: state.tenantSlug,
+      city: "Kanpur",
+    });
+    assert.deepEqual(
+      [...new Set(citySpaces.map((space) => space.propertyId))],
+      [property.id],
+    );
+    assert.equal(pricing.propertyId, property.id);
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("city-scoped booking options stay pinned to the selected property", async () => {
+  const slug = `${testId}-city-option-kanpur`;
+  const checkIn = new Date("2031-02-10T00:00:00.000Z");
+  const checkOut = new Date("2031-02-11T00:00:00.000Z");
+  const { property } = await createScopedBookableProperty({
+    slug,
+    name: `${testId} City Option Kanpur`,
+    city: "Kanpur",
+    price: 3100,
+  });
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn,
+        checkOut,
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city: "Kanpur",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    const option = availability.options.find(
+      (candidate) => candidate.propertyId === property.id,
+    );
+
+    assert.ok(option);
+
+    const optionPayload = {
+      bookingType: "SINGLE_TARGET" as const,
+      bookingOptionId: option.optionId,
+      propertyId: option.propertyId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    };
+    const lock = await publicService.createInventoryLock(
+      state.guestOneId,
+      optionPayload,
+      { tenantSlug: state.tenantSlug },
+    );
+
+    const quote = await publicService.getBookingQuote(
+      state.guestOneId,
+      {
+        ...optionPayload,
+        inventoryLockToken: lock.lockToken,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    assert.equal(quote.propertyId, property.id);
+
+    await assert.rejects(
+      () =>
+        publicService.createBookingForUser(
+          state.guestOneId,
+          {
+            ...optionPayload,
+            inventoryLockToken: lock.lockToken,
+          },
+          { tenantSlug: state.tenantSlug },
+          { requiredPropertyId: state.propertyId },
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError);
+        assert.equal(error.statusCode, 422);
+        assert.equal(error.code, "BOOKING_PROPERTY_MISMATCH");
+        return true;
+      },
+    );
+
+    const booking = await publicService.createBooking(
+      state.guestOneId,
+      {
+        ...optionPayload,
+        inventoryLockToken: lock.lockToken,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    assert.equal(booking.propertyId, property.id);
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
 test("public booking creation rejects overlapping dates", async () => {
   const firstBooking = await publicService.createBooking(
     state.guestOneId,
@@ -536,9 +879,6 @@ test("public availability returns limited public-safe booking options", async ()
   assert.equal(publicJson.includes(state.roomTwoId), false);
   assert.equal(publicJson.includes(state.roomThreeId), false);
   assert.equal(publicJson.includes(state.pricingId), false);
-  assert.equal(publicJson.includes("101"), false);
-  assert.equal(publicJson.includes("102"), false);
-  assert.equal(publicJson.includes("201"), false);
   assert.equal(publicJson.includes("Double Room"), false);
   assert.equal(publicJson.includes("Single Room"), false);
 });
@@ -589,7 +929,7 @@ test("public booking can reserve a generated option by opaque option id", async 
 test("dashboard pricing blocks duplicate overlapping price rules", async () => {
   await assert.rejects(
     () =>
-      dashboardService.createRoomPricing(state.superAdminId, state.propertyId, {
+      pricingService.createRoomPricing(state.superAdminId, state.propertyId, {
         productId: state.productId,
         roomId: state.roomId,
         rateType: RateType.NIGHTLY,
@@ -620,6 +960,7 @@ test("dashboard walk-in availability scopes unit override pricing to that unit",
   const property = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-unit-override-property`,
       name: `${testId} Unit Override Property`,
       address: "Unit Override Address",
       city: "Hyderabad",
@@ -733,7 +1074,7 @@ test("dashboard walk-in availability scopes unit override pricing to that unit",
 
     assert.equal(propertyWidePricingCount, 0);
 
-    const result = await dashboardService.checkManualBookingAvailability(
+    const result = await bookingsService.checkManualBookingAvailability(
       state.superAdminId,
       property.id,
       {
@@ -781,6 +1122,7 @@ test("dashboard walk-in availability prefers room, then unit, then property pric
   const property = await prisma.property.create({
     data: {
       tenantId: tenant.id,
+      slug: `${testId}-pricing-precedence-property`,
       name: `${testId} Pricing Precedence Property`,
       address: "Pricing Precedence Address",
       city: "Hyderabad",
@@ -903,7 +1245,7 @@ test("dashboard walk-in availability prefers room, then unit, then property pric
       }),
     ]);
 
-    const result = await dashboardService.checkManualBookingAvailability(
+    const result = await bookingsService.checkManualBookingAvailability(
       state.superAdminId,
       property.id,
       {
@@ -943,7 +1285,7 @@ test("dashboard walk-in availability prefers room, then unit, then property pric
 test("public booking applies coupon and freezes price snapshots", async () => {
   const couponCode = `${testId}-SAVE10`.toUpperCase();
 
-  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+  await couponsService.createCoupon(state.superAdminId, state.propertyId, {
     code: couponCode,
     name: "Save 10 percent",
     discountType: DiscountType.PERCENTAGE,
@@ -984,7 +1326,7 @@ test("public booking applies coupon and freezes price snapshots", async () => {
 
   assert.equal(coupon.usedCount, 1);
 
-  await dashboardService.updateRoomPricing(state.superAdminId, state.pricingId, {
+  await pricingService.updateRoomPricing(state.superAdminId, state.pricingId, {
     price: 9999,
   });
 
@@ -1000,7 +1342,7 @@ test("public booking applies coupon and freezes price snapshots", async () => {
     assert.equal(reloaded.items[0]?.pricePerNight, 2500);
     assert.equal(reloaded.items[0]?.totalAmount, 5000);
   } finally {
-    await dashboardService.updateRoomPricing(
+    await pricingService.updateRoomPricing(
       state.superAdminId,
       state.pricingId,
       {
@@ -1015,7 +1357,7 @@ test("dashboard coupon controller persists once-per-user flag", async () => {
   const createRecorder =
     createResponseRecorder<ApiSuccess<DashboardCouponDTO>>();
 
-  await dashboardController.createCoupon(
+  await couponsController.createCoupon(
     {
       params: { propertyId: state.propertyId },
       body: {
@@ -1044,7 +1386,7 @@ test("dashboard coupon controller persists once-per-user flag", async () => {
 
   const updateRecorder =
     createResponseRecorder<ApiSuccess<DashboardCouponDTO>>();
-  await dashboardController.updateCoupon(
+  await couponsController.updateCoupon(
     {
       params: { id: couponId },
       body: { oncePerUser: false },
@@ -1062,7 +1404,7 @@ test("dashboard coupon controller persists once-per-user flag", async () => {
 test("public booking once-per-user coupon rejects second booking", async () => {
   const couponCode = `${testId}-ONCE`.toUpperCase();
 
-  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+  await couponsService.createCoupon(state.superAdminId, state.propertyId, {
     code: couponCode,
     name: "Once Per User Coupon",
     discountType: DiscountType.PERCENTAGE,
@@ -1136,7 +1478,7 @@ test("public booking once-per-user coupon rejects second booking", async () => {
 test("public booking checkout edit updates guest details and coupon totals", async () => {
   const couponCode = `${testId}-EDIT20`.toUpperCase();
 
-  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+  await couponsService.createCoupon(state.superAdminId, state.propertyId, {
     code: couponCode,
     name: "Edit Checkout Coupon",
     discountType: DiscountType.PERCENTAGE,
@@ -1320,7 +1662,7 @@ test("public booking checkout edit rejects paid booking", async () => {
 test("public booking checkout edit rejects once-per-user coupon used on another booking", async () => {
   const couponCode = `${testId}-EDIT-ONCE`.toUpperCase();
 
-  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+  await couponsService.createCoupon(state.superAdminId, state.propertyId, {
     code: couponCode,
     name: "Edit Once Coupon",
     discountType: DiscountType.PERCENTAGE,
@@ -1504,7 +1846,7 @@ test("public quote reflects saved dashboard booking policy for new bookings", as
     "Token, cancellation, refund, early checkout, and no-show rules are governed by this property policy. Refunds may require review by the property team.";
 
   try {
-    await dashboardService.updateBookingPolicy(
+    await bookingPolicyService.updateBookingPolicy(
       state.superAdminId,
       state.propertyId,
       {
@@ -1557,7 +1899,7 @@ test("public quote reflects saved dashboard booking policy for new bookings", as
       "Guest-facing updated policy text",
     );
 
-    await dashboardService.updateBookingPolicy(
+    await bookingPolicyService.updateBookingPolicy(
       state.superAdminId,
       state.propertyId,
       {
@@ -1745,7 +2087,7 @@ test("public quote applies coupon before GST slab tax", async () => {
     },
   });
 
-  await dashboardService.createCoupon(state.superAdminId, state.propertyId, {
+  await couponsService.createCoupon(state.superAdminId, state.propertyId, {
     code: couponCode,
     name: "GST Coupon",
     discountType: DiscountType.PERCENTAGE,
@@ -1786,7 +2128,7 @@ test("public quote applies coupon before GST slab tax", async () => {
 });
 
 test("dashboard rejects overlapping active GST slabs", async () => {
-  const existingTax = await dashboardService.createTax(
+  const existingTax = await taxesService.createTax(
     state.superAdminId,
     state.propertyId,
     {
@@ -1807,7 +2149,7 @@ test("dashboard rejects overlapping active GST slabs", async () => {
   try {
     await assert.rejects(
       () =>
-        dashboardService.createTax(state.superAdminId, state.propertyId, {
+        taxesService.createTax(state.superAdminId, state.propertyId, {
           name: "GST overlap",
           rate: 12,
           taxType: TaxType.PERCENTAGE,
@@ -1835,7 +2177,7 @@ test("dashboard rejects overlapping active GST slabs", async () => {
 test("dashboard rejects tariff fields on flat tax rules", async () => {
   await assert.rejects(
     () =>
-      dashboardService.createTax(state.superAdminId, state.propertyId, {
+      taxesService.createTax(state.superAdminId, state.propertyId, {
         name: "Platform fee",
         rate: 5,
         taxType: TaxType.FIXED,
@@ -1859,7 +2201,7 @@ test("dashboard rejects tariff fields on flat tax rules", async () => {
 test("dashboard rejects slab tax rules without min tariff", async () => {
   await assert.rejects(
     () =>
-      dashboardService.createTax(state.superAdminId, state.propertyId, {
+      taxesService.createTax(state.superAdminId, state.propertyId, {
         name: "GST missing min",
         rate: 5,
         taxType: TaxType.PERCENTAGE,

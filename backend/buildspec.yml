@@ -1,0 +1,38 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    ECS_CONTAINER_NAME: hah-backend
+    AWS_DEFAULT_REGION: ap-south-1
+    AWS_ACCOUNT_ID: "590352870097"
+    ECR_REPOSITORY: hah-backend
+    IMAGE_TAG: latest
+    PRISMA_GENERATE_DATABASE_URL: "mysql://certly:certly@mysql:3306/certly_db"
+
+phases:
+  pre_build:
+    commands:
+      - cd backend
+      - test -n "$AWS_DEFAULT_REGION" || (echo "AWS_DEFAULT_REGION is required" && exit 1)
+      - test -n "$AWS_ACCOUNT_ID" || (echo "AWS_ACCOUNT_ID is required" && exit 1)
+      - test -n "$ECR_REPOSITORY" || (echo "ECR_REPOSITORY is required" && exit 1)
+      - REPOSITORY_URI="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY"
+      - IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION:-latest}"
+      - IMAGE_TAG="${IMAGE_TAG:0:12}"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+  build:
+    commands:
+      - docker build --build-arg DATABASE_URL="${PRISMA_GENERATE_DATABASE_URL:-mysql://root:password@localhost:3306/db_name?allowPublicKeyRetrieval=true&ssl=false}" -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
+      - IMAGE_BUILT=true
+  post_build:
+    commands:
+      - test "$IMAGE_BUILT" = "true" || (echo "Docker image was not built; skipping push" && exit 1)
+      - docker push "$REPOSITORY_URI:$IMAGE_TAG"
+      - docker push "$REPOSITORY_URI:latest"
+      - printf '[{"name":"%s","imageUri":"%s"}]' "$ECS_CONTAINER_NAME" "$REPOSITORY_URI:$IMAGE_TAG" > imagedefinitions.json
+
+artifacts:
+  base-directory: backend
+  files:
+    - imagedefinitions.json

@@ -1,13 +1,13 @@
 const DEFAULT_DEV_API_BASE_URL = "http://localhost:4000";
 const DEFAULT_API_PREFIX = "/api/v1";
 const DEFAULT_APP_NAME = "Sucasa";
-const DEFAULT_TENANT_SLUG = "sucasa";
 const DEFAULT_SUPPORT_EMAIL = "support@sucasahomes.com";
 const DEFAULT_SUPPORT_PHONE = "+91 8099480994";
 
 type PublicEnv = {
   appName: string;
   tenantSlug: string;
+  propertySlug: string | null;
   supportEmail: string;
   supportPhone: string;
   apiBaseUrl: string;
@@ -17,6 +17,15 @@ type PublicEnv = {
 const readEnv = (key: string): string | undefined => {
   const value = import.meta.env[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+};
+
+const readRequiredEnv = (key: string): string => {
+  const value = readEnv(key);
+  if (value === undefined) {
+    throw new Error(`${key} is required`);
+  }
+
+  return value;
 };
 
 const stripTrailingSlash = (value: string): string =>
@@ -49,7 +58,8 @@ const defaultApiBaseUrl = import.meta.env.DEV ? DEFAULT_DEV_API_BASE_URL : "";
 
 export const publicEnv: PublicEnv = {
   appName: readEnv("VITE_APP_NAME") ?? DEFAULT_APP_NAME,
-  tenantSlug: readEnv("VITE_TENANT_SLUG") ?? DEFAULT_TENANT_SLUG,
+  tenantSlug: readRequiredEnv("VITE_TENANT_SLUG"),
+  propertySlug: readEnv("VITE_PROPERTY_SLUG") ?? null,
   supportEmail: readEnv("VITE_SUPPORT_EMAIL") ?? DEFAULT_SUPPORT_EMAIL,
   supportPhone: readEnv("VITE_SUPPORT_PHONE") ?? DEFAULT_SUPPORT_PHONE,
   apiBaseUrl: normalizeApiBaseUrl(

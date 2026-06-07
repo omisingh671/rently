@@ -490,7 +490,7 @@ function RoomTile({ room }: { room: RoomBoardRoom }) {
 
   return (
     <article
-      className={`flex flex-1 min-w-[250px] min-h-[160px] flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}
+      className={`flex flex-1 min-w-62.5 min-h-40 flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>

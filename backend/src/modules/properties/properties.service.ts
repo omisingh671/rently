@@ -1,5 +1,12 @@
-import { Prisma } from "@/generated/prisma/client.js";
+import { Prisma, UserRole } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { prisma } from "@/db/prisma.js";
+import {
+  getActor,
+  getPropertyScope,
+  assertPropertyInScope,
+  ensurePropertyExists,
+} from "@/common/services/scoping.service.js";
 
 import type {
   CreatePropertyInput,
@@ -12,10 +19,19 @@ import * as repo from "./properties.repository.js";
 
 type PropertyRecord = {
   id: string;
+  tenantId: string;
+  tenant: {
+    name: string;
+  };
+  slug: string;
   name: string;
   address: string;
   city: string;
   state: string;
+  supportEmail: string | null;
+  supportPhone: string | null;
+  latitude: Prisma.Decimal | null;
+  longitude: Prisma.Decimal | null;
   status: PropertyDTO["status"];
   isActive: boolean;
   createdAt: Date;
@@ -26,27 +42,73 @@ type PropertyRecord = {
 
 const mapProperty = (p: PropertyRecord): PropertyDTO => ({
   id: p.id,
+  tenantId: p.tenantId,
+  tenantName: p.tenant.name,
+  slug: p.slug,
   name: p.name,
   address: p.address,
   city: p.city,
   state: p.state,
+  supportEmail: p.supportEmail ?? null,
+  supportPhone: p.supportPhone ?? null,
+  latitude: p.latitude === null ? null : Number(p.latitude),
+  longitude: p.longitude === null ? null : Number(p.longitude),
   status: p.status,
   isActive: p.isActive,
   createdAt: p.createdAt,
   amenityIds: p.amenities?.map((a) => a.amenityId) ?? [],
 });
 
+const ensureTenantExists = async (tenantId: string) => {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+  });
+  if (!tenant) {
+    throw new HttpError(404, "TENANT_NOT_FOUND", "Tenant not found");
+  }
+  return tenant;
+};
+
+const buildSlug = (name: string, city: string) => {
+  const slug = `${name}-${city}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80)
+    .replace(/-+$/g, "");
+
+  return slug || "property";
+};
+
 export const createProperty = async (
+  userId: string,
   data: CreatePropertyInput,
 ): Promise<PropertyDTO> => {
+  const actor = await getActor(userId);
+  if (actor.role !== UserRole.SUPER_ADMIN) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  await ensureTenantExists(data.tenantId);
+
   try {
     const property = await repo.createProperty({
       tenantId: data.tenantId,
       createdByUserId: data.createdByUserId,
+      slug: data.slug ?? buildSlug(data.name, data.city),
       name: data.name,
       address: data.address,
       city: data.city,
       state: data.state,
+      ...(data.supportEmail !== undefined && {
+        supportEmail: data.supportEmail,
+      }),
+      ...(data.supportPhone !== undefined && {
+        supportPhone: data.supportPhone,
+      }),
+      ...(data.latitude !== undefined && { latitude: data.latitude }),
+      ...(data.longitude !== undefined && { longitude: data.longitude }),
       ...(data.status !== undefined && { status: data.status }),
       ...(data.amenityIds !== undefined && {
         amenities: {
@@ -63,7 +125,21 @@ export const createProperty = async (
   }
 };
 
-export const getPropertyById = async (id: string): Promise<PropertyDTO> => {
+export const getPropertyById = async (
+  userId: string,
+  id: string,
+): Promise<PropertyDTO> => {
+  const actor = await getActor(userId);
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.ADMIN &&
+    actor.role !== UserRole.MANAGER
+  ) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  await assertPropertyInScope(actor, id);
+
   const property = await repo.findPropertyById(id);
 
   if (!property) {
@@ -74,21 +150,36 @@ export const getPropertyById = async (id: string): Promise<PropertyDTO> => {
 };
 
 export const updateProperty = async (
+  userId: string,
   id: string,
   data: UpdatePropertyInput,
 ): Promise<PropertyDTO> => {
+  const actor = await getActor(userId);
+  if (actor.role !== UserRole.SUPER_ADMIN) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  await ensurePropertyExists(id);
+  if (data.tenantId !== undefined) {
+    await ensureTenantExists(data.tenantId);
+  }
+
   try {
-    const existing = await repo.findPropertyById(id);
-
-    if (!existing) {
-      throw new HttpError(404, "NOT_FOUND", "Property not found");
-    }
-
     await repo.updatePropertyById(id, {
+      ...(data.tenantId !== undefined && { tenantId: data.tenantId }),
+      ...(data.slug !== undefined && { slug: data.slug }),
       ...(data.name !== undefined && { name: data.name }),
       ...(data.address !== undefined && { address: data.address }),
       ...(data.city !== undefined && { city: data.city }),
       ...(data.state !== undefined && { state: data.state }),
+      ...(data.supportEmail !== undefined && {
+        supportEmail: data.supportEmail,
+      }),
+      ...(data.supportPhone !== undefined && {
+        supportPhone: data.supportPhone,
+      }),
+      ...(data.latitude !== undefined && { latitude: data.latitude }),
+      ...(data.longitude !== undefined && { longitude: data.longitude }),
       ...(data.status !== undefined && { status: data.status }),
       ...(data.isActive !== undefined && { isActive: data.isActive }),
     });
@@ -132,35 +223,52 @@ export const updateProperty = async (
   }
 };
 
-export const listProperties = async ({
-  page,
-  limit,
-  search,
-  status,
-  isActive,
-}: ListFilters) => {
+export const listProperties = async (
+  userId: string,
+  filters: ListFilters,
+) => {
+  const actor = await getActor(userId);
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.ADMIN &&
+    actor.role !== UserRole.MANAGER
+  ) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  const scope = await getPropertyScope(actor);
+  const propertyIds = scope.isGlobal ? undefined : scope.propertyIds;
+
+  if (propertyIds !== undefined && propertyIds.length === 0) {
+    return {
+      items: [],
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+        total: 0,
+        totalPages: 0,
+      },
+    };
+  }
+
   const [items, total] = await Promise.all([
     repo.listProperties({
-      page,
-      limit,
-      ...(search !== undefined && { search }),
-      ...(status !== undefined && { status }),
-      ...(isActive !== undefined && { isActive }),
+      ...filters,
+      ...(propertyIds !== undefined && { propertyIds }),
     }),
     repo.countProperties({
-      ...(search !== undefined && { search }),
-      ...(status !== undefined && { status }),
-      ...(isActive !== undefined && { isActive }),
+      ...filters,
+      ...(propertyIds !== undefined && { propertyIds }),
     }),
   ]);
 
   return {
     items: items.map(mapProperty),
     pagination: {
-      page,
-      limit,
+      page: filters.page,
+      limit: filters.limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / filters.limit),
     },
   };
 };

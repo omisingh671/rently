@@ -314,11 +314,16 @@ model Tenant {
 model Property {
   id              String @id @default(uuid())
   tenantId        String
+  slug            String
   name            String
   address         String
   city            String
   state           String
   createdByUserId String
+  supportEmail    String?
+  supportPhone    String?
+  latitude        Decimal? @db.Decimal(10, 7)
+  longitude       Decimal? @db.Decimal(10, 7)
 
   isActive Boolean        @default(true)
   status   PropertyStatus @default(ACTIVE)
@@ -349,6 +354,7 @@ model Property {
   billingDocuments  BillingDocument[]
 
   @@unique([tenantId, name, city, state])
+  @@unique([tenantId, slug])
   @@index([tenantId])
   @@map("properties")
 }
