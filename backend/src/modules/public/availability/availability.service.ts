@@ -28,7 +28,7 @@ import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.input
 
 const maxBookingTransactionAttempts = 3;
 const inventoryLockTtlMs = 10 * 60 * 1000;
-const maxPublicOptions = 6;
+const maxPublicOptions = 10;
 const publicRoomCapacityCap = 2;
 
 const now = () => new Date();
@@ -841,6 +841,7 @@ export const generateAvailabilityOptions = async (
     sortOptions(left, right, input.guests),
   )) {
     const key = [
+      option.propertyId,
       option.title,
       option.guestSplit,
       option.totalCapacity,
@@ -1208,4 +1209,3 @@ export const createInventoryLock = async (
     "Selected space is no longer available for checkout",
   );
 };
-

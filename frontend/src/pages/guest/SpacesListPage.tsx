@@ -43,6 +43,8 @@ const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
 type LayoutMode = "grid" | "stack";
 
 const layoutPreferenceKey = "rently:availability-layout";
+const initialVisibleOptionCount = 6;
+const maxVisibleOptionCount = 10;
 
 const getInitialLayoutMode = (): LayoutMode => {
   if (typeof window === "undefined") return "grid";
@@ -107,7 +109,7 @@ const mergeAvailabilityResults = (
         left.itemCount - right.itemCount ||
         left.stayTotal - right.stayTotal,
     )
-    .slice(0, 6);
+    .slice(0, maxVisibleOptionCount);
 
   return {
     available: options.length > 0,
@@ -122,6 +124,10 @@ export default function SpacesListPage() {
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [layoutMode, setLayoutMode] =
     useState<LayoutMode>(getInitialLayoutMode);
+  const [visibleOptionState, setVisibleOptionState] = useState({
+    filterKey: "",
+    count: initialVisibleOptionCount,
+  });
   const hasTriedGeoCityRef = useRef(false);
   const { data: tenantConfig } = usePublicTenantConfig();
 
@@ -293,6 +299,13 @@ export default function SpacesListPage() {
   };
 
   const options = availabilityQuery.data?.options ?? [];
+  const availabilityFilterKey = [from, to, city, guests, comfort].join("|");
+  const visibleOptionCount =
+    visibleOptionState.filterKey === availabilityFilterKey
+      ? visibleOptionState.count
+      : initialVisibleOptionCount;
+  const visibleOptions = options.slice(0, visibleOptionCount);
+  const canShowMoreOptions = options.length > visibleOptionCount;
 
   const updateLayoutMode = (nextLayoutMode: LayoutMode) => {
     setLayoutMode(nextLayoutMode);
@@ -561,7 +574,7 @@ export default function SpacesListPage() {
                   : "flex flex-col gap-4"
               }
             >
-              {options.map((option) =>
+              {visibleOptions.map((option) =>
                 layoutMode === "grid" ? (
                   <OptionGridCard
                     key={option.optionId}
@@ -581,6 +594,23 @@ export default function SpacesListPage() {
                 ),
               )}
             </div>
+
+            {canShowMoreOptions && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleOptionState({
+                      filterKey: availabilityFilterKey,
+                      count: maxVisibleOptionCount,
+                    })
+                  }
+                  className="inline-flex h-11 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  Show more
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
