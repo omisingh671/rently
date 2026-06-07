@@ -238,27 +238,19 @@ export default function AdminSidebar({
             <p className={sectionLabel}>Admin</p>
           )}
 
+          {admin.role === "SUPER_ADMIN" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.TENANTS)}
+              icon={FiBriefcase}
+              label="Tenants"
+            />
+          )}
+
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
             <SidebarLink
               to={adminPath(ADMIN_ROUTES.PROPERTIES)}
               icon={FiHome}
               label="Properties"
-            />
-          )}
-
-          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
-            <SidebarLink
-              to={adminPath(ADMIN_ROUTES.PROPERTY_ASSIGNMENTS)}
-              icon={FiLink}
-              label="Assignments"
-            />
-          )}
-
-          {admin.role === "ADMIN" && (
-            <SidebarLink
-              to={adminPath(ADMIN_ROUTES.MANAGERS)}
-              icon={FiUsers}
-              label="Managers"
             />
           )}
 
@@ -270,11 +262,19 @@ export default function AdminSidebar({
             />
           )}
 
-          {admin.role === "SUPER_ADMIN" && (
+          {admin.role === "ADMIN" && (
             <SidebarLink
-              to={adminPath(ADMIN_ROUTES.TENANTS)}
-              icon={FiBriefcase}
-              label="Tenants"
+              to={adminPath(ADMIN_ROUTES.MANAGERS)}
+              icon={FiUsers}
+              label="Managers"
+            />
+          )}
+
+          {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.PROPERTY_ASSIGNMENTS)}
+              icon={FiLink}
+              label="Assignments"
             />
           )}
 

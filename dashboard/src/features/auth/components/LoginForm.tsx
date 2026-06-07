@@ -24,7 +24,7 @@ type LocationState = {
 
 const loginDefaultValues: LoginFormValues = import.meta.env.DEV
   ? {
-      email: "admin@hah.com",
+      email: "admin@rently.com",
       password: "Admin@123",
     }
   : {

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { adminPath, ADMIN_ROUTES } from "@/configs/routePathsAdmin";
 import { useDashboardContext } from "@/features/dashboard/hooks";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 const { FiKey, FiUser } = ICON_REGISTRY;
 
@@ -65,7 +66,7 @@ export default function AdminSettingsPage() {
               Role
             </p>
             <p className="mt-2 text-lg font-semibold text-slate-900">
-              {isLoading ? "..." : (context?.user.role ?? "Unknown")}
+              {isLoading ? "..." : formatEnumLabel(context?.user.role)}
             </p>
           </div>
 

@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { STATUS_BADGE_COLORS } from "@/configs/theme";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 type VariantMap = Record<string, string>;
 
@@ -25,7 +26,7 @@ export default function StatusBadge({ status, variantMap, className }: Props) {
         className,
       )}
     >
-      {status.toUpperCase()}
+      {formatEnumLabel(status)}
     </span>
   );
 }

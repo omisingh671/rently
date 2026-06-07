@@ -20,6 +20,7 @@ import type {
   TenantStatus,
 } from "@/features/tenants/types";
 import { highlightText } from "@/utils/highlightText";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 type Filters = {
   search: string;
@@ -359,7 +360,7 @@ export default function TenantsPage() {
                   <AdminTableCell>{tenant.supportEmail ?? "-"}</AdminTableCell>
                   <AdminTableCell>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                      {tenant.status}
+                      {formatEnumLabel(tenant.status)}
                     </span>
                   </AdminTableCell>
                   <AdminTableCell>

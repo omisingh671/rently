@@ -12,6 +12,7 @@ import {
 } from "@/features/billing/hooks";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { getRoomBoardApi } from "../api";
 import { useAdminBooking } from "../hooks/useAdminOperations";
 import type { AdminBooking, BookingStatus, PaymentMethod } from "../types";
@@ -96,7 +97,7 @@ const paymentMethodsRequiringReference = new Set<PaymentMethod>([
 
 const getPaymentMethodLabel = (method: PaymentMethod) => {
   if (method === "CARD_POS") return "Card / POS";
-  return method.replaceAll("_", " ");
+  return formatEnumLabel(method);
 };
 
 const getPaymentReferenceLabel = (method: PaymentMethod) => {
@@ -766,11 +767,11 @@ export default function BookingDetailsPage() {
               />
               <InfoItem
                 label="Payment status"
-                value={booking.paymentStatus.replaceAll("_", " ")}
+                value={formatEnumLabel(booking.paymentStatus)}
               />
               <InfoItem
                 label="Payment policy"
-                value={booking.paymentPolicy.replaceAll("_", " ")}
+                value={formatEnumLabel(booking.paymentPolicy)}
               />
               <InfoItem
                 label="Discount"
@@ -834,7 +835,7 @@ export default function BookingDetailsPage() {
                       <StatusBadge status={event.toStatus} />
                       <span className="text-slate-500">
                         {event.fromStatus
-                          ? `from ${event.fromStatus.replaceAll("_", " ")}`
+                          ? `from ${formatEnumLabel(event.fromStatus)}`
                           : "initial status"}
                       </span>
                     </div>
@@ -996,13 +997,7 @@ export default function BookingDetailsPage() {
                                 : "bg-slate-100 text-slate-700 border-slate-200"
                           }`}
                         >
-                          {booking.refundRequest.status
-                            .charAt(0)
-                            .toUpperCase() +
-                            booking.refundRequest.status
-                              .slice(1)
-                              .toLowerCase()
-                              .replaceAll("_", " ")}
+                          {formatEnumLabel(booking.refundRequest.status)}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 font-medium italic border-l-2 border-amber-400 pl-3 py-0.5 my-1.5 bg-amber-500/5 rounded-r">
@@ -1095,13 +1090,13 @@ export default function BookingDetailsPage() {
                                   : "bg-slate-100 text-slate-600 border-slate-200"
                           }`}
                         >
-                          {payment.status.replaceAll("_", " ")}
+                          {formatEnumLabel(payment.status)}
                         </span>
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
                         <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
-                          {payment.purpose.replaceAll("_", " ")}
+                          {formatEnumLabel(payment.purpose)}
                         </span>
                         <span className="text-slate-300">•</span>
                         <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
@@ -1168,7 +1163,7 @@ export default function BookingDetailsPage() {
                               <span className="flex items-center gap-1.5 font-medium text-slate-600">
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                                 {getPaymentMethodLabel(refund.method)} refund /{" "}
-                                {refund.status.replaceAll("_", " ")}
+                                {formatEnumLabel(refund.status)}
                               </span>
                               <span className="font-bold text-amber-800">
                                 -{formatMoney(refund.amount)}
@@ -1323,7 +1318,8 @@ export default function BookingDetailsPage() {
                         {document.documentNumber}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {document.type.replaceAll("_", " ")} / {document.status}{" "}
+                        {formatEnumLabel(document.type)} /{" "}
+                        {formatEnumLabel(document.status)}{" "}
                         / {formatMoney(document.total)}
                       </div>
                     </div>
@@ -1596,7 +1592,7 @@ function ConfirmationModal({
               >
                 {bookingStatuses.map((status) => (
                   <option key={status} value={status}>
-                    {status.replaceAll("_", " ")}
+                    {formatEnumLabel(status)}
                   </option>
                 ))}
               </select>
@@ -1865,7 +1861,8 @@ function RoomAssignmentPicker({
                     Unit {room.unitNumber} / Room {room.number}
                   </span>
                   <span className="mt-0.5 block text-xs text-slate-500">
-                    {room.name} / Capacity {room.maxOccupancy} / {room.status}
+                    {room.name} / Capacity {room.maxOccupancy} /{" "}
+                    {formatEnumLabel(room.status)}
                   </span>
                 </span>
                 {isAssigned && (

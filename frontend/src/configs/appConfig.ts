@@ -7,7 +7,7 @@ export const PROPERTY_SLUG = publicEnv.propertySlug;
 export const IS_PROPERTY_SPECIFIC_MODE = PROPERTY_SLUG !== null;
 export const SUPPORT_EMAIL = publicEnv.supportEmail;
 export const SUPPORT_PHONE = publicEnv.supportPhone;
-export const SUPPORT_PHONE_WA = SUPPORT_PHONE.replace(/\D/g, "");
+export const SUPPORT_PHONE_WA = SUPPORT_PHONE?.replace(/\D/g, "") ?? null;
 
 // Public app roles
 export const USER_ROLES = ["GUEST"] as const;

@@ -1,12 +1,9 @@
 import Button from "@/components/ui/Button";
 import { FaWhatsapp } from "react-icons/fa";
 import { ROUTES } from "@/configs/routePaths";
-import { SUPPORT_PHONE } from "@/configs/appConfig";
+import { SUPPORT_PHONE_WA } from "@/configs/appConfig";
 
 export default function ContactCTA() {
-  // Convert phone to WhatsApp-safe number
-  const waNumber = SUPPORT_PHONE.replace(/\D/g, "");
-
   return (
     <section className="section bg-[#464453] text-white relative">
       <div className="container text-center s-lg">
@@ -21,7 +18,11 @@ export default function ContactCTA() {
 
         <div className="flex justify-center gap-4 pt-6">
           <Button
-            onClick={() => window.open(`https://wa.me/${waNumber}`, "_blank")}
+            onClick={() =>
+              SUPPORT_PHONE_WA &&
+              window.open(`https://wa.me/${SUPPORT_PHONE_WA}`, "_blank")
+            }
+            disabled={!SUPPORT_PHONE_WA}
             variant="success"
             size="lg"
             icon={<FaWhatsapp className="w-5 h-5" />}

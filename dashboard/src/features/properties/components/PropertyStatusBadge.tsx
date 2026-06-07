@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 export default function PropertyStatusBadge({ status }: { status: string }) {
   return (
@@ -10,7 +11,7 @@ export default function PropertyStatusBadge({ status }: { status: string }) {
         status === "MAINTENANCE" && "bg-amber-100 text-amber-700",
       )}
     >
-      {status.toUpperCase()}
+      {formatEnumLabel(status)}
     </span>
   );
 }

@@ -11,6 +11,7 @@ import { useAdminUnits } from "@/features/units/hooks/useAdminUnits";
 import { useAdminPricing } from "@/features/pricing/hooks/useAdminPricing";
 import { ADMIN_OPTION_LIST_LIMIT } from "@/features/config/queryLimits";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import PricingTable from "@/features/pricing/components/PricingTable";
 import {
   couponSchema,
@@ -1155,7 +1156,8 @@ export default function PricingPage() {
                       <div className="flex flex-col gap-1">
                         <StatusBadge status={tax.category} />
                         <span className="text-xs text-slate-500">
-                          {tax.scope.replaceAll("_", " ")} / {tax.targetType}
+                          {formatEnumLabel(tax.scope)} /{" "}
+                          {formatEnumLabel(tax.targetType)}
                         </span>
                       </div>
                     </td>

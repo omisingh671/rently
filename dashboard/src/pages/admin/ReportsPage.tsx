@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { useDashboardAnalytics } from "@/features/dashboard/hooks";
 import Button from "@/components/ui/Button";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 // Date helpers
 const getPastDateStr = (daysAgo: number) => {
@@ -453,7 +454,7 @@ export default function ReportsPage() {
 
                       return (
                         <div key={item.source} className="rounded-xl border border-slate-200 p-5 bg-slate-50/50">
-                          <h4 className="text-sm font-bold tracking-wider text-slate-500 uppercase">{item.source.replaceAll("_", " ")}</h4>
+                          <h4 className="text-sm font-bold tracking-wider text-slate-500 uppercase">{formatEnumLabel(item.source)}</h4>
                           <div className="mt-4 grid grid-cols-2 gap-4">
                             <div>
                               <p className="text-[10px] text-slate-400 uppercase font-semibold">Bookings Count</p>
@@ -588,7 +589,7 @@ export default function ReportsPage() {
                               <div className="font-semibold text-slate-900">{item.managerName}</div>
                               <div className="text-xs text-slate-500">{item.email}</div>
                             </td>
-                            <td className="px-4 py-3 text-xs font-medium uppercase text-slate-500">{item.role}</td>
+                            <td className="px-4 py-3 text-xs font-medium uppercase text-slate-500">{formatEnumLabel(item.role)}</td>
                             <td className="px-4 py-3 text-center">{item.walkinsCreated}</td>
                             <td className="px-4 py-3 text-center">{item.checkInsProcessed}</td>
                             <td className="px-4 py-3 text-center">{item.checkOutsProcessed}</td>
