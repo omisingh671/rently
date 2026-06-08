@@ -196,8 +196,8 @@ export default function AdminDashboard() {
                       variant="dark"
                       to={adminPath(
                         ADMIN_ROUTES.INVENTORY,
-                        ADMIN_ROUTES.INVENTORY_CHILDREN.ROOMS,
-                      )}
+                        ADMIN_ROUTES.INVENTORY_CHILDREN.UNITS,
+                      ).concat("?action=create")}
                     >
                       Create inventory
                     </Button>

@@ -9,6 +9,7 @@ import {
   revokeExpiredAdminSessions,
   revokeManagedUserSessions,
   triggerManagedUserPasswordReset,
+  updateManagedUserDetails,
   updateManagedUserForcePasswordChange,
   updateManagedUserRole,
   updateManagedUserStatus,
@@ -21,6 +22,7 @@ import type {
   AdminSessionsFilters,
   AdminUserScope,
   CreateUserPayload,
+  ManagedUserDetailsVariables,
   ManagedUserForcePasswordVariables,
   ManagedUserRoleVariables,
   ManagedUsersFilters,
@@ -161,6 +163,12 @@ export function useManagedUsers(
     },
   });
 
+  const detailsMutation = useMutation({
+    mutationFn: (variables: ManagedUserDetailsVariables) =>
+      updateManagedUserDetails(variables),
+    onSuccess: invalidateUsers,
+  });
+
   const resetMutation = useMutation({
     mutationFn: (userId: string) => triggerManagedUserPasswordReset(userId),
   });
@@ -186,6 +194,8 @@ export function useManagedUsers(
     isUpdatingStatus: statusMutation.isPending,
     updateRole: roleMutation.mutateAsync,
     isUpdatingRole: roleMutation.isPending,
+    updateDetails: detailsMutation.mutateAsync,
+    isUpdatingDetails: detailsMutation.isPending,
     triggerPasswordReset: resetMutation.mutateAsync,
     isTriggeringPasswordReset: resetMutation.isPending,
     updateForcePasswordChange: forcePasswordMutation.mutateAsync,

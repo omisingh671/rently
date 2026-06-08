@@ -7,9 +7,18 @@ interface OptionPricePanelProps {
 }
 
 const buildBreakdownText = (
-  priceBreakup: number[],
+  option: AvailabilityOption,
   formatPrice: (price: number) => string,
 ) => {
+  const structuredBreakdown = option.priceBreakdown ?? [];
+
+  if (structuredBreakdown.length > 0) {
+    return structuredBreakdown
+      .map((item) => `${item.label}: ${formatPrice(item.pricePerNight)}`)
+      .join(" + ");
+  }
+
+  const priceBreakup = option.priceBreakup ?? [];
   if (priceBreakup.length <= 1) {
     return null;
   }
@@ -43,33 +52,36 @@ export const OptionPricePanel = ({
   formatPrice,
   totalClassName = "text-[rgb(var(--primary)/1)]",
 }: OptionPricePanelProps) => {
-  const breakdownText = buildBreakdownText(option.priceBreakup ?? [], formatPrice);
+  const breakdownText = buildBreakdownText(option, formatPrice);
+  const isSingleNight = option.nights === 1;
 
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Nightly Rate
+            {isSingleNight ? "1 night total" : "Nightly total"}
           </div>
           <div className="mt-0.5 text-base font-bold text-slate-900">
             {formatPrice(option.nightlyTotal)}
           </div>
           {breakdownText && (
-            <div className="mt-1 max-w-52 truncate text-xs font-medium text-slate-500">
+            <div className="mt-1 max-w-56 text-xs font-medium text-slate-500">
               {breakdownText}
             </div>
           )}
         </div>
 
-        <div className="shrink-0 text-right">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            Total Stay
+        {!isSingleNight && (
+          <div className="shrink-0 text-right">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Total stay
+            </div>
+            <div className={`mt-0.5 text-lg font-bold ${totalClassName}`}>
+              {formatPrice(option.stayTotal)}
+            </div>
           </div>
-          <div className={`mt-0.5 text-lg font-bold ${totalClassName}`}>
-            {formatPrice(option.stayTotal)}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

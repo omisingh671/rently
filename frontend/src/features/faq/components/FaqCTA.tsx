@@ -20,8 +20,10 @@ export default function FaqCTA() {
         <div className="flex justify-center gap-4 pt-6">
           <Button
             onClick={() =>
+              SUPPORT_PHONE_WA &&
               window.open(`https://wa.me/${SUPPORT_PHONE_WA}`, "_blank")
             }
+            disabled={!SUPPORT_PHONE_WA}
             variant="success"
             size="lg"
             icon={<FaWhatsapp className="w-5 h-5" />}

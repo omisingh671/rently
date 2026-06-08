@@ -110,7 +110,7 @@ export const listUsers = async ({
 
   const { items, total } = await repo.listUsersPaginated(safePage, safeLimit, {
     ...(search !== undefined && { search }),
-    ...(role !== undefined && { role }),
+    ...(role !== undefined && { roles: [role] }),
     ...(isActive !== undefined && { isActive }),
     ...(mustChangePassword !== undefined && { mustChangePassword }),
     ...(createdByUserId !== undefined && { createdByUserId }),
@@ -541,6 +541,5 @@ function mapDashboardUser(user: UserEntity): DashboardUserDTO {
     updatedAt: user.updatedAt,
   };
 }
-
 
 

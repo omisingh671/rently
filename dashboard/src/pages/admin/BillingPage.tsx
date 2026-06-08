@@ -8,6 +8,7 @@ import type {
 } from "@/features/billing/types";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 const documentTypes: Array<"" | BillingDocumentType> = [
   "",
@@ -128,7 +129,7 @@ export default function BillingPage() {
           >
             {documentTypes.map((type) => (
               <option key={type || "ALL"} value={type}>
-                {type || "All types"}
+                {type ? formatEnumLabel(type) : "All types"}
               </option>
             ))}
           </select>
@@ -144,7 +145,7 @@ export default function BillingPage() {
           >
             {documentStatuses.map((status) => (
               <option key={status || "ALL"} value={status}>
-                {status || "All statuses"}
+                {status ? formatEnumLabel(status) : "All statuses"}
               </option>
             ))}
           </select>
@@ -240,7 +241,8 @@ export default function BillingPage() {
                         {document.documentNumber}
                       </div>
                       <div className="text-xs text-slate-500">
-                        {document.type.replaceAll("_", " ")} / {document.status}
+                        {formatEnumLabel(document.type)} /{" "}
+                        {formatEnumLabel(document.status)}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-700">

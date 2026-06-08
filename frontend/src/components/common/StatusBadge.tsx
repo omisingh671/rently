@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 type VariantMap = Record<string, string>;
 
@@ -32,7 +33,7 @@ export default function StatusBadge({ status, variantMap, className }: Props) {
         className,
       )}
     >
-      {status.toUpperCase()}
+      {formatEnumLabel(status)}
     </span>
   );
 }

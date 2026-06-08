@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
@@ -26,6 +27,7 @@ type Filters = {
 };
 
 export default function UnitsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     page,
     pageSize,
@@ -43,6 +45,7 @@ export default function UnitsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<AdminUnit | null>(null);
+  const shouldOpenCreate = searchParams.get("action") === "create";
 
   const {
     properties,
@@ -72,6 +75,20 @@ export default function UnitsPage() {
   useEffect(() => {
     setPage(1);
   }, [filters.propertyId, filters.status, filters.isActive, setPage]);
+
+  useEffect(() => {
+    if (!shouldOpenCreate || isModalOpen || !filters.propertyId) {
+      return;
+    }
+
+    setEditingUnit(null);
+    setIsModalOpen(true);
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("action");
+      return next;
+    }, { replace: true });
+  }, [filters.propertyId, isModalOpen, setSearchParams, shouldOpenCreate]);
 
   const {
     data,

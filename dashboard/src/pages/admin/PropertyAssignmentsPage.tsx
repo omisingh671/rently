@@ -7,6 +7,7 @@ import Pagination from "@/components/common/Pagination";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { useAdminProperties } from "@/features/properties/hooks/useAdminProperties";
 import { useAdminUsers } from "@/features/users/hooks/useAdminUsers";
 import { useDashboardContext } from "@/features/dashboard/hooks";
@@ -76,7 +77,9 @@ export default function PropertyAssignmentsPage() {
   const properties = Array.from(propertyMap.values()).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
-  const users = usersData?.items ?? [];
+  const users = (usersData?.items ?? []).filter(
+    (user) => user.role === assignmentRole,
+  );
 
   useEffect(() => {
     setPage(1);
@@ -193,7 +196,7 @@ export default function PropertyAssignmentsPage() {
                 Property: {assignmentToRemove.propertyName}
               </div>
               <div className="text-slate-700">
-                Role: {assignmentToRemove.role}
+                Role: {formatEnumLabel(assignmentToRemove.role)}
               </div>
             </div>
 

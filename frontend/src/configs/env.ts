@@ -1,15 +1,13 @@
 const DEFAULT_DEV_API_BASE_URL = "http://localhost:4000";
 const DEFAULT_API_PREFIX = "/api/v1";
 const DEFAULT_APP_NAME = "Sucasa";
-const DEFAULT_SUPPORT_EMAIL = "support@sucasahomes.com";
-const DEFAULT_SUPPORT_PHONE = "+91 8099480994";
 
 type PublicEnv = {
   appName: string;
   tenantSlug: string;
   propertySlug: string | null;
-  supportEmail: string;
-  supportPhone: string;
+  supportEmail: string | null;
+  supportPhone: string | null;
   apiBaseUrl: string;
   apiPrefix: string;
 };
@@ -60,10 +58,12 @@ export const publicEnv: PublicEnv = {
   appName: readEnv("VITE_APP_NAME") ?? DEFAULT_APP_NAME,
   tenantSlug: readRequiredEnv("VITE_TENANT_SLUG"),
   propertySlug: readEnv("VITE_PROPERTY_SLUG") ?? null,
-  supportEmail: readEnv("VITE_SUPPORT_EMAIL") ?? DEFAULT_SUPPORT_EMAIL,
-  supportPhone: readEnv("VITE_SUPPORT_PHONE") ?? DEFAULT_SUPPORT_PHONE,
+  supportEmail: readEnv("VITE_SUPPORT_EMAIL") ?? null,
+  supportPhone: readEnv("VITE_SUPPORT_PHONE") ?? null,
   apiBaseUrl: normalizeApiBaseUrl(
-    readEnv("VITE_API_BASE_URL") ?? readEnv("VITE_API_BASE") ?? defaultApiBaseUrl,
+    readEnv("VITE_API_BASE_URL") ??
+      readEnv("VITE_API_BASE") ??
+      defaultApiBaseUrl,
   ),
   apiPrefix: normalizeApiPrefix(
     readEnv("VITE_API_PREFIX") ?? DEFAULT_API_PREFIX,

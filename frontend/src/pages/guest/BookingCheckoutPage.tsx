@@ -536,6 +536,32 @@ export default function BookingCheckoutPage() {
                   {formatPrice(activeQuote?.subtotalAmount ?? summary.stayTotal)}
                 </span>
               </div>
+              {(activeQuote?.items.length ?? 0) > 0 && (
+                <div className="mt-4 space-y-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    Includes
+                  </div>
+                  {activeQuote?.items.map((item, index) => (
+                    <div
+                      key={`${item.targetType}-${item.roomId ?? item.unitId ?? index}`}
+                      className="flex items-start justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-800">
+                          {item.targetLabel}
+                        </div>
+                        <div className="text-slate-500">
+                          {item.productName} · {item.guestCount} guest
+                          {item.guestCount === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                      <div className="shrink-0 font-bold text-slate-800">
+                        {formatPrice(item.pricePerNight)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {(activeQuote?.discountAmount ?? 0) > 0 && (
                 <div className="mt-3 flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-sm">
                   <span className="font-semibold text-emerald-700">

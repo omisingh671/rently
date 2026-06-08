@@ -9,6 +9,7 @@ import type {
   AdminSessionsFilters,
   AdminUserScope,
   CreateUserPayload,
+  ManagedUserDetailsVariables,
   ManagedUsersFilters,
   ManagedUserForcePasswordVariables,
   ManagedUserRoleVariables,
@@ -100,6 +101,13 @@ export const updateManagedUserStatus = async ({
   );
 
   return res.data.data;
+};
+
+export const updateManagedUserDetails = async ({
+  userId,
+  fullName,
+}: ManagedUserDetailsVariables): Promise<void> => {
+  await axiosInstance.patch(API_ENDPOINTS.users.byId(userId), { fullName });
 };
 
 export const updateManagedUserRole = async ({

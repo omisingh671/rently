@@ -49,6 +49,7 @@ export const API_ENDPOINTS = {
 
   users: {
     list: "/users",
+    byId: (userId: string) => `/users/${userId}`,
     statusById: (userId: string) => `/users/${userId}/status`,
     roleById: (userId: string) => `/users/${userId}/role`,
     passwordResetEmailById: (userId: string) =>

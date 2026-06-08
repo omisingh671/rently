@@ -13,6 +13,7 @@ import type {
 import StatusBadge from "@/components/common/StatusBadge";
 import Pagination from "@/components/common/Pagination";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 const {
   FiClipboard,
@@ -249,7 +250,7 @@ export default function OperationsPage({ module }: Props) {
               <option value="">All statuses</option>
               {statuses.map((status) => (
                 <option key={status} value={status}>
-                  {status.replaceAll("_", " ")}
+                  {formatEnumLabel(status)}
                 </option>
               ))}
             </select>
@@ -620,7 +621,7 @@ function StatusSelect({
         >
           {statuses.map((status) => (
             <option key={status} value={status}>
-              {status.replaceAll("_", " ")}
+              {formatEnumLabel(status)}
             </option>
           ))}
         </select>

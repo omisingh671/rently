@@ -13,6 +13,7 @@ import ActiveToggle from "@/components/common/ActiveToggle";
 
 import { highlightText } from "@/utils/highlightText";
 import { useAuthStore } from "@/stores/authStore";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 type Props = {
   users: AdminUser[];
@@ -91,7 +92,7 @@ export default function UsersTable({
                     {highlightText(user.email, search)}
                   </AdminTableCell>
 
-                  <AdminTableCell>{user.role}</AdminTableCell>
+                  <AdminTableCell>{formatEnumLabel(user.role)}</AdminTableCell>
 
                   <AdminTableCell>
                     {new Date(user.createdAt).toLocaleDateString()}

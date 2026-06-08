@@ -15,6 +15,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { useAdminSessions } from "@/features/users/hooks/useAdminUsers";
 import type {
   AdminSessionStatus,
@@ -132,7 +133,7 @@ export default function SessionsPage() {
               <option value="">All roles</option>
               {roleOptions.map((role) => (
                 <option key={role} value={role}>
-                  {role}
+                  {formatEnumLabel(role)}
                 </option>
               ))}
             </select>

@@ -34,12 +34,31 @@ export interface AvailabilityOptionItemDTO {
   unitId: string | null;
   roomId: string | null;
   label: string;
+  productName: string;
   guestCount: number;
+  priceGuestCount: number;
   capacity: number;
   pricePerNight: number;
   images: GalleryImageDTO[];
   amenities: PublicAmenityDTO[];
   rooms: AvailabilityOptionRoomDTO[];
+}
+
+export type PublicAvailabilityOptionType =
+  | "ROOM"
+  | "UNIT"
+  | "MULTI_ROOM"
+  | "MULTI_UNIT"
+  | "UNIT_ROOM";
+
+export interface AvailabilityOptionPriceBreakdownDTO {
+  label: string;
+  productName: string;
+  targetType: BookingTargetType;
+  guestCount: number;
+  capacity: number;
+  priceGuestCount: number;
+  pricePerNight: number;
 }
 
 export interface PublicAvailabilityOptionDTO {
@@ -48,13 +67,21 @@ export interface PublicAvailabilityOptionDTO {
   propertyLabel: string;
   title: string;
   guestSplit: string;
+  guestSplitParts: number[];
+  optionType: PublicAvailabilityOptionType;
+  requestedGuests: number;
   totalCapacity: number;
+  spareCapacity: number;
+  itemLabel: string;
+  includedLabel: string;
+  recommendationTags: string[];
   comfortOption: ComfortOption;
   nightlyTotal: number;
   stayTotal: number;
   nights: number;
   itemCount: number;
   priceBreakup: number[];
+  priceBreakdown: AvailabilityOptionPriceBreakdownDTO[];
   propertyImages: string[];
   images: GalleryImageDTO[];
   items: AvailabilityOptionItemDTO[];

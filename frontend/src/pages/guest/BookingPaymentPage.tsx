@@ -13,6 +13,7 @@ import {
 } from "react-icons/fi";
 
 import StatusBadge from "@/components/common/StatusBadge";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
 import {
@@ -480,7 +481,11 @@ export default function BookingPaymentPage() {
                 <div className="flex-1 rounded-2xl border border-slate-200 bg-white p-12 text-center shadow-sm flex flex-col items-center justify-center">
                   <FiInfo className="h-12 w-12 text-slate-300 mx-auto mb-4" />
                   <h2 className="text-xl font-bold text-slate-900">Payment Unavailable</h2>
-                  <p className="mt-2 text-slate-500">This booking is currently in {booking.status} status and cannot be processed for payment.</p>
+                  <p className="mt-2 text-slate-500">
+                    This booking is currently in{" "}
+                    {formatEnumLabel(booking.status)} status and cannot be
+                    processed for payment.
+                  </p>
                 </div>
               )}
             </div>

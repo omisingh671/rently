@@ -32,6 +32,7 @@ import StatusBadge from "@/components/common/StatusBadge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { normalizeApiError } from "@/utils/errors";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 const bookingStatusMap: Record<string, string> = {
   PENDING: "bg-amber-100 text-amber-700",
@@ -703,7 +704,7 @@ export default function BookingDetailPage() {
                         Refund Request
                       </p>
                       <p className={`mt-1 text-sm font-semibold ${theme.text}`}>
-                        {booking.refundRequest.status.replaceAll("_", " ")}
+                        {formatEnumLabel(booking.refundRequest.status)}
                       </p>
                       <p className={`mt-1 text-sm ${theme.subtext}`}>
                         {booking.refundRequest.reason}
@@ -769,7 +770,8 @@ export default function BookingDetailPage() {
                         {document.documentNumber}
                       </p>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {document.type.replaceAll("_", " ")} / {document.status}
+                        {formatEnumLabel(document.type)} /{" "}
+                        {formatEnumLabel(document.status)}
                       </p>
                     </div>
                     <Button

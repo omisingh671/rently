@@ -2,6 +2,12 @@ export type ComfortOption = "AC" | "NON_AC";
 export type ComfortFilter = "ALL" | ComfortOption;
 export type BookingTargetType = "UNIT" | "ROOM";
 export type GalleryImageScope = "PROPERTY" | "UNIT" | "ROOM";
+export type AvailabilityOptionType =
+  | "ROOM"
+  | "UNIT"
+  | "MULTI_ROOM"
+  | "MULTI_UNIT"
+  | "UNIT_ROOM";
 
 export interface AvailabilityCriteria {
   checkIn: string;
@@ -16,13 +22,21 @@ export interface AvailabilityOption {
   propertyLabel: string;
   title: string;
   guestSplit: string;
+  guestSplitParts: number[];
+  optionType: AvailabilityOptionType;
+  requestedGuests: number;
   totalCapacity: number;
+  spareCapacity: number;
+  itemLabel: string;
+  includedLabel: string;
+  recommendationTags: string[];
   comfortOption: ComfortOption;
   nightlyTotal: number;
   stayTotal: number;
   nights: number;
   itemCount: number;
   priceBreakup: number[];
+  priceBreakdown: AvailabilityOptionPriceBreakdown[];
   propertyImages: string[];
   images: GalleryImage[];
   items: AvailabilityOptionItem[];
@@ -31,6 +45,18 @@ export interface AvailabilityOption {
 export interface AvailabilityResult {
   available: boolean;
   options: AvailabilityOption[];
+}
+
+export interface AvailabilityOptionGroup {
+  groupId: string;
+  displayTitle: string;
+  variants: AvailabilityOption[];
+}
+
+export interface AvailabilityComfortVariant {
+  comfortOption: ComfortOption;
+  label: string;
+  priceLabel: string;
 }
 
 export interface GalleryImage {
@@ -54,7 +80,9 @@ export interface AvailabilityOptionItem {
   unitId: string | null;
   roomId: string | null;
   label: string;
+  productName: string;
   guestCount: number;
+  priceGuestCount: number;
   capacity: number;
   pricePerNight: number;
   images: GalleryImage[];
@@ -68,4 +96,14 @@ export interface AvailabilityOptionRoom {
   capacity: number;
   hasAC: boolean;
   amenities: AvailabilityAmenity[];
+}
+
+export interface AvailabilityOptionPriceBreakdown {
+  label: string;
+  productName: string;
+  targetType: BookingTargetType;
+  guestCount: number;
+  capacity: number;
+  priceGuestCount: number;
+  pricePerNight: number;
 }

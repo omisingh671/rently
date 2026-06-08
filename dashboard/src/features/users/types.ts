@@ -54,6 +54,11 @@ export type ManagedUserStatusVariables = {
   isActive: boolean;
 };
 
+export type ManagedUserDetailsVariables = {
+  userId: string;
+  fullName: string;
+};
+
 export type ManagedUserRoleVariables = {
   userId: string;
   role: MutableManagedUserRole;

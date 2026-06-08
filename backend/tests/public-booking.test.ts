@@ -864,10 +864,10 @@ test("public availability returns limited public-safe booking options", async ()
 
   assert.equal(availability.available, true);
   assert.ok(availability.options.length > 0);
-  assert.ok(availability.options.length <= 6);
+  assert.ok(availability.options.length <= 12);
 
   const roomOption = availability.options.find(
-    (option) => option.title === "3 Rooms",
+    (option) => option.guestSplit === "2 + 2 + 1",
   );
 
   assert.ok(roomOption);
@@ -879,8 +879,1208 @@ test("public availability returns limited public-safe booking options", async ()
   assert.equal(publicJson.includes(state.roomTwoId), false);
   assert.equal(publicJson.includes(state.roomThreeId), false);
   assert.equal(publicJson.includes(state.pricingId), false);
-  assert.equal(publicJson.includes("Double Room"), false);
-  assert.equal(publicJson.includes("Single Room"), false);
+});
+
+test("public availability uses full room occupancy for unit capacity", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-unit-occupancy`,
+      name: `${testId} Unit Occupancy`,
+      address: "Unit Occupancy Address",
+      city: "Kanpur Nagar",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const unit = await prisma.unit.create({
+    data: {
+      propertyId: property.id,
+      unitNumber: "200",
+      floor: 2,
+      status: UnitStatus.ACTIVE,
+    },
+  });
+  await prisma.room.createMany({
+    data: [
+      {
+        unitId: unit.id,
+        name: "Unit 200 Room A",
+        number: "200A",
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+      {
+        unitId: unit.id,
+        name: "Unit 200 Room B",
+        number: "200B",
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    ],
+  });
+  const unitProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: property.id,
+      name: `${testId} Six Guest Unit`,
+      occupancy: 6,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: property.id,
+      unitId: unit.id,
+      productId: unitProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 6200,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-01-10T00:00:00.000Z"),
+        checkOut: new Date("2032-01-11T00:00:00.000Z"),
+        guests: 6,
+        comfortOption: ComfortOption.AC,
+        city: "Kanpur Nagar",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    const unitOption = availability.options.find(
+      (option) => option.title === "Whole Apartment" && option.totalCapacity >= 6,
+    );
+
+    assert.ok(unitOption);
+    assert.equal(unitOption.guestSplit, "6");
+    assert.equal(unitOption.items[0]?.targetType, "UNIT");
+    assert.equal(unitOption.items[0]?.pricePerNight, 6200);
+    assert.deepEqual(
+      unitOption.items[0]?.rooms.map((room) => room.capacity),
+      [3, 3],
+    );
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability recommends unit plus room using unit pricing", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-unit-room-combo`,
+      name: `${testId} Unit Room Combo`,
+      address: "Unit Room Combo Address",
+      city: "Kanpur Nagar",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const [unit, extraUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "200",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "201",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [extraRoom] = await Promise.all([
+    prisma.room.create({
+      data: {
+        unitId: extraUnit.id,
+        name: "Extra Room",
+        number: "201A",
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Unit 200 Room A",
+        number: "200A",
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: unit.id,
+        name: "Unit 200 Room B",
+        number: "200B",
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+  ]);
+  const [unitProduct, singleProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Six Guest Unit Combo`,
+        occupancy: 6,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Single Extra Room`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
+  await Promise.all([
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        unitId: unit.id,
+        productId: unitProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 6200,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        roomId: extraRoom.id,
+        unitId: extraUnit.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1600,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-02-10T00:00:00.000Z"),
+        checkOut: new Date("2032-02-11T00:00:00.000Z"),
+        guests: 7,
+        comfortOption: ComfortOption.AC,
+        city: "Kanpur Nagar",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    const comboOption = availability.options.find(
+      (option) => option.title === "Whole Apartment + Single Room",
+    );
+
+    assert.ok(comboOption);
+    assert.equal(comboOption.guestSplit, "6 + 1");
+    assert.equal(comboOption.totalCapacity >= 7, true);
+
+    const unitItem = comboOption.items.find(
+      (item) => item.targetType === "UNIT",
+    );
+    const roomItem = comboOption.items.find(
+      (item) => item.targetType === "ROOM",
+    );
+
+    assert.ok(unitItem);
+    assert.ok(roomItem);
+    assert.equal(unitItem.pricePerNight, 6200);
+    assert.equal(unitItem.capacity, 6);
+    assert.equal(roomItem.pricePerNight, 1600);
+    assert.equal(roomItem.guestCount, 1);
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability curates one-guest room choices by visible capacity", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-curated-one-guest`,
+      name: `${testId} Curated One Guest`,
+      address: "Curated One Guest Address",
+      city: "Curated One Guest",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const [unitOne, unitTwo, unitThree] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "101",
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "201",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "301",
+        floor: 3,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [singleProduct, doubleProduct, tripleProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Single AC`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Double AC`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Triple AC`,
+        occupancy: 3,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: unitOne.id,
+          name: "Single Room A",
+          number: "101A",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitOne.id,
+          name: "Single Room B",
+          number: "101B",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitTwo.id,
+          name: "Double Room A",
+          number: "201A",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitTwo.id,
+          name: "Double Room B",
+          number: "201B",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitThree.id,
+          name: "Triple Room A",
+          number: "301A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1750,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: doubleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: tripleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-03-10T00:00:00.000Z"),
+        checkOut: new Date("2032-03-11T00:00:00.000Z"),
+        guests: 1,
+        comfortOption: ComfortOption.AC,
+        city: "Curated One Guest",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+    const roomOptions = availability.options.filter(
+      (option) => option.optionType === "ROOM",
+    );
+
+    assert.deepEqual(
+      roomOptions.map((option) => option.totalCapacity).sort((a, b) => a - b),
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      roomOptions.map((option) => option.guestSplit),
+      ["1", "1", "1"],
+    );
+    assert.deepEqual(
+      roomOptions
+        .map(
+          (option): [number, number] => [
+            option.totalCapacity,
+            option.nightlyTotal,
+          ],
+        )
+        .sort(([leftCapacity], [rightCapacity]) => leftCapacity - rightCapacity),
+      [
+        [1, 1750],
+        [2, 2250],
+        [3, 3250],
+      ],
+    );
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability shows single-room and split-room combinations", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-curated-two-guest-single`,
+      name: `${testId} Curated Two Guest Single`,
+      address: "Curated Two Guest Single Address",
+      city: "Curated Two Guest Single",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const unit = await prisma.unit.create({
+    data: {
+      propertyId: property.id,
+      unitNumber: "101",
+      floor: 1,
+      status: UnitStatus.ACTIVE,
+    },
+  });
+  const [singleProduct, doubleProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Single AC Two Guest`,
+        occupancy: 1,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Double AC Two Guest`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: unit.id,
+          name: "Double Room",
+          number: "101A",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unit.id,
+          name: "Single Room A",
+          number: "101B",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unit.id,
+          name: "Single Room B",
+          number: "101C",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1750,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: doubleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-04-10T00:00:00.000Z"),
+        checkOut: new Date("2032-04-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city: "Curated Two Guest Single",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    const doubleRoomOption = availability.options.find(
+      (option) =>
+        option.title === "Double Occupancy Room" &&
+        option.guestSplit === "2" &&
+        option.totalCapacity === 2,
+    );
+
+    assert.ok(doubleRoomOption);
+    assert.equal(doubleRoomOption.nightlyTotal, 2250);
+
+    const splitRoomOption = availability.options.find(
+      (option) =>
+        option.title === "2 Single Rooms" && option.guestSplit === "1 + 1",
+    );
+
+    assert.ok(splitRoomOption);
+    assert.equal(splitRoomOption.nightlyTotal, 3500);
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability shows unit and two-room combinations for four guests", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-curated-four-guest`,
+      name: `${testId} Curated Four Guest`,
+      address: "Curated Four Guest Address",
+      city: "Curated Four Guest",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const [unitWithRooms, unitForWholeUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "100",
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "200",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [doubleProduct, unitProduct] = await Promise.all([
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Double AC Four Guest`,
+        occupancy: 2,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+    prisma.roomProduct.create({
+      data: {
+        propertyId: property.id,
+        name: `${testId} Curated Unit AC Four Guest`,
+        occupancy: 6,
+        hasAC: true,
+        category: RoomProductCategory.NIGHTLY,
+      },
+    }),
+  ]);
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: unitWithRooms.id,
+          name: "Double Room A",
+          number: "100A",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitWithRooms.id,
+          name: "Double Room B",
+          number: "100B",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitForWholeUnit.id,
+          name: "Unit Room A",
+          number: "200A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unitForWholeUnit.id,
+          name: "Unit Room B",
+          number: "200B",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: doubleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        unitId: unitForWholeUnit.id,
+        productId: unitProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 6250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-06-10T00:00:00.000Z"),
+        checkOut: new Date("2032-06-11T00:00:00.000Z"),
+        guests: 4,
+        comfortOption: ComfortOption.AC,
+        city: "Curated Four Guest",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.ok(
+      availability.options.some(
+        (option) =>
+          option.title === "Whole Apartment" &&
+          option.guestSplit === "4" &&
+          option.totalCapacity === 6,
+      ),
+    );
+    assert.ok(
+      availability.options.some(
+        (option) =>
+          option.title === "2 Double Rooms" &&
+          option.guestSplit === "2 + 2" &&
+          option.totalCapacity === 4,
+      ),
+    );
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability shows split rooms when no one room covers guests", async () => {
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-curated-two-guest-split`,
+      name: `${testId} Curated Two Guest Split`,
+      address: "Curated Two Guest Split Address",
+      city: "Curated Two Guest Split",
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const unit = await prisma.unit.create({
+    data: {
+      propertyId: property.id,
+      unitNumber: "101",
+      floor: 1,
+      status: UnitStatus.ACTIVE,
+    },
+  });
+  const product = await prisma.roomProduct.create({
+    data: {
+      propertyId: property.id,
+      name: `${testId} Curated Split Single AC`,
+      occupancy: 1,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: unit.id,
+          name: "Single Room A",
+          number: "101A",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: unit.id,
+          name: "Single Room B",
+          number: "101B",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1750,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-05-10T00:00:00.000Z"),
+        checkOut: new Date("2032-05-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city: "Curated Two Guest Split",
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.ok(
+      availability.options.some(
+        (option) =>
+          option.title === "2 Single Rooms" && option.guestSplit === "1 + 1",
+      ),
+    );
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability exposes package options and metadata for guest counts one through seven", async () => {
+  const city = `${testId} Package Matrix`;
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-package-matrix`,
+      name: `${testId} Package Matrix`,
+      address: "Package Matrix Address",
+      city,
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const [roomUnit, wholeUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "101",
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "201",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [singleProduct, doubleProduct, tripleProduct, unitProduct] =
+    await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Single`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Double`,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Triple`,
+          occupancy: 3,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Whole Apartment`,
+          occupancy: 6,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: roomUnit.id,
+          name: "Triple A",
+          number: "101A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Triple B",
+          number: "101B",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double A",
+          number: "101C",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double B",
+          number: "101D",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double C",
+          number: "101E",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single A",
+          number: "101F",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single B",
+          number: "101G",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single C",
+          number: "101H",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single D",
+          number: "101I",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: wholeUnit.id,
+          name: "Apartment Room A",
+          number: "201A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: wholeUnit.id,
+          name: "Apartment Room B",
+          number: "201B",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: doubleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: tripleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        unitId: wholeUnit.id,
+        productId: unitProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 6200,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const check = (guests: number) =>
+      publicService.checkAvailability(
+        {
+          checkIn: new Date("2033-01-10T00:00:00.000Z"),
+          checkOut: new Date("2033-01-11T00:00:00.000Z"),
+          guests,
+          comfortOption: ComfortOption.AC,
+          city,
+        },
+        { tenantSlug: state.tenantSlug },
+      );
+
+    const expectations = [
+      {
+        guests: 1,
+        titles: [
+          "Single Occupancy Room",
+          "Double Occupancy Room",
+          "Triple Occupancy Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 2,
+        titles: [
+          "Double Occupancy Room",
+          "2 Single Rooms",
+          "Triple Occupancy Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 3,
+        titles: [
+          "Triple Occupancy Room",
+          "Double Room + Single Room",
+          "3 Single Rooms",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 4,
+        titles: [
+          "2 Double Rooms",
+          "Triple Room + Single Room",
+          "Whole Apartment",
+          "4 Single Rooms",
+        ],
+      },
+      {
+        guests: 5,
+        titles: [
+          "Triple Room + Double Room",
+          "2 Double Rooms + 1 Single Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 6,
+        titles: [
+          "Whole Apartment",
+          "2 Triple Rooms",
+          "3 Double Rooms",
+          "Triple Room + Double Room + Single Room",
+        ],
+      },
+      {
+        guests: 7,
+        titles: [
+          "Whole Apartment + Single Room",
+          "2 Triple Rooms + 1 Single Room",
+          "1 Triple Room + 2 Double Rooms",
+        ],
+      },
+    ];
+
+    for (const expectation of expectations) {
+      const availability = await check(expectation.guests);
+      const titles = new Set(availability.options.map((option) => option.title));
+
+      for (const title of expectation.titles) {
+        assert.ok(titles.has(title), `${expectation.guests} guests missing ${title}`);
+      }
+
+      assert.ok(availability.options.length <= 8);
+      assert.equal(
+        new Set(availability.options.map((option) => option.optionId)).size,
+        availability.options.length,
+      );
+      assert.ok(
+        availability.options.every(
+          (option) =>
+            option.requestedGuests === expectation.guests &&
+            option.totalCapacity >= expectation.guests &&
+            option.spareCapacity === option.totalCapacity - expectation.guests,
+        ),
+      );
+    }
+
+    const fiveGuestAvailability = await check(5);
+    const tripleDouble = fiveGuestAvailability.options.find(
+      (option) => option.title === "Triple Room + Double Room",
+    );
+    assert.ok(tripleDouble);
+    assert.deepEqual(
+      tripleDouble.priceBreakdown.map((item) => [item.label, item.pricePerNight]),
+      [
+        ["Triple Room", 3250],
+        ["Double Room", 2250],
+      ],
+    );
+    assert.equal(tripleDouble.nightlyTotal, 5500);
+    assert.equal(tripleDouble.stayTotal, 5500);
+    assert.equal(tripleDouble.itemLabel, "2 rooms");
+    assert.equal(tripleDouble.includedLabel, "1 Triple Room + 1 Double Room");
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("city availability labels properties and internal options never mix properties", async () => {
+  const city = `${testId} Shared City`;
+  const first = await createScopedBookableProperty({
+    slug: `${testId}-shared-city-a`,
+    name: `${testId} Shared City A`,
+    city,
+    price: 2100,
+  });
+  const second = await createScopedBookableProperty({
+    slug: `${testId}-shared-city-b`,
+    name: `${testId} Shared City B`,
+    city,
+    price: 2200,
+  });
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2033-02-10T00:00:00.000Z"),
+        checkOut: new Date("2033-02-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.deepEqual(
+      new Set(availability.options.map((option) => option.propertyId)),
+      new Set([first.property.id, second.property.id]),
+    );
+    assert.ok(
+      availability.options.every((option) =>
+        option.propertyLabel.includes(city),
+      ),
+    );
+
+    const internalOptions = await availabilityService.generateAvailabilityOptions(
+      {
+        checkIn: new Date("2033-02-10T00:00:00.000Z"),
+        checkOut: new Date("2033-02-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      state.tenantId,
+      1,
+      { city },
+    );
+
+    assert.ok(
+      internalOptions.every(
+        (option) =>
+          new Set(option.items.map((item) => item.propertyId)).size === 1,
+      ),
+    );
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: { in: [first.property.id, second.property.id] } },
+    });
+  }
 });
 
 test("public booking can reserve a generated option by opaque option id", async () => {
@@ -894,7 +2094,7 @@ test("public booking can reserve a generated option by opaque option id", async 
     { tenantSlug: state.tenantSlug },
   );
   const roomOption = availability.options.find(
-    (option) => option.title === "3 Rooms",
+    (option) => option.guestSplit === "2 + 2 + 1",
   );
 
   assert.ok(roomOption);
@@ -914,7 +2114,7 @@ test("public booking can reserve a generated option by opaque option id", async 
 
   assert.equal(booking.bookingType, "MULTI_ROOM");
   assert.equal(booking.guestCount, 5);
-  assert.equal(booking.title, "Multi-room stay (3 rooms)");
+  assert.equal(booking.title, roomOption.title);
   assert.equal(booking.totalPrice, roomOption.stayTotal);
   assert.deepEqual(
     booking.items.map((item) => item.guestCount).sort((a, b) => a - b),
@@ -922,7 +2122,7 @@ test("public booking can reserve a generated option by opaque option id", async 
   );
   assert.deepEqual(
     booking.items.map((item) => item.targetLabel).sort(),
-    ["Room 1", "Room 2", "Room 3"],
+    ["Double Room", "Double Room", "Single Room"],
   );
 });
 

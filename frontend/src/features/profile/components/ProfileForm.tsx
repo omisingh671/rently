@@ -10,6 +10,7 @@ import { InputField } from "@/components/inputs/InputField/InputField";
 import CountryDialCodeInput from "@/components/inputs/CountryDialCodeInput";
 
 import { useProfile, useUpdateProfile } from "@/features/profile/hooks";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 /* ------------------------------------------------------------------
    Validation schema (profile-friendly, soft validation)
@@ -169,7 +170,7 @@ export default function ProfileForm() {
             <div>
               <div className="text-xs text-slate-500">Role</div>
               <div className="font-medium text-slate-900 capitalize">
-                {user.role}
+                {formatEnumLabel(user.role)}
               </div>
             </div>
           </div>

@@ -320,7 +320,7 @@ const mapBooking = async (
   }));
   const title =
     booking.bookingType === BookingType.MULTI_ROOM
-      ? `${multiRoomTitle} (${items.length} rooms)`
+      ? booking.targetLabel
       : `${booking.productName} - ${booking.targetLabel}`;
   const paidAmount = booking.payments
     .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
@@ -1133,12 +1133,7 @@ const buildOptionBookingItemCreateInput = (
   guestCount: item.guestCount,
   comfortOption,
   targetLabel: item.publicLabel,
-  productName:
-    item.target.targetType === BookingTargetType.UNIT
-      ? "Whole unit"
-      : item.guestCount === 1
-        ? "Single room"
-        : "Double room",
+  productName: item.productName,
   capacity: item.capacity,
   pricePerNight: item.pricePerNight,
   pricingId: item.pricingId,

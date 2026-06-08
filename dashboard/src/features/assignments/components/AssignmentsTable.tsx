@@ -7,6 +7,7 @@ import AdminTableEmpty from "@/components/admin-table/AdminTableEmpty";
 import AdminTableHeader from "@/components/admin-table/AdminTableHeader";
 import AdminTableLoadingOverlay from "@/components/admin-table/AdminTableLoadingOverlay";
 import AdminTableRow from "@/components/admin-table/AdminTableRow";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
 type Props = {
   items?: AdminPropertyAssignment[];
@@ -72,7 +73,7 @@ export default function AssignmentsTable({
                     </div>
                   </div>
                 </AdminTableCell>
-                <AdminTableCell>{assignment.role}</AdminTableCell>
+                <AdminTableCell>{formatEnumLabel(assignment.role)}</AdminTableCell>
                 <AdminTableCell>{assignment.assignedByName}</AdminTableCell>
                 <AdminTableCell>
                   {new Date(assignment.createdAt).toLocaleDateString()}
