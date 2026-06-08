@@ -867,7 +867,7 @@ test("public availability returns limited public-safe booking options", async ()
   assert.ok(availability.options.length <= 12);
 
   const roomOption = availability.options.find(
-    (option) => option.title === "3 Rooms",
+    (option) => option.guestSplit === "2 + 2 + 1",
   );
 
   assert.ok(roomOption);
@@ -879,8 +879,6 @@ test("public availability returns limited public-safe booking options", async ()
   assert.equal(publicJson.includes(state.roomTwoId), false);
   assert.equal(publicJson.includes(state.roomThreeId), false);
   assert.equal(publicJson.includes(state.pricingId), false);
-  assert.equal(publicJson.includes("Double Room"), false);
-  assert.equal(publicJson.includes("Single Room"), false);
 });
 
 test("public availability uses full room occupancy for unit capacity", async () => {
@@ -959,7 +957,7 @@ test("public availability uses full room occupancy for unit capacity", async () 
       { tenantSlug: state.tenantSlug },
     );
     const unitOption = availability.options.find(
-      (option) => option.title === "1 Unit" && option.totalCapacity >= 6,
+      (option) => option.title === "Whole Apartment" && option.totalCapacity >= 6,
     );
 
     assert.ok(unitOption);
@@ -1100,7 +1098,7 @@ test("public availability recommends unit plus room using unit pricing", async (
       { tenantSlug: state.tenantSlug },
     );
     const comboOption = availability.options.find(
-      (option) => option.title === "1 Unit + 1 Room",
+      (option) => option.title === "Whole Apartment + Single Room",
     );
 
     assert.ok(comboOption);
@@ -1288,7 +1286,7 @@ test("public availability curates one-guest room choices by visible capacity", a
       { tenantSlug: state.tenantSlug },
     );
     const roomOptions = availability.options.filter(
-      (option) => option.title === "1 Room",
+      (option) => option.optionType === "ROOM",
     );
 
     assert.deepEqual(
@@ -1301,7 +1299,12 @@ test("public availability curates one-guest room choices by visible capacity", a
     );
     assert.deepEqual(
       roomOptions
-        .map((option) => [option.totalCapacity, option.nightlyTotal])
+        .map(
+          (option): [number, number] => [
+            option.totalCapacity,
+            option.nightlyTotal,
+          ],
+        )
         .sort(([leftCapacity], [rightCapacity]) => leftCapacity - rightCapacity),
       [
         [1, 1750],
@@ -1424,7 +1427,7 @@ test("public availability shows single-room and split-room combinations", async 
 
     const doubleRoomOption = availability.options.find(
       (option) =>
-        option.title === "1 Room" &&
+        option.title === "Double Occupancy Room" &&
         option.guestSplit === "2" &&
         option.totalCapacity === 2,
     );
@@ -1433,7 +1436,8 @@ test("public availability shows single-room and split-room combinations", async 
     assert.equal(doubleRoomOption.nightlyTotal, 2250);
 
     const splitRoomOption = availability.options.find(
-      (option) => option.title === "2 Rooms" && option.guestSplit === "1 + 1",
+      (option) =>
+        option.title === "2 Single Rooms" && option.guestSplit === "1 + 1",
     );
 
     assert.ok(splitRoomOption);
@@ -1573,7 +1577,7 @@ test("public availability shows unit and two-room combinations for four guests",
     assert.ok(
       availability.options.some(
         (option) =>
-          option.title === "1 Unit" &&
+          option.title === "Whole Apartment" &&
           option.guestSplit === "4" &&
           option.totalCapacity === 6,
       ),
@@ -1581,7 +1585,7 @@ test("public availability shows unit and two-room combinations for four guests",
     assert.ok(
       availability.options.some(
         (option) =>
-          option.title === "2 Rooms" &&
+          option.title === "2 Double Rooms" &&
           option.guestSplit === "2 + 2" &&
           option.totalCapacity === 4,
       ),
@@ -1670,11 +1674,412 @@ test("public availability shows split rooms when no one room covers guests", asy
 
     assert.ok(
       availability.options.some(
-        (option) => option.title === "2 Rooms" && option.guestSplit === "1 + 1",
+        (option) =>
+          option.title === "2 Single Rooms" && option.guestSplit === "1 + 1",
       ),
     );
   } finally {
     await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("public availability exposes package options and metadata for guest counts one through seven", async () => {
+  const city = `${testId} Package Matrix`;
+  const property = await prisma.property.create({
+    data: {
+      tenantId: state.tenantId,
+      slug: `${testId}-package-matrix`,
+      name: `${testId} Package Matrix`,
+      address: "Package Matrix Address",
+      city,
+      state: "Uttar Pradesh",
+      status: PropertyStatus.ACTIVE,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  const [roomUnit, wholeUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "101",
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: property.id,
+        unitNumber: "201",
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [singleProduct, doubleProduct, tripleProduct, unitProduct] =
+    await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Single`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Double`,
+          occupancy: 2,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Triple`,
+          occupancy: 3,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: property.id,
+          name: `${testId} Matrix Whole Apartment`,
+          occupancy: 6,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+
+  await Promise.all([
+    prisma.room.createMany({
+      data: [
+        {
+          unitId: roomUnit.id,
+          name: "Triple A",
+          number: "101A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Triple B",
+          number: "101B",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double A",
+          number: "101C",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double B",
+          number: "101D",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Double C",
+          number: "101E",
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single A",
+          number: "101F",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single B",
+          number: "101G",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single C",
+          number: "101H",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: roomUnit.id,
+          name: "Single D",
+          number: "101I",
+          hasAC: true,
+          maxOccupancy: 1,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: wholeUnit.id,
+          name: "Apartment Room A",
+          number: "201A",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+        {
+          unitId: wholeUnit.id,
+          name: "Apartment Room B",
+          number: "201B",
+          hasAC: true,
+          maxOccupancy: 3,
+          status: RoomStatus.AVAILABLE,
+        },
+      ],
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: singleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 1500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: doubleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        productId: tripleProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3250,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+    prisma.roomPricing.create({
+      data: {
+        propertyId: property.id,
+        unitId: wholeUnit.id,
+        productId: unitProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 6200,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    }),
+  ]);
+
+  try {
+    const check = (guests: number) =>
+      publicService.checkAvailability(
+        {
+          checkIn: new Date("2033-01-10T00:00:00.000Z"),
+          checkOut: new Date("2033-01-11T00:00:00.000Z"),
+          guests,
+          comfortOption: ComfortOption.AC,
+          city,
+        },
+        { tenantSlug: state.tenantSlug },
+      );
+
+    const expectations = [
+      {
+        guests: 1,
+        titles: [
+          "Single Occupancy Room",
+          "Double Occupancy Room",
+          "Triple Occupancy Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 2,
+        titles: [
+          "Double Occupancy Room",
+          "2 Single Rooms",
+          "Triple Occupancy Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 3,
+        titles: [
+          "Triple Occupancy Room",
+          "Double Room + Single Room",
+          "3 Single Rooms",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 4,
+        titles: [
+          "2 Double Rooms",
+          "Triple Room + Single Room",
+          "Whole Apartment",
+          "4 Single Rooms",
+        ],
+      },
+      {
+        guests: 5,
+        titles: [
+          "Triple Room + Double Room",
+          "2 Double Rooms + 1 Single Room",
+          "Whole Apartment",
+        ],
+      },
+      {
+        guests: 6,
+        titles: [
+          "Whole Apartment",
+          "2 Triple Rooms",
+          "3 Double Rooms",
+          "Triple Room + Double Room + Single Room",
+        ],
+      },
+      {
+        guests: 7,
+        titles: [
+          "Whole Apartment + Single Room",
+          "2 Triple Rooms + 1 Single Room",
+          "1 Triple Room + 2 Double Rooms",
+        ],
+      },
+    ];
+
+    for (const expectation of expectations) {
+      const availability = await check(expectation.guests);
+      const titles = new Set(availability.options.map((option) => option.title));
+
+      for (const title of expectation.titles) {
+        assert.ok(titles.has(title), `${expectation.guests} guests missing ${title}`);
+      }
+
+      assert.ok(availability.options.length <= 8);
+      assert.equal(
+        new Set(availability.options.map((option) => option.optionId)).size,
+        availability.options.length,
+      );
+      assert.ok(
+        availability.options.every(
+          (option) =>
+            option.requestedGuests === expectation.guests &&
+            option.totalCapacity >= expectation.guests &&
+            option.spareCapacity === option.totalCapacity - expectation.guests,
+        ),
+      );
+    }
+
+    const fiveGuestAvailability = await check(5);
+    const tripleDouble = fiveGuestAvailability.options.find(
+      (option) => option.title === "Triple Room + Double Room",
+    );
+    assert.ok(tripleDouble);
+    assert.deepEqual(
+      tripleDouble.priceBreakdown.map((item) => [item.label, item.pricePerNight]),
+      [
+        ["Triple Room", 3250],
+        ["Double Room", 2250],
+      ],
+    );
+    assert.equal(tripleDouble.nightlyTotal, 5500);
+    assert.equal(tripleDouble.stayTotal, 5500);
+    assert.equal(tripleDouble.itemLabel, "2 rooms");
+    assert.equal(tripleDouble.includedLabel, "1 Triple Room + 1 Double Room");
+  } finally {
+    await prisma.property.deleteMany({ where: { id: property.id } });
+  }
+});
+
+test("city availability labels properties and internal options never mix properties", async () => {
+  const city = `${testId} Shared City`;
+  const first = await createScopedBookableProperty({
+    slug: `${testId}-shared-city-a`,
+    name: `${testId} Shared City A`,
+    city,
+    price: 2100,
+  });
+  const second = await createScopedBookableProperty({
+    slug: `${testId}-shared-city-b`,
+    name: `${testId} Shared City B`,
+    city,
+    price: 2200,
+  });
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2033-02-10T00:00:00.000Z"),
+        checkOut: new Date("2033-02-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    assert.deepEqual(
+      new Set(availability.options.map((option) => option.propertyId)),
+      new Set([first.property.id, second.property.id]),
+    );
+    assert.ok(
+      availability.options.every((option) =>
+        option.propertyLabel.includes(city),
+      ),
+    );
+
+    const internalOptions = await availabilityService.generateAvailabilityOptions(
+      {
+        checkIn: new Date("2033-02-10T00:00:00.000Z"),
+        checkOut: new Date("2033-02-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      state.tenantId,
+      1,
+      { city },
+    );
+
+    assert.ok(
+      internalOptions.every(
+        (option) =>
+          new Set(option.items.map((item) => item.propertyId)).size === 1,
+      ),
+    );
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: { in: [first.property.id, second.property.id] } },
+    });
   }
 });
 
@@ -1689,7 +2094,7 @@ test("public booking can reserve a generated option by opaque option id", async 
     { tenantSlug: state.tenantSlug },
   );
   const roomOption = availability.options.find(
-    (option) => option.title === "3 Rooms",
+    (option) => option.guestSplit === "2 + 2 + 1",
   );
 
   assert.ok(roomOption);
@@ -1709,7 +2114,7 @@ test("public booking can reserve a generated option by opaque option id", async 
 
   assert.equal(booking.bookingType, "MULTI_ROOM");
   assert.equal(booking.guestCount, 5);
-  assert.equal(booking.title, "Multi-room stay (3 rooms)");
+  assert.equal(booking.title, roomOption.title);
   assert.equal(booking.totalPrice, roomOption.stayTotal);
   assert.deepEqual(
     booking.items.map((item) => item.guestCount).sort((a, b) => a - b),
@@ -1717,7 +2122,7 @@ test("public booking can reserve a generated option by opaque option id", async 
   );
   assert.deepEqual(
     booking.items.map((item) => item.targetLabel).sort(),
-    ["Room 1", "Room 2", "Room 3"],
+    ["Double Room", "Double Room", "Single Room"],
   );
 });
 

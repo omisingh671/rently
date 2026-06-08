@@ -49,8 +49,20 @@ const getLightboxImages = (images: SliderImage[]): LightboxImage[] =>
 
 const formatAllocation = (guestSplit: string) =>
   guestSplit.includes("+")
-    ? `Allocated as ${guestSplit} guests`
-    : `Allocated for ${guestSplit} guest${guestSplit === "1" ? "" : "s"}`;
+    ? `Guest split: ${guestSplit} guests`
+    : `Guest split: ${guestSplit} guest${guestSplit === "1" ? "" : "s"}`;
+
+const formatGuests = (count: number) =>
+  `${count} guest${count === 1 ? "" : "s"}`;
+
+const getItemLabel = (option: AvailabilityOption) =>
+  option.itemLabel || `${option.itemCount} item${option.itemCount === 1 ? "" : "s"}`;
+
+const getDetailsLabel = (option: AvailabilityOption) =>
+  option.optionType === "ROOM" ? "See room details" : "See package details";
+
+const getComfortLabel = (option: AvailabilityOption) =>
+  option.comfortOption === "AC" ? "AC included" : "Non-AC";
 
 export const OptionGridCard = ({
   option,
@@ -71,6 +83,12 @@ export const OptionGridCard = ({
     () => getLightboxImages(sliderImages),
     [sliderImages],
   );
+  const recommendationTags = option.recommendationTags ?? [];
+  const requestedGuests = option.requestedGuests ?? option.guestSplitParts?.reduce(
+    (total, count) => total + count,
+    0,
+  ) ?? option.totalCapacity;
+  const spareCapacity = option.spareCapacity ?? Math.max(0, option.totalCapacity - requestedGuests);
 
   return (
     <article className="flex min-h-88 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg">
@@ -94,7 +112,7 @@ export const OptionGridCard = ({
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
                 <FiCheckCircle />
-                {option.itemCount} item{option.itemCount === 1 ? "" : "s"}
+                {getItemLabel(option)}
               </div>
 
               <div
@@ -105,8 +123,16 @@ export const OptionGridCard = ({
                 }`}
               >
                 {option.comfortOption === "AC" ? <FiWind /> : <FiSunrise />}
-                {option.comfortOption === "AC" ? "AC" : "Non-AC"}
+                {getComfortLabel(option)}
               </div>
+              {recommendationTags.map((tag) => (
+                <div
+                  key={tag}
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                >
+                  {tag}
+                </div>
+              ))}
             </div>
             {propertyLabel && (
               <h2 className="mt-3 text-lg font-bold leading-snug text-slate-900">
@@ -125,7 +151,18 @@ export const OptionGridCard = ({
           <div className="flex items-start gap-2.5 text-xs text-slate-600">
             <FiUsers className="mt-0.5 shrink-0 text-slate-400" />
             <span className="block font-semibold text-slate-700">
-              Total capacity {option.totalCapacity} guests
+              {formatGuests(requestedGuests)} requested · capacity{" "}
+              {formatGuests(option.totalCapacity)}
+              {spareCapacity > 0
+                ? ` · ${formatGuests(spareCapacity)} spare`
+                : ""}
+            </span>
+          </div>
+
+          <div className="flex items-start gap-2.5 text-xs text-slate-600">
+            <FiBookOpen className="mt-0.5 shrink-0 text-slate-400" />
+            <span className="block font-semibold text-slate-700">
+              Includes: {option.includedLabel || option.title}
             </span>
           </div>
 
@@ -142,7 +179,7 @@ export const OptionGridCard = ({
           onClick={() => setIsDetailsOpen(true)}
           className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 transition hover:text-indigo-800"
         >
-          View details & amenities
+          {getDetailsLabel(option)}
           <FiChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>

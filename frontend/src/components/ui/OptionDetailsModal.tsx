@@ -1,4 +1,5 @@
 import {
+  FiBookOpen,
   FiHome,
   FiSunrise,
   FiUsers,
@@ -38,6 +39,9 @@ const getDistinctAmenities = (
   return [...amenities.values()];
 };
 
+const formatGuests = (count: number) =>
+  `${count} guest${count === 1 ? "" : "s"}`;
+
 export const OptionDetailsModal = ({
   option,
   isOpen,
@@ -45,12 +49,30 @@ export const OptionDetailsModal = ({
   formatPrice,
 }: OptionDetailsModalProps) => {
   const amenities = getDistinctAmenities(option);
+  const optionGuestSplitParts = option.guestSplitParts ?? [];
+  const guestSplitParts =
+    optionGuestSplitParts.length > 0
+      ? optionGuestSplitParts
+      : option.guestSplit
+          .split("+")
+          .map((part) => Number(part.trim()))
+          .filter((part) => Number.isFinite(part));
+  const requestedGuests =
+    option.requestedGuests ??
+    guestSplitParts.reduce((total, count) => total + count, 0) ??
+    option.totalCapacity;
+  const spareCapacity =
+    option.spareCapacity ?? Math.max(0, option.totalCapacity - requestedGuests);
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Details & amenities"
+      title={
+        option.optionType === "ROOM"
+          ? "Room details"
+          : "Package details"
+      }
       size="lg"
     >
       <button
@@ -68,7 +90,14 @@ export const OptionDetailsModal = ({
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
             <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-indigo-700">
               <FiUsers />
-              Total capacity {option.totalCapacity} guests
+              {formatGuests(requestedGuests)} requested
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-slate-700">
+              <FiUsers />
+              Capacity {formatGuests(option.totalCapacity)}
+              {spareCapacity > 0
+                ? ` · ${formatGuests(spareCapacity)} spare`
+                : ""}
             </span>
             <span
               className={`inline-flex items-center gap-1 rounded-full px-3 py-1 ${
@@ -78,8 +107,21 @@ export const OptionDetailsModal = ({
               }`}
             >
               {option.comfortOption === "AC" ? <FiWind /> : <FiSunrise />}
-              {option.comfortOption === "AC" ? "AC" : "Non-AC"}
+              {option.comfortOption === "AC" ? "AC included" : "Non-AC"}
             </span>
+          </div>
+          <div className="mt-3 space-y-1 text-sm font-semibold text-slate-700">
+            <div className="flex items-start gap-2">
+              <FiBookOpen className="mt-0.5 shrink-0 text-slate-400" />
+              <span>Includes: {option.includedLabel || option.title}</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <FiBookOpen className="mt-0.5 shrink-0 text-slate-400" />
+              <span>
+                Guest split: {guestSplitParts.join(" + ")}{" "}
+                {guestSplitParts.length === 1 ? "guest" : "guests"}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -116,6 +158,9 @@ export const OptionDetailsModal = ({
                   <div className="flex items-center gap-2 font-bold text-slate-900">
                     <FiHome className="text-slate-400" />
                     {item.label}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-500">
+                    {item.productName}
                   </div>
                   <div className="mt-1 space-y-0.5 text-sm text-slate-600">
                     <div>

@@ -23,12 +23,13 @@ import type {
   PublicAmenityDTO,
   AvailabilityOptionItemDTO,
   AvailabilityOptionRoomDTO,
+  PublicAvailabilityOptionType,
 } from "./availability.dto.js";
 import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.inputs.js";
 
 const maxBookingTransactionAttempts = 3;
 const inventoryLockTtlMs = 10 * 60 * 1000;
-const maxPublicOptions = 12;
+const maxPublicOptionsPerProperty = 8;
 
 const now = () => new Date();
 
@@ -94,7 +95,14 @@ export interface PublicAvailabilityOptionInternal {
   propertyLabel: string;
   title: string;
   guestSplit: string;
+  guestSplitParts: number[];
+  optionType: PublicAvailabilityOptionType;
+  requestedGuests: number;
   totalCapacity: number;
+  spareCapacity: number;
+  itemLabel: string;
+  includedLabel: string;
+  recommendationTags: string[];
   comfortOption: ComfortOption;
   nightlyTotal: number;
   stayTotal: number;
@@ -133,17 +141,151 @@ const getUnitCapacity = (unit: repo.PublicAvailabilityUnitRecord) =>
 const formatCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
 
-const buildTitle = (items: PublicInventoryItem[]) => {
+const occupancyNames = new Map<number, string>([
+  [1, "Single"],
+  [2, "Double"],
+  [3, "Triple"],
+]);
+
+const getOccupancyName = (occupancy: number) =>
+  occupancyNames.get(occupancy) ?? `${occupancy}-Guest`;
+
+const getRoomPackageName = (priceGuestCount: number, formal = false) =>
+  `${getOccupancyName(priceGuestCount)}${formal ? " Occupancy" : ""} Room`;
+
+const countCompositionPart = (count: number, label: string) =>
+  count === 1 ? `1 ${label}` : `${count} ${label}s`;
+
+const titleCompositionPart = (count: number, label: string) =>
+  count === 1 ? label : `${count} ${label}s`;
+
+const getOptionType = (
+  items: PublicInventoryItem[],
+): PublicAvailabilityOptionType => {
+  const units = items.filter(
+    (item) => item.target.targetType === BookingTargetType.UNIT,
+  ).length;
+  const rooms = items.length - units;
+
+  if (units > 0 && rooms > 0) return "UNIT_ROOM";
+  if (units > 1) return "MULTI_UNIT";
+  if (units === 1) return "UNIT";
+  if (rooms > 1) return "MULTI_ROOM";
+  return "ROOM";
+};
+
+const buildItemLabel = (items: PublicInventoryItem[]) => {
   const units = items.filter(
     (item) => item.target.targetType === BookingTargetType.UNIT,
   ).length;
   const rooms = items.length - units;
   const parts = [
-    units > 0 ? formatCount(units, "Unit", "Units") : null,
-    rooms > 0 ? formatCount(rooms, "Room", "Rooms") : null,
+    units > 0 ? formatCount(units, "unit", "units") : null,
+    rooms > 0 ? formatCount(rooms, "room", "rooms") : null,
   ].filter((part): part is string => part !== null);
 
   return parts.join(" + ");
+};
+
+const buildCompositionLabel = (items: PublicInventoryItem[]) => {
+  const units = items.filter(
+    (item) => item.target.targetType === BookingTargetType.UNIT,
+  ).length;
+  const roomGroups = new Map<number, number>();
+
+  for (const item of items) {
+    if (item.target.targetType === BookingTargetType.ROOM) {
+      roomGroups.set(
+        item.priceGuestCount,
+        (roomGroups.get(item.priceGuestCount) ?? 0) + 1,
+      );
+    }
+  }
+
+  const parts = [
+    units > 0 ? countCompositionPart(units, "Whole Apartment") : null,
+    ...[...roomGroups.entries()]
+      .sort(([leftOccupancy], [rightOccupancy]) => rightOccupancy - leftOccupancy)
+      .map(([occupancy, count]) =>
+        countCompositionPart(count, getRoomPackageName(occupancy)),
+      ),
+  ].filter((part): part is string => part !== null);
+
+  return parts.join(" + ");
+};
+
+const buildTitleCompositionLabel = (items: PublicInventoryItem[]) => {
+  const units = items.filter(
+    (item) => item.target.targetType === BookingTargetType.UNIT,
+  ).length;
+  const roomGroups = new Map<number, number>();
+
+  for (const item of items) {
+    if (item.target.targetType === BookingTargetType.ROOM) {
+      roomGroups.set(
+        item.priceGuestCount,
+        (roomGroups.get(item.priceGuestCount) ?? 0) + 1,
+      );
+    }
+  }
+
+  const hasPluralGroup =
+    units > 1 || [...roomGroups.values()].some((count) => count > 1);
+  const parts = [
+    units > 0
+      ? hasPluralGroup
+        ? countCompositionPart(units, "Whole Apartment")
+        : titleCompositionPart(units, "Whole Apartment")
+      : null,
+    ...[...roomGroups.entries()]
+      .sort(([leftOccupancy], [rightOccupancy]) => rightOccupancy - leftOccupancy)
+      .map(([occupancy, count]) =>
+        hasPluralGroup
+          ? countCompositionPart(count, getRoomPackageName(occupancy))
+          : titleCompositionPart(count, getRoomPackageName(occupancy)),
+      ),
+  ].filter((part): part is string => part !== null);
+
+  return parts.join(" + ");
+};
+
+const buildTitle = (items: PublicInventoryItem[]) => {
+  const optionType = getOptionType(items);
+  const firstItem = items[0];
+
+  if (
+    optionType === "ROOM" &&
+    firstItem?.target.targetType === BookingTargetType.ROOM
+  ) {
+    return getRoomPackageName(firstItem.priceGuestCount, true);
+  }
+
+  if (optionType === "UNIT") {
+    return "Whole Apartment";
+  }
+
+  return buildTitleCompositionLabel(items);
+};
+
+const buildRecommendationTags = (
+  optionType: PublicAvailabilityOptionType,
+  spareCapacity: number,
+) => {
+  const tags = [];
+
+  if (spareCapacity === 0) {
+    tags.push("Best fit");
+  }
+
+  if (optionType === "UNIT" || optionType === "UNIT_ROOM") {
+    tags.push("Whole apartment");
+  }
+
+  if (spareCapacity >= 2) {
+    tags.push("More spacious");
+  }
+
+  return tags;
 };
 
 const buildOptionSignature = (
@@ -184,13 +326,29 @@ const mapOptionDTO = (
   propertyLabel: option.propertyLabel,
   title: option.title,
   guestSplit: option.guestSplit,
+  guestSplitParts: option.guestSplitParts,
+  optionType: option.optionType,
+  requestedGuests: option.requestedGuests,
   totalCapacity: option.totalCapacity,
+  spareCapacity: option.spareCapacity,
+  itemLabel: option.itemLabel,
+  includedLabel: option.includedLabel,
+  recommendationTags: option.recommendationTags,
   comfortOption: option.comfortOption,
   nightlyTotal: option.nightlyTotal,
   stayTotal: option.stayTotal,
   nights: option.nights,
   itemCount: option.itemCount,
   priceBreakup: option.items.map((item) => item.pricePerNight),
+  priceBreakdown: option.items.map((item) => ({
+    label: item.publicLabel,
+    productName: item.productName,
+    targetType: item.target.targetType,
+    guestCount: item.guestCount,
+    capacity: item.capacity,
+    priceGuestCount: item.priceGuestCount,
+    pricePerNight: item.pricePerNight,
+  })),
   propertyImages: option.propertyImages,
   images: option.images,
   items: option.items.map(mapOptionItemDTO),
@@ -203,6 +361,7 @@ const mapOptionItemDTO = (
   unitId: null,
   roomId: null,
   label: item.publicLabel,
+  productName: item.productName,
   guestCount: item.guestCount,
   priceGuestCount: item.priceGuestCount,
   capacity: item.capacity,
@@ -216,7 +375,7 @@ const optionRank = (
   option: PublicAvailabilityOptionInternal,
   requestedGuests: number,
 ) => {
-  const capacityFit = option.totalCapacity - requestedGuests;
+  const capacityFit = Math.max(0, option.totalCapacity - requestedGuests);
   const unitGroups = new Set(
     option.items.map((item) => item.unitId).filter(Boolean),
   ).size;
@@ -224,11 +383,15 @@ const optionRank = (
     option.items.map((item) => item.floor).filter((floor) => floor !== null),
   ).size;
 
+  const wholeApartmentPromotion =
+    option.optionType === "UNIT" && capacityFit <= 2 ? 0 : 1;
+
   return {
     capacityFit,
-    itemCount: option.itemCount,
-    grouping: unitGroups + floorGroups,
     nightlyTotal: option.nightlyTotal,
+    itemCount: option.itemCount,
+    wholeApartmentPromotion,
+    grouping: unitGroups + floorGroups,
   };
 };
 
@@ -242,8 +405,9 @@ const sortOptions = (
 
   return (
     leftRank.capacityFit - rightRank.capacityFit ||
-    leftRank.itemCount - rightRank.itemCount ||
     leftRank.nightlyTotal - rightRank.nightlyTotal ||
+    leftRank.itemCount - rightRank.itemCount ||
+    leftRank.wholeApartmentPromotion - rightRank.wholeApartmentPromotion ||
     leftRank.grouping - rightRank.grouping
   );
 };
@@ -251,10 +415,21 @@ const sortOptions = (
 const getPublicOptionShapeKey = (option: PublicAvailabilityOptionInternal) =>
   [
     option.propertyId,
-    option.title,
-    option.guestSplit,
     option.comfortOption,
-    option.items.map((item) => item.priceGuestCount).join("+"),
+    option.guestSplit,
+    option.nightlyTotal,
+    option.items
+      .map((item) =>
+        [
+          item.target.targetType,
+          item.productId,
+          item.guestCount,
+          item.priceGuestCount,
+          item.pricePerNight,
+        ].join(":"),
+      )
+      .sort()
+      .join("+"),
   ].join("|");
 
 const curatePublicOptions = (
@@ -271,9 +446,21 @@ const curatePublicOptions = (
     }
   }
 
-  return [...deduped.values()]
-    .sort((left, right) => sortOptions(left, right, requestedGuests))
-    .slice(0, maxPublicOptions);
+  const byProperty = new Map<string, PublicAvailabilityOptionInternal[]>();
+
+  for (const option of deduped.values()) {
+    const propertyOptions = byProperty.get(option.propertyId) ?? [];
+    propertyOptions.push(option);
+    byProperty.set(option.propertyId, propertyOptions);
+  }
+
+  return [...byProperty.values()]
+    .flatMap((propertyOptions) =>
+      propertyOptions
+        .sort((left, right) => sortOptions(left, right, requestedGuests))
+        .slice(0, maxPublicOptionsPerProperty),
+    )
+    .sort((left, right) => sortOptions(left, right, requestedGuests));
 };
 
 const hasInventoryOverlap = async (
@@ -480,7 +667,7 @@ const toPricedRoomItem = async (
   room: repo.PublicAvailabilityRoomRecord,
   guestCount: number,
   priceGuestCount: number,
-  index: number,
+  _index: number,
   tenantId: string,
   comfortOption: ComfortOption,
   stay: StayScope,
@@ -513,6 +700,7 @@ const toPricedRoomItem = async (
     room.unitId,
     room.id,
   );
+  const publicLabel = getRoomPackageName(priceGuestCount);
 
   return {
     target,
@@ -528,8 +716,8 @@ const toPricedRoomItem = async (
     taxInclusive: pricing.taxInclusive,
     productId: pricing.productId,
     productName: pricing.product.name,
-    targetLabel: `Room ${index + 1}`,
-    publicLabel: `Room ${index + 1}`,
+    targetLabel: publicLabel,
+    publicLabel,
     propertyImages: images.map((image) => image.url),
     images,
     amenities: mergeAmenities(
@@ -543,7 +731,7 @@ const toPricedRoomItem = async (
 const toPricedUnitItem = async (
   unit: repo.PublicAvailabilityUnitRecord,
   guestCount: number,
-  index: number,
+  _index: number,
   tenantId: string,
   comfortOption: ComfortOption,
   stay: StayScope,
@@ -577,6 +765,7 @@ const toPricedUnitItem = async (
     unit.id,
     null,
   );
+  const publicLabel = "Whole Apartment";
 
   return {
     target,
@@ -592,8 +781,8 @@ const toPricedUnitItem = async (
     taxInclusive: pricing.taxInclusive,
     productId: pricing.productId,
     productName: pricing.product.name,
-    targetLabel: `Unit ${index + 1}`,
-    publicLabel: `Unit ${index + 1}`,
+    targetLabel: publicLabel,
+    publicLabel,
     propertyImages: images.map((image) => image.url),
     images,
     amenities: mapAmenityLinks(unit.amenities),
@@ -661,6 +850,9 @@ const toOption = (
     (total, item) => total + item.pricePerNight,
     0,
   );
+  const guestSplitParts = items.map((item) => item.guestCount);
+  const optionType = getOptionType(items);
+  const spareCapacity = Math.max(0, totalCapacity - input.guests);
   const imagesById = new Map<string, GalleryImageDTO>();
   for (const item of items) {
     for (const image of item.images) {
@@ -673,8 +865,15 @@ const toOption = (
     optionId: buildOptionId(input, items),
     propertyLabel: items[0]?.propertyLabel ?? "",
     title: buildTitle(items),
-    guestSplit: items.map((item) => item.guestCount).join(" + "),
+    guestSplit: guestSplitParts.join(" + "),
+    guestSplitParts,
+    optionType,
+    requestedGuests: input.guests,
     totalCapacity,
+    spareCapacity,
+    itemLabel: buildItemLabel(items),
+    includedLabel: buildCompositionLabel(items),
+    recommendationTags: buildRecommendationTags(optionType, spareCapacity),
     comfortOption: input.comfortOption,
     nightlyTotal,
     stayTotal: nightlyTotal * stay.nights,
@@ -745,19 +944,29 @@ export const generateAvailabilityOptions = async (
   ]);
   const options: PublicAvailabilityOptionInternal[] = [];
 
+  const groupRoomsByProperty = new Map<
+    string,
+    repo.PublicAvailabilityRoomRecord[]
+  >();
+  const groupUnitsByProperty = new Map<
+    string,
+    repo.PublicAvailabilityUnitRecord[]
+  >();
+
+  for (const room of rooms) {
+    const propertyRooms = groupRoomsByProperty.get(room.unit.propertyId) ?? [];
+    propertyRooms.push(room);
+    groupRoomsByProperty.set(room.unit.propertyId, propertyRooms);
+  }
+
+  for (const unit of units) {
+    const propertyUnits = groupUnitsByProperty.get(unit.propertyId) ?? [];
+    propertyUnits.push(unit);
+    groupUnitsByProperty.set(unit.propertyId, propertyUnits);
+  }
+
   const unitsByCapacityAsc = [...units].sort(
     (left, right) => getUnitCapacity(left) - getUnitCapacity(right),
-  );
-  const unitsByCapacityDesc = [...units].sort(
-    (left, right) => getUnitCapacity(right) - getUnitCapacity(left),
-  );
-  const roomsByGroup = [...rooms].sort(
-    (left, right) =>
-      left.unit.propertyId.localeCompare(right.unit.propertyId) ||
-      left.unitId.localeCompare(right.unitId) ||
-      left.unit.floor - right.unit.floor ||
-      right.maxOccupancy - left.maxOccupancy ||
-      left.number.localeCompare(right.number),
   );
 
   for (const unit of unitsByCapacityAsc.filter(
@@ -774,97 +983,120 @@ export const generateAvailabilityOptions = async (
           stay,
           tx,
           scope,
-        ),
+      ),
     ]);
   }
 
-  const multiUnitAllocation = buildUnitAllocation(
-    unitsByCapacityDesc,
-    input.guests,
-  );
-  if (multiUnitAllocation && multiUnitAllocation.length > 1) {
-    await addOption(
-      options,
-      input,
-      stay,
-      multiUnitAllocation.map((allocation, index) => () =>
-        toPricedUnitItem(
-          allocation.unit,
-          allocation.guestCount,
-          index,
-          tenantId,
-          input.comfortOption,
-          stay,
-          tx,
-          scope,
-        ),
-      ),
+  for (const propertyUnits of groupUnitsByProperty.values()) {
+    const propertyUnitsByCapacityDesc = [...propertyUnits].sort(
+      (left, right) => getUnitCapacity(right) - getUnitCapacity(left),
     );
-  }
-
-  for (let roomIndex = 0; roomIndex < roomsByGroup.length; roomIndex += 1) {
-    const roomAllocation = buildRoomAllocation(
-      roomsByGroup.slice(roomIndex),
+    const multiUnitAllocation = buildUnitAllocation(
+      propertyUnitsByCapacityDesc,
       input.guests,
     );
-    if (!roomAllocation) {
-      continue;
-    }
-
-    if (
-      roomAllocation.length === 1 &&
-      pricePrivateRoomsByCapacity &&
-      roomAllocation[0] !== undefined &&
-      roomAllocation[0].guestCount < getRoomCapacity(roomAllocation[0].room)
-    ) {
-      await addOption(options, input, stay, [
-        () =>
-          toPricedRoomItem(
-            roomAllocation[0].room,
-            roomAllocation[0].guestCount,
-            roomAllocation[0].guestCount,
-            0,
-            tenantId,
-            input.comfortOption,
-            stay,
-            tx,
-            scope,
-          ),
-      ]);
-    }
-
-    await addOption(
-      options,
-      input,
-      stay,
-      roomAllocation.map((allocation, index) => {
-        const isSinglePrivateRoomOption = roomAllocation.length === 1;
-
-        return () =>
-          toPricedRoomItem(
-            allocation.room,
+    if (multiUnitAllocation && multiUnitAllocation.length > 1) {
+      await addOption(
+        options,
+        input,
+        stay,
+        multiUnitAllocation.map((allocation, index) => () =>
+          toPricedUnitItem(
+            allocation.unit,
             allocation.guestCount,
-            isSinglePrivateRoomOption && pricePrivateRoomsByCapacity
-              ? getRoomCapacity(allocation.room)
-              : allocation.guestCount,
             index,
             tenantId,
             input.comfortOption,
             stay,
             tx,
             scope,
-          );
-      }),
-    );
+          ),
+        ),
+      );
+    }
   }
 
-  for (const unit of unitsByCapacityDesc.filter(
-    (candidate) => getUnitCapacity(candidate) < input.guests,
-  )) {
-    const remainingGuests = input.guests - getUnitCapacity(unit);
-    const remainingRooms = roomsByGroup.filter(
-      (room) => room.unitId !== unit.id,
+  for (const propertyRooms of groupRoomsByProperty.values()) {
+    const roomsByGroup = [...propertyRooms].sort(
+      (left, right) =>
+        left.unitId.localeCompare(right.unitId) ||
+        left.unit.floor - right.unit.floor ||
+        right.maxOccupancy - left.maxOccupancy ||
+        left.number.localeCompare(right.number),
     );
+
+    for (let roomIndex = 0; roomIndex < roomsByGroup.length; roomIndex += 1) {
+      const roomAllocation = buildRoomAllocation(
+        roomsByGroup.slice(roomIndex),
+        input.guests,
+      );
+      if (!roomAllocation) {
+        continue;
+      }
+
+      const firstRoomAllocation = roomAllocation[0];
+
+      if (
+        roomAllocation.length === 1 &&
+        pricePrivateRoomsByCapacity &&
+        firstRoomAllocation !== undefined &&
+        firstRoomAllocation.guestCount < getRoomCapacity(firstRoomAllocation.room)
+      ) {
+        await addOption(options, input, stay, [
+          () =>
+            toPricedRoomItem(
+              firstRoomAllocation.room,
+              firstRoomAllocation.guestCount,
+              firstRoomAllocation.guestCount,
+              0,
+              tenantId,
+              input.comfortOption,
+              stay,
+              tx,
+              scope,
+            ),
+        ]);
+      }
+
+      await addOption(
+        options,
+        input,
+        stay,
+        roomAllocation.map((allocation, index) => {
+          const isSinglePrivateRoomOption = roomAllocation.length === 1;
+
+          return () =>
+            toPricedRoomItem(
+              allocation.room,
+              allocation.guestCount,
+              isSinglePrivateRoomOption && pricePrivateRoomsByCapacity
+                ? getRoomCapacity(allocation.room)
+                : allocation.guestCount,
+              index,
+              tenantId,
+              input.comfortOption,
+              stay,
+              tx,
+              scope,
+            );
+        }),
+      );
+    }
+  }
+
+  for (const unit of units
+    .filter((candidate) => getUnitCapacity(candidate) < input.guests)
+    .sort((left, right) => getUnitCapacity(right) - getUnitCapacity(left))) {
+    const remainingGuests = input.guests - getUnitCapacity(unit);
+    const remainingRooms = (groupRoomsByProperty.get(unit.propertyId) ?? [])
+      .filter((room) => room.unitId !== unit.id)
+      .sort(
+        (left, right) =>
+          left.unitId.localeCompare(right.unitId) ||
+          left.unit.floor - right.unit.floor ||
+          right.maxOccupancy - left.maxOccupancy ||
+          left.number.localeCompare(right.number),
+      );
     const remainingRoomAllocation = buildRoomAllocation(
       remainingRooms,
       remainingGuests,
