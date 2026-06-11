@@ -411,7 +411,7 @@ const createScopedBookableProperty = async (input: {
   slug: string;
   name: string;
   city: string;
-  price: number;
+  price?: number;
 }) => {
   const property = await prisma.property.create({
     data: {
@@ -452,22 +452,25 @@ const createScopedBookableProperty = async (input: {
       category: RoomProductCategory.NIGHTLY,
     },
   });
-  const pricing = await prisma.roomPricing.create({
-    data: {
-      propertyId: property.id,
-      roomId: room.id,
-      unitId: unit.id,
-      productId: product.id,
-      rateType: RateType.NIGHTLY,
-      pricingTier: PricingTier.STANDARD,
-      minNights: 1,
-      taxInclusive: false,
-      price: input.price,
-      validFrom: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  });
+  const pricing =
+    input.price === undefined
+      ? null
+      : await prisma.roomPricing.create({
+          data: {
+            propertyId: property.id,
+            roomId: room.id,
+            unitId: unit.id,
+            productId: product.id,
+            rateType: RateType.NIGHTLY,
+            pricingTier: PricingTier.STANDARD,
+            minNights: 1,
+            taxInclusive: false,
+            price: input.price,
+            validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        });
 
-  return { property, pricing };
+  return { property, pricing, unit, room, product };
 };
 
 test("public tenant resolution requires explicit active tenant identity", async () => {
@@ -637,6 +640,7 @@ test("public property slug scopes config, spaces, availability, quotes, and enqu
       [...new Set(citySpaces.map((space) => space.propertyId))],
       [property.id],
     );
+    assert.ok(pricing);
     assert.equal(pricing.propertyId, property.id);
   } finally {
     await prisma.property.deleteMany({ where: { id: property.id } });
@@ -849,6 +853,41 @@ test("public availability respects pricing stay limits and validity windows", as
       validTo: null,
     },
   });
+});
+
+test("public availability excludes unpriced properties in city-scoped results", async () => {
+  const city = `${testId} Shared City`;
+  const unpriced = await createScopedBookableProperty({
+    slug: `${testId}-unpriced-city`,
+    name: `${testId} Unpriced City Property`,
+    city,
+  });
+  const priced = await createScopedBookableProperty({
+    slug: `${testId}-priced-city`,
+    name: `${testId} Priced City Property`,
+    city,
+    price: 3100,
+  });
+
+  const availability = await publicService.checkAvailability(
+    {
+      checkIn: new Date("2032-01-10T00:00:00.000Z"),
+      checkOut: new Date("2032-01-11T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+      city,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const propertyIds = new Set(
+    availability.options.map((option) => option.propertyId),
+  );
+
+  assert.equal(availability.available, true);
+  assert.equal(propertyIds.has(priced.property.id), true);
+  assert.equal(propertyIds.has(unpriced.property.id), false);
+  assert.deepEqual([...propertyIds], [priced.property.id]);
 });
 
 test("public availability returns limited public-safe booking options", async () => {

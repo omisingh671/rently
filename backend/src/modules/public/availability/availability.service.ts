@@ -680,6 +680,7 @@ const toPricedRoomItem = async (
     roomId: room.id,
   };
   const pricing = await spacesRepo.findActivePricingForTarget(
+    room.unit.propertyId,
     target,
     new Date(),
     tenantId,
@@ -745,6 +746,7 @@ const toPricedUnitItem = async (
     roomId: null,
   };
   const pricing = await spacesRepo.findActivePricingForTarget(
+    unit.propertyId,
     target,
     new Date(),
     tenantId,

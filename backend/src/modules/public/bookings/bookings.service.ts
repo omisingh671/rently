@@ -646,6 +646,7 @@ const resolvePricedSpace = async (
   assertComfortAvailableForSpace(space, comfortOption);
 
   const pricedSpace = await spacesRepo.findActivePricingForTarget(
+    space.propertyId,
     target,
     now(),
     tenantId,

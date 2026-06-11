@@ -805,7 +805,7 @@ export default function SpacesListPage() {
                   <div
                     className={
                       layoutMode === "grid"
-                        ? "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]"
+                        ? "grid justify-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),26rem))]"
                         : "flex flex-col gap-4"
                     }
                   >
