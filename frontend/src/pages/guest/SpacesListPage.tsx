@@ -46,6 +46,7 @@ type LayoutMode = "grid" | "stack";
 const layoutPreferenceKey = "rently:availability-layout";
 const initialVisibleOptionCount = 6;
 const maxVisibleOptionCount = 12;
+const emptyAvailabilityOptions: AvailabilityOption[] = [];
 
 const getInitialLayoutMode = (): LayoutMode => {
   if (typeof window === "undefined") return "grid";
@@ -494,7 +495,7 @@ export default function SpacesListPage() {
     }
   };
 
-  const options = availabilityQuery.data?.options ?? [];
+  const options = availabilityQuery.data?.options ?? emptyAvailabilityOptions;
   const optionGroups = useMemo(
     () => groupAvailabilityOptions(options),
     [options],

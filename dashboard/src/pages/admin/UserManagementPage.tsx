@@ -269,15 +269,6 @@ function EditManagedUserForm({
   const canEditRole = user.role !== "SUPER_ADMIN" && !isSelf;
   const canEditStatus = !isSelf;
 
-  useEffect(() => {
-    setValues({
-      fullName: user.fullName,
-      role: user.role === "SUPER_ADMIN" ? "ADMIN" : user.role,
-      isActive: user.isActive,
-    });
-    setServerError(null);
-  }, [user]);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setServerError(null);
@@ -822,6 +813,7 @@ export default function UserManagementPage() {
       >
         {editingUser && (
           <EditManagedUserForm
+            key={editingUser.id}
             user={editingUser}
             isSelf={currentUser?.id === editingUser.id}
             isSubmitting={isSavingEdit}
