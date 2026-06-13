@@ -206,3 +206,83 @@ export const roomBoardQuerySchema = z
     message: "End date must be after start date",
     path: ["to"],
   });
+
+const expectedVersionSchema = z.number().int().positive();
+
+export const checkInBookingSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    roomIds: z.array(idSchema).min(1).optional(),
+    identityVerified: z.literal(true),
+    identityDocumentType: z.string().trim().min(1).max(50).optional(),
+    identityDocumentReference: z.string().trim().min(1).max(100).optional(),
+    allowBalanceDueCheckIn: z.boolean().optional(),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .refine(
+    (data) =>
+      (data.identityDocumentType === undefined &&
+        data.identityDocumentReference === undefined) ||
+      (data.identityDocumentType !== undefined &&
+        data.identityDocumentReference !== undefined),
+    {
+      message:
+        "Identity document type and masked reference must be provided together",
+    },
+  );
+
+export const checkOutBookingSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  allowBalanceDueCheckout: z.boolean().optional(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const noShowBookingSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  note: z.string().trim().min(1).max(1000),
+});
+
+export const moveBookingRoomSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  roomIds: z.array(idSchema).min(1),
+  note: z.string().trim().min(1).max(1000),
+});
+
+export const correctBookingStatusSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  status: z.nativeEnum(BookingStatus),
+  note: z.string().trim().min(1).max(1000),
+});
+
+export const updateRoomHousekeepingSchema = z.object({
+  expectedStatus: z.enum(["DIRTY", "CLEANING", "CLEAN", "INSPECTED"]),
+  status: z.enum(["DIRTY", "CLEANING", "CLEAN", "INSPECTED"]),
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const createBookingFolioChargeSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  type: z.enum(["INCIDENTAL", "PENALTY", "EXTENSION", "ADJUSTMENT"]),
+  description: z.string().trim().min(1).max(255),
+  amount: z.coerce.number().positive(),
+  note: z.string().trim().max(1000).optional(),
+});
+
+export const voidBookingFolioChargeSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  reason: z.string().trim().min(1).max(1000),
+});
+
+export const operationsBoardQuerySchema = z.object({
+  businessDate: z.coerce.date(),
+});
+
+export const cashierSummaryQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .refine((data) => data.to > data.from, {
+    message: "End date must be after start date",
+    path: ["to"],
+  });

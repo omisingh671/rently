@@ -4,27 +4,37 @@ import {
   checkManualBookingAvailabilityApi,
   checkInBookingApi,
   checkOutBookingApi,
+  correctBookingStatusApi,
+  createFolioChargeApi,
   createManualBookingApi,
   getBookingApi,
   listBookingsApi,
   listEnquiriesApi,
   listQuotesApi,
+  markBookingNoShowApi,
+  moveBookingRoomsApi,
   recordBalancePaymentApi,
   recordRefundApi,
   updateRefundRequestApi,
   updateBookingStatusApi,
   updateEnquiryStatusApi,
   updateQuoteStatusApi,
+  voidFolioChargeApi,
 } from "../api";
 import type {
   BookingStatus,
+  CheckInBookingPayload,
+  CheckOutBookingPayload,
   CheckManualBookingAvailabilityPayload,
   CreateManualBookingPayload,
+  CorrectBookingStatusPayload,
+  CreateFolioChargePayload,
   LeadStatus,
   RecordBalancePaymentPayload,
   RecordRefundPayload,
   UpdateRefundRequestPayload,
   UpdateBookingPayload,
+  VersionedBookingNotePayload,
 } from "../types";
 
 type Module = "bookings" | "enquiries" | "quotes";
@@ -146,7 +156,7 @@ export const useAdminOperations = (
       payload,
     }: {
       bookingId: string;
-      payload: Omit<UpdateBookingPayload, "status">;
+      payload: CheckInBookingPayload;
     }) => checkInBookingApi(bookingId, payload),
     onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
@@ -157,7 +167,7 @@ export const useAdminOperations = (
       payload,
     }: {
       bookingId: string;
-      payload: Omit<UpdateBookingPayload, "status">;
+      payload: CheckOutBookingPayload;
     }) => checkOutBookingApi(bookingId, payload),
     onSuccess: (booking) => invalidateBookingState(booking.propertyId),
   });
@@ -239,6 +249,70 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     onSuccess: (booking) => invalidateBooking(booking.propertyId),
   });
 
+  const checkInBooking = useMutation({
+    mutationFn: (payload: CheckInBookingPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return checkInBookingApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const checkOutBooking = useMutation({
+    mutationFn: (payload: CheckOutBookingPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return checkOutBookingApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const markNoShow = useMutation({
+    mutationFn: (payload: VersionedBookingNotePayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return markBookingNoShowApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const moveRooms = useMutation({
+    mutationFn: (
+      payload: VersionedBookingNotePayload & { roomIds: string[] },
+    ) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return moveBookingRoomsApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const correctStatus = useMutation({
+    mutationFn: (payload: CorrectBookingStatusPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return correctBookingStatusApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const createFolioCharge = useMutation({
+    mutationFn: (payload: CreateFolioChargePayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return createFolioChargeApi(bookingId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
+  const voidFolioCharge = useMutation({
+    mutationFn: ({
+      chargeId,
+      payload,
+    }: {
+      chargeId: string;
+      payload: VersionedBookingNotePayload;
+    }) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return voidFolioChargeApi(bookingId, chargeId, payload);
+    },
+    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+  });
+
   const recordBalancePayment = useMutation({
     mutationFn: (payload: RecordBalancePaymentPayload) => {
       if (!bookingId) throw new Error("BookingId required");
@@ -276,11 +350,25 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     isError: query.isError,
     error: query.error,
     updateBooking: updateBooking.mutateAsync,
+    checkInBooking: checkInBooking.mutateAsync,
+    checkOutBooking: checkOutBooking.mutateAsync,
+    markNoShow: markNoShow.mutateAsync,
+    moveRooms: moveRooms.mutateAsync,
+    correctStatus: correctStatus.mutateAsync,
+    createFolioCharge: createFolioCharge.mutateAsync,
+    voidFolioCharge: voidFolioCharge.mutateAsync,
     recordBalancePayment: recordBalancePayment.mutateAsync,
     recordRefund: recordRefund.mutateAsync,
     updateRefundRequest: updateRefundRequest.mutateAsync,
     isMutating:
       updateBooking.isPending ||
+      checkInBooking.isPending ||
+      checkOutBooking.isPending ||
+      markNoShow.isPending ||
+      moveRooms.isPending ||
+      correctStatus.isPending ||
+      createFolioCharge.isPending ||
+      voidFolioCharge.isPending ||
       recordBalancePayment.isPending ||
       recordRefund.isPending ||
       updateRefundRequest.isPending,

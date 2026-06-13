@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 
 const {
@@ -19,13 +19,18 @@ import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
-import { getRoomBoardApi } from "@/features/operations/api";
+import {
+  getRoomBoardApi,
+  updateRoomHousekeepingApi,
+} from "@/features/operations/api";
 import type {
   RoomBoardRoom,
   RoomBoardStatus,
   RoomBoardUnit,
+  RoomHousekeepingStatus,
 } from "@/features/operations/types";
 import { useAuthStore } from "@/stores/authStore";
+import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import {
   STATUS_BG_COLORS,
   STATUS_BORDER_DARK_COLORS,
@@ -96,6 +101,7 @@ const roomMatchesSearch = (room: RoomBoardRoom, query: string) => {
 };
 
 export default function RoomBoardPage() {
+  const queryClient = useQueryClient();
   const { hasAnyRole } = useAuthStore();
   const canManageMaintenance = hasAnyRole(["SUPER_ADMIN", "ADMIN"]);
 
@@ -104,6 +110,7 @@ export default function RoomBoardPage() {
   const [to, setTo] = useState(toDateInput(addDays(today, 1)));
   const [status, setStatus] = useState<RoomBoardStatus | "">("");
   const [search, setSearch] = useState("");
+  const [housekeepingError, setHousekeepingError] = useState("");
 
   const {
     properties,
@@ -126,6 +133,38 @@ export default function RoomBoardPage() {
       selectedPropertyId && from && to && new Date(to) > new Date(from),
     ),
     retry: false,
+  });
+  const housekeepingMutation = useMutation({
+    mutationFn: ({
+      room,
+      status: nextStatus,
+    }: {
+      room: RoomBoardRoom;
+      status: RoomHousekeepingStatus;
+    }) => {
+      if (!selectedPropertyId) throw new Error("PropertyId required");
+      return updateRoomHousekeepingApi(selectedPropertyId, room.roomId, {
+        expectedStatus: room.housekeepingStatus,
+        status: nextStatus,
+      });
+    },
+    onSuccess: async () => {
+      setHousekeepingError("");
+      if (!selectedPropertyId) return;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ADMIN_KEYS.operations.roomBoards(selectedPropertyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ADMIN_KEYS.operations.byProperty(selectedPropertyId),
+        }),
+      ]);
+    },
+    onError: (error) => {
+      setHousekeepingError(
+        error instanceof Error ? error.message : "Housekeeping update failed",
+      );
+    },
   });
 
   const filteredUnits = useMemo(() => {
@@ -437,17 +476,42 @@ export default function RoomBoardPage() {
           message="No rooms match the selected filters."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <>
+          {housekeepingError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {housekeepingError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {filteredUnits.map((unit) => (
-            <UnitSection key={unit.unitId} unit={unit} />
+            <UnitSection
+              key={unit.unitId}
+              unit={unit}
+              isUpdating={housekeepingMutation.isPending}
+              onHousekeepingChange={(room, nextStatus) =>
+                housekeepingMutation.mutate({ room, status: nextStatus })
+              }
+            />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-function UnitSection({ unit }: { unit: RoomBoardUnit }) {
+function UnitSection({
+  unit,
+  isUpdating,
+  onHousekeepingChange,
+}: {
+  unit: RoomBoardUnit;
+  isUpdating: boolean;
+  onHousekeepingChange: (
+    room: RoomBoardRoom,
+    status: RoomHousekeepingStatus,
+  ) => void;
+}) {
   return (
     <section className="rounded-lg border border-slate-300 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-lg border-b border-slate-300 bg-slate-100 px-5 py-4">
@@ -474,14 +538,38 @@ function UnitSection({ unit }: { unit: RoomBoardUnit }) {
       </div>
       <div className="flex flex-wrap gap-4 p-5">
         {unit.rooms.map((room) => (
-          <RoomTile key={room.roomId} room={room} />
+          <RoomTile
+            key={room.roomId}
+            room={room}
+            isUpdating={isUpdating}
+            onHousekeepingChange={onHousekeepingChange}
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function RoomTile({ room }: { room: RoomBoardRoom }) {
+const nextHousekeepingStatus: Partial<
+  Record<RoomHousekeepingStatus, RoomHousekeepingStatus>
+> = {
+  DIRTY: "CLEANING",
+  CLEANING: "CLEAN",
+  CLEAN: "INSPECTED",
+};
+
+function RoomTile({
+  room,
+  isUpdating,
+  onHousekeepingChange,
+}: {
+  room: RoomBoardRoom;
+  isUpdating: boolean;
+  onHousekeepingChange: (
+    room: RoomBoardRoom,
+    status: RoomHousekeepingStatus,
+  ) => void;
+}) {
   const tone =
     STATUS_BG_COLORS[room.boardStatus] || "bg-white border-slate-200";
   const innerBorder =
@@ -511,6 +599,26 @@ function RoomTile({ room }: { room: RoomBoardRoom }) {
       </div>
 
       <div className="mt-auto space-y-2 text-xs">
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2">
+          <span className="font-semibold text-slate-700">
+            Housekeeping: {room.housekeepingStatus}
+          </span>
+          {nextHousekeepingStatus[room.housekeepingStatus] && (
+            <button
+              type="button"
+              disabled={isUpdating}
+              onClick={() =>
+                onHousekeepingChange(
+                  room,
+                  nextHousekeepingStatus[room.housekeepingStatus]!,
+                )
+              }
+              className="font-bold text-indigo-700 hover:underline disabled:opacity-50"
+            >
+              Mark {formatEnumLabel(nextHousekeepingStatus[room.housekeepingStatus]!)}
+            </button>
+          )}
+        </div>
         {room.booking && (
           <div
             className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}

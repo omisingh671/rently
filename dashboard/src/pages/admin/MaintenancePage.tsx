@@ -117,6 +117,11 @@ export default function MaintenancePage() {
             unitId: editingBlock.unitId ?? "",
             roomId: editingBlock.roomId ?? "",
             reason: editingBlock.reason ?? "",
+            status: editingBlock.status,
+            priority: editingBlock.priority,
+            resolutionNote: editingBlock.resolutionNote ?? "",
+            emergencyOverride: false,
+            emergencyReason: "",
             startDate: toDateInputValue(editingBlock.startDate),
             endDate: toInclusiveEndDateInputValue(editingBlock.endDate),
           }
@@ -126,6 +131,11 @@ export default function MaintenancePage() {
             unitId: "",
             roomId: "",
             reason: "",
+            status: "SCHEDULED",
+            priority: "MEDIUM",
+            resolutionNote: "",
+            emergencyOverride: false,
+            emergencyReason: "",
             startDate: "",
             endDate: "",
           },
@@ -216,6 +226,13 @@ export default function MaintenancePage() {
                 values.targetType === "UNIT" ? values.unitId || undefined : undefined,
               roomId:
                 values.targetType === "ROOM" ? values.roomId || undefined : undefined,
+              emergencyReason: values.emergencyOverride
+                ? values.emergencyReason
+                : undefined,
+              resolutionNote:
+                values.status === "RESOLVED"
+                  ? values.resolutionNote
+                  : undefined,
             };
 
             const action = editingBlock
@@ -223,7 +240,18 @@ export default function MaintenancePage() {
                   maintenanceId: editingBlock.id,
                   payload,
                 })
-              : createMaintenance(payload);
+              : createMaintenance({
+                  propertyId: payload.propertyId,
+                  targetType: payload.targetType,
+                  unitId: payload.unitId,
+                  roomId: payload.roomId,
+                  reason: payload.reason,
+                  priority: payload.priority,
+                  emergencyOverride: payload.emergencyOverride,
+                  emergencyReason: payload.emergencyReason,
+                  startDate: payload.startDate,
+                  endDate: payload.endDate,
+                });
 
             action
               .then(() => handleCloseModal())

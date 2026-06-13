@@ -28,6 +28,7 @@ import * as publicService from "@/modules/public/bookings/bookings.service.js";
 import { createInventoryLock } from "@/modules/public/availability/availability.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
 import * as dashboardService from "@/modules/bookings/bookings.service.js";
+import * as maintenanceService from "@/modules/maintenance/maintenance.service.js";
 import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
@@ -2369,4 +2370,289 @@ test("dashboard booking status update rejects room assignment after check-in dat
       return true;
     },
   );
+});
+
+test("hotel operations lifecycle is versioned, audited, and marks rooms dirty", async () => {
+  const checkIn = utcDateOnly(new Date());
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2031-01-10T00:00:00.000Z"),
+      to: new Date("2031-01-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-hotel-operations-token`,
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      checkIn,
+      checkOut: addUtcDays(checkIn, 1),
+    },
+  });
+
+  const assigned = await dashboardService.moveBookingRooms(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [state.assignmentRoomId],
+      note: "Assigned inspected room for arrival.",
+    },
+  );
+  assert.equal(assigned.version, 2);
+
+  const checkedIn = await dashboardService.checkInBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 2,
+      identityVerified: true,
+      identityDocumentType: "PASSPORT",
+      identityDocumentReference: "****1234",
+      allowBalanceDueCheckIn: true,
+      note: "Front desk verified identity and approved balance at checkout.",
+    },
+  );
+  assert.equal(checkedIn.status, BookingStatus.CHECKED_IN);
+  assert.equal(checkedIn.version, 3);
+  assert.ok(checkedIn.checkedInAt);
+  assert.equal(checkedIn.identityDocumentReference, "****1234");
+  assert.ok(
+    checkedIn.operationEvents.some((event) => event.eventType === "CHECK_IN"),
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.checkOutBooking(state.superAdminId, booking.id, {
+        expectedVersion: 2,
+        allowBalanceDueCheckout: true,
+        note: "Stale checkout attempt.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "BOOKING_VERSION_CONFLICT");
+      return true;
+    },
+  );
+
+  const charged = await dashboardService.createBookingFolioCharge(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 3,
+      type: "INCIDENTAL",
+      description: "Minibar",
+      amount: 250,
+      note: "Minibar charge posted by front desk.",
+    },
+  );
+  assert.equal(charged.version, 4);
+  assert.equal(charged.folioTotal, "250");
+  assert.equal(
+    Number(charged.balanceAmount),
+    Number(checkedIn.balanceAmount) + 250,
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.checkOutBooking(state.managerId, booking.id, {
+        expectedVersion: 4,
+        allowBalanceDueCheckout: true,
+        note: "Manager attempted balance override.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "CHECK_OUT_BALANCE_DUE");
+      return true;
+    },
+  );
+
+  const checkedOut = await dashboardService.checkOutBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 4,
+      allowBalanceDueCheckout: true,
+      note: "Approved corporate balance for later settlement.",
+    },
+  );
+  assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+  assert.equal(checkedOut.version, 5);
+  assert.ok(checkedOut.checkedOutAt);
+
+  const room = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  assert.equal(room.housekeepingStatus, "DIRTY");
+
+  const concurrentCharges = await Promise.allSettled([
+    dashboardService.createBookingFolioCharge(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 5,
+        type: "ADJUSTMENT",
+        description: "Concurrent adjustment A",
+        amount: 10,
+      },
+    ),
+    dashboardService.createBookingFolioCharge(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 5,
+        type: "ADJUSTMENT",
+        description: "Concurrent adjustment B",
+        amount: 20,
+      },
+    ),
+  ]);
+  assert.equal(
+    concurrentCharges.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  const rejected = concurrentCharges.find(
+    (result) => result.status === "rejected",
+  );
+  assert.ok(rejected?.status === "rejected");
+  assert.ok(rejected.reason instanceof HttpError);
+  assert.equal(rejected.reason.code, "BOOKING_VERSION_CONFLICT");
+});
+
+test("housekeeping requires the dirty-cleaning-clean-inspected sequence", async () => {
+  const dirty = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  assert.equal(dirty.housekeepingStatus, "DIRTY");
+
+  const cleaning = await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "DIRTY",
+      status: "CLEANING",
+      note: "Housekeeping started.",
+    },
+  );
+  assert.equal(cleaning.status, "CLEANING");
+
+  await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "CLEANING",
+      status: "CLEAN",
+      note: "Cleaning completed.",
+    },
+  );
+  const inspected = await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "CLEAN",
+      status: "INSPECTED",
+      note: "Supervisor inspection passed.",
+    },
+  );
+  assert.equal(inspected.status, "INSPECTED");
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateRoomHousekeeping(
+        state.managerId,
+        state.propertyId,
+        state.assignmentRoomId,
+        {
+          expectedStatus: "DIRTY",
+          status: "CLEANING",
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "HOUSEKEEPING_STATUS_CONFLICT");
+      return true;
+    },
+  );
+});
+
+test("maintenance conflicts require an audited admin emergency override", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2032-04-10T00:00:00.000Z"),
+      to: new Date("2032-04-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-maintenance-conflict-token`,
+  });
+  const pricing = await prisma.roomPricing.findUniqueOrThrow({
+    where: { id: state.pricingId },
+  });
+  assert.ok(pricing.roomId);
+
+  await assert.rejects(
+    () =>
+      maintenanceService.createMaintenanceBlock(
+        state.superAdminId,
+        state.propertyId,
+        {
+          targetType: MaintenanceTargetType.ROOM,
+          roomId: pricing.roomId!,
+          priority: "HIGH",
+          reason: "Planned electrical work",
+          startDate: new Date("2032-04-10T00:00:00.000Z"),
+          endDate: new Date("2032-04-11T00:00:00.000Z"),
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "MAINTENANCE_BOOKING_CONFLICT");
+      assert.ok(Array.isArray(error.details));
+      return true;
+    },
+  );
+
+  const block = await maintenanceService.createMaintenanceBlock(
+    state.superAdminId,
+    state.propertyId,
+    {
+      targetType: MaintenanceTargetType.ROOM,
+      roomId: pricing.roomId,
+      priority: "EMERGENCY",
+      reason: "Emergency electrical isolation",
+      emergencyOverride: true,
+      emergencyReason: "Safety risk requires immediate relocation.",
+      startDate: new Date("2032-04-10T00:00:00.000Z"),
+      endDate: new Date("2032-04-11T00:00:00.000Z"),
+    },
+  );
+  assert.equal(block.emergencyOverride, true);
+
+  const audited = await prisma.bookingOperationEvent.findFirst({
+    where: {
+      bookingId: booking.id,
+      eventType: "MAINTENANCE_CONFLICT",
+    },
+  });
+  assert.equal(audited?.note, "Safety risk requires immediate relocation.");
 });

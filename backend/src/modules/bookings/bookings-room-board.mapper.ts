@@ -139,6 +139,7 @@ export const buildDashboardRoomBoard = ({
       hasAC: room.hasAC,
       maxOccupancy: room.maxOccupancy,
       inventoryStatus: room.status,
+      housekeepingStatus: room.housekeepingStatus,
       isActive: room.isActive,
       boardStatus: board.status,
       reason: board.reason,

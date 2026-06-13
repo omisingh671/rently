@@ -15,7 +15,12 @@ import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { getRoomBoardApi } from "../api";
 import { useAdminBooking } from "../hooks/useAdminOperations";
-import type { AdminBooking, BookingStatus, PaymentMethod } from "../types";
+import type {
+  AdminBooking,
+  BookingStatus,
+  FolioChargeType,
+  PaymentMethod,
+} from "../types";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -283,6 +288,7 @@ export default function BookingDetailsPage() {
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>("CASH");
   const [actionError, setActionError] = useState("");
   const [hasInitializedRoomIds, setHasInitializedRoomIds] = useState(false);
+  const [identityVerified, setIdentityVerified] = useState(false);
 
   const {
     data: booking,
@@ -291,6 +297,13 @@ export default function BookingDetailsPage() {
     isError,
     error,
     updateBooking,
+    checkInBooking,
+    checkOutBooking,
+    markNoShow,
+    moveRooms,
+    correctStatus,
+    createFolioCharge,
+    voidFolioCharge,
     recordBalancePayment,
     recordRefund,
     updateRefundRequest,
@@ -381,6 +394,9 @@ export default function BookingDetailsPage() {
       nextAction.message =
         "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
     }
+    if (type === "assignRoom") {
+      nextAction.requiresNote = true;
+    }
     if (type === "assignRoom" && booking && booking.items.length > 1) {
       nextAction.title = "Change Assigned Rooms";
       nextAction.message = `Select exactly ${booking.items.length} rooms for this booking. Current rooms are preselected.`;
@@ -391,8 +407,14 @@ export default function BookingDetailsPage() {
       nextAction.message =
         "This booking still has balance due. Add an override note to continue check-in.";
     }
+    if (type === "checkOut" && booking && Number(booking.balanceAmount) > 0) {
+      nextAction.requiresNote = true;
+      nextAction.message =
+        "This folio has an outstanding balance. Only an Admin can check out with an audited override.";
+    }
     setPendingAction(nextAction);
     setNote("");
+    setIdentityVerified(false);
     if (type === "assignRoom" && booking) {
       setHasInitializedRoomIds(false);
       let initialSelectedRoomIds: string[] = [];
@@ -442,6 +464,7 @@ export default function BookingDetailsPage() {
     setSelectedRoomIds([]);
     setActionError("");
     setHasInitializedRoomIds(false);
+    setIdentityVerified(false);
   };
 
   const submitAction = async (event: FormEvent<HTMLFormElement>) => {
@@ -465,9 +488,10 @@ export default function BookingDetailsPage() {
           return;
         }
 
-        await updateBooking({
+        await moveRooms({
+          expectedVersion: booking.version,
           roomIds: selectedRoomIds,
-          ...(note.trim() && { note: note.trim() }),
+          note: note.trim(),
         });
       } else if (pendingAction.type === "recordPayment") {
         const amount = Number(paymentAmount);
@@ -545,23 +569,48 @@ export default function BookingDetailsPage() {
           return;
         }
 
-        await updateBooking({
+        await correctStatus({
+          expectedVersion: booking.version,
           status: selectedStatus,
-          statusOverride: true,
           note: note.trim(),
         });
-      } else if (pendingAction.status) {
+      } else if (pendingAction.type === "checkIn") {
+        if (!identityVerified) {
+          setActionError("Confirm that guest identity was verified.");
+          return;
+        }
         if (pendingAction.requiresNote && !note.trim()) {
           setActionError("Note is required for this action.");
           return;
         }
-
+        await checkInBooking({
+          expectedVersion: booking.version,
+          identityVerified: true,
+          ...(Number(booking.balanceAmount) > 0 && {
+            allowBalanceDueCheckIn: true,
+          }),
+          ...(note.trim() && { note: note.trim() }),
+        });
+      } else if (pendingAction.type === "checkOut") {
+        if (pendingAction.requiresNote && !note.trim()) {
+          setActionError("Audit note is required for balance override.");
+          return;
+        }
+        await checkOutBooking({
+          expectedVersion: booking.version,
+          ...(Number(booking.balanceAmount) > 0 && {
+            allowBalanceDueCheckout: true,
+          }),
+          ...(note.trim() && { note: note.trim() }),
+        });
+      } else if (pendingAction.type === "noShow") {
+        await markNoShow({
+          expectedVersion: booking.version,
+          note: note.trim(),
+        });
+      } else if (pendingAction.status) {
         await updateBooking({
           status: pendingAction.status,
-          ...(pendingAction.type === "checkIn" &&
-            Number(booking.balanceAmount) > 0 && {
-              allowBalanceDueCheckIn: true,
-            }),
           ...(note.trim() && { note: note.trim() }),
         });
       }
@@ -575,8 +624,7 @@ export default function BookingDetailsPage() {
   const canCheckIn =
     booking?.status === "CONFIRMED" &&
     booking !== undefined &&
-    hasAssignedTarget(booking) &&
-    !booking.isCheckInDatePassed;
+    hasAssignedTarget(booking);
   const canCheckOut = booking?.status === "CHECKED_IN";
   const canAdminCancelAfterCheckIn =
     booking?.status === "CHECKED_IN" && canUseAdminCorrection;
@@ -608,7 +656,9 @@ export default function BookingDetailsPage() {
     booking.status !== "CHECKED_OUT" &&
     booking.status !== "CANCELLED" &&
     booking.status !== "NO_SHOW" &&
-    (booking.status === "CHECKED_IN" || !booking.isCheckInDatePassed);
+    (booking.status === "CHECKED_IN" ||
+      booking.status === "CONFIRMED" ||
+      !booking.isCheckInDatePassed);
   const toggleAssignedRoom = (roomId: string) => {
     if (!booking) return;
 
@@ -806,6 +856,21 @@ export default function BookingDetailsPage() {
               </div>
             )}
           </section>
+
+          <FolioSection
+            booking={booking}
+            isMutating={isMutating}
+            onCreate={createFolioCharge}
+            onVoid={(chargeId, reason) =>
+              voidFolioCharge({
+                chargeId,
+                payload: {
+                  expectedVersion: booking.version,
+                  note: reason,
+                },
+              })
+            }
+          />
 
           <InternalNotesSection
             key={booking.id}
@@ -1380,6 +1445,8 @@ export default function BookingDetailsPage() {
         onPaymentPaidAtChange={setPaymentPaidAt}
         onRefundAmountChange={setRefundAmount}
         onRefundMethodChange={setRefundMethod}
+        identityVerified={identityVerified}
+        onIdentityVerifiedChange={setIdentityVerified}
         onClose={closeAction}
         onSubmit={submitAction}
       />
@@ -1476,6 +1543,216 @@ function InternalNotesSection({
   );
 }
 
+function FolioSection({
+  booking,
+  isMutating,
+  onCreate,
+  onVoid,
+}: {
+  booking: AdminBooking;
+  isMutating: boolean;
+  onCreate: (payload: {
+    expectedVersion: number;
+    type: FolioChargeType;
+    description: string;
+    amount: number;
+    note?: string;
+  }) => Promise<AdminBooking>;
+  onVoid: (chargeId: string, reason: string) => Promise<AdminBooking>;
+}) {
+  const [type, setType] = useState<FolioChargeType>("INCIDENTAL");
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [voidChargeId, setVoidChargeId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+
+  const addCharge = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const numericAmount = Number(amount);
+    if (!description.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setErrorMessage("Enter a description and valid positive amount.");
+      return;
+    }
+    try {
+      setErrorMessage("");
+      await onCreate({
+        expectedVersion: booking.version,
+        type,
+        description: description.trim(),
+        amount: numericAmount,
+      });
+      setDescription("");
+      setAmount("");
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error).message);
+    }
+  };
+
+  const voidCharge = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!voidChargeId || !voidReason.trim()) return;
+    try {
+      setErrorMessage("");
+      await onVoid(voidChargeId, voidReason.trim());
+      setVoidChargeId(null);
+      setVoidReason("");
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error).message);
+    }
+  };
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Guest folio</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Active operational charges: {formatMoney(booking.folioTotal)}
+          </p>
+        </div>
+      </div>
+
+      <form
+        onSubmit={addCharge}
+        className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-4"
+      >
+        <select
+          value={type}
+          disabled={isMutating}
+          onChange={(event) => setType(event.target.value as FolioChargeType)}
+          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+        >
+          {(["INCIDENTAL", "PENALTY", "EXTENSION", "ADJUSTMENT"] as const).map(
+            (item) => (
+              <option key={item} value={item}>
+                {formatEnumLabel(item)}
+              </option>
+            ),
+          )}
+        </select>
+        <input
+          value={description}
+          maxLength={255}
+          disabled={isMutating}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="Charge description"
+          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm md:col-span-2"
+        />
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={amount}
+            disabled={isMutating}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="Amount"
+            className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"
+          />
+          <Button type="submit" size="sm" disabled={isMutating}>
+            Add
+          </Button>
+        </div>
+      </form>
+
+      {errorMessage && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        {booking.folioCharges.length === 0 ? (
+          <p className="text-sm text-slate-500">No folio charges recorded.</p>
+        ) : (
+          booking.folioCharges.map((charge) => (
+            <div
+              key={charge.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm"
+            >
+              <div>
+                <div className="font-semibold text-slate-900">
+                  {charge.description}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {formatEnumLabel(charge.type)} / {charge.createdByName} /{" "}
+                  {formatDateTime(charge.createdAt)}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={charge.status === "VOID" ? "line-through text-slate-400" : "font-bold"}>
+                  {formatMoney(charge.amount)}
+                </span>
+                <StatusBadge status={charge.status} />
+                {charge.status === "ACTIVE" && (
+                  <button
+                    type="button"
+                    disabled={isMutating}
+                    onClick={() => {
+                      setVoidChargeId(charge.id);
+                      setVoidReason("");
+                    }}
+                    className="font-semibold text-rose-700 hover:underline disabled:opacity-50"
+                  >
+                    Void
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <Modal
+        isOpen={voidChargeId !== null}
+        onClose={() => {
+          setVoidChargeId(null);
+          setVoidReason("");
+        }}
+        title="Void Folio Charge"
+        disableBackdropClose={isMutating}
+        disableEscapeClose={isMutating}
+      >
+        <form className="space-y-4" onSubmit={voidCharge}>
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            The charge remains in the immutable folio history. Add a clear audit
+            reason for the void.
+          </div>
+          <label className="block text-sm">
+            <span className="font-semibold text-slate-700">Audit reason</span>
+            <textarea
+              value={voidReason}
+              required
+              maxLength={1000}
+              disabled={isMutating}
+              onChange={(event) => setVoidReason(event.target.value)}
+              className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isMutating}
+              onClick={() => setVoidChargeId(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              disabled={isMutating || !voidReason.trim()}
+            >
+              Void charge
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </section>
+  );
+}
+
 function ConfirmationModal({
   action,
   note,
@@ -1503,6 +1780,8 @@ function ConfirmationModal({
   onPaymentPaidAtChange,
   onRefundAmountChange,
   onRefundMethodChange,
+  identityVerified,
+  onIdentityVerifiedChange,
   onClose,
   onSubmit,
   isUnitBooking,
@@ -1533,6 +1812,8 @@ function ConfirmationModal({
   onPaymentPaidAtChange: (value: string) => void;
   onRefundAmountChange: (value: string) => void;
   onRefundMethodChange: (value: PaymentMethod) => void;
+  identityVerified: boolean;
+  onIdentityVerifiedChange: (value: boolean) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isUnitBooking: boolean;
@@ -1547,6 +1828,7 @@ function ConfirmationModal({
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
     (!paymentReferenceRequired || paymentReferenceId.trim().length > 0) &&
     (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
+    (action?.type !== "checkIn" || identityVerified) &&
     (action?.type === "assignRoom" ||
       !action?.requiresNote ||
       note.trim().length > 0);
@@ -1596,6 +1878,28 @@ function ConfirmationModal({
                   </option>
                 ))}
               </select>
+            </label>
+          )}
+
+          {action.type === "checkIn" && (
+            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={identityVerified}
+                disabled={isSubmitting}
+                onChange={(event) =>
+                  onIdentityVerifiedChange(event.target.checked)
+                }
+                className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              />
+              <span>
+                <span className="block font-semibold text-slate-800">
+                  Guest identity verified
+                </span>
+                <span className="text-slate-500">
+                  Confirm against an accepted document. No raw document image is stored.
+                </span>
+              </span>
             </label>
           )}
 

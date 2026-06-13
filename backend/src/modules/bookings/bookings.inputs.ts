@@ -1,8 +1,10 @@
 import type {
+  FolioChargeType,
   BookingRefundRequestStatus,
   BookingStatus,
   ComfortOption,
   PaymentMethod,
+  RoomHousekeepingStatus,
 } from "@/generated/prisma/enums.js";
 
 export interface DashboardPaginationInput {
@@ -78,4 +80,56 @@ export interface CheckDashboardManualBookingAvailabilityInput {
 export interface DashboardRoomBoardInput {
   from: Date;
   to: Date;
+}
+
+export interface CheckInBookingInput {
+  expectedVersion: number;
+  roomIds?: string[];
+  identityVerified: true;
+  identityDocumentType?: string;
+  identityDocumentReference?: string;
+  allowBalanceDueCheckIn?: boolean;
+  note?: string;
+}
+
+export interface CheckOutBookingInput {
+  expectedVersion: number;
+  allowBalanceDueCheckout?: boolean;
+  note?: string;
+}
+
+export interface NoShowBookingInput {
+  expectedVersion: number;
+  note: string;
+}
+
+export interface MoveBookingRoomInput {
+  expectedVersion: number;
+  roomIds: string[];
+  note: string;
+}
+
+export interface CorrectBookingStatusInput {
+  expectedVersion: number;
+  status: BookingStatus;
+  note: string;
+}
+
+export interface UpdateRoomHousekeepingInput {
+  expectedStatus: RoomHousekeepingStatus;
+  status: RoomHousekeepingStatus;
+  note?: string;
+}
+
+export interface CreateBookingFolioChargeInput {
+  expectedVersion: number;
+  type: FolioChargeType;
+  description: string;
+  amount: number;
+  note?: string;
+}
+
+export interface VoidBookingFolioChargeInput {
+  expectedVersion: number;
+  reason: string;
 }

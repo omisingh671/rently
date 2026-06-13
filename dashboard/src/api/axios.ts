@@ -6,13 +6,11 @@ import type {
 } from "axios";
 
 import {
-  APP_NAME,
   API_PREFIX,
   API_BASE_URL,
   AXIOS_WITH_CREDENTIALS,
   REQUEST_HEADER_AUTH_KEY,
   TOKEN_TYPE,
-  APP_HEADER_CLIENT_NAME_KEY,
   APP_CLIENT_HEADER_KEY,
   APP_CLIENT,
 } from "@/configs/appConfig";
@@ -68,7 +66,6 @@ axiosInstance.interceptors.request.use(
     }
 
     if (config.headers) {
-      config.headers[APP_HEADER_CLIENT_NAME_KEY] = APP_NAME;
       config.headers[APP_CLIENT_HEADER_KEY] = APP_CLIENT;
     }
 

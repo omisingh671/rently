@@ -1,5 +1,12 @@
 import { HttpError } from "@/common/errors/http-error.js";
-import { MaintenanceTargetType } from "@/generated/prisma/enums.js";
+import { prisma } from "@/db/prisma.js";
+import {
+  BookingOperationEventType,
+  MaintenancePriority,
+  MaintenanceStatus,
+  MaintenanceTargetType,
+  UserRole,
+} from "@/generated/prisma/enums.js";
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import {
   getActor,
@@ -173,6 +180,52 @@ const resolveMaintenanceTarget = async (
   };
 };
 
+const assertMaintenanceConflictsAllowed = async (
+  actor: Awaited<ReturnType<typeof getActor>>,
+  input: {
+    propertyId: string;
+    targetType: MaintenanceTargetType;
+    unitId?: string;
+    roomId?: string;
+    startDate: Date;
+    endDate: Date;
+    emergencyOverride?: boolean;
+    emergencyReason?: string;
+  },
+) => {
+  const conflicts = await repo.listConflictingBookings(input);
+  if (conflicts.length === 0) {
+    return conflicts;
+  }
+
+  if (input.emergencyOverride !== true) {
+    throw new HttpError(
+      409,
+      "MAINTENANCE_BOOKING_CONFLICT",
+      "Maintenance overlaps confirmed or checked-in bookings",
+      conflicts,
+    );
+  }
+
+  if (actor.role !== UserRole.SUPER_ADMIN && actor.role !== UserRole.ADMIN) {
+    throw new HttpError(
+      403,
+      "MAINTENANCE_OVERRIDE_FORBIDDEN",
+      "Only Admin or Super Admin can override maintenance conflicts",
+    );
+  }
+
+  if (!input.emergencyReason?.trim()) {
+    throw new HttpError(
+      422,
+      "AUDIT_NOTE_REQUIRED",
+      "Emergency maintenance reason is required",
+    );
+  }
+
+  return conflicts;
+};
+
 // Maintenance Blocks Service API
 export const listMaintenanceBlocks = async (
   userId: string,
@@ -209,6 +262,10 @@ export const createMaintenanceBlock = async (
     unitId?: string;
     roomId?: string;
     reason?: string;
+    priority: MaintenancePriority;
+    assignedToUserId?: string;
+    emergencyOverride?: boolean;
+    emergencyReason?: string;
     startDate: Date;
     endDate: Date;
   },
@@ -222,6 +279,20 @@ export const createMaintenanceBlock = async (
   );
 
   const target = await resolveMaintenanceTarget(propertyId, input);
+  const conflicts = await assertMaintenanceConflictsAllowed(actor, {
+    propertyId,
+    targetType: input.targetType,
+    ...(target.unitId !== undefined && { unitId: target.unitId }),
+    ...(target.roomId !== undefined && { roomId: target.roomId }),
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    ...(input.emergencyOverride !== undefined && {
+      emergencyOverride: input.emergencyOverride,
+    }),
+    ...(input.emergencyReason !== undefined && {
+      emergencyReason: input.emergencyReason,
+    }),
+  });
 
   const block = await repo.createMaintenanceBlock({
     property: {
@@ -235,6 +306,8 @@ export const createMaintenanceBlock = async (
       },
     },
     targetType: input.targetType,
+    priority: input.priority,
+    emergencyOverride: input.emergencyOverride === true,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
     ...(input.reason !== undefined && { reason: input.reason }),
@@ -252,7 +325,27 @@ export const createMaintenanceBlock = async (
         },
       },
     }),
+    ...(input.assignedToUserId !== undefined && {
+      assignedTo: { connect: { id: input.assignedToUserId } },
+    }),
   });
+
+  if (conflicts.length > 0) {
+    await prisma.bookingOperationEvent.createMany({
+      data: conflicts.map((booking) => ({
+        bookingId: booking.id,
+        propertyId,
+        actorUserId: actor.id,
+        eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
+        note: input.emergencyReason ?? null,
+        metadata: {
+          maintenanceId: block.id,
+          targetType: input.targetType,
+          priority: input.priority,
+        },
+      })),
+    });
+  }
 
   return toMaintenanceBlockResponseDto(block);
 };
@@ -265,6 +358,12 @@ export const updateMaintenanceBlock = async (
     unitId?: string;
     roomId?: string;
     reason?: string;
+    status?: MaintenanceStatus;
+    priority?: MaintenancePriority;
+    assignedToUserId?: string | null;
+    resolutionNote?: string;
+    emergencyOverride?: boolean;
+    emergencyReason?: string;
     startDate?: Date;
     endDate?: Date;
   },
@@ -283,12 +382,52 @@ export const updateMaintenanceBlock = async (
     unitId: input.unitId ?? existingBlock.unitId ?? undefined,
     roomId: input.roomId ?? existingBlock.roomId ?? undefined,
   });
+  const conflictRelevantChange =
+    nextTargetType !== existingBlock.targetType ||
+    target.unitId !== (existingBlock.unitId ?? undefined) ||
+    target.roomId !== (existingBlock.roomId ?? undefined) ||
+    dateRange.startDate.getTime() !== existingBlock.startDate.getTime() ||
+    dateRange.endDate.getTime() !== existingBlock.endDate.getTime() ||
+    input.emergencyOverride === true ||
+    (input.status !== undefined &&
+      input.status !== existingBlock.status &&
+      input.status !== MaintenanceStatus.RESOLVED &&
+      input.status !== MaintenanceStatus.CANCELLED);
+  const conflicts = conflictRelevantChange
+    ? await assertMaintenanceConflictsAllowed(actor, {
+        propertyId: existingBlock.propertyId,
+        targetType: nextTargetType,
+        ...(target.unitId !== undefined && { unitId: target.unitId }),
+        ...(target.roomId !== undefined && { roomId: target.roomId }),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        ...(input.emergencyOverride !== undefined && {
+          emergencyOverride: input.emergencyOverride,
+        }),
+        ...(input.emergencyReason !== undefined && {
+          emergencyReason: input.emergencyReason,
+        }),
+      })
+    : [];
 
   const block = await repo.updateMaintenanceBlockById(maintenanceBlockId, {
     targetType: nextTargetType,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
     ...(input.reason !== undefined && { reason: input.reason }),
+    ...(input.status !== undefined && {
+      status: input.status,
+      ...(input.status === MaintenanceStatus.RESOLVED && {
+        resolvedAt: new Date(),
+      }),
+    }),
+    ...(input.priority !== undefined && { priority: input.priority }),
+    ...(input.resolutionNote !== undefined && {
+      resolutionNote: input.resolutionNote,
+    }),
+    ...(input.emergencyOverride !== undefined && {
+      emergencyOverride: input.emergencyOverride,
+    }),
     unit:
       target.unitId !== undefined
         ? {
@@ -309,7 +448,30 @@ export const updateMaintenanceBlock = async (
         : {
             disconnect: true,
           },
+    ...(input.assignedToUserId !== undefined && {
+      assignedTo:
+        input.assignedToUserId === null
+          ? { disconnect: true }
+          : { connect: { id: input.assignedToUserId } },
+    }),
   });
+
+  if (conflicts.length > 0 && input.emergencyOverride === true) {
+    await prisma.bookingOperationEvent.createMany({
+      data: conflicts.map((booking) => ({
+        bookingId: booking.id,
+        propertyId: existingBlock.propertyId,
+        actorUserId: actor.id,
+        eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
+        note: input.emergencyReason ?? null,
+        metadata: {
+          maintenanceId: block.id,
+          targetType: nextTargetType,
+          priority: input.priority ?? existingBlock.priority,
+        },
+      })),
+    });
+  }
 
   return toMaintenanceBlockResponseDto(block);
 };

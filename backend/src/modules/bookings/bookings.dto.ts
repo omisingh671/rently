@@ -12,6 +12,7 @@ import type {
   PaymentPurpose,
   PaymentRefundStatus,
   PaymentStatus,
+  RoomHousekeepingStatus,
   RoomStatus,
   TaxType,
   UnitStatus,
@@ -60,6 +61,7 @@ export interface DashboardRoomBoardRoomDTO {
   hasAC: boolean;
   maxOccupancy: number;
   inventoryStatus: RoomStatus;
+  housekeepingStatus: RoomHousekeepingStatus;
   isActive: boolean;
   boardStatus: DashboardRoomBoardStatus;
   reason: string | null;
@@ -125,6 +127,13 @@ export interface DashboardBookingDTO {
   checkIn: Date;
   checkOut: Date;
   status: BookingStatus;
+  version: number;
+  checkedInAt: Date | null;
+  checkedOutAt: Date | null;
+  noShowAt: Date | null;
+  identityVerifiedAt: Date | null;
+  identityDocumentType: string | null;
+  identityDocumentReference: string | null;
   subtotalAmount: string;
   totalAmount: string;
   discountAmount: string;
@@ -234,6 +243,31 @@ export interface DashboardBookingDTO {
     note: string | null;
     createdAt: Date;
   }>;
+  operationEvents: Array<{
+    id: string;
+    eventType: string;
+    actorUserId: string | null;
+    actorName: string | null;
+    note: string | null;
+    metadata: unknown;
+    createdAt: Date;
+  }>;
+  folioCharges: Array<{
+    id: string;
+    type: string;
+    status: string;
+    description: string;
+    amount: string;
+    note: string | null;
+    voidReason: string | null;
+    createdByUserId: string;
+    createdByName: string;
+    voidedByUserId: string | null;
+    voidedByName: string | null;
+    voidedAt: Date | null;
+    createdAt: Date;
+  }>;
+  folioTotal: string;
   createdAt: Date;
   updatedAt: Date;
 }

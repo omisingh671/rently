@@ -42,7 +42,7 @@ export default function MaintenanceForm({
     defaultValues,
   });
 
-  const { clearErrors, handleSubmit, reset, setError, setValue } = methods;
+  const { clearErrors, handleSubmit, register, reset, setError, setValue } = methods;
   const propertyId = useWatch({
     control: methods.control,
     name: "propertyId",
@@ -50,6 +50,11 @@ export default function MaintenanceForm({
   const targetType = useWatch({
     control: methods.control,
     name: "targetType",
+  });
+  const status = useWatch({ control: methods.control, name: "status" });
+  const emergencyOverride = useWatch({
+    control: methods.control,
+    name: "emergencyOverride",
   });
   const previousPropertyIdRef = useRef<string | undefined>(propertyId);
 
@@ -165,6 +170,52 @@ export default function MaintenanceForm({
           <div className="flex flex-col [&_.form-group]:mb-0 [&_.form-group]:h-full [&_.form-group]:flex [&_.form-group]:flex-col [&_.form-control]:flex-1 [&_.form-control]:flex [&_textarea]:flex-1 [&_textarea]:resize-none">
             <TextareaField name="reason" label="Reason" rows={4} />
           </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <SelectField name="priority" label="Priority">
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+            <option value="EMERGENCY">Emergency</option>
+          </SelectField>
+          {isEditing && (
+            <SelectField name="status" label="Workflow status">
+              <option value="SCHEDULED">Scheduled</option>
+              <option value="IN_PROGRESS">In progress</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="CANCELLED">Cancelled</option>
+            </SelectField>
+          )}
+          {isEditing && status === "RESOLVED" && (
+            <TextareaField
+              name="resolutionNote"
+              label="Resolution note"
+              rows={3}
+            />
+          )}
+          <label className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+            <input
+              type="checkbox"
+              {...register("emergencyOverride")}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+            />
+            <span>
+              <span className="block font-semibold text-amber-900">
+                Emergency conflict override
+              </span>
+              <span className="text-amber-700">
+                Admin-only. Use when maintenance must proceed despite an active reservation.
+              </span>
+            </span>
+          </label>
+          {emergencyOverride && (
+            <TextareaField
+              name="emergencyReason"
+              label="Emergency audit reason"
+              rows={3}
+            />
+          )}
         </div>
 
         <div className="flex flex-col gap-3 border-t border-slate-200 py-4 sm:flex-row">

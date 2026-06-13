@@ -11,6 +11,7 @@ export const maintenanceBlockInclude = {
     },
   },
   createdBy: true,
+  assignedTo: true,
 } satisfies Prisma.MaintenanceBlockInclude;
 
 export type MaintenanceBlockRecord = Prisma.MaintenanceBlockGetPayload<{
@@ -106,3 +107,38 @@ export const hasOverlappingRoomMaintenance = (input: {
       },
     })
     .then((count) => count > 0);
+
+export const listConflictingBookings = (input: {
+  propertyId: string;
+  targetType: MaintenanceTargetType;
+  unitId?: string;
+  roomId?: string;
+  startDate: Date;
+  endDate: Date;
+  excludeMaintenanceId?: string;
+}) =>
+  prisma.booking.findMany({
+    where: {
+      propertyId: input.propertyId,
+      status: { in: ["CONFIRMED", "CHECKED_IN"] },
+      checkIn: { lt: input.endDate },
+      checkOut: { gt: input.startDate },
+      items: {
+        some:
+          input.targetType === "PROPERTY"
+            ? {}
+            : input.targetType === "UNIT"
+              ? { unitId: input.unitId! }
+              : { roomId: input.roomId! },
+      },
+    },
+    select: {
+      id: true,
+      bookingRef: true,
+      guestNameSnapshot: true,
+      status: true,
+      checkIn: true,
+      checkOut: true,
+    },
+    orderBy: { checkIn: "asc" },
+  });

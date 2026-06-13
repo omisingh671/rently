@@ -14,6 +14,16 @@ import {
   checkManualBookingAvailabilitySchema,
   updateBookingStatusSchema,
   updateRefundRequestSchema,
+  cashierSummaryQuerySchema,
+  checkInBookingSchema,
+  checkOutBookingSchema,
+  correctBookingStatusSchema,
+  createBookingFolioChargeSchema,
+  moveBookingRoomSchema,
+  noShowBookingSchema,
+  operationsBoardQuerySchema,
+  updateRoomHousekeepingSchema,
+  voidBookingFolioChargeSchema,
 } from "./bookings.schema.js";
 
 const getUserId = (req: AuthRequest) => {
@@ -120,6 +130,157 @@ export const updateBooking = async (req: AuthRequest, res: Response) => {
       allowBalanceDueCheckIn: body.allowBalanceDueCheckIn,
     }),
   });
+  res.json({ success: true, data });
+};
+
+export const checkInBooking = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = checkInBookingSchema.parse(req.body);
+  const data = await service.checkInBooking(getUserId(req), params.id, {
+    expectedVersion: body.expectedVersion,
+    identityVerified: true,
+    ...(body.roomIds !== undefined && { roomIds: body.roomIds }),
+    ...(body.identityDocumentType !== undefined && {
+      identityDocumentType: body.identityDocumentType,
+    }),
+    ...(body.identityDocumentReference !== undefined && {
+      identityDocumentReference: body.identityDocumentReference,
+    }),
+    ...(body.allowBalanceDueCheckIn !== undefined && {
+      allowBalanceDueCheckIn: body.allowBalanceDueCheckIn,
+    }),
+    ...(body.note !== undefined && { note: body.note }),
+  });
+  res.json({ success: true, data });
+};
+
+export const checkOutBooking = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = checkOutBookingSchema.parse(req.body);
+  const data = await service.checkOutBooking(getUserId(req), params.id, {
+    expectedVersion: body.expectedVersion,
+    ...(body.allowBalanceDueCheckout !== undefined && {
+      allowBalanceDueCheckout: body.allowBalanceDueCheckout,
+    }),
+    ...(body.note !== undefined && { note: body.note }),
+  });
+  res.json({ success: true, data });
+};
+
+export const markBookingNoShow = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = noShowBookingSchema.parse(req.body);
+  const data = await service.markBookingNoShow(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const moveBookingRooms = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = moveBookingRoomSchema.parse(req.body);
+  const data = await service.moveBookingRooms(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const correctBookingStatus = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = correctBookingStatusSchema.parse(req.body);
+  const data = await service.correctBookingStatus(
+    getUserId(req),
+    params.id,
+    {
+      expectedVersion: body.expectedVersion,
+      status: body.status,
+      note: body.note,
+    },
+  );
+  res.json({ success: true, data });
+};
+
+export const updateRoomHousekeeping = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const propertyParams = propertyIdParamsSchema.parse(req.params);
+  const roomParams = idParamsSchema.parse({ id: req.params.roomId });
+  const body = updateRoomHousekeepingSchema.parse(req.body);
+  const data = await service.updateRoomHousekeeping(
+    getUserId(req),
+    propertyParams.propertyId,
+    roomParams.id,
+    {
+      expectedStatus: body.expectedStatus,
+      status: body.status,
+      ...(body.note !== undefined && { note: body.note }),
+    },
+  );
+  res.json({ success: true, data });
+};
+
+export const createBookingFolioCharge = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = createBookingFolioChargeSchema.parse(req.body);
+  const data = await service.createBookingFolioCharge(
+    getUserId(req),
+    params.id,
+    {
+      expectedVersion: body.expectedVersion,
+      type: body.type,
+      description: body.description,
+      amount: body.amount,
+      ...(body.note !== undefined && { note: body.note }),
+    },
+  );
+  res.status(201).json({ success: true, data });
+};
+
+export const voidBookingFolioCharge = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const chargeParams = idParamsSchema.parse({ id: req.params.chargeId });
+  const body = voidBookingFolioChargeSchema.parse(req.body);
+  const data = await service.voidBookingFolioCharge(
+    getUserId(req),
+    params.id,
+    chargeParams.id,
+    body,
+  );
+  res.json({ success: true, data });
+};
+
+export const getOperationsBoard = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const query = operationsBoardQuerySchema.parse(req.query);
+  const data = await service.getOperationsBoard(
+    getUserId(req),
+    params.propertyId,
+    query.businessDate,
+  );
+  res.json({ success: true, data });
+};
+
+export const getCashierSummary = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const query = cashierSummaryQuerySchema.parse(req.query);
+  const data = await service.getCashierSummary(
+    getUserId(req),
+    params.propertyId,
+    query.from,
+    query.to,
+  );
   res.json({ success: true, data });
 };
 

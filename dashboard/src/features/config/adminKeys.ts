@@ -266,6 +266,20 @@ export const ADMIN_KEYS = {
         },
       ] as const,
 
+    operationsBoard: (propertyId: string, businessDate: string) =>
+      [
+        ...ADMIN_KEYS.operations.byProperty(propertyId),
+        "operations-board",
+        businessDate,
+      ] as const,
+
+    cashierSummary: (propertyId: string, from: string, to: string) =>
+      [
+        ...ADMIN_KEYS.operations.byProperty(propertyId),
+        "cashier-summary",
+        { from, to },
+      ] as const,
+
     enquiries: (propertyId: string) =>
       [...ADMIN_KEYS.operations.byProperty(propertyId), "enquiries"] as const,
 

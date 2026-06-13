@@ -27,6 +27,10 @@ export const createMaintenanceSchema = z
     unitId: idSchema.optional(),
     roomId: idSchema.optional(),
     reason: z.string().trim().max(500).optional(),
+    priority: z.enum(["LOW", "MEDIUM", "HIGH", "EMERGENCY"]).default("MEDIUM"),
+    assignedToUserId: idSchema.optional(),
+    emergencyOverride: z.boolean().optional(),
+    emergencyReason: z.string().trim().min(1).max(1000).optional(),
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
   })
@@ -62,6 +66,12 @@ export const updateMaintenanceSchema = z
     unitId: idSchema.optional(),
     roomId: idSchema.optional(),
     reason: z.string().trim().max(500).optional(),
+    status: z.enum(["SCHEDULED", "IN_PROGRESS", "RESOLVED", "CANCELLED"]).optional(),
+    priority: z.enum(["LOW", "MEDIUM", "HIGH", "EMERGENCY"]).optional(),
+    assignedToUserId: idSchema.nullable().optional(),
+    resolutionNote: z.string().trim().min(1).max(1000).optional(),
+    emergencyOverride: z.boolean().optional(),
+    emergencyReason: z.string().trim().min(1).max(1000).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
   })

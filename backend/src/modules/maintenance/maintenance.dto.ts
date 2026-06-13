@@ -1,4 +1,8 @@
-import type { MaintenanceTargetType } from "@/generated/prisma/enums.js";
+import type {
+  MaintenancePriority,
+  MaintenanceStatus,
+  MaintenanceTargetType,
+} from "@/generated/prisma/enums.js";
 
 export interface MaintenanceBlockResponseDto {
   id: string;
@@ -10,6 +14,13 @@ export interface MaintenanceBlockResponseDto {
   roomId: string | null;
   roomLabel: string | null;
   reason: string | null;
+  status: MaintenanceStatus;
+  priority: MaintenancePriority;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  resolutionNote: string | null;
+  resolvedAt: Date | null;
+  emergencyOverride: boolean;
   startDate: Date;
   endDate: Date;
   createdByUserId: string;

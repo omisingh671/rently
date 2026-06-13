@@ -165,7 +165,7 @@ try {
         );
         return getJson(
           "dashboard /me",
-          apiEndpoint("/dashboard/me"),
+          apiEndpoint("/auth/me"),
           accessToken,
           "dashboard",
         );
@@ -206,6 +206,8 @@ try {
                 spaceId: space.id,
                 from: checkIn.toISOString(),
                 to: checkOut.toISOString(),
+                guests: 1,
+                comfortOption: "AC",
               },
               accessToken,
               {

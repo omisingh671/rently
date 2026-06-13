@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { useAdminOperations } from "../hooks/useAdminOperations";
 import Button from "@/components/ui/Button";
@@ -8,7 +9,9 @@ import type {
   AdminEnquiry,
   AdminQuote,
   BookingStatus,
+  CashierSummaryResponse,
   LeadStatus,
+  OperationsBoardResponse,
 } from "../types";
 import StatusBadge from "@/components/common/StatusBadge";
 import Pagination from "@/components/common/Pagination";
@@ -24,6 +27,11 @@ const {
   FiSearch,
 } = ICON_REGISTRY;
 import { normalizeApiError } from "@/utils/errors";
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
+import {
+  getCashierSummaryApi,
+  getOperationsBoardApi,
+} from "../api";
 
 type Module = "bookings" | "enquiries" | "quotes";
 
@@ -66,6 +74,26 @@ const formatDate = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
+const toDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (value: string, days: number) => {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return toDateInput(date);
+};
+
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(value);
+
 const getBookingAssignedSummary = (booking: AdminBooking) => {
   if (booking.items.length === 0) {
     return booking.targetLabel;
@@ -105,6 +133,173 @@ const getBookingRefundIndicator = (booking: AdminBooking) => {
   return null;
 };
 
+function OperationsBoard({
+  businessDate,
+  onBusinessDateChange,
+  board,
+  cashierRows,
+  isLoading,
+}: {
+  businessDate: string;
+  onBusinessDateChange: (value: string) => void;
+  board: OperationsBoardResponse | undefined;
+  cashierRows: CashierSummaryResponse["rows"];
+  isLoading: boolean;
+}) {
+  const summaryItems = board
+    ? [
+        ["Arrivals", board.summary.arrivals],
+        ["Departures", board.summary.departures],
+        ["In house", board.summary.inHouse],
+        ["Late arrivals", board.summary.lateArrivals],
+        ["Unassigned", board.summary.unassignedArrivals],
+        ["Balance due", board.summary.balanceDue],
+        ["Housekeeping", board.summary.housekeeping],
+        ["Refund attention", board.summary.refundAttention],
+        ["Maintenance conflicts", board.summary.maintenanceConflicts],
+      ]
+    : [];
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Front-desk operations
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {board
+              ? `${board.propertyName} business day in ${board.timezone}`
+              : "Loading property operations..."}
+          </p>
+        </div>
+        <label className="text-sm font-semibold text-slate-700">
+          Business date
+          <input
+            type="date"
+            value={businessDate}
+            onChange={(event) => onBusinessDateChange(event.target.value)}
+            className="mt-1 block h-10 rounded-md border border-slate-300 px-3 font-normal"
+          />
+        </label>
+      </div>
+
+      {isLoading ? (
+        <div className="p-5 text-sm text-slate-500">Loading operations...</div>
+      ) : (
+        <>
+          <div className="grid gap-3 p-5 sm:grid-cols-3 xl:grid-cols-5">
+            {summaryItems.map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+              >
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  {label}
+                </div>
+                <div className="mt-1 text-2xl font-bold text-slate-900">
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-5 border-t border-slate-200 p-5 lg:grid-cols-2">
+            <div>
+              <h3 className="font-semibold text-slate-900">
+                Immediate attention
+              </h3>
+              <div className="mt-3 space-y-2 text-sm">
+                {board &&
+                board.lateArrivals.length +
+                  board.unassignedArrivals.length +
+                  board.maintenanceConflicts.length >
+                  0 ? (
+                  <>
+                    {board.lateArrivals.map((booking) => (
+                      <a
+                        key={`late-${booking.id}`}
+                        href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
+                        className="block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 hover:border-amber-300"
+                      >
+                        Late arrival: {booking.bookingRef} / {booking.guestName}
+                      </a>
+                    ))}
+                    {board.unassignedArrivals.map((booking) => (
+                      <a
+                        key={`unassigned-${booking.id}`}
+                        href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
+                        className="block rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900"
+                      >
+                        Room assignment needed: {booking.bookingRef}
+                      </a>
+                    ))}
+                    {board.maintenanceConflicts.map((conflict) => (
+                      <div
+                        key={`${conflict.maintenanceId}-${conflict.booking.id}`}
+                        className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900"
+                      >
+                        {formatEnumLabel(conflict.priority)} maintenance conflict:
+                        {" "}
+                        {conflict.booking.bookingRef}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                    No urgent operational exceptions.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-slate-900">
+                Cashier by employee
+              </h3>
+              <div className="mt-3 space-y-2 text-sm">
+                {cashierRows.length > 0 ? (
+                  cashierRows.map((row) => (
+                    <div
+                      key={row.receivedByUserId ?? "SYSTEM"}
+                      className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-800">
+                          {row.receivedByName}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Expected cash {formatMoney(row.expectedCash)} /
+                          refunds {formatMoney(row.refunds)}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {Object.entries(row.byMethod)
+                            .map(
+                              ([method, amount]) =>
+                                `${formatEnumLabel(method)} ${formatMoney(amount)}`,
+                            )
+                            .join(" / ")}
+                        </div>
+                      </div>
+                      <div className="font-bold text-slate-900">
+                        {formatMoney(row.netCollected)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-md border border-slate-200 px-3 py-2 text-slate-500">
+                    No successful payments for this business date.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function GuestAvatar({ name }: { name: string }) {
   const initials = name
     .split(" ")
@@ -142,6 +337,9 @@ export default function OperationsPage({ module }: Props) {
     source: "",
   });
   const [actionError, setActionError] = useState("");
+  const [businessDate, setBusinessDate] = useState(() =>
+    toDateInput(new Date()),
+  );
 
   const { properties, selectedPropertyId, setSelectedPropertyId } =
     useCurrentProperty();
@@ -166,6 +364,38 @@ export default function OperationsPage({ module }: Props) {
     updateQuote,
     isMutating,
   } = useAdminOperations(module, selectedPropertyId, page, limit, activeFilters);
+  const operationsBoardQuery = useQuery({
+    queryKey:
+      module === "bookings" && selectedPropertyId
+        ? ADMIN_KEYS.operations.operationsBoard(
+            selectedPropertyId,
+            businessDate,
+          )
+        : ADMIN_KEYS.operations.all(),
+    queryFn: () => {
+      if (!selectedPropertyId) throw new Error("PropertyId required");
+      return getOperationsBoardApi(selectedPropertyId, businessDate);
+    },
+    enabled: module === "bookings" && Boolean(selectedPropertyId),
+  });
+  const cashierSummaryQuery = useQuery({
+    queryKey:
+      module === "bookings" && selectedPropertyId
+        ? ADMIN_KEYS.operations.cashierSummary(
+            selectedPropertyId,
+            businessDate,
+            addDays(businessDate, 1),
+          )
+        : ADMIN_KEYS.operations.all(),
+    queryFn: () => {
+      if (!selectedPropertyId) throw new Error("PropertyId required");
+      return getCashierSummaryApi(selectedPropertyId, {
+        from: businessDate,
+        to: addDays(businessDate, 1),
+      });
+    },
+    enabled: module === "bookings" && Boolean(selectedPropertyId),
+  });
 
   const items = data?.items ?? [];
   const statuses = module === "bookings" ? bookingStatuses : leadStatuses;
@@ -200,6 +430,17 @@ export default function OperationsPage({ module }: Props) {
 
   return (
     <div className="space-y-6">
+      {module === "bookings" && selectedPropertyId && (
+        <OperationsBoard
+          businessDate={businessDate}
+          onBusinessDateChange={setBusinessDate}
+          board={operationsBoardQuery.data}
+          cashierRows={cashierSummaryQuery.data?.rows ?? []}
+          isLoading={
+            operationsBoardQuery.isPending || cashierSummaryQuery.isPending
+          }
+        />
+      )}
 
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center">

@@ -47,6 +47,16 @@ export type PaymentMethod =
   | "CARD_POS"
   | "MANUAL"
   | "ONLINE_GATEWAY";
+export type RoomHousekeepingStatus =
+  | "DIRTY"
+  | "CLEANING"
+  | "CLEAN"
+  | "INSPECTED";
+export type FolioChargeType =
+  | "INCIDENTAL"
+  | "PENALTY"
+  | "EXTENSION"
+  | "ADJUSTMENT";
 
 export type AdminBooking = {
   id: string;
@@ -72,6 +82,13 @@ export type AdminBooking = {
   checkIn: string;
   checkOut: string;
   status: BookingStatus;
+  version: number;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  noShowAt: string | null;
+  identityVerifiedAt: string | null;
+  identityDocumentType: string | null;
+  identityDocumentReference: string | null;
   subtotalAmount: string;
   totalAmount: string;
   discountAmount: string;
@@ -179,6 +196,31 @@ export type AdminBooking = {
     note: string | null;
     createdAt: string;
   }>;
+  operationEvents: Array<{
+    id: string;
+    eventType: string;
+    actorUserId: string | null;
+    actorName: string | null;
+    note: string | null;
+    metadata: unknown;
+    createdAt: string;
+  }>;
+  folioCharges: Array<{
+    id: string;
+    type: FolioChargeType;
+    status: "ACTIVE" | "VOID";
+    description: string;
+    amount: string;
+    note: string | null;
+    voidReason: string | null;
+    createdByUserId: string;
+    createdByName: string;
+    voidedByUserId: string | null;
+    voidedByName: string | null;
+    voidedAt: string | null;
+    createdAt: string;
+  }>;
+  folioTotal: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -191,6 +233,39 @@ export type UpdateBookingPayload = {
   roomIds?: string[];
   statusOverride?: boolean;
   allowBalanceDueCheckIn?: boolean;
+};
+
+export type CheckInBookingPayload = {
+  expectedVersion: number;
+  roomIds?: string[];
+  identityVerified: true;
+  identityDocumentType?: string;
+  identityDocumentReference?: string;
+  allowBalanceDueCheckIn?: boolean;
+  note?: string;
+};
+
+export type CheckOutBookingPayload = {
+  expectedVersion: number;
+  allowBalanceDueCheckout?: boolean;
+  note?: string;
+};
+
+export type VersionedBookingNotePayload = {
+  expectedVersion: number;
+  note: string;
+};
+
+export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {
+  status: BookingStatus;
+};
+
+export type CreateFolioChargePayload = {
+  expectedVersion: number;
+  type: FolioChargeType;
+  description: string;
+  amount: number;
+  note?: string;
 };
 
 export type RecordBalancePaymentPayload = {
@@ -285,6 +360,7 @@ export type RoomBoardRoom = {
   hasAC: boolean;
   maxOccupancy: number;
   inventoryStatus: string;
+  housekeepingStatus: RoomHousekeepingStatus;
   isActive: boolean;
   boardStatus: RoomBoardStatus;
   reason: string | null;
@@ -324,6 +400,61 @@ export type RoomBoardResponse = {
   to: string;
   summary: Record<RoomBoardStatus, number>;
   units: RoomBoardUnit[];
+};
+
+export type OperationsBoardResponse = {
+  propertyId: string;
+  propertyName: string;
+  timezone: string;
+  businessDate: string;
+  summary: {
+    arrivals: number;
+    departures: number;
+    inHouse: number;
+    lateArrivals: number;
+    unassignedArrivals: number;
+    balanceDue: number;
+    refundAttention: number;
+    housekeeping: number;
+    maintenanceConflicts: number;
+  };
+  arrivals: AdminBooking[];
+  departures: AdminBooking[];
+  inHouse: AdminBooking[];
+  lateArrivals: AdminBooking[];
+  unassignedArrivals: AdminBooking[];
+  balanceDue: AdminBooking[];
+  refundAttention: AdminBooking[];
+  housekeeping: Array<{
+    roomId: string;
+    roomNumber: string;
+    roomName: string;
+    unitId: string;
+    unitNumber: string;
+    floor: number;
+    status: RoomHousekeepingStatus;
+  }>;
+  maintenanceConflicts: Array<{
+    maintenanceId: string;
+    priority: "LOW" | "MEDIUM" | "HIGH" | "EMERGENCY";
+    reason: string | null;
+    booking: AdminBooking;
+  }>;
+};
+
+export type CashierSummaryResponse = {
+  propertyId: string;
+  from: string;
+  to: string;
+  rows: Array<{
+    receivedByUserId: string | null;
+    receivedByName: string;
+    byMethod: Partial<Record<PaymentMethod, number>>;
+    refunds: number;
+    collected: number;
+    netCollected: number;
+    expectedCash: number;
+  }>;
 };
 
 export type AdminEnquiry = {

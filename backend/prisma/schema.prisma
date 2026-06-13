@@ -211,6 +211,52 @@ enum MaintenanceTargetType {
   ROOM
 }
 
+enum RoomHousekeepingStatus {
+  DIRTY
+  CLEANING
+  CLEAN
+  INSPECTED
+}
+
+enum BookingOperationEventType {
+  CHECK_IN
+  CHECK_OUT
+  NO_SHOW
+  ROOM_ASSIGNMENT
+  ROOM_MOVE
+  STATUS_CORRECTION
+  BALANCE_OVERRIDE
+  MAINTENANCE_CONFLICT
+  FOLIO_CHARGE
+  FOLIO_CHARGE_VOID
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  EMERGENCY
+}
+
+enum FolioChargeType {
+  INCIDENTAL
+  PENALTY
+  EXTENSION
+  ADJUSTMENT
+}
+
+enum FolioChargeStatus {
+  ACTIVE
+  VOID
+}
+
 /**
  * =========================
  * USER & AUTH
@@ -245,6 +291,11 @@ model User {
   createdPropertyAssignments PropertyAssignment[]   @relation("AssignmentCreatedBy")
   createdProperties          Property[]             @relation("PropertyCreatedBy")
   createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
+  assignedMaintenanceBlocks  MaintenanceBlock[]     @relation("MaintenanceAssignedTo")
+  bookingOperationEvents     BookingOperationEvent[]
+  housekeepingEvents         RoomHousekeepingEvent[]
+  createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
+  voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -354,6 +405,9 @@ model Property {
   enquiries         Enquiry[]
   assignments       PropertyAssignment[]
   maintenanceBlocks MaintenanceBlock[]
+  bookingOperationEvents BookingOperationEvent[]
+  folioCharges      BookingFolioCharge[]
+  housekeepingEvents RoomHousekeepingEvent[]
   taxes             Tax[]
   coupons           Coupon[]
   galleries         Gallery[]
@@ -419,6 +473,7 @@ model Room {
   hasAC        Boolean    @default(false)
   maxOccupancy Int        @default(2)
   status       RoomStatus @default(AVAILABLE)
+  housekeepingStatus RoomHousekeepingStatus @default(INSPECTED)
   isActive     Boolean    @default(true)
 
   createdAt DateTime @default(now())
@@ -429,6 +484,7 @@ model Room {
   amenities         RoomAmenity[]
   pricing           RoomPricing[]
   maintenanceBlocks MaintenanceBlock[]
+  housekeepingEvents RoomHousekeepingEvent[]
   galleries         Gallery[]
 
   @@unique([unitId, number])
@@ -546,6 +602,13 @@ model Booking {
   checkIn            DateTime
   checkOut           DateTime
   status             BookingStatus        @default(PENDING)
+  version            Int                  @default(1)
+  checkedInAt        DateTime?
+  checkedOutAt       DateTime?
+  noShowAt           DateTime?
+  identityVerifiedAt DateTime?
+  identityDocumentType String?             @db.VarChar(50)
+  identityDocumentReference String?        @db.VarChar(100)
   subtotalAmount     Decimal              @default(0)
   taxableAmount      Decimal              @default(0)
   taxAmount          Decimal              @default(0)
@@ -571,6 +634,9 @@ model Booking {
   refunds        PaymentRefund[]
   refundRequests BookingRefundRequest[]
   statusHistory  BookingStatusHistory[]
+  operationEvents BookingOperationEvent[]
+  folioCharges   BookingFolioCharge[]
+  housekeepingEvents RoomHousekeepingEvent[]
   inventoryLocks InventoryLock[]
   billingDocuments BillingDocument[]
 
@@ -580,6 +646,8 @@ model Booking {
   @@index([roomId, checkIn, checkOut])
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
+  @@index([propertyId, checkedInAt])
+  @@index([propertyId, checkedOutAt])
   @@map("bookings")
 }
 
@@ -656,6 +724,54 @@ model BookingStatusHistory {
   @@index([bookingId, createdAt])
   @@index([actorUserId])
   @@map("booking_status_history")
+}
+
+model BookingOperationEvent {
+  id          String                    @id @default(uuid())
+  bookingId   String
+  propertyId  String
+  actorUserId String?
+  eventType   BookingOperationEventType
+  note        String?                   @db.Text
+  metadata    Json?
+  createdAt   DateTime                  @default(now())
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([propertyId, eventType, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("booking_operation_events")
+}
+
+model BookingFolioCharge {
+  id              String            @id @default(uuid())
+  bookingId       String
+  propertyId      String
+  createdByUserId String
+  voidedByUserId  String?
+  type            FolioChargeType
+  status          FolioChargeStatus @default(ACTIVE)
+  description     String            @db.VarChar(255)
+  amount          Decimal
+  note            String?           @db.Text
+  voidReason      String?           @db.Text
+  voidedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, status, createdAt])
+  @@index([propertyId, createdAt])
+  @@index([createdByUserId])
+  @@index([voidedByUserId])
+  @@map("booking_folio_charges")
 }
 
 model Payment {
@@ -937,6 +1053,12 @@ model MaintenanceBlock {
   roomId          String?
   targetType      MaintenanceTargetType
   reason          String?
+  status          MaintenanceStatus   @default(SCHEDULED)
+  priority        MaintenancePriority @default(MEDIUM)
+  assignedToUserId String?
+  resolutionNote  String?             @db.Text
+  resolvedAt      DateTime?
+  emergencyOverride Boolean           @default(false)
   startDate       DateTime
   endDate         DateTime
   createdByUserId String
@@ -947,10 +1069,36 @@ model MaintenanceBlock {
   unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
   room      Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
   createdBy User     @relation("MaintenanceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assignedTo User?   @relation("MaintenanceAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([propertyId])
+  @@index([propertyId, status, priority])
+  @@index([assignedToUserId, status])
   @@index([startDate, endDate])
   @@map("maintenance_blocks")
+}
+
+model RoomHousekeepingEvent {
+  id          String                 @id @default(uuid())
+  propertyId  String
+  roomId      String
+  actorUserId String
+  bookingId   String?
+  fromStatus  RoomHousekeepingStatus
+  toStatus    RoomHousekeepingStatus
+  note        String?                @db.Text
+  createdAt   DateTime               @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor    User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+  @@index([propertyId, toStatus, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([bookingId])
+  @@map("room_housekeeping_events")
 }
 
 model Tax {

@@ -5,10 +5,14 @@ import {
   BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
+  BookingOperationEventType,
+  FolioChargeStatus,
+  PaymentMethod,
   PaymentPurpose,
   PaymentRefundStatus,
   PaymentStatus,
   Prisma,
+  RoomHousekeepingStatus,
   RoomStatus,
   UnitStatus,
   UserRole,
@@ -46,10 +50,18 @@ import type {
   CreateDashboardManualBookingInput,
   DashboardBookingListInput,
   DashboardRoomBoardInput,
+  CheckInBookingInput,
+  CheckOutBookingInput,
+  CorrectBookingStatusInput,
+  CreateBookingFolioChargeInput,
+  MoveBookingRoomInput,
+  NoShowBookingInput,
   RecordDashboardBookingPaymentInput,
   RecordDashboardBookingRefundInput,
+  UpdateRoomHousekeepingInput,
   UpdateDashboardBookingInput,
   UpdateDashboardRefundRequestInput,
+  VoidBookingFolioChargeInput,
 } from "./bookings.inputs.js";
 
 import type {
@@ -408,7 +420,13 @@ const getBookingBalanceAmount = (booking: repo.DashboardBookingRecord) => {
   const netPaidAmount = getBookingPaidAmount(booking).minus(
     getBookingRefundedAmount(booking),
   );
-  const balance = booking.totalAmount.minus(netPaidAmount);
+  const folioTotal = booking.folioCharges
+    .filter((charge) => charge.status === FolioChargeStatus.ACTIVE)
+    .reduce(
+      (total, charge) => total.plus(charge.amount),
+      new Prisma.Decimal(0),
+    );
+  const balance = booking.totalAmount.plus(folioTotal).minus(netPaidAmount);
   return balance.lessThan(0) ? new Prisma.Decimal(0) : balance;
 };
 
@@ -443,6 +461,10 @@ const assertBookingCanAcceptPayment = (
 const resolveBookingRoomAssignments = async (
   booking: repo.DashboardBookingRecord,
   roomIds: string[],
+  options: {
+    forceConcreteRooms?: boolean;
+    allowLateAssignment?: boolean;
+  } = {},
 ) => {
   if (
     booking.status === BookingStatus.CHECKED_OUT ||
@@ -460,6 +482,7 @@ const resolveBookingRoomAssignments = async (
   const today = getLocalDateValue(new Date(), timeZone);
   if (
     booking.status !== BookingStatus.CHECKED_IN &&
+    options.allowLateAssignment !== true &&
     today > getLocalDateValue(booking.checkIn, timeZone)
   ) {
     throw new HttpError(
@@ -559,7 +582,9 @@ const resolveBookingRoomAssignments = async (
   const remainingRooms = rooms.filter((room) => !selectedItemRoomIds.has(room.id));
   let nextRoomIndex = 0;
 
-  const isUnitBooking = booking.targetType === BookingTargetType.UNIT;
+  const isUnitBooking =
+    booking.targetType === BookingTargetType.UNIT &&
+    options.forceConcreteRooms !== true;
 
   const assignments = await Promise.all(
     itemAssignments.map(async ({ item, room }) => {
@@ -1066,6 +1091,976 @@ export const updateBooking = async (
   }
 
   return mapDashboardBooking(updatedBooking);
+};
+
+const assertExpectedBookingVersion = (
+  actualVersion: number,
+  expectedVersion: number,
+) => {
+  if (actualVersion !== expectedVersion) {
+    throw new HttpError(
+      409,
+      "BOOKING_VERSION_CONFLICT",
+      "Booking was changed by another operator. Reload and try again.",
+    );
+  }
+};
+
+const assertTransactionalRoomsAvailable = async (
+  tx: Prisma.TransactionClient,
+  booking: repo.DashboardBookingRecord,
+  roomIds: string[],
+  requireInspected: boolean,
+) => {
+  const rooms = await tx.room.findMany({
+    where: { id: { in: roomIds } },
+    include: { unit: true },
+  });
+
+  if (rooms.length !== new Set(roomIds).size) {
+    throw new HttpError(404, "ROOM_NOT_FOUND", "One or more rooms were not found");
+  }
+
+  for (const room of rooms) {
+    if (room.unit.propertyId !== booking.propertyId) {
+      throw new HttpError(
+        400,
+        "INVALID_ROOM",
+        "Room does not belong to the selected property",
+      );
+    }
+
+    if (
+      !room.isActive ||
+      !room.unit.isActive ||
+      room.status !== RoomStatus.AVAILABLE ||
+      room.unit.status !== UnitStatus.ACTIVE
+    ) {
+      throw new HttpError(
+        409,
+        "ROOM_NOT_AVAILABLE",
+        "Selected room is not operationally available",
+      );
+    }
+
+    if (
+      requireInspected &&
+      room.housekeepingStatus !== RoomHousekeepingStatus.INSPECTED
+    ) {
+      throw new HttpError(
+        409,
+        "ROOM_NOT_INSPECTED",
+        `Room ${room.number} must be inspected before check-in`,
+      );
+    }
+
+    const [bookingConflict, maintenanceConflict] = await Promise.all([
+      tx.bookingItem.count({
+        where: {
+          OR: [
+            { targetType: BookingTargetType.ROOM, roomId: room.id },
+            { targetType: BookingTargetType.UNIT, unitId: room.unitId },
+          ],
+          booking: {
+            id: { not: booking.id },
+            status: {
+              notIn: [
+                BookingStatus.CANCELLED,
+                BookingStatus.CHECKED_OUT,
+                BookingStatus.NO_SHOW,
+              ],
+            },
+            checkIn: { lt: booking.checkOut },
+            checkOut: { gt: booking.checkIn },
+          },
+        },
+      }),
+      tx.maintenanceBlock.count({
+        where: {
+          propertyId: booking.propertyId,
+          status: { notIn: ["RESOLVED", "CANCELLED"] },
+          startDate: { lt: booking.checkOut },
+          endDate: { gt: booking.checkIn },
+          OR: [
+            { targetType: "PROPERTY" },
+            { targetType: "UNIT", unitId: room.unitId },
+            { targetType: "ROOM", roomId: room.id },
+          ],
+        },
+      }),
+    ]);
+
+    if (bookingConflict > 0 || maintenanceConflict > 0) {
+      throw new HttpError(
+        409,
+        "ROOM_NOT_AVAILABLE",
+        `Room ${room.number} is no longer available for this stay`,
+      );
+    }
+  }
+
+  return rooms;
+};
+
+const updateVersionedBooking = async (
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+  expectedVersion: number,
+  data: Prisma.BookingUpdateManyMutationInput,
+) => {
+  const result = await tx.booking.updateMany({
+    where: { id: bookingId, version: expectedVersion },
+    data: {
+      ...data,
+      version: { increment: 1 },
+    },
+  });
+
+  if (result.count !== 1) {
+    throw new HttpError(
+      409,
+      "BOOKING_VERSION_CONFLICT",
+      "Booking was changed by another operator. Reload and try again.",
+    );
+  }
+};
+
+const createOperationEvent = (
+  tx: Prisma.TransactionClient,
+  input: {
+    bookingId: string;
+    propertyId: string;
+    actorUserId: string;
+    eventType: BookingOperationEventType;
+    note?: string;
+    metadata?: Prisma.InputJsonValue;
+  },
+) =>
+  tx.bookingOperationEvent.create({
+    data: {
+      bookingId: input.bookingId,
+      propertyId: input.propertyId,
+      actorUserId: input.actorUserId,
+      eventType: input.eventType,
+      ...(input.note !== undefined && { note: input.note }),
+      ...(input.metadata !== undefined && { metadata: input.metadata }),
+    },
+  });
+
+const createStatusHistory = (
+  tx: Prisma.TransactionClient,
+  input: {
+    bookingId: string;
+    fromStatus: BookingStatus;
+    toStatus: BookingStatus;
+    actorUserId: string;
+    note?: string;
+  },
+) =>
+  tx.bookingStatusHistory.create({
+    data: {
+      bookingId: input.bookingId,
+      fromStatus: input.fromStatus,
+      toStatus: input.toStatus,
+      actorUserId: input.actorUserId,
+      ...(input.note !== undefined && { note: input.note }),
+    },
+  });
+
+const findTransactionBooking = async (
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+) => {
+  const booking = await tx.booking.findUnique({
+    where: { id: bookingId },
+    include: repo.dashboardBookingInclude,
+  });
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  return booking;
+};
+
+const mapTransactionBooking = async (
+  tx: Prisma.TransactionClient,
+  bookingId: string,
+) =>
+  mapDashboardBooking(
+    await tx.booking.findUniqueOrThrow({
+      where: { id: bookingId },
+      include: repo.dashboardBookingInclude,
+    }),
+  );
+
+export const checkInBooking = async (
+  userId: string,
+  bookingId: string,
+  input: CheckInBookingInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  const selectedRoomIds =
+    input.roomIds ??
+    initialBooking.items
+      .map((item) => item.roomId)
+      .filter((roomId): roomId is string => roomId !== null);
+  const assignment =
+    input.roomIds !== undefined
+      ? await resolveBookingRoomAssignments(initialBooking, input.roomIds, {
+          forceConcreteRooms: true,
+          allowLateAssignment: true,
+        })
+      : undefined;
+
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    assertBookingTransitionAllowed(booking.status, BookingStatus.CHECKED_IN);
+
+    const today = getLocalDateValue(new Date(), booking.property.tenant.timezone);
+    const arrivalDate = getLocalDateValue(
+      booking.checkIn,
+      booking.property.tenant.timezone,
+    );
+    if (today < arrivalDate) {
+      throw new HttpError(
+        409,
+        "CHECK_IN_TOO_EARLY",
+        "Guest can be checked in only on or after the check-in date",
+      );
+    }
+    if (today > arrivalDate) {
+      requireAuditNote(input.note, "Audit note is required for late arrival");
+    }
+
+    if (selectedRoomIds.length !== booking.items.length) {
+      throw new HttpError(
+        422,
+        "BOOKING_ASSIGNMENT_REQUIRED",
+        "Assign a concrete room for every booking item before check-in",
+      );
+    }
+    await assertTransactionalRoomsAvailable(tx, booking, selectedRoomIds, true);
+
+    const balanceAmount = getBookingBalanceAmount(booking);
+    if (balanceAmount.greaterThan(0)) {
+      if (input.allowBalanceDueCheckIn !== true) {
+        throw new HttpError(
+          409,
+          "CHECK_IN_BALANCE_DUE",
+          "Record balance payment before check-in or use an audited override",
+        );
+      }
+      requireAuditNote(
+        input.note,
+        "Override note is required to check in with balance due",
+      );
+    }
+
+    if (assignment !== undefined) {
+      for (const itemAssignment of assignment.assignments) {
+        await tx.bookingItem.update({
+          where: { id: itemAssignment.itemId },
+          data: itemAssignment.data,
+        });
+      }
+    }
+
+    const now = new Date();
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
+      status: BookingStatus.CHECKED_IN,
+      checkedInAt: now,
+      identityVerifiedAt: now,
+      ...(input.identityDocumentType !== undefined && {
+        identityDocumentType: input.identityDocumentType,
+        identityDocumentReference: input.identityDocumentReference,
+      }),
+      ...(assignment !== undefined && assignment.bookingData),
+    });
+    await createStatusHistory(tx, {
+      bookingId,
+      fromStatus: booking.status,
+      toStatus: BookingStatus.CHECKED_IN,
+      actorUserId: actor.id,
+      ...(input.note !== undefined && { note: input.note }),
+    });
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.CHECK_IN,
+      ...(input.note !== undefined && { note: input.note }),
+      metadata: {
+        roomIds: selectedRoomIds,
+        identityVerified: true,
+        lateArrival: today > arrivalDate,
+      },
+    });
+    if (balanceAmount.greaterThan(0)) {
+      await createOperationEvent(tx, {
+        bookingId,
+        propertyId: booking.propertyId,
+        actorUserId: actor.id,
+        eventType: BookingOperationEventType.BALANCE_OVERRIDE,
+        ...(input.note !== undefined && { note: input.note }),
+        metadata: { balanceAmount: balanceAmount.toString(), stage: "CHECK_IN" },
+      });
+    }
+
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+export const checkOutBooking = async (
+  userId: string,
+  bookingId: string,
+  input: CheckOutBookingInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    assertBookingTransitionAllowed(booking.status, BookingStatus.CHECKED_OUT);
+    const balanceAmount = getBookingBalanceAmount(booking);
+    if (balanceAmount.greaterThan(0)) {
+      if (
+        input.allowBalanceDueCheckout !== true ||
+        !isAdminOverrideRole(actor.role)
+      ) {
+        throw new HttpError(
+          409,
+          "CHECK_OUT_BALANCE_DUE",
+          "Settle the folio before checkout or use an Admin override",
+        );
+      }
+      requireAuditNote(
+        input.note,
+        "Override note is required to check out with balance due",
+      );
+    }
+
+    const roomIds = booking.items
+      .map((item) => item.roomId)
+      .filter((roomId): roomId is string => roomId !== null);
+    const now = new Date();
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
+      status: BookingStatus.CHECKED_OUT,
+      checkedOutAt: now,
+    });
+    for (const roomId of roomIds) {
+      const room = await tx.room.findUniqueOrThrow({ where: { id: roomId } });
+      await tx.room.update({
+        where: { id: roomId },
+        data: { housekeepingStatus: RoomHousekeepingStatus.DIRTY },
+      });
+      await tx.roomHousekeepingEvent.create({
+        data: {
+          propertyId: booking.propertyId,
+          roomId,
+          actorUserId: actor.id,
+          bookingId,
+          fromStatus: room.housekeepingStatus,
+          toStatus: RoomHousekeepingStatus.DIRTY,
+          note: input.note ?? "Room marked dirty after checkout",
+        },
+      });
+    }
+    await createStatusHistory(tx, {
+      bookingId,
+      fromStatus: booking.status,
+      toStatus: BookingStatus.CHECKED_OUT,
+      actorUserId: actor.id,
+      ...(input.note !== undefined && { note: input.note }),
+    });
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.CHECK_OUT,
+      ...(input.note !== undefined && { note: input.note }),
+      metadata: { roomIds, balanceAmount: balanceAmount.toString() },
+    });
+    if (balanceAmount.greaterThan(0)) {
+      await createOperationEvent(tx, {
+        bookingId,
+        propertyId: booking.propertyId,
+        actorUserId: actor.id,
+        eventType: BookingOperationEventType.BALANCE_OVERRIDE,
+        ...(input.note !== undefined && { note: input.note }),
+        metadata: { balanceAmount: balanceAmount.toString(), stage: "CHECK_OUT" },
+      });
+    }
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+export const markBookingNoShow = async (
+  userId: string,
+  bookingId: string,
+  input: NoShowBookingInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    assertBookingTransitionAllowed(booking.status, BookingStatus.NO_SHOW);
+    if (!isBookingNoShowEligible(booking)) {
+      throw new HttpError(
+        409,
+        "NO_SHOW_NOT_ELIGIBLE",
+        "Booking is not eligible for no-show yet",
+      );
+    }
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
+      status: BookingStatus.NO_SHOW,
+      noShowAt: new Date(),
+    });
+    await createStatusHistory(tx, {
+      bookingId,
+      fromStatus: booking.status,
+      toStatus: BookingStatus.NO_SHOW,
+      actorUserId: actor.id,
+      note: input.note,
+    });
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.NO_SHOW,
+      note: input.note,
+    });
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+export const moveBookingRooms = async (
+  userId: string,
+  bookingId: string,
+  input: MoveBookingRoomInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  const assignment = await resolveBookingRoomAssignments(
+    initialBooking,
+    input.roomIds,
+    { forceConcreteRooms: true, allowLateAssignment: true },
+  );
+  const oldRoomIds = initialBooking.items
+    .map((item) => item.roomId)
+    .filter((roomId): roomId is string => roomId !== null);
+
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    await assertTransactionalRoomsAvailable(
+      tx,
+      booking,
+      input.roomIds,
+      booking.status === BookingStatus.CHECKED_IN,
+    );
+    for (const itemAssignment of assignment.assignments) {
+      await tx.bookingItem.update({
+        where: { id: itemAssignment.itemId },
+        data: itemAssignment.data,
+      });
+    }
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
+      ...assignment.bookingData,
+    });
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType:
+        oldRoomIds.length > 0
+          ? BookingOperationEventType.ROOM_MOVE
+          : BookingOperationEventType.ROOM_ASSIGNMENT,
+      note: input.note,
+      metadata: { oldRoomIds, newRoomIds: input.roomIds },
+    });
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+export const correctBookingStatus = async (
+  userId: string,
+  bookingId: string,
+  input: CorrectBookingStatusInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  if (!isAdminOverrideRole(actor.role)) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN",
+      "Only Admin or Super Admin can correct booking status",
+    );
+  }
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
+      status: input.status,
+      ...(input.status !== BookingStatus.CANCELLED && {
+        cancellationReason: null,
+        cancelledAt: null,
+      }),
+    });
+    await createStatusHistory(tx, {
+      bookingId,
+      fromStatus: booking.status,
+      toStatus: input.status,
+      actorUserId: actor.id,
+      note: input.note,
+    });
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.STATUS_CORRECTION,
+      note: input.note,
+      metadata: { fromStatus: booking.status, toStatus: input.status },
+    });
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+const allowedHousekeepingTransitions: Record<
+  RoomHousekeepingStatus,
+  readonly RoomHousekeepingStatus[]
+> = {
+  [RoomHousekeepingStatus.DIRTY]: [RoomHousekeepingStatus.CLEANING],
+  [RoomHousekeepingStatus.CLEANING]: [
+    RoomHousekeepingStatus.DIRTY,
+    RoomHousekeepingStatus.CLEAN,
+  ],
+  [RoomHousekeepingStatus.CLEAN]: [
+    RoomHousekeepingStatus.DIRTY,
+    RoomHousekeepingStatus.INSPECTED,
+  ],
+  [RoomHousekeepingStatus.INSPECTED]: [RoomHousekeepingStatus.DIRTY],
+};
+
+export const updateRoomHousekeeping = async (
+  userId: string,
+  propertyId: string,
+  roomId: string,
+  input: UpdateRoomHousekeepingInput,
+) => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const room = await tx.room.findUnique({
+      where: { id: roomId },
+      include: { unit: true },
+    });
+    if (!room || room.unit.propertyId !== propertyId) {
+      throw new HttpError(404, "ROOM_NOT_FOUND", "Room not found");
+    }
+    if (room.housekeepingStatus !== input.expectedStatus) {
+      throw new HttpError(
+        409,
+        "HOUSEKEEPING_STATUS_CONFLICT",
+        "Room housekeeping status changed. Reload and try again.",
+      );
+    }
+    if (!allowedHousekeepingTransitions[room.housekeepingStatus].includes(input.status)) {
+      throw new HttpError(
+        409,
+        "INVALID_HOUSEKEEPING_TRANSITION",
+        `Cannot move housekeeping from ${room.housekeepingStatus} to ${input.status}`,
+      );
+    }
+    await tx.room.update({
+      where: { id: roomId },
+      data: { housekeepingStatus: input.status },
+    });
+    const event = await tx.roomHousekeepingEvent.create({
+      data: {
+        propertyId,
+        roomId,
+        actorUserId: actor.id,
+        fromStatus: room.housekeepingStatus,
+        toStatus: input.status,
+        ...(input.note !== undefined && { note: input.note }),
+      },
+    });
+    return {
+      roomId,
+      status: input.status,
+      updatedAt: event.createdAt,
+    };
+  });
+};
+
+export const createBookingFolioCharge = async (
+  userId: string,
+  bookingId: string,
+  input: CreateBookingFolioChargeInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    if (
+      booking.status === BookingStatus.CANCELLED ||
+      booking.status === BookingStatus.NO_SHOW
+    ) {
+      throw new HttpError(
+        409,
+        "FOLIO_CLOSED",
+        "Charges cannot be added to a cancelled or no-show booking",
+      );
+    }
+    const charge = await tx.bookingFolioCharge.create({
+      data: {
+        bookingId,
+        propertyId: booking.propertyId,
+        createdByUserId: actor.id,
+        type: input.type,
+        description: input.description,
+        amount: input.amount,
+        ...(input.note !== undefined && { note: input.note }),
+      },
+    });
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {});
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.FOLIO_CHARGE,
+      ...(input.note !== undefined && { note: input.note }),
+      metadata: {
+        chargeId: charge.id,
+        type: input.type,
+        amount: input.amount,
+        description: input.description,
+      },
+    });
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+export const voidBookingFolioCharge = async (
+  userId: string,
+  bookingId: string,
+  chargeId: string,
+  input: VoidBookingFolioChargeInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  if (!isAdminOverrideRole(actor.role)) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN",
+      "Only Admin or Super Admin can void folio charges",
+    );
+  }
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    const charge = await tx.bookingFolioCharge.findFirst({
+      where: { id: chargeId, bookingId, status: FolioChargeStatus.ACTIVE },
+    });
+    if (!charge) {
+      throw new HttpError(
+        404,
+        "FOLIO_CHARGE_NOT_FOUND",
+        "Active folio charge not found",
+      );
+    }
+    await tx.bookingFolioCharge.update({
+      where: { id: chargeId },
+      data: {
+        status: FolioChargeStatus.VOID,
+        voidReason: input.reason,
+        voidedAt: new Date(),
+        voidedByUserId: actor.id,
+      },
+    });
+    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {});
+    await createOperationEvent(tx, {
+      bookingId,
+      propertyId: booking.propertyId,
+      actorUserId: actor.id,
+      eventType: BookingOperationEventType.FOLIO_CHARGE_VOID,
+      note: input.reason,
+      metadata: { chargeId, amount: charge.amount.toString() },
+    });
+    return mapTransactionBooking(tx, bookingId);
+  });
+};
+
+const toLocalBusinessDateValue = (date: Date, timeZone: string) =>
+  getLocalDateValue(date, timeZone);
+
+export const getOperationsBoard = async (
+  userId: string,
+  propertyId: string,
+  businessDate: Date,
+) => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    include: { tenant: true },
+  });
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const targetDate = toLocalBusinessDateValue(
+    businessDate,
+    property.tenant.timezone,
+  );
+  const [bookings, rooms, maintenanceBlocks] = await Promise.all([
+    prisma.booking.findMany({
+      where: {
+        propertyId,
+        status: {
+          in: [
+            BookingStatus.CONFIRMED,
+            BookingStatus.CHECKED_IN,
+            BookingStatus.CANCELLED,
+            BookingStatus.NO_SHOW,
+          ],
+        },
+      },
+      include: repo.dashboardBookingInclude,
+      orderBy: [{ checkIn: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.room.findMany({
+      where: { unit: { is: { propertyId } } },
+      include: { unit: true },
+      orderBy: [{ unit: { floor: "asc" } }, { number: "asc" }],
+    }),
+    prisma.maintenanceBlock.findMany({
+      where: {
+        propertyId,
+        status: { notIn: ["RESOLVED", "CANCELLED"] },
+      },
+      orderBy: [{ priority: "desc" }, { startDate: "asc" }],
+    }),
+  ]);
+
+  const mapped = await Promise.all(bookings.map((booking) => mapDashboardBooking(booking)));
+  const byId = new Map(mapped.map((booking) => [booking.id, booking]));
+  const arrivals = bookings
+    .filter(
+      (booking) =>
+        booking.status === BookingStatus.CONFIRMED &&
+        toLocalBusinessDateValue(booking.checkIn, property.tenant.timezone) ===
+          targetDate,
+    )
+    .map((booking) => byId.get(booking.id)!);
+  const departures = bookings
+    .filter(
+      (booking) =>
+        booking.status === BookingStatus.CHECKED_IN &&
+        toLocalBusinessDateValue(booking.checkOut, property.tenant.timezone) ===
+          targetDate,
+    )
+    .map((booking) => byId.get(booking.id)!);
+  const inHouse = bookings
+    .filter((booking) => booking.status === BookingStatus.CHECKED_IN)
+    .map((booking) => byId.get(booking.id)!);
+  const lateArrivals = bookings
+    .filter(
+      (booking) =>
+        booking.status === BookingStatus.CONFIRMED &&
+        toLocalBusinessDateValue(booking.checkIn, property.tenant.timezone) <
+          targetDate,
+    )
+    .map((booking) => byId.get(booking.id)!);
+  const unassignedArrivals = arrivals.filter(
+    (booking) =>
+      booking.items.length === 0 ||
+      booking.items.some((item) => item.roomId === null),
+  );
+  const balanceDue = mapped.filter(
+    (booking) =>
+      booking.status !== BookingStatus.CANCELLED &&
+      booking.status !== BookingStatus.NO_SHOW &&
+      Number(booking.balanceAmount) > 0,
+  );
+  const refundAttention = mapped.filter(
+    (booking) =>
+      booking.refundRequest?.status === BookingRefundRequestStatus.REQUESTED ||
+      booking.refundRequest?.status === BookingRefundRequestStatus.IN_REVIEW,
+  );
+  const housekeeping = rooms
+    .filter(
+      (room) =>
+        room.housekeepingStatus !== RoomHousekeepingStatus.INSPECTED,
+    )
+    .map((room) => ({
+      roomId: room.id,
+      roomNumber: room.number,
+      roomName: room.name,
+      unitId: room.unitId,
+      unitNumber: room.unit.unitNumber,
+      floor: room.unit.floor,
+      status: room.housekeepingStatus,
+    }));
+  const maintenanceConflicts = maintenanceBlocks.flatMap((block) => {
+    const affected = bookings.filter((booking) => {
+      if (
+        booking.status !== BookingStatus.CONFIRMED &&
+        booking.status !== BookingStatus.CHECKED_IN
+      ) {
+        return false;
+      }
+      if (!(booking.checkIn < block.endDate && booking.checkOut > block.startDate)) {
+        return false;
+      }
+      return booking.items.some((item) => {
+        if (block.targetType === "PROPERTY") return true;
+        if (block.targetType === "UNIT") return item.unitId === block.unitId;
+        return item.roomId === block.roomId;
+      });
+    });
+    return affected.map((booking) => ({
+      maintenanceId: block.id,
+      priority: block.priority,
+      reason: block.reason,
+      booking: byId.get(booking.id)!,
+    }));
+  });
+
+  return {
+    propertyId,
+    propertyName: property.name,
+    timezone: property.tenant.timezone,
+    businessDate: businessDate.toISOString(),
+    summary: {
+      arrivals: arrivals.length,
+      departures: departures.length,
+      inHouse: inHouse.length,
+      lateArrivals: lateArrivals.length,
+      unassignedArrivals: unassignedArrivals.length,
+      balanceDue: balanceDue.length,
+      refundAttention: refundAttention.length,
+      housekeeping: housekeeping.length,
+      maintenanceConflicts: maintenanceConflicts.length,
+    },
+    arrivals,
+    departures,
+    inHouse,
+    lateArrivals,
+    unassignedArrivals,
+    balanceDue,
+    refundAttention,
+    housekeeping,
+    maintenanceConflicts,
+  };
+};
+
+export const getCashierSummary = async (
+  userId: string,
+  propertyId: string,
+  from: Date,
+  to: Date,
+) => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const [payments, refunds] = await Promise.all([
+    prisma.payment.findMany({
+      where: {
+        propertyId,
+        status: PaymentStatus.SUCCEEDED,
+        OR: [
+          { paidAt: { gte: from, lt: to } },
+          { paidAt: null, createdAt: { gte: from, lt: to } },
+        ],
+      },
+      include: { receivedBy: true },
+    }),
+    prisma.paymentRefund.findMany({
+      where: {
+        propertyId,
+        status: PaymentRefundStatus.SUCCEEDED,
+        OR: [
+          { processedAt: { gte: from, lt: to } },
+          { processedAt: null, createdAt: { gte: from, lt: to } },
+        ],
+      },
+      include: {
+        payment: {
+          include: { receivedBy: true },
+        },
+      },
+    }),
+  ]);
+
+  const rows = new Map<
+    string,
+    {
+      receivedByUserId: string | null;
+      receivedByName: string;
+      byMethod: Record<string, number>;
+      refunds: number;
+    }
+  >();
+  const rowFor = (id: string | null, name: string) => {
+    const key = id ?? "SYSTEM";
+    const existing = rows.get(key);
+    if (existing) return existing;
+    const created = {
+      receivedByUserId: id,
+      receivedByName: name,
+      byMethod: {} as Record<string, number>,
+      refunds: 0,
+    };
+    rows.set(key, created);
+    return created;
+  };
+
+  for (const payment of payments) {
+    const row = rowFor(
+      payment.receivedByUserId,
+      payment.receivedBy?.fullName ?? "Online / System",
+    );
+    row.byMethod[payment.method] =
+      (row.byMethod[payment.method] ?? 0) + Number(payment.amount);
+  }
+  for (const refund of refunds) {
+    const row = rowFor(
+      refund.payment.receivedByUserId,
+      refund.payment.receivedBy?.fullName ?? "Online / System",
+    );
+    row.refunds += Number(refund.amount);
+  }
+
+  return {
+    propertyId,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    rows: Array.from(rows.values()).map((row) => {
+      const collected = Object.values(row.byMethod).reduce(
+        (sum, amount) => sum + amount,
+        0,
+      );
+      const cashCollected = row.byMethod[PaymentMethod.CASH] ?? 0;
+      return {
+        ...row,
+        collected,
+        netCollected: collected - row.refunds,
+        expectedCash: cashCollected - row.refunds,
+      };
+    }),
+  };
 };
 
 export const recordBookingBalancePayment = async (
