@@ -1105,6 +1105,61 @@ test("dashboard records remaining balance payment and marks booking paid", async
   assert.equal(invoice.balance.toString(), "0");
 });
 
+test("dashboard records balance payment including folio charges", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-08-20T00:00:00.000Z"),
+      to: new Date("2027-08-22T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-folio-token`,
+  });
+
+  const updatedBooking = await dashboardService.getBookingById(state.superAdminId, booking.id);
+
+  const charged = await dashboardService.createBookingFolioCharge(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: updatedBooking.version,
+      type: "INCIDENTAL",
+      description: "Minibar",
+      amount: 100,
+      note: "Minibar charge.",
+    },
+  );
+
+  assert.equal(charged.balanceAmount, "5690");
+
+  const paid = await dashboardService.recordBookingBalancePayment(
+    state.managerId,
+    booking.id,
+    {
+      amount: 5690,
+      method: PaymentMethod.CASH,
+      note: "Collected at reception",
+      idempotencyKey: `${testId}-folio-balance-payment`,
+    },
+  );
+
+  assert.equal(paid.paymentStatus, "PAID");
+  assert.equal(paid.paidAmount, "5700");
+  assert.equal(paid.balanceAmount, "0");
+  assert.equal(paid.payments.length, 2);
+  assert.equal(paid.payments[1]?.purpose, PaymentPurpose.BALANCE);
+  assert.equal(paid.payments[1]?.amount, "5690");
+});
+
 test("dashboard records offline payment proof metadata", async () => {
   const booking = await publicService.createBooking(
     state.guestId,

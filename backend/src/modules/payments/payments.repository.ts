@@ -37,6 +37,16 @@ export const findBookingForPayment = (
           tenant: true,
         },
       },
+      folioCharges: {
+        where: {
+          status: "ACTIVE",
+        },
+      },
+      payments: {
+        include: {
+          refunds: true,
+        },
+      },
     },
   });
 
@@ -210,3 +220,7 @@ export const runPaymentTransaction = <T>(
     maxWait: 5_000,
     timeout: 10_000,
   });
+
+export type BookingForPaymentRecord = NonNullable<
+  Awaited<ReturnType<typeof findBookingForPayment>>
+>;

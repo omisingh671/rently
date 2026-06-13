@@ -399,25 +399,12 @@ export default function WalkInBookingPage() {
             <StayFields form={form} disabled={createBooking.isPending} onChange={updateForm} />
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-2 lg:items-end">
-            <label className="block text-sm">
-              <span className="font-medium text-slate-700">Coupon code</span>
-              <input
-                type="text"
-                value={form.couponCode}
-                disabled={createBooking.isPending}
-                placeholder="DISCOUNT20"
-                onChange={(event) =>
-                  updateForm({ couponCode: event.target.value.toUpperCase() })
-                }
-                className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100"
-              />
-            </label>
+          <div className="mt-4 flex justify-end">
             <Button
               type="button"
               size="sm"
               variant="info"
-              className="h-10 whitespace-nowrap shadow-md shadow-sky-100 lg:justify-self-end"
+              className="h-10 whitespace-nowrap shadow-md shadow-sky-100"
               disabled={!canCheckAvailability}
               onClick={() => checkAvailability.mutate()}
             >
@@ -522,7 +509,6 @@ function GuestFields({
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-900">Guest Details</h3>
       <label className="block text-sm">
         <span className="font-medium text-slate-700">Guest name</span>
         <input
@@ -597,7 +583,6 @@ function StayFields({
 }) {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-slate-900">Stay Details</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">From</span>
@@ -622,35 +607,50 @@ function StayFields({
           />
         </label>
       </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="font-medium text-slate-700">Guests</span>
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={form.guests}
+            required
+            disabled={disabled}
+            onChange={(event) => onChange({ guests: event.target.value })}
+            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="font-medium text-slate-700">Comfort</span>
+          <select
+            value={form.comfortOption}
+            disabled={disabled}
+            onChange={(event) =>
+              onChange({
+                comfortOption: event.target.value as ManualBookingForm["comfortOption"],
+              })
+            }
+            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          >
+            <option value="ALL">All</option>
+            <option value="NON_AC">Non-AC</option>
+            <option value="AC">AC</option>
+          </select>
+        </label>
+      </div>
       <label className="block text-sm">
-        <span className="font-medium text-slate-700">Guests</span>
+        <span className="font-medium text-slate-700">Coupon code</span>
         <input
-          type="number"
-          min={1}
-          max={20}
-          value={form.guests}
-          required
+          type="text"
+          value={form.couponCode}
           disabled={disabled}
-          onChange={(event) => onChange({ guests: event.target.value })}
-          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        />
-      </label>
-      <label className="block text-sm">
-        <span className="font-medium text-slate-700">Comfort</span>
-        <select
-          value={form.comfortOption}
-          disabled={disabled}
+          placeholder="DISCOUNT20"
           onChange={(event) =>
-            onChange({
-              comfortOption: event.target.value as ManualBookingForm["comfortOption"],
-            })
+            onChange({ couponCode: event.target.value.toUpperCase() })
           }
-          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-        >
-          <option value="ALL">All</option>
-          <option value="NON_AC">Non-AC</option>
-          <option value="AC">AC</option>
-        </select>
+          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100"
+        />
       </label>
     </div>
   );

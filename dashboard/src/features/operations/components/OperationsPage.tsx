@@ -17,6 +17,16 @@ import StatusBadge from "@/components/common/StatusBadge";
 import Pagination from "@/components/common/Pagination";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
+import {
+  FiChevronDown,
+  FiLogIn,
+  FiLogOut,
+  FiClock,
+  FiAlertTriangle,
+  FiDollarSign,
+  FiRefreshCw,
+  FiTool,
+} from "react-icons/fi";
 
 const {
   FiClipboard,
@@ -87,12 +97,12 @@ const addDays = (value: string, days: number) => {
   return toDateInput(date);
 };
 
-const formatMoney = (value: number) =>
+const formatMoney = (value: number | string) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(Number(value));
 
 const getBookingAssignedSummary = (booking: AdminBooking) => {
   if (booking.items.length === 0) {
@@ -148,15 +158,78 @@ function OperationsBoard({
 }) {
   const summaryItems = board
     ? [
-        ["Arrivals", board.summary.arrivals],
-        ["Departures", board.summary.departures],
-        ["In house", board.summary.inHouse],
-        ["Late arrivals", board.summary.lateArrivals],
-        ["Unassigned", board.summary.unassignedArrivals],
-        ["Balance due", board.summary.balanceDue],
-        ["Housekeeping", board.summary.housekeeping],
-        ["Refund attention", board.summary.refundAttention],
-        ["Maintenance conflicts", board.summary.maintenanceConflicts],
+        {
+          label: "Arrivals",
+          value: board.summary.arrivals,
+          icon: <FiLogIn className="h-4 w-4 text-indigo-600" />,
+          bg: "bg-indigo-50/40 border-indigo-100",
+          iconBg: "bg-indigo-50",
+          description: "Expected check-ins today",
+        },
+        {
+          label: "Departures",
+          value: board.summary.departures,
+          icon: <FiLogOut className="h-4 w-4 text-sky-600" />,
+          bg: "bg-sky-50/40 border-sky-100",
+          iconBg: "bg-sky-50",
+          description: "Expected check-outs today",
+        },
+        {
+          label: "In house",
+          value: board.summary.inHouse,
+          icon: <FiHome className="h-4 w-4 text-emerald-600" />,
+          bg: "bg-emerald-50/40 border-emerald-100",
+          iconBg: "bg-emerald-50",
+          description: "Guests currently staying",
+        },
+        {
+          label: "Late arrivals",
+          value: board.summary.lateArrivals,
+          icon: <FiClock className="h-4 w-4 text-amber-600" />,
+          bg: "bg-amber-50/40 border-amber-100",
+          iconBg: "bg-amber-50",
+          description: "Missed scheduled check-in",
+        },
+        {
+          label: "Unassigned",
+          value: board.summary.unassignedArrivals,
+          icon: <FiAlertTriangle className="h-4 w-4 text-rose-600" />,
+          bg: "bg-rose-50/40 border-rose-100",
+          iconBg: "bg-rose-55",
+          description: "Needs room assignment",
+        },
+        {
+          label: "Balance due",
+          value: board.summary.balanceDue,
+          icon: <FiDollarSign className="h-4 w-4 text-slate-600" />,
+          bg: "bg-slate-50 border-slate-200",
+          iconBg: "bg-slate-100",
+          description: "Bookings with outstanding dues",
+        },
+        {
+          label: "Housekeeping",
+          value: board.summary.housekeeping,
+          icon: <FiClipboard className="h-4 w-4 text-purple-600" />,
+          bg: "bg-purple-50/40 border-purple-100",
+          iconBg: "bg-purple-50",
+          description: "Dirty or cleaning rooms",
+        },
+        {
+          label: "Refund attention",
+          value: board.summary.refundAttention,
+          icon: <FiRefreshCw className="h-4 w-4 text-orange-600" />,
+          bg: "bg-orange-50/40 border-orange-100",
+          iconBg: "bg-orange-50",
+          description: "Active refund requests",
+        },
+        {
+          label: "Maintenance",
+          value: board.summary.maintenanceConflicts,
+          icon: <FiTool className="h-4 w-4 text-red-600" />,
+          bg: "bg-red-50/40 border-red-100",
+          iconBg: "bg-red-55",
+          description: "Maintenance conflicts",
+        },
       ]
     : [];
 
@@ -189,27 +262,37 @@ function OperationsBoard({
       ) : (
         <>
           <div className="grid gap-3 p-5 sm:grid-cols-3 xl:grid-cols-5">
-            {summaryItems.map(([label, value]) => (
+            {summaryItems.map((item) => (
               <div
-                key={label}
-                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                key={item.label}
+                className={`rounded-xl border p-4 transition-all duration-200 hover:shadow-md ${item.bg}`}
               >
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {label}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      {item.label}
+                    </span>
+                    <div className="text-3xl font-extrabold text-slate-900 leading-none">
+                      {item.value}
+                    </div>
+                  </div>
+                  <div className={`rounded-lg p-2 ${item.iconBg}`}>
+                    {item.icon}
+                  </div>
                 </div>
-                <div className="mt-1 text-2xl font-bold text-slate-900">
-                  {value}
-                </div>
+                <p className="mt-2.5 text-[10px] font-semibold text-slate-400">
+                  {item.description}
+                </p>
               </div>
             ))}
           </div>
 
-          <div className="grid gap-5 border-t border-slate-200 p-5 lg:grid-cols-2">
+          <div className="grid gap-6 border-t border-slate-200 p-5 lg:grid-cols-2 bg-slate-50/50">
             <div>
-              <h3 className="font-semibold text-slate-900">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
                 Immediate attention
               </h3>
-              <div className="mt-3 space-y-2 text-sm">
+              <div className="mt-4 space-y-3">
                 {board &&
                 board.lateArrivals.length +
                   board.unassignedArrivals.length +
@@ -220,33 +303,49 @@ function OperationsBoard({
                       <a
                         key={`late-${booking.id}`}
                         href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                        className="block rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 hover:border-amber-300"
+                        className="flex items-center gap-3 rounded-xl border border-amber-100 bg-amber-50/30 hover:bg-amber-50/60 px-4 py-3 text-amber-900 shadow-sm transition duration-200 hover:border-amber-200"
                       >
-                        Late arrival: {booking.bookingRef} / {booking.guestName}
+                        <FiClock className="h-5 w-5 text-amber-500 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm">Late Arrival Alert</div>
+                          <div className="text-xs text-amber-700 mt-0.5 font-medium">
+                            Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName}
+                          </div>
+                        </div>
                       </a>
                     ))}
                     {board.unassignedArrivals.map((booking) => (
                       <a
                         key={`unassigned-${booking.id}`}
                         href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                        className="block rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900"
+                        className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50/30 hover:bg-rose-50/60 px-4 py-3 text-rose-900 shadow-sm transition duration-200 hover:border-rose-200"
                       >
-                        Room assignment needed: {booking.bookingRef}
+                        <FiAlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm">Room Assignment Required</div>
+                          <div className="text-xs text-rose-700 mt-0.5 font-medium">
+                            Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName || "Guest"}
+                          </div>
+                        </div>
                       </a>
                     ))}
                     {board.maintenanceConflicts.map((conflict) => (
                       <div
                         key={`${conflict.maintenanceId}-${conflict.booking.id}`}
-                        className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900"
+                        className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50/30 px-4 py-3 text-red-900 shadow-sm"
                       >
-                        {formatEnumLabel(conflict.priority)} maintenance conflict:
-                        {" "}
-                        {conflict.booking.bookingRef}
+                        <FiTool className="h-5 w-5 text-red-500 shrink-0" />
+                        <div className="min-w-0">
+                          <div className="font-semibold text-sm">{formatEnumLabel(conflict.priority)} Maintenance Conflict</div>
+                          <div className="text-xs text-red-700 mt-0.5 font-medium">
+                            Room block affects booking Ref: <span className="font-bold">{conflict.booking.bookingRef}</span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </>
                 ) : (
-                  <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm font-semibold text-emerald-800">
                     No urgent operational exceptions.
                   </div>
                 )}
@@ -254,40 +353,47 @@ function OperationsBoard({
             </div>
 
             <div>
-              <h3 className="font-semibold text-slate-900">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
                 Cashier by employee
               </h3>
-              <div className="mt-3 space-y-2 text-sm">
+              <div className="mt-4 space-y-3">
                 {cashierRows.length > 0 ? (
                   cashierRows.map((row) => (
                     <div
                       key={row.receivedByUserId ?? "SYSTEM"}
-                      className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-slate-100 bg-white p-4 gap-3 shadow-sm hover:shadow-md transition duration-200"
                     >
-                      <div>
-                        <div className="font-semibold text-slate-800">
+                      <div className="min-w-0 space-y-1">
+                        <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-indigo-500" />
                           {row.receivedByName}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          Expected cash {formatMoney(row.expectedCash)} /
-                          refunds {formatMoney(row.refunds)}
+                        <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500 font-medium">
+                          <span>Expected Cash: <strong className="text-slate-700">{formatMoney(row.expectedCash)}</strong></span>
+                          <span className="text-slate-300">|</span>
+                          <span>Refunds: <strong className="text-red-600">{formatMoney(row.refunds)}</strong></span>
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {Object.entries(row.byMethod)
-                            .map(
-                              ([method, amount]) =>
-                                `${formatEnumLabel(method)} ${formatMoney(amount)}`,
-                            )
-                            .join(" / ")}
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {Object.entries(row.byMethod).map(([method, amount]) => (
+                            <span
+                              key={method}
+                              className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 uppercase border border-slate-200/50"
+                            >
+                              {formatEnumLabel(method)}: {formatMoney(amount)}
+                            </span>
+                          ))}
                         </div>
                       </div>
-                      <div className="font-bold text-slate-900">
-                        {formatMoney(row.netCollected)}
+                      <div className="flex flex-col items-start sm:items-end justify-center shrink-0 border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-4">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Collected</div>
+                        <div className={`text-xl font-black ${row.netCollected >= 0 ? "text-emerald-700" : "text-red-700"} mt-0.5`}>
+                          {formatMoney(row.netCollected)}
+                        </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="rounded-md border border-slate-200 px-3 py-2 text-slate-500">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
                     No successful payments for this business date.
                   </div>
                 )}
@@ -341,7 +447,7 @@ export default function OperationsPage({ module }: Props) {
     toDateInput(new Date()),
   );
 
-  const { properties, selectedPropertyId, setSelectedPropertyId } =
+  const { properties, selectedPropertyId, setSelectedPropertyId, isLoading: isPropertyLoading } =
     useCurrentProperty();
   const activeFilters = useMemo(
     () => ({
@@ -428,6 +534,14 @@ export default function OperationsPage({ module }: Props) {
     }
   };
 
+  if (isPropertyLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="text-sm text-slate-500 animate-pulse">Loading properties...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {module === "bookings" && selectedPropertyId && (
@@ -468,7 +582,7 @@ export default function OperationsPage({ module }: Props) {
                 setSelectedPropertyId(event.target.value || null);
                 setPage(1);
               }}
-              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-8 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-72"
+              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-72"
             >
               <option value="">Select property</option>
               {properties.map((property) => (
@@ -477,6 +591,7 @@ export default function OperationsPage({ module }: Props) {
                 </option>
               ))}
             </select>
+            <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
 
           <div className="relative">
@@ -486,7 +601,7 @@ export default function OperationsPage({ module }: Props) {
               onChange={(event) =>
                 setFilterValue("status", event.target.value)
               }
-              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-8 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
+              className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
             >
               <option value="">All statuses</option>
               {statuses.map((status) => (
@@ -495,6 +610,7 @@ export default function OperationsPage({ module }: Props) {
                 </option>
               ))}
             </select>
+            <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
           </div>
 
           {module === "enquiries" && (
@@ -505,7 +621,7 @@ export default function OperationsPage({ module }: Props) {
                 onChange={(event) =>
                   setFilterValue("source", event.target.value)
                 }
-                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-8 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
+                className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
               >
                 <option value="">All sources</option>
                 {enquirySources.map((source) => (
@@ -514,6 +630,7 @@ export default function OperationsPage({ module }: Props) {
                   </option>
                 ))}
               </select>
+              <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
             </div>
           )}
         </div>
@@ -650,12 +767,11 @@ export default function OperationsPage({ module }: Props) {
                     <td className="px-6 py-4">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-baseline gap-0.5 text-lg font-bold text-indigo-700">
-                          <span className="text-xs font-medium text-indigo-400">INR</span>
-                          <span>{booking.totalAmount}</span>
+                          <span>{formatMoney(booking.totalAmount)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider">
                           {Number(booking.upfrontAmount) > 0 ? (
-                            <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Token: {booking.upfrontAmount}</span>
+                            <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Token: {formatMoney(booking.upfrontAmount)}</span>
                           ) : (
                             <span className="text-slate-400">No upfront</span>
                           )}

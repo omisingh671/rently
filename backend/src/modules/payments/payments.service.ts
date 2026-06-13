@@ -4,6 +4,7 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentPurpose,
+  PaymentRefundStatus,
   PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
@@ -99,6 +100,46 @@ const assertSameIdempotentPayment = (
   }
 };
 
+const getBookingBalanceInfo = (
+  booking: repo.BookingForPaymentRecord,
+) => {
+  const folioTotal = booking.folioCharges
+    .filter((charge) => charge.status === "ACTIVE")
+    .reduce((sum, charge) => sum.plus(charge.amount), zeroDecimal);
+
+  const paidAmount = booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce((sum, payment) => sum.plus(payment.amount), zeroDecimal);
+
+  const refundedAmount = booking.payments.reduce(
+    (sum, payment) =>
+      sum.plus(
+        payment.refunds
+          .filter(
+            (refund) =>
+              refund.status === PaymentRefundStatus.PENDING ||
+              refund.status === PaymentRefundStatus.SUCCEEDED,
+          )
+          .reduce((total, refund) => total.plus(refund.amount), zeroDecimal),
+      ),
+    zeroDecimal,
+  );
+
+  const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
+  const balanceAmount = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(folioTotal).minus(netPaidAmount),
+  );
+
+  return {
+    folioTotal,
+    paidAmount,
+    refundedAmount,
+    netPaidAmount,
+    balanceAmount,
+  };
+};
+
 export const createManualPayment = async (
   input: CreateManualPaymentInput,
 ): Promise<CreateManualPaymentDTO> =>
@@ -112,14 +153,15 @@ export const createManualPayment = async (
 
     if (existingPayment) {
       assertSameIdempotentPayment(existingPayment, input);
-      const paidAmount = await repo.sumSucceededPaymentsByBooking(
+      const bookingForExisting = await repo.findBookingForPayment(
         existingPayment.bookingId,
+        undefined,
         tx,
       );
-      const balanceAmount = maxDecimal(
-        zeroDecimal,
-        existingPayment.booking.totalAmount.minus(paidAmount),
-      );
+      if (!bookingForExisting) {
+        throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+      }
+      const { paidAmount, balanceAmount } = getBookingBalanceInfo(bookingForExisting);
       if (existingPayment.status === PaymentStatus.SUCCEEDED) {
         if (balanceAmount.equals(zeroDecimal)) {
           await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
@@ -163,11 +205,12 @@ export const createManualPayment = async (
       );
     }
 
-    const paidBefore = await repo.sumSucceededPaymentsByBooking(
-      booking.id,
-      tx,
-    );
-    const balanceBefore = booking.totalAmount.minus(paidBefore);
+    const {
+      folioTotal,
+      paidAmount: paidBefore,
+      netPaidAmount: netPaidBefore,
+      balanceAmount: balanceBefore,
+    } = getBookingBalanceInfo(booking);
 
     if (balanceBefore.lessThanOrEqualTo(0)) {
       throw new HttpError(
@@ -258,12 +301,13 @@ export const createManualPayment = async (
     }
 
     const paidAfter = paidBefore.plus(amount);
+    const netPaidAfter = netPaidBefore.plus(amount);
     const balanceAfter = maxDecimal(
       zeroDecimal,
-      booking.totalAmount.minus(paidAfter),
+      booking.totalAmount.plus(folioTotal).minus(netPaidAfter),
     );
     const nextPaymentStatus = resolveBookingPaymentStatus(
-      booking.totalAmount,
+      booking.totalAmount.plus(folioTotal),
       paidAfter,
     );
 
@@ -326,3 +370,5 @@ export const createManualPayment = async (
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });
+
+
