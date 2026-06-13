@@ -1,4 +1,5 @@
 import { prisma } from "@/db/prisma.js";
+import type { SessionAudience } from "@/generated/prisma/enums.js";
 
 /**
  * Users
@@ -37,6 +38,7 @@ export const createUser = (data: {
 export const createSession = (
   userId: string,
   refreshToken: string,
+  audience: SessionAudience,
   expiresAt: Date,
   ip?: string,
   userAgent?: string,
@@ -45,14 +47,18 @@ export const createSession = (
     data: {
       userId,
       refreshToken,
+      audience,
       expiresAt,
       ip: ip ?? null,
       userAgent: userAgent ?? null,
     },
   });
 
-export const findSessionByToken = (refreshToken: string) =>
-  prisma.session.findUnique({ where: { refreshToken } });
+export const findSessionByToken = (
+  refreshToken: string,
+  audience: SessionAudience,
+) =>
+  prisma.session.findFirst({ where: { refreshToken, audience } });
 
 export const deleteSessionByToken = (refreshToken: string) =>
   prisma.session.deleteMany({
@@ -75,13 +81,14 @@ export const deleteOtherSessionsForUser = (
 
 export const rotateSessionToken = (
   currentRefreshToken: string,
+  audience: SessionAudience,
   nextRefreshToken: string,
   expiresAt: Date,
   ip?: string,
   userAgent?: string,
 ) =>
-  prisma.session.update({
-    where: { refreshToken: currentRefreshToken },
+  prisma.session.updateMany({
+    where: { refreshToken: currentRefreshToken, audience },
     data: {
       refreshToken: nextRefreshToken,
       expiresAt,

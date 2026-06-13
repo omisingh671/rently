@@ -14,6 +14,8 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const TOKEN_TYPE = "Bearer";
 export const REQUEST_HEADER_AUTH_KEY = "Authorization";
 export const APP_HEADER_CLIENT_NAME_KEY = "X-APP-NAME";
+export const APP_CLIENT_HEADER_KEY = "X-App-Client";
+export const APP_CLIENT = "dashboard";
 
 // Storage keys
 export const TOKEN_NAME_IN_STORAGE = "token";

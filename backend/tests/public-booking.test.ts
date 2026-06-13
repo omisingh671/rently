@@ -377,34 +377,36 @@ before(async () => {
 });
 
 after(async () => {
-  if (state !== undefined) {
-    await prisma.property.deleteMany({
-      where: { id: state.propertyId },
-    });
+  try {
+    if (state !== undefined) {
+      await prisma.property.deleteMany({
+        where: { tenantId: state.tenantId },
+      });
 
-    await prisma.user.deleteMany({
-      where: {
-        OR: [
-          {
-            id: {
-              in: [state.guestOneId, state.guestTwoId, state.superAdminId],
+      await prisma.user.deleteMany({
+        where: {
+          OR: [
+            {
+              id: {
+                in: [state.guestOneId, state.guestTwoId, state.superAdminId],
+              },
             },
-          },
-          {
-            email: {
-              contains: testId,
+            {
+              email: {
+                contains: testId,
+              },
             },
-          },
-        ],
-      },
-    });
+          ],
+        },
+      });
 
-    await prisma.tenant.deleteMany({
-      where: { id: state.tenantId },
-    });
+      await prisma.tenant.deleteMany({
+        where: { id: state.tenantId },
+      });
+    }
+  } finally {
+    await prisma.$disconnect();
   }
-
-  await prisma.$disconnect();
 });
 
 const createScopedBookableProperty = async (input: {
@@ -856,7 +858,7 @@ test("public availability respects pricing stay limits and validity windows", as
 });
 
 test("public availability excludes unpriced properties in city-scoped results", async () => {
-  const city = `${testId} Shared City`;
+  const city = `${testId} Pricing Coverage City`;
   const unpriced = await createScopedBookableProperty({
     slug: `${testId}-unpriced-city`,
     name: `${testId} Unpriced City Property`,
@@ -869,25 +871,31 @@ test("public availability excludes unpriced properties in city-scoped results", 
     price: 3100,
   });
 
-  const availability = await publicService.checkAvailability(
-    {
-      checkIn: new Date("2032-01-10T00:00:00.000Z"),
-      checkOut: new Date("2032-01-11T00:00:00.000Z"),
-      guests: 2,
-      comfortOption: ComfortOption.AC,
-      city,
-    },
-    { tenantSlug: state.tenantSlug },
-  );
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-01-10T00:00:00.000Z"),
+        checkOut: new Date("2032-01-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
 
-  const propertyIds = new Set(
-    availability.options.map((option) => option.propertyId),
-  );
+    const propertyIds = new Set(
+      availability.options.map((option) => option.propertyId),
+    );
 
-  assert.equal(availability.available, true);
-  assert.equal(propertyIds.has(priced.property.id), true);
-  assert.equal(propertyIds.has(unpriced.property.id), false);
-  assert.deepEqual([...propertyIds], [priced.property.id]);
+    assert.equal(availability.available, true);
+    assert.equal(propertyIds.has(priced.property.id), true);
+    assert.equal(propertyIds.has(unpriced.property.id), false);
+    assert.deepEqual([...propertyIds], [priced.property.id]);
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: { in: [unpriced.property.id, priced.property.id] } },
+    });
+  }
 });
 
 test("public availability returns limited public-safe booking options", async () => {
@@ -2060,7 +2068,7 @@ test("public availability exposes package options and metadata for guest counts 
 });
 
 test("city availability labels properties and internal options never mix properties", async () => {
-  const city = `${testId} Shared City`;
+  const city = `${testId} Option Isolation City`;
   const first = await createScopedBookableProperty({
     slug: `${testId}-shared-city-a`,
     name: `${testId} Shared City A`,

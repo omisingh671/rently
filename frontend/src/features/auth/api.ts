@@ -25,6 +25,7 @@ import type {
 import { API_ENDPOINTS } from "@/configs/apiEndpoints";
 import { normalizeApiError } from "@/utils/errors";
 import type { AppError } from "@/utils/appError";
+import { createAppError } from "@/utils/appError";
 
 /* Standard backend response envelope */
 interface ApiResponse<T> {
@@ -33,6 +34,17 @@ interface ApiResponse<T> {
   message?: string;
   devResetToken?: string;
 }
+
+const assertFrontendUser = (response: LoginResponse): LoginResponse => {
+  if (response.user.role !== "GUEST") {
+    throw createAppError(
+      "AUTH",
+      "This account cannot access the guest application.",
+    );
+  }
+
+  return response;
+};
 
 /**
  * LOGIN
@@ -45,7 +57,7 @@ export const login = async (payload: LoginPayload): Promise<LoginResponse> => {
       payload,
     );
 
-    return res.data.data as LoginResponse;
+    return assertFrontendUser(res.data.data as LoginResponse);
   } catch (err) {
     throw normalizeApiError(err) as AppError;
   }
@@ -79,7 +91,7 @@ export const refresh = async (): Promise<LoginResponse> => {
     API_ENDPOINTS.auth.refreshToken,
   );
 
-  return res.data.data as LoginResponse;
+  return assertFrontendUser(res.data.data as LoginResponse);
 };
 
 /**
@@ -99,7 +111,12 @@ export const me = async (): Promise<{ user: AuthUser }> => {
     API_ENDPOINTS.auth.me,
   );
 
-  return res.data.data as { user: AuthUser };
+  const data = res.data.data as { user: AuthUser };
+  assertFrontendUser({
+    user: data.user,
+    accessToken: "",
+  });
+  return data;
 };
 
 /**

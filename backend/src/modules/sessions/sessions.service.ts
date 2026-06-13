@@ -20,6 +20,7 @@ const mapSession = (session: repo.SessionRecord, currentRefreshToken?: string): 
     userFullName: session.user.fullName,
     userEmail: session.user.email,
     userRole: session.user.role,
+    audience: session.audience,
     ip: session.ip,
     userAgent: session.userAgent,
     expiresAt: session.expiresAt,

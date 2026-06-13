@@ -207,6 +207,7 @@ export default function SessionsPage() {
               <AdminTableCell as="th">#</AdminTableCell>
               <AdminTableCell as="th">User</AdminTableCell>
               <AdminTableCell as="th">Role</AdminTableCell>
+              <AdminTableCell as="th">Application</AdminTableCell>
               <AdminTableCell as="th">Status</AdminTableCell>
               <AdminTableCell as="th">Device</AdminTableCell>
               <AdminTableCell as="th">Expires</AdminTableCell>
@@ -218,9 +219,9 @@ export default function SessionsPage() {
 
           <tbody className={isFetching ? "opacity-70" : ""}>
             {isPending && sessions.length === 0 ? (
-              <AdminTableEmpty colSpan={7} message="Loading sessions..." />
+              <AdminTableEmpty colSpan={8} message="Loading sessions..." />
             ) : sessions.length === 0 ? (
-              <AdminTableEmpty colSpan={7} message="No sessions found." />
+              <AdminTableEmpty colSpan={8} message="No sessions found." />
             ) : (
               sessions.map((session, index) => {
                 const status = session.isCurrent
@@ -243,6 +244,9 @@ export default function SessionsPage() {
                       </div>
                     </AdminTableCell>
                     <AdminTableCell>{session.userRole}</AdminTableCell>
+                    <AdminTableCell>
+                      {formatEnumLabel(session.audience)}
+                    </AdminTableCell>
                     <AdminTableCell>
                       <StatusBadge
                         status={status}

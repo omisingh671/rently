@@ -2,11 +2,17 @@ import type { Request, RequestHandler } from "express";
 import { verifyAccessToken } from "@/common/utils/jwt.js";
 import { prisma } from "@/db/prisma.js";
 import { HttpError } from "../errors/http-error.js";
+import {
+  assertRoleAllowedForAudience,
+  parseAppClient,
+} from "@/modules/auth/auth-client.js";
+import type { SessionAudience } from "@/generated/prisma/enums.js";
 
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
     role: string;
+    audience?: SessionAudience;
   };
 }
 
@@ -44,11 +50,17 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   }
 
   const payload = verifyAccessToken(token);
+  const audience = parseAppClient(req.headers["x-app-client"]);
+  if (payload.audience !== audience) {
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid access token audience");
+  }
   const user = await getCurrentAuthUser(payload.sub);
+  assertRoleAllowedForAudience(user.role, audience);
 
   (req as AuthRequest).user = {
     userId: user.id,
     role: user.role,
+    audience,
   };
 
   next();
@@ -72,11 +84,17 @@ export const optionalAuthenticate: RequestHandler = async (req, _res, next) => {
   }
 
   const payload = verifyAccessToken(token);
+  const audience = parseAppClient(req.headers["x-app-client"]);
+  if (payload.audience !== audience) {
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid access token audience");
+  }
   const user = await getCurrentAuthUser(payload.sub);
+  assertRoleAllowedForAudience(user.role, audience);
 
   (req as AuthRequest).user = {
     userId: user.id,
     role: user.role,
+    audience,
   };
 
   next();

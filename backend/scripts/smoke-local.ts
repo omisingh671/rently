@@ -22,17 +22,13 @@ type BookingResponse = {
 const apiBaseUrl =
   process.env.SMOKE_BASE_URL ?? process.env.API_BASE_URL ?? "http://localhost:4000";
 const apiPrefix = process.env.API_PREFIX ?? "/api/v1";
-
-const credentials = {
-  guest: {
-    email: process.env.SMOKE_GUEST_EMAIL ?? "guest@sucasa.com",
-    password: process.env.SMOKE_GUEST_PASSWORD ?? "Guest@123",
-  },
-  dashboardAdmin: {
-    email: process.env.SMOKE_DASHBOARD_EMAIL ?? "superadmin@sucasa.com",
-    password: process.env.SMOKE_DASHBOARD_PASSWORD ?? "SuperAdmin@123",
-  },
-} as const;
+const requiredEnv = (name: string) => {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} is required for the local smoke test`);
+  }
+  return value;
+};
 
 const endpoint = (path: string) => `${apiBaseUrl}${path}`;
 const apiEndpoint = (path: string) => endpoint(`${apiPrefix}${path}`);
@@ -44,11 +40,17 @@ const assertOk = async (label: string, response: Response) => {
   }
 };
 
-const login = async (label: string, email: string, password: string) => {
+const login = async (
+  label: string,
+  email: string,
+  password: string,
+  appClient: "frontend" | "dashboard",
+) => {
   const response = await fetch(apiEndpoint("/auth/login"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "X-App-Client": appClient,
     },
     body: JSON.stringify({ email, password }),
   });
@@ -58,9 +60,15 @@ const login = async (label: string, email: string, password: string) => {
   return payload.data.accessToken;
 };
 
-const getJson = async (label: string, url: string, accessToken?: string) => {
+const getJson = async (
+  label: string,
+  url: string,
+  accessToken?: string,
+  appClient?: "frontend" | "dashboard",
+) => {
   const response = await fetch(url, {
     headers: {
+      ...(appClient !== undefined && { "X-App-Client": appClient }),
       ...(accessToken !== undefined && {
         Authorization: `Bearer ${accessToken}`,
       }),
@@ -94,122 +102,154 @@ const postJson = async (
   return response.json() as Promise<unknown>;
 };
 
-const checks = [
-  {
-    label: "backend health",
-    run: () => getJson("backend health", endpoint("/health")),
-  },
-  {
-    label: "public spaces",
-    run: () => getJson("public spaces", apiEndpoint("/public/spaces")),
-  },
-  {
-    label: "public tenant config",
-    run: () =>
-      getJson(
-        "public tenant config",
-        apiEndpoint("/public/tenant-config?tenantSlug=sucasa"),
-      ),
-  },
-  {
-    label: "guest login",
-    run: () =>
-      login("guest login", credentials.guest.email, credentials.guest.password),
-  },
-  {
-    label: "dashboard admin login",
-    run: () =>
-      login(
-        "dashboard admin login",
-        credentials.dashboardAdmin.email,
-        credentials.dashboardAdmin.password,
-      ),
-  },
-  {
-    label: "dashboard /me",
-    run: async () => {
-      const accessToken = await login(
-        "dashboard admin login",
-        credentials.dashboardAdmin.email,
-        credentials.dashboardAdmin.password,
-      );
-      return getJson(
-        "dashboard /me",
-        apiEndpoint("/dashboard/me"),
-        accessToken,
-      );
+try {
+  const tenantSlug = requiredEnv("SMOKE_TENANT_SLUG");
+  const tenantQuery = `tenantSlug=${encodeURIComponent(tenantSlug)}`;
+  const credentials = {
+    guest: {
+      email: requiredEnv("SMOKE_GUEST_EMAIL"),
+      password: requiredEnv("SMOKE_GUEST_PASSWORD"),
     },
-  },
-  {
-    label: "public booking manual payment",
-    run: async () => {
-      const accessToken = await login(
-        "guest login",
-        credentials.guest.email,
-        credentials.guest.password,
-      );
-      const spaces = (await getJson(
-        "public spaces",
-        apiEndpoint("/public/spaces?tenantSlug=sucasa"),
-      )) as SpacesResponse;
-      const space = spaces.data[0];
+    dashboardAdmin: {
+      email: requiredEnv("SMOKE_DASHBOARD_EMAIL"),
+      password: requiredEnv("SMOKE_DASHBOARD_PASSWORD"),
+    },
+  } as const;
 
-      if (!space) {
-        throw new Error("public booking manual payment failed: no spaces found");
-      }
-
-      let booking: BookingResponse | undefined;
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        const dayOffset = 730 + attempt * 31 + Math.floor(Math.random() * 20);
-        const checkIn = new Date(
-          Date.now() + dayOffset * 24 * 60 * 60 * 1000,
+  const checks = [
+    {
+      label: "backend health",
+      run: () => getJson("backend health", endpoint("/health")),
+    },
+    {
+      label: "public spaces",
+      run: () =>
+        getJson("public spaces", apiEndpoint(`/public/spaces?${tenantQuery}`)),
+    },
+    {
+      label: "public tenant config",
+      run: () =>
+        getJson(
+          "public tenant config",
+          apiEndpoint(`/public/tenant-config?${tenantQuery}`),
+        ),
+    },
+    {
+      label: "guest login",
+      run: () =>
+        login(
+          "guest login",
+          credentials.guest.email,
+          credentials.guest.password,
+          "frontend",
+        ),
+    },
+    {
+      label: "dashboard admin login",
+      run: () =>
+        login(
+          "dashboard admin login",
+          credentials.dashboardAdmin.email,
+          credentials.dashboardAdmin.password,
+          "dashboard",
+        ),
+    },
+    {
+      label: "dashboard /me",
+      run: async () => {
+        const accessToken = await login(
+          "dashboard admin login",
+          credentials.dashboardAdmin.email,
+          credentials.dashboardAdmin.password,
+          "dashboard",
         );
-        const checkOut = new Date(checkIn.getTime() + 24 * 60 * 60 * 1000);
+        return getJson(
+          "dashboard /me",
+          apiEndpoint("/dashboard/me"),
+          accessToken,
+          "dashboard",
+        );
+      },
+    },
+    {
+      label: "public booking manual payment",
+      run: async () => {
+        const accessToken = await login(
+          "guest login",
+          credentials.guest.email,
+          credentials.guest.password,
+          "frontend",
+        );
+        const spaces = (await getJson(
+          "public spaces",
+          apiEndpoint(`/public/spaces?${tenantQuery}`),
+        )) as SpacesResponse;
+        const space = spaces.data[0];
 
-        try {
-          booking = (await postJson(
-            "public booking",
-            apiEndpoint("/public/bookings?tenantSlug=sucasa"),
-            {
-              spaceId: space.id,
-              from: checkIn.toISOString(),
-              to: checkOut.toISOString(),
-            },
-            accessToken,
-          )) as BookingResponse;
-          break;
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            error.message.includes("SPACE_NOT_AVAILABLE")
-          ) {
-            continue;
-          }
-
-          throw error;
+        if (!space) {
+          throw new Error("public booking manual payment failed: no spaces found");
         }
-      }
 
-      if (!booking) {
-        throw new Error(
-          "public booking manual payment failed: no available smoke date found",
+        let booking: BookingResponse | undefined;
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+          const dayOffset = 730 + attempt * 31 + Math.floor(Math.random() * 20);
+          const checkIn = new Date(
+            Date.now() + dayOffset * 24 * 60 * 60 * 1000,
+          );
+          const checkOut = new Date(checkIn.getTime() + 24 * 60 * 60 * 1000);
+
+          try {
+            booking = (await postJson(
+              "public booking",
+              apiEndpoint(`/public/bookings?${tenantQuery}`),
+              {
+                spaceId: space.id,
+                from: checkIn.toISOString(),
+                to: checkOut.toISOString(),
+              },
+              accessToken,
+              {
+                "X-App-Client": "frontend",
+              },
+            )) as BookingResponse;
+            break;
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message.includes("SPACE_NOT_AVAILABLE")
+            ) {
+              continue;
+            }
+
+            throw error;
+          }
+        }
+
+        if (!booking) {
+          throw new Error(
+            "public booking manual payment failed: no available smoke date found",
+          );
+        }
+
+        return postJson(
+          "public booking manual payment",
+          apiEndpoint(`/public/bookings/${booking.data.id}/payments/manual`),
+          {},
+          accessToken,
+          {
+            "X-App-Client": "frontend",
+            "Idempotency-Key": `smoke-${Date.now()}-${booking.data.id}`,
+          },
         );
-      }
-
-      return postJson(
-        "public booking manual payment",
-        apiEndpoint(`/public/bookings/${booking.data.id}/payments/manual`),
-        {},
-        accessToken,
-        {
-          "Idempotency-Key": `smoke-${Date.now()}-${booking.data.id}`,
-        },
-      );
+      },
     },
-  },
-] as const;
+  ] as const;
 
-for (const check of checks) {
-  await check.run();
-  console.log(`ok - ${check.label}`);
+  for (const check of checks) {
+    await check.run();
+    console.log(`ok - ${check.label}`);
+  }
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
 }

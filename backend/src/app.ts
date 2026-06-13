@@ -138,6 +138,7 @@ app.use(
       "Content-Type",
       "Authorization",
       "x-app-name",
+      "x-app-client",
       "x-tenant-slug",
       "x-property-slug",
       "Idempotency-Key",

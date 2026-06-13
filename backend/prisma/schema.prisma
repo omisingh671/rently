@@ -14,6 +14,11 @@ enum UserRole {
   GUEST
 }
 
+enum SessionAudience {
+  FRONTEND
+  DASHBOARD
+}
+
 enum PropertyAssignmentRole {
   ADMIN
   MANAGER
@@ -253,7 +258,8 @@ model User {
 model Session {
   id           String   @id @default(uuid())
   userId       String
-  refreshToken String   @unique
+  refreshToken String   @unique @db.VarChar(512)
+  audience     SessionAudience @default(DASHBOARD)
   ip           String?
   userAgent    String?
   expiresAt    DateTime
@@ -262,6 +268,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([audience])
   @@index([expiresAt])
   @@index([createdAt])
   @@map("sessions")

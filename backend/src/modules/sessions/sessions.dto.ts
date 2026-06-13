@@ -1,4 +1,7 @@
-import type { UserRole } from "@/generated/prisma/enums.js";
+import type {
+  SessionAudience,
+  UserRole,
+} from "@/generated/prisma/enums.js";
 
 export interface DashboardSessionDTO {
   id: string;
@@ -6,6 +9,7 @@ export interface DashboardSessionDTO {
   userFullName: string;
   userEmail: string;
   userRole: UserRole;
+  audience: SessionAudience;
   ip: string | null;
   userAgent: string | null;
   expiresAt: Date;

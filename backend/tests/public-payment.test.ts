@@ -980,8 +980,8 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
-      from: new Date("2027-11-10T00:00:00.000Z"),
-      to: new Date("2027-11-12T00:00:00.000Z"),
+      from: new Date("2027-11-20T00:00:00.000Z"),
+      to: new Date("2027-11-22T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -993,8 +993,8 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
     state.propertyId,
     {
       spaceIds: [state.pricingId, state.pricingTwoId],
-      from: new Date("2027-10-10T00:00:00.000Z"),
-      to: new Date("2027-10-12T00:00:00.000Z"),
+      from: new Date("2027-11-20T00:00:00.000Z"),
+      to: new Date("2027-11-22T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
