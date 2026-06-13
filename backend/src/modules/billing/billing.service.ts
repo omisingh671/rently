@@ -29,6 +29,8 @@ const maxDecimal = (left: Prisma.Decimal, right: Prisma.Decimal) =>
 
 const documentKeyForInvoice = (bookingId: string) => `INVOICE:${bookingId}`;
 const documentKeyForReceipt = (paymentId: string) => `RECEIPT:${paymentId}`;
+const documentKeyForDebitNote = (folioChargeId: string) =>
+  `DEBIT_NOTE:${folioChargeId}`;
 const maxBillingTransactionAttempts = 3;
 
 const isRetryableBillingError = (error: unknown) =>
@@ -61,6 +63,7 @@ const mapDocument = (
   documentNumber: document.documentNumber,
   bookingId: document.bookingId,
   paymentId: document.paymentId ?? null,
+  folioChargeId: document.folioChargeId ?? null,
   propertyId: document.propertyId,
   tenantId: document.tenantId ?? null,
   subtotal: document.subtotal.toString(),
@@ -97,6 +100,7 @@ const mapSetting = (setting: repo.BillingSettingRecord): BillingSettingDTO => ({
   invoicePrefix: setting.invoicePrefix,
   receiptPrefix: setting.receiptPrefix,
   creditNotePrefix: setting.creditNotePrefix,
+  debitNotePrefix: setting.debitNotePrefix,
   footerNotes: setting.footerNotes ?? null,
   createdAt: setting.createdAt.toISOString(),
   updatedAt: setting.updatedAt.toISOString(),
@@ -189,8 +193,8 @@ const buildBookingSnapshot = (booking: repo.BillingBookingRecord) => ({
   couponCode: booking.coupon?.code ?? null,
 });
 
-const buildLineItems = (booking: repo.BillingBookingRecord) =>
-  booking.items.map((item) => ({
+const buildLineItems = (booking: repo.BillingBookingRecord) => [
+  ...booking.items.map((item) => ({
     id: item.id,
     description: item.productName,
     targetLabel: item.targetLabel,
@@ -201,7 +205,26 @@ const buildLineItems = (booking: repo.BillingBookingRecord) =>
     tax: item.taxAmount.toString(),
     total: item.finalAmount.toString(),
     taxBreakdown: item.taxBreakdown,
-  }));
+  })),
+  ...booking.folioCharges.map((charge) => ({
+    id: charge.id,
+    description: charge.description,
+    targetLabel: booking.targetLabel,
+    quantity: 1,
+    rate: charge.amount.toString(),
+    discount: "0",
+    taxable: charge.amount.toString(),
+    tax: "0",
+    total: charge.amount.toString(),
+    taxBreakdown: charge.metadata,
+  })),
+];
+
+const getFolioTotal = (booking: repo.BillingBookingRecord) =>
+  booking.folioCharges.reduce(
+    (total, charge) => total.plus(charge.amount),
+    zeroDecimal,
+  );
 
 const buildPriceSnapshot = (booking: repo.BillingBookingRecord) => ({
   pricePerNight: booking.pricePerNight.toString(),
@@ -210,6 +233,8 @@ const buildPriceSnapshot = (booking: repo.BillingBookingRecord) => ({
   taxableAmount: booking.taxableAmount.toString(),
   taxAmount: booking.taxAmount.toString(),
   totalAmount: booking.totalAmount.toString(),
+  folioTotal: getFolioTotal(booking).toString(),
+  grandTotal: booking.totalAmount.plus(getFolioTotal(booking)).toString(),
   upfrontAmount: booking.upfrontAmount.toString(),
 });
 
@@ -258,7 +283,9 @@ export const createInvoiceForBooking = async (
     }
 
     const paid = await repo.sumSucceededPaymentsByBooking(booking.id, client);
-    const balance = maxDecimal(zeroDecimal, booking.totalAmount.minus(paid));
+    const folioTotal = getFolioTotal(booking);
+    const grandTotal = booking.totalAmount.plus(folioTotal);
+    const balance = maxDecimal(zeroDecimal, grandTotal.minus(paid));
     if (balance.greaterThan(0)) {
       throw new HttpError(
         409,
@@ -273,11 +300,11 @@ export const createInvoiceForBooking = async (
         return repo.updateDocument(
           existing.id,
           {
-            subtotal: booking.subtotalAmount,
+            subtotal: booking.subtotalAmount.plus(folioTotal),
             discount: booking.discountAmount,
-            taxable: booking.taxableAmount,
+            taxable: booking.taxableAmount.plus(folioTotal),
             tax: booking.taxAmount,
-            total: booking.totalAmount,
+            total: grandTotal,
             paid,
             balance,
             guestSnapshot: toJson(buildGuestSnapshot(booking)),
@@ -313,11 +340,11 @@ export const createInvoiceForBooking = async (
             booking: { connect: { id: booking.id } },
             property: { connect: { id: booking.propertyId } },
             tenant: { connect: { id: booking.property.tenantId } },
-            subtotal: booking.subtotalAmount,
+            subtotal: booking.subtotalAmount.plus(folioTotal),
             discount: booking.discountAmount,
-            taxable: booking.taxableAmount,
+            taxable: booking.taxableAmount.plus(folioTotal),
             tax: booking.taxAmount,
-            total: booking.totalAmount,
+            total: grandTotal,
             paid,
             balance,
             guestSnapshot: toJson(buildGuestSnapshot(booking)),
@@ -362,7 +389,10 @@ export const createReceiptForPayment = async (
       payment,
       client,
     );
-    const balance = maxDecimal(zeroDecimal, booking.totalAmount.minus(cumulativePaid));
+    const balance = maxDecimal(
+      zeroDecimal,
+      booking.totalAmount.plus(getFolioTotal(booking)).minus(cumulativePaid),
+    );
 
     const documentNumber = await repo.nextDocumentNumber(
       payment.propertyId,
@@ -410,6 +440,97 @@ export const createReceiptForPayment = async (
     ? await createInTransaction(tx)
     : await runBillingTransactionWithRetry(createInTransaction);
 
+  return mapDocument(document);
+};
+
+export const createDebitNoteForFolioCharge = async (
+  bookingId: string,
+  folioChargeId: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const invoice = await repo.findDocumentByKey(documentKeyForInvoice(bookingId), tx);
+  if (!invoice) return null;
+
+  const documentKey = documentKeyForDebitNote(folioChargeId);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing) return mapDocument(existing);
+
+  const booking = await repo.findBookingById(bookingId, tx);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  const charge = await tx.bookingFolioCharge.findUnique({
+    where: { id: folioChargeId },
+  });
+  if (!charge) {
+    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+  }
+
+  const metadata =
+    charge.metadata !== null &&
+    typeof charge.metadata === "object" &&
+    !Array.isArray(charge.metadata)
+      ? charge.metadata
+      : {};
+  const baseDifference = new Prisma.Decimal(
+    typeof metadata.baseDifference === "string" ? metadata.baseDifference : charge.amount,
+  );
+  const taxDifference = new Prisma.Decimal(
+    typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
+  );
+  const documentNumber = await repo.nextDocumentNumber(
+    booking.propertyId,
+    BillingDocumentType.DEBIT_NOTE,
+    tx,
+  );
+  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const balance = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
+  );
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: BillingDocumentType.DEBIT_NOTE,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          booking: { connect: { id: booking.id } },
+          folioCharge: { connect: { id: charge.id } },
+          property: { connect: { id: booking.propertyId } },
+          tenant: { connect: { id: booking.property.tenantId } },
+          subtotal: baseDifference,
+          discount: zeroDecimal,
+          taxable: baseDifference,
+          tax: taxDifference,
+          total: charge.amount,
+          paid: zeroDecimal,
+          balance,
+          guestSnapshot: toJson(buildGuestSnapshot(booking)),
+          propertySnapshot: toJson(buildPropertySnapshot(booking)),
+          tenantSnapshot: toJson(buildTenantSnapshot(booking)),
+          bookingSnapshot: toJson(buildBookingSnapshot(booking)),
+          priceSnapshot: toJson(metadata),
+          taxSnapshot: toJson(metadata.taxBreakdown ?? []),
+          lineItems: toJson([
+            {
+              description: charge.description,
+              targetLabel: booking.targetLabel,
+              quantity: 1,
+              rate: baseDifference.toString(),
+              tax: taxDifference.toString(),
+              total: charge.amount.toString(),
+            },
+          ]),
+          notes: charge.note,
+          issuedAt: new Date(),
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
   return mapDocument(document);
 };
 
@@ -525,6 +646,9 @@ export const updateDashboardSetting = async (
     }),
     ...(input.creditNotePrefix !== undefined && {
       creditNotePrefix: input.creditNotePrefix,
+    }),
+    ...(input.debitNotePrefix !== undefined && {
+      debitNotePrefix: input.debitNotePrefix,
     }),
     ...(input.footerNotes !== undefined && { footerNotes: input.footerNotes }),
   });

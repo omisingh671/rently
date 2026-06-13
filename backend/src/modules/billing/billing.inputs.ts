@@ -23,5 +23,6 @@ export interface UpdateBillingSettingInput {
   invoicePrefix?: string;
   receiptPrefix?: string;
   creditNotePrefix?: string;
+  debitNotePrefix?: string;
   footerNotes?: string | null;
 }

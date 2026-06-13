@@ -51,7 +51,9 @@ export const buildBillingDocumentHtml = (
       ? "Tax Invoice"
       : document.type === "RECEIPT"
         ? "Payment Receipt"
-        : "Credit Note";
+        : document.type === "DEBIT_NOTE"
+          ? "Debit Note"
+          : "Credit Note";
 
   return `<!doctype html>
 <html>

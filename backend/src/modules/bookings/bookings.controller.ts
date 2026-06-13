@@ -20,6 +20,7 @@ import {
   correctBookingStatusSchema,
   createBookingFolioChargeSchema,
   moveBookingRoomSchema,
+  previewBookingRoomMoveSchema,
   noShowBookingSchema,
   operationsBoardQuerySchema,
   updateRoomHousekeepingSchema,
@@ -178,6 +179,13 @@ export const moveBookingRooms = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const body = moveBookingRoomSchema.parse(req.body);
   const data = await service.moveBookingRooms(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const previewBookingRoomMove = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = previewBookingRoomMoveSchema.parse(req.body);
+  const data = await service.previewBookingRoomMove(getUserId(req), params.id, body);
   res.json({ success: true, data });
 };
 

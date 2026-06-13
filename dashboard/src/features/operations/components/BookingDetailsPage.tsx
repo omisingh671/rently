@@ -20,6 +20,8 @@ import type {
   BookingStatus,
   FolioChargeType,
   PaymentMethod,
+  RoomMovePreview,
+  RoomMovePricingAction,
 } from "../types";
 import {
   FiAlertTriangle,
@@ -66,6 +68,18 @@ type AssignmentRoom = {
   isActive: boolean;
   maxOccupancy: number;
   unitId: string;
+};
+
+const getMetadataString = (metadata: unknown, key: string) => {
+  if (
+    typeof metadata !== "object" ||
+    metadata === null ||
+    Array.isArray(metadata)
+  ) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
 };
 
 const bookingStatuses: BookingStatus[] = [
@@ -289,6 +303,10 @@ export default function BookingDetailsPage() {
   const [actionError, setActionError] = useState("");
   const [hasInitializedRoomIds, setHasInitializedRoomIds] = useState(false);
   const [identityVerified, setIdentityVerified] = useState(false);
+  const [roomMovePreview, setRoomMovePreview] =
+    useState<RoomMovePreview | null>(null);
+  const [roomMovePricingAction, setRoomMovePricingAction] =
+    useState<RoomMovePricingAction>("CHARGE_DIFFERENCE");
 
   const {
     data: booking,
@@ -301,6 +319,8 @@ export default function BookingDetailsPage() {
     checkOutBooking,
     markNoShow,
     moveRooms,
+    previewRoomMove,
+    isPreviewingRoomMove,
     correctStatus,
     createFolioCharge,
     voidFolioCharge,
@@ -369,10 +389,9 @@ export default function BookingDetailsPage() {
     if (pendingAction?.type === "assignRoom" && !hasInitializedRoomIds && booking && rooms.length > 0) {
       let initialSelectedRoomIds: string[] = [];
       if (booking.targetType === "UNIT" && booking.unitId) {
-        const firstRoom = rooms.find((r) => r.unitId === booking.unitId);
-        if (firstRoom) {
-          initialSelectedRoomIds = [firstRoom.id];
-        }
+        initialSelectedRoomIds = rooms
+          .filter((room) => room.unitId === booking.unitId)
+          .map((room) => room.id);
       } else {
         initialSelectedRoomIds = booking.items
           .map((item) => item.roomId)
@@ -386,16 +405,66 @@ export default function BookingDetailsPage() {
     }
   }, [pendingAction?.type, booking, rooms, hasInitializedRoomIds]);
 
+  useEffect(() => {
+    if (
+      pendingAction?.type !== "assignRoom" ||
+      !booking ||
+      selectedRoomIds.length === 0 ||
+      (booking.targetType !== "UNIT" &&
+        selectedRoomIds.length !== booking.items.length)
+    ) {
+      return;
+    }
+
+    let active = true;
+    const timer = setTimeout(() => {
+      void previewRoomMove({
+        expectedVersion: booking.version,
+        roomIds: selectedRoomIds,
+      })
+        .then((preview) => {
+          if (active) {
+            setRoomMovePreview(preview);
+            setActionError("");
+          }
+        })
+        .catch((err: unknown) => {
+          if (active) {
+            setRoomMovePreview(null);
+            setActionError(normalizeApiError(err).message);
+          }
+        });
+    }, 200);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [
+    pendingAction?.type,
+    booking,
+    selectedRoomIds,
+    previewRoomMove,
+  ]);
+
   const openAction = (type: RiskAction, paymentId?: string) => {
     setActionError("");
     const nextAction = getActionDefaults(type);
     if (type === "assignRoom" && booking?.status === "CHECKED_IN") {
       nextAction.requiresNote = true;
       nextAction.message =
-        "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
+        booking.targetType === "UNIT"
+          ? "Changing the assigned unit after check-in is exceptional. Confirm the change and add an audit note."
+          : "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
     }
     if (type === "assignRoom") {
       nextAction.requiresNote = true;
+      if (booking?.targetType === "UNIT") {
+        nextAction.title = "Change Assigned Unit";
+        nextAction.message =
+          "Select any room in the destination unit. All rooms in that unit will be selected and validated together.";
+        nextAction.confirmLabel = "Confirm Unit Change";
+      }
     }
     if (type === "assignRoom" && booking && booking.items.length > 1) {
       nextAction.title = "Change Assigned Rooms";
@@ -415,14 +484,15 @@ export default function BookingDetailsPage() {
     setPendingAction(nextAction);
     setNote("");
     setIdentityVerified(false);
+    setRoomMovePreview(null);
+    setRoomMovePricingAction("CHARGE_DIFFERENCE");
     if (type === "assignRoom" && booking) {
       setHasInitializedRoomIds(false);
       let initialSelectedRoomIds: string[] = [];
       if (booking.targetType === "UNIT" && booking.unitId) {
-        const firstRoom = rooms.find((r) => r.unitId === booking.unitId);
-        if (firstRoom) {
-          initialSelectedRoomIds = [firstRoom.id];
-        }
+        initialSelectedRoomIds = rooms
+          .filter((room) => room.unitId === booking.unitId)
+          .map((room) => room.id);
       } else {
         initialSelectedRoomIds = booking.items
           .map((item) => item.roomId)
@@ -465,6 +535,8 @@ export default function BookingDetailsPage() {
     setActionError("");
     setHasInitializedRoomIds(false);
     setIdentityVerified(false);
+    setRoomMovePreview(null);
+    setRoomMovePricingAction("CHARGE_DIFFERENCE");
   };
 
   const submitAction = async (event: FormEvent<HTMLFormElement>) => {
@@ -475,7 +547,10 @@ export default function BookingDetailsPage() {
       setActionError("");
 
       if (pendingAction.type === "assignRoom") {
-        const requiredRoomCount = booking.items.length;
+        const requiredRoomCount =
+          booking.targetType === "UNIT"
+            ? selectedRoomIds.length
+            : booking.items.length;
         if (selectedRoomIds.length !== requiredRoomCount) {
           setActionError(
             `This booking requires exactly ${requiredRoomCount} rooms. Keep ${requiredRoomCount} rooms selected.`,
@@ -487,16 +562,30 @@ export default function BookingDetailsPage() {
           setActionError("Note is required for this action.");
           return;
         }
+        if (!roomMovePreview) {
+          setActionError("Review the room move pricing before confirming.");
+          return;
+        }
 
         await moveRooms({
           expectedVersion: booking.version,
           roomIds: selectedRoomIds,
           note: note.trim(),
+          pricingFingerprint: roomMovePreview.pricingFingerprint,
+          expectedAdjustmentAmount: Number(roomMovePreview.totalAdjustment),
+          pricingAction: roomMovePricingAction,
         });
       } else if (pendingAction.type === "recordPayment") {
         const amount = Number(paymentAmount);
+        const balanceAmount = Number(booking.balanceAmount);
         if (!Number.isFinite(amount) || amount <= 0) {
           setActionError("Enter a valid payment amount.");
+          return;
+        }
+        if (amount > balanceAmount) {
+          setActionError(
+            `Payment amount cannot exceed the current balance of ${formatMoney(booking.balanceAmount)}.`,
+          );
           return;
         }
         const requiresPaymentReference =
@@ -663,16 +752,29 @@ export default function BookingDetailsPage() {
     if (!booking) return;
 
     const requiredRoomCount = booking.items.length;
-    const isUnitBooking = booking.targetType === "UNIT";
     setActionError("");
+    setRoomMovePreview(null);
 
-    if (isUnitBooking) {
-      const room = rooms.find((r) => r.id === roomId);
-      if (!room) return;
-      const isSelected = selectedRoomIds.some(
-        (id) => rooms.find((r) => r.id === id)?.unitId === room.unitId,
+    if (booking.targetType === "UNIT") {
+      const selectedRoom = rooms.find((room) => room.id === roomId);
+      if (!selectedRoom) return;
+
+      const unitRooms = rooms.filter(
+        (room) => room.unitId === selectedRoom.unitId,
       );
-      setSelectedRoomIds(isSelected ? [] : [room.id]);
+      const unavailableRoom = unitRooms.find(
+        (room) =>
+          room.unitId !== booking.unitId &&
+          (room.status !== "AVAILABLE" || !room.isActive),
+      );
+      if (unavailableRoom) {
+        setActionError(
+          `Unit ${selectedRoom.unitNumber} cannot be selected because room ${unavailableRoom.number} is not available.`,
+        );
+        return;
+      }
+
+      setSelectedRoomIds(unitRooms.map((room) => room.id));
       return;
     }
 
@@ -920,6 +1022,52 @@ export default function BookingDetailsPage() {
               )}
             </div>
           </section>
+
+          {booking.operationEvents.some(
+            (event) => event.eventType === "ROOM_MOVE",
+          ) && (
+            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-base font-semibold text-slate-900">
+                Room and Unit Changes
+              </h3>
+              <div className="mt-4 divide-y divide-slate-100">
+                {booking.operationEvents
+                  .filter((event) => event.eventType === "ROOM_MOVE")
+                  .map((event) => {
+                    const waivedAmount = getMetadataString(
+                      event.metadata,
+                      "waivedAmount",
+                    );
+                    const totalAdjustment = getMetadataString(
+                      event.metadata,
+                      "totalAdjustment",
+                    );
+                    const pricingAction = getMetadataString(
+                      event.metadata,
+                      "pricingAction",
+                    );
+                    return (
+                      <div key={event.id} className="py-3 first:pt-0 last:pb-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span className="font-semibold text-slate-800">
+                            {pricingAction === "COMPLIMENTARY_UPGRADE"
+                              ? `Complimentary upgrade: ${formatMoney(waivedAmount ?? "0")} waived`
+                              : `Assignment changed${Number(totalAdjustment) > 0 ? `: ${formatMoney(totalAdjustment ?? "0")} added` : ""}`}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {formatDateTime(event.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {event.note ?? "No audit note"} by{" "}
+                          {event.actorName ?? "System"}
+                        </p>
+                      </div>
+                    );
+                  })}
+              </div>
+            </section>
+          )}
         </div>
 
         <aside className="space-y-6">
@@ -947,7 +1095,9 @@ export default function BookingDetailsPage() {
                 >
                   {booking.items.length > 1
                     ? "Change Rooms"
-                    : booking.roomId !== null || (booking.targetType === "UNIT" && booking.unitId !== null)
+                    : booking.targetType === "UNIT"
+                      ? "Change Unit"
+                      : booking.roomId !== null
                       ? "Change Room"
                       : "Assign Room"}
                 </ActionButton>
@@ -1141,7 +1291,7 @@ export default function BookingDetailsPage() {
             <h3 className="text-base font-semibold text-slate-900">
               Recorded Payments
             </h3>
-            <div className="mt-4 divide-y divide-slate-100">
+            <div className="mt-4 divide-y divide-slate-200">
               {booking.payments.length === 0 ? (
                 <p className="text-sm text-slate-500 py-2">No payments recorded.</p>
               ) : (
@@ -1436,8 +1586,11 @@ export default function BookingDetailsPage() {
                 .map((item) => item.roomId)
                 .filter((roomId): roomId is string => roomId !== null)
         }
-        requiredRoomCount={booking.items.length}
-        isUnitBooking={booking.targetType === "UNIT"}
+        requiredRoomCount={
+          booking.targetType === "UNIT"
+            ? selectedRoomIds.length
+            : booking.items.length
+        }
         selectedStatus={selectedStatus}
         paymentAmount={paymentAmount}
         paymentMethod={paymentMethod}
@@ -1447,8 +1600,11 @@ export default function BookingDetailsPage() {
         refundAmount={refundAmount}
         refundMethod={refundMethod}
         rooms={rooms}
-        isSubmitting={isMutating}
+        isSubmitting={isMutating || isPreviewingRoomMove}
         errorMessage={actionError}
+        roomMovePreview={roomMovePreview}
+        roomMovePricingAction={roomMovePricingAction}
+        onRoomMovePricingActionChange={setRoomMovePricingAction}
         onNoteChange={setNote}
         onRoomToggle={toggleAssignedRoom}
         onStatusChange={setSelectedStatus}
@@ -1784,6 +1940,9 @@ function ConfirmationModal({
   rooms,
   isSubmitting,
   errorMessage,
+  roomMovePreview,
+  roomMovePricingAction,
+  onRoomMovePricingActionChange,
   onNoteChange,
   onRoomToggle,
   onStatusChange,
@@ -1798,7 +1957,6 @@ function ConfirmationModal({
   onIdentityVerifiedChange,
   onClose,
   onSubmit,
-  isUnitBooking,
 }: {
   action: PendingAction | null;
   note: string;
@@ -1816,6 +1974,9 @@ function ConfirmationModal({
   rooms: AssignmentRoom[];
   isSubmitting: boolean;
   errorMessage: string;
+  roomMovePreview: RoomMovePreview | null;
+  roomMovePricingAction: RoomMovePricingAction;
+  onRoomMovePricingActionChange: (value: RoomMovePricingAction) => void;
   onNoteChange: (value: string) => void;
   onRoomToggle: (roomId: string) => void;
   onStatusChange: (value: BookingStatus) => void;
@@ -1830,7 +1991,6 @@ function ConfirmationModal({
   onIdentityVerifiedChange: (value: boolean) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  isUnitBooking: boolean;
 }) {
   const paymentReferenceRequired =
     action?.type === "recordPayment" &&
@@ -1838,7 +1998,8 @@ function ConfirmationModal({
   const canSubmit =
     !isSubmitting &&
     (action?.type !== "assignRoom" ||
-      selectedRoomIds.length === requiredRoomCount) &&
+      (selectedRoomIds.length === requiredRoomCount &&
+        roomMovePreview !== null)) &&
     (action?.type !== "recordPayment" || Number(paymentAmount) > 0) &&
     (!paymentReferenceRequired || paymentReferenceId.trim().length > 0) &&
     (action?.type !== "recordRefund" || Number(refundAmount) > 0) &&
@@ -1864,15 +2025,24 @@ function ConfirmationModal({
           </div>
 
           {action.type === "assignRoom" && (
-            <RoomAssignmentPicker
-              rooms={rooms}
-              selectedRoomIds={selectedRoomIds}
-              assignedRoomIds={assignedRoomIds}
-              requiredRoomCount={requiredRoomCount}
-              isSubmitting={isSubmitting}
-              onRoomToggle={onRoomToggle}
-              isUnitBooking={isUnitBooking}
-            />
+            <>
+              <RoomAssignmentPicker
+                rooms={rooms}
+                selectedRoomIds={selectedRoomIds}
+                assignedRoomIds={assignedRoomIds}
+                requiredRoomCount={requiredRoomCount}
+                isSubmitting={isSubmitting}
+                onRoomToggle={onRoomToggle}
+              />
+              {roomMovePreview && (
+                <RoomMovePricingPreview
+                  preview={roomMovePreview}
+                  pricingAction={roomMovePricingAction}
+                  onPricingActionChange={onRoomMovePricingActionChange}
+                  disabled={isSubmitting}
+                />
+              )}
+            </>
           )}
 
           {action.type === "statusOverride" && (
@@ -2089,6 +2259,87 @@ function ConfirmationModal({
   );
 }
 
+function RoomMovePricingPreview({
+  preview,
+  pricingAction,
+  onPricingActionChange,
+  disabled,
+}: {
+  preview: RoomMovePreview;
+  pricingAction: RoomMovePricingAction;
+  onPricingActionChange: (value: RoomMovePricingAction) => void;
+  disabled: boolean;
+}) {
+  const adjustment = Number(preview.totalAdjustment);
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <span className="text-xs font-semibold uppercase text-slate-400">
+            Current
+          </span>
+          <p className="font-semibold text-slate-800">
+            {preview.currentAssignment}
+          </p>
+          <p className="text-slate-500">
+            {formatMoney(preview.currentNightlyRate)} / night
+          </p>
+        </div>
+        <div>
+          <span className="text-xs font-semibold uppercase text-slate-400">
+            Destination
+          </span>
+          <p className="font-semibold text-slate-800">
+            {preview.destinationAssignment}
+          </p>
+          <p className="text-slate-500">
+            {formatMoney(preview.destinationNightlyRate)} / night
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 border-t border-slate-200 pt-3 text-xs sm:grid-cols-3">
+        <span>Affected nights: <strong>{preview.affectedNights}</strong></span>
+        <span>Rate difference: <strong>{formatMoney(preview.baseDifference)}</strong></span>
+        <span>Tax: <strong>{formatMoney(preview.taxDifference)}</strong></span>
+      </div>
+
+      {adjustment > 0 ? (
+        <div className="mt-4 space-y-2">
+          <p className="font-semibold text-slate-900">
+            Added balance: {formatMoney(preview.totalAdjustment)}
+          </p>
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              checked={pricingAction === "CHARGE_DIFFERENCE"}
+              disabled={disabled}
+              onChange={() => onPricingActionChange("CHARGE_DIFFERENCE")}
+            />
+            <span>Add the difference to the guest folio</span>
+          </label>
+          <label className="flex items-start gap-2">
+            <input
+              type="radio"
+              checked={pricingAction === "COMPLIMENTARY_UPGRADE"}
+              disabled={disabled}
+              onChange={() => onPricingActionChange("COMPLIMENTARY_UPGRADE")}
+            />
+            <span>
+              Complimentary upgrade and waive{" "}
+              {formatMoney(preview.totalAdjustment)}
+            </span>
+          </label>
+        </div>
+      ) : (
+        <p className="mt-4 rounded bg-emerald-50 px-3 py-2 font-medium text-emerald-700">
+          No additional charge. Lower-priced moves do not create a refund or credit.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function RoomAssignmentPicker({
   rooms,
   selectedRoomIds,
@@ -2096,7 +2347,6 @@ function RoomAssignmentPicker({
   requiredRoomCount,
   isSubmitting,
   onRoomToggle,
-  isUnitBooking = false,
 }: {
   rooms: AssignmentRoom[];
   selectedRoomIds: string[];
@@ -2104,7 +2354,6 @@ function RoomAssignmentPicker({
   requiredRoomCount: number;
   isSubmitting: boolean;
   onRoomToggle: (roomId: string) => void;
-  isUnitBooking?: boolean;
 }) {
   const assignedRoomIdSet = new Set(assignedRoomIds);
   const selectedRoomIdSet = new Set(selectedRoomIds);
@@ -2153,11 +2402,7 @@ function RoomAssignmentPicker({
         ) : (
           visibleRooms.map((room) => {
             const isAssigned = assignedRoomIdSet.has(room.id);
-            const isSelected = isUnitBooking
-              ? selectedRoomIds.some(
-                  (id) => rooms.find((r) => r.id === id)?.unitId === room.unitId,
-                )
-              : selectedRoomIdSet.has(room.id);
+            const isSelected = selectedRoomIdSet.has(room.id);
             return (
               <label
                 key={room.id}

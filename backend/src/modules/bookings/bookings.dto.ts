@@ -44,6 +44,31 @@ export interface DashboardManualBookingAvailabilityDTO {
   items: DashboardManualBookingAvailabilityItemDTO[];
 }
 
+export interface BookingRoomMovePreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  effectiveDate: string;
+  affectedNights: number;
+  currentAssignment: string;
+  destinationAssignment: string;
+  currentNightlyRate: string;
+  destinationNightlyRate: string;
+  baseDifference: string;
+  taxDifference: string;
+  totalAdjustment: string;
+  pricingFingerprint: string;
+  pricingRequired: boolean;
+  allowedPricingActions: Array<
+    "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE"
+  >;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+}
+
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
   | "RESERVED"

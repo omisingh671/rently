@@ -242,10 +242,16 @@ export const noShowBookingSchema = z.object({
   note: z.string().trim().min(1).max(1000),
 });
 
-export const moveBookingRoomSchema = z.object({
+export const previewBookingRoomMoveSchema = z.object({
   expectedVersion: expectedVersionSchema,
   roomIds: z.array(idSchema).min(1),
+});
+
+export const moveBookingRoomSchema = previewBookingRoomMoveSchema.extend({
   note: z.string().trim().min(1).max(1000),
+  pricingFingerprint: z.string().trim().min(1).max(128),
+  expectedAdjustmentAmount: z.coerce.number().nonnegative(),
+  pricingAction: z.enum(["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]),
 });
 
 export const correctBookingStatusSchema = z.object({

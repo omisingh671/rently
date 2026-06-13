@@ -1,4 +1,8 @@
-export type BillingDocumentType = "INVOICE" | "RECEIPT" | "CREDIT_NOTE";
+export type BillingDocumentType =
+  | "INVOICE"
+  | "RECEIPT"
+  | "CREDIT_NOTE"
+  | "DEBIT_NOTE";
 export type BillingDocumentStatus = "DRAFT" | "ISSUED" | "CANCELLED" | "VOID";
 
 export type BillingDocument = {
@@ -8,6 +12,7 @@ export type BillingDocument = {
   documentNumber: string;
   bookingId: string;
   paymentId: string | null;
+  folioChargeId: string | null;
   propertyId: string;
   tenantId: string | null;
   subtotal: string;

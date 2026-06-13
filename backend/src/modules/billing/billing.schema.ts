@@ -48,6 +48,7 @@ export const updateBillingSettingSchema = z.object({
   invoicePrefix: z.string().trim().min(1).max(20).optional(),
   receiptPrefix: z.string().trim().min(1).max(20).optional(),
   creditNotePrefix: z.string().trim().min(1).max(20).optional(),
+  debitNotePrefix: z.string().trim().min(1).max(20).optional(),
   footerNotes: optionalString(2000),
 });
 

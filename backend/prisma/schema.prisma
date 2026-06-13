@@ -190,6 +190,7 @@ enum BillingDocumentType {
   INVOICE
   RECEIPT
   CREDIT_NOTE
+  DEBIT_NOTE
 }
 
 enum BillingDocumentStatus {
@@ -757,6 +758,7 @@ model BookingFolioCharge {
   description     String            @db.VarChar(255)
   amount          Decimal
   note            String?           @db.Text
+  metadata        Json?
   voidReason      String?           @db.Text
   voidedAt        DateTime?
   createdAt       DateTime          @default(now())
@@ -766,6 +768,7 @@ model BookingFolioCharge {
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  billingDocument BillingDocument?
 
   @@index([bookingId, status, createdAt])
   @@index([propertyId, createdAt])
@@ -888,9 +891,11 @@ model BillingSetting {
   invoicePrefix        String @default("INV-")
   receiptPrefix        String @default("RCT-")
   creditNotePrefix     String @default("CN-")
+  debitNotePrefix      String @default("DN-")
   invoiceSequence      Int    @default(0)
   receiptSequence      Int    @default(0)
   creditNoteSequence   Int    @default(0)
+  debitNoteSequence    Int    @default(0)
   footerNotes          String? @db.Text
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -908,6 +913,7 @@ model BillingDocument {
   documentNumber   String
   bookingId        String
   paymentId        String?
+  folioChargeId    String?               @unique
   propertyId       String
   tenantId         String?
   subtotal         Decimal               @default(0)
@@ -935,6 +941,7 @@ model BillingDocument {
 
   booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  folioCharge BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
@@ -943,6 +950,7 @@ model BillingDocument {
   @@index([tenantId])
   @@index([bookingId])
   @@index([paymentId])
+  @@index([folioChargeId])
   @@map("billing_documents")
 }
 

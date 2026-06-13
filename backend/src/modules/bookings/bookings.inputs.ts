@@ -107,6 +107,14 @@ export interface MoveBookingRoomInput {
   expectedVersion: number;
   roomIds: string[];
   note: string;
+  pricingFingerprint: string;
+  expectedAdjustmentAmount: number;
+  pricingAction: "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE";
+}
+
+export interface PreviewBookingRoomMoveInput {
+  expectedVersion: number;
+  roomIds: string[];
 }
 
 export interface CorrectBookingStatusInput {

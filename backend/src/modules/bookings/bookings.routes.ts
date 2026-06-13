@@ -39,6 +39,7 @@ router.post("/bookings/:id/check-in", controller.checkInBooking);
 router.post("/bookings/:id/check-out", controller.checkOutBooking);
 router.post("/bookings/:id/no-show", controller.markBookingNoShow);
 router.post("/bookings/:id/room-move", controller.moveBookingRooms);
+router.post("/bookings/:id/room-move/preview", controller.previewBookingRoomMove);
 router.post("/bookings/:id/status-correction", controller.correctBookingStatus);
 router.post("/bookings/:id/folio-charges", controller.createBookingFolioCharge);
 router.post(

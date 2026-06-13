@@ -256,6 +256,45 @@ export type VersionedBookingNotePayload = {
   note: string;
 };
 
+export type RoomMovePricingAction =
+  | "CHARGE_DIFFERENCE"
+  | "COMPLIMENTARY_UPGRADE";
+
+export type RoomMovePreview = {
+  bookingId: string;
+  bookingVersion: number;
+  effectiveDate: string;
+  affectedNights: number;
+  currentAssignment: string;
+  destinationAssignment: string;
+  currentNightlyRate: string;
+  destinationNightlyRate: string;
+  baseDifference: string;
+  taxDifference: string;
+  totalAdjustment: string;
+  pricingFingerprint: string;
+  pricingRequired: boolean;
+  allowedPricingActions: RoomMovePricingAction[];
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+};
+
+export type PreviewRoomMovePayload = {
+  expectedVersion: number;
+  roomIds: string[];
+};
+
+export type MoveRoomPayload = PreviewRoomMovePayload & {
+  note: string;
+  pricingFingerprint: string;
+  expectedAdjustmentAmount: number;
+  pricingAction: RoomMovePricingAction;
+};
+
 export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {
   status: BookingStatus;
 };

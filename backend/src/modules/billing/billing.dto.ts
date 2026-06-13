@@ -10,6 +10,7 @@ export interface BillingDocumentDTO {
   documentNumber: string;
   bookingId: string;
   paymentId: string | null;
+  folioChargeId: string | null;
   propertyId: string;
   tenantId: string | null;
   subtotal: string;
@@ -46,6 +47,7 @@ export interface BillingSettingDTO {
   invoicePrefix: string;
   receiptPrefix: string;
   creditNotePrefix: string;
+  debitNotePrefix: string;
   footerNotes: string | null;
   createdAt: string;
   updatedAt: string;

@@ -128,6 +128,9 @@ export const updateDashboardSetting = async (
     ...(body.creditNotePrefix !== undefined && {
       creditNotePrefix: body.creditNotePrefix,
     }),
+    ...(body.debitNotePrefix !== undefined && {
+      debitNotePrefix: body.debitNotePrefix,
+    }),
     ...(body.footerNotes !== undefined && { footerNotes: body.footerNotes }),
   });
   res.json({ success: true, data });

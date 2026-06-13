@@ -26,6 +26,9 @@ import type {
   RoomHousekeepingStatus,
   VersionedBookingNotePayload,
   UpdateBookingPayload,
+  MoveRoomPayload,
+  PreviewRoomMovePayload,
+  RoomMovePreview,
 } from "./types";
 
 type PageParams = {
@@ -174,10 +177,21 @@ export const markBookingNoShowApi = async (
 
 export const moveBookingRoomsApi = async (
   bookingId: string,
-  payload: VersionedBookingNotePayload & { roomIds: string[] },
+  payload: MoveRoomPayload,
 ): Promise<AdminBooking> => {
   const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
     API_ENDPOINTS.operations.bookingRoomMoveById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const previewBookingRoomMoveApi = async (
+  bookingId: string,
+  payload: PreviewRoomMovePayload,
+): Promise<RoomMovePreview> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<RoomMovePreview>>(
+    API_ENDPOINTS.operations.bookingRoomMovePreviewById(bookingId),
     payload,
   );
   return data.data;

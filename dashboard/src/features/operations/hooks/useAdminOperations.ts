@@ -13,6 +13,7 @@ import {
   listQuotesApi,
   markBookingNoShowApi,
   moveBookingRoomsApi,
+  previewBookingRoomMoveApi,
   recordBalancePaymentApi,
   recordRefundApi,
   updateRefundRequestApi,
@@ -22,6 +23,7 @@ import {
   voidFolioChargeApi,
 } from "../api";
 import type {
+  AdminBooking,
   BookingStatus,
   CheckInBookingPayload,
   CheckOutBookingPayload,
@@ -35,6 +37,8 @@ import type {
   UpdateRefundRequestPayload,
   UpdateBookingPayload,
   VersionedBookingNotePayload,
+  MoveRoomPayload,
+  PreviewRoomMovePayload,
 } from "../types";
 
 type Module = "bookings" | "enquiries" | "quotes";
@@ -228,16 +232,24 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     enabled: !!bookingId,
   });
 
-  const invalidateBooking = (propertyId: string) => {
+  const refreshBookingDetail = () => {
     if (!bookingId) return;
     queryClient.invalidateQueries({
       queryKey: ADMIN_KEYS.operations.bookingDetail(bookingId),
     });
+  };
+
+  const syncBooking = (booking: AdminBooking) => {
+    if (!bookingId) return;
+    queryClient.setQueryData(
+      ADMIN_KEYS.operations.bookingDetail(bookingId),
+      booking,
+    );
     queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.bookings(propertyId),
+      queryKey: ADMIN_KEYS.operations.bookings(booking.propertyId),
     });
     queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.roomBoards(propertyId),
+      queryKey: ADMIN_KEYS.operations.roomBoards(booking.propertyId),
     });
   };
 
@@ -246,7 +258,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return updateBookingStatusApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const checkInBooking = useMutation({
@@ -254,7 +266,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return checkInBookingApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const checkOutBooking = useMutation({
@@ -262,7 +274,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return checkOutBookingApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const markNoShow = useMutation({
@@ -270,17 +282,22 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return markBookingNoShowApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const moveRooms = useMutation({
-    mutationFn: (
-      payload: VersionedBookingNotePayload & { roomIds: string[] },
-    ) => {
+    mutationFn: (payload: MoveRoomPayload) => {
       if (!bookingId) throw new Error("BookingId required");
       return moveBookingRoomsApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
+  });
+
+  const previewRoomMove = useMutation({
+    mutationFn: (payload: PreviewRoomMovePayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return previewBookingRoomMoveApi(bookingId, payload);
+    },
   });
 
   const correctStatus = useMutation({
@@ -288,7 +305,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return correctBookingStatusApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const createFolioCharge = useMutation({
@@ -296,7 +313,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return createFolioChargeApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const voidFolioCharge = useMutation({
@@ -310,7 +327,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return voidFolioChargeApi(bookingId, chargeId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const recordBalancePayment = useMutation({
@@ -318,7 +335,8 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return recordBalancePaymentApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
+    onError: refreshBookingDetail,
   });
 
   const recordRefund = useMutation({
@@ -326,7 +344,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return recordRefundApi(bookingId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   const updateRefundRequest = useMutation({
@@ -340,7 +358,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       if (!bookingId) throw new Error("BookingId required");
       return updateRefundRequestApi(bookingId, requestId, payload);
     },
-    onSuccess: (booking) => invalidateBooking(booking.propertyId),
+    onSuccess: syncBooking,
   });
 
   return {
@@ -354,6 +372,8 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     checkOutBooking: checkOutBooking.mutateAsync,
     markNoShow: markNoShow.mutateAsync,
     moveRooms: moveRooms.mutateAsync,
+    previewRoomMove: previewRoomMove.mutateAsync,
+    isPreviewingRoomMove: previewRoomMove.isPending,
     correctStatus: correctStatus.mutateAsync,
     createFolioCharge: createFolioCharge.mutateAsync,
     voidFolioCharge: voidFolioCharge.mutateAsync,

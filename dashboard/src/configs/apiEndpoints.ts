@@ -143,6 +143,8 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/no-show`,
     bookingRoomMoveById: (bookingId: string) =>
       `/bookings/${bookingId}/room-move`,
+    bookingRoomMovePreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/room-move/preview`,
     bookingStatusCorrectionById: (bookingId: string) =>
       `/bookings/${bookingId}/status-correction`,
     bookingFolioChargesById: (bookingId: string) =>
