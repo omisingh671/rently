@@ -110,7 +110,10 @@ export function RecentBookingsTable({
                     {formatAmount(booking.totalAmount)}
                   </td>
                   <td className="px-5 py-[18px]">
-                    <StatusBadge status={booking.status} />
+                    <StatusBadge
+                      status={booking.status}
+                      className="whitespace-nowrap"
+                    />
                   </td>
                 </tr>
               ))
