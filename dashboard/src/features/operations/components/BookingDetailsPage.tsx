@@ -887,18 +887,18 @@ export default function BookingDetailsPage() {
             <h3 className="text-base font-semibold text-slate-900">
               Status History
             </h3>
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 divide-y divide-slate-100">
               {booking.statusHistory.length === 0 ? (
-                <p className="text-sm text-slate-500">No audit history yet.</p>
+                <p className="text-sm text-slate-500 py-2">No audit history yet.</p>
               ) : (
                 booking.statusHistory.map((event) => (
                   <div
                     key={event.id}
-                    className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                    className="py-4 first:pt-0 last:pb-0 text-sm"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge status={event.toStatus} />
-                      <span className="text-slate-500">
+                      <span className="text-xs text-slate-400 font-medium">
                         {event.fromStatus
                           ? `from ${formatEnumLabel(event.fromStatus)}`
                           : "initial status"}
@@ -906,10 +906,14 @@ export default function BookingDetailsPage() {
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
                       {formatDateTime(event.createdAt)} by{" "}
-                      {event.actorName ?? "System"}
+                      <span className="font-semibold text-slate-700">
+                        {event.actorName ?? "System"}
+                      </span>
                     </div>
                     {event.note && (
-                      <p className="mt-2 text-slate-700">{event.note}</p>
+                      <p className="mt-2 text-xs text-slate-600 font-medium italic border-l-2 border-slate-200 pl-3.5 py-0.5">
+                        "{event.note}"
+                      </p>
                     )}
                   </div>
                 ))
@@ -1030,8 +1034,18 @@ export default function BookingDetailsPage() {
             <h3 className="text-base font-semibold text-slate-900">
               Current Assignment
             </h3>
-            <div className="mt-3 rounded-md bg-slate-50 p-3 text-sm text-slate-700">
-              {getAssignedLabel(booking)}
+            <div className="mt-4 flex items-center gap-3.5 text-slate-700">
+              <span className="rounded-lg bg-slate-100 p-2 text-slate-600 shrink-0">
+                <FiHome size={18} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Assigned Unit & Room
+                </span>
+                <span className="text-sm font-semibold text-slate-800">
+                  {getAssignedLabel(booking)}
+                </span>
+              </div>
             </div>
           </section>
 
@@ -1127,9 +1141,9 @@ export default function BookingDetailsPage() {
             <h3 className="text-base font-semibold text-slate-900">
               Recorded Payments
             </h3>
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 divide-y divide-slate-100">
               {booking.payments.length === 0 ? (
-                <p className="text-sm text-slate-500">No payments recorded.</p>
+                <p className="text-sm text-slate-500 py-2">No payments recorded.</p>
               ) : (
                 booking.payments.map((payment) => {
                   const isSucceeded = payment.status === "SUCCEEDED";
@@ -1138,7 +1152,7 @@ export default function BookingDetailsPage() {
                   return (
                     <div
                       key={payment.id}
-                      className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-5 shadow-sm hover:bg-slate-50 transition duration-150"
+                      className="py-5 first:pt-0 last:pb-0 transition duration-150"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="text-xl font-bold text-slate-900 tracking-tight">
@@ -1160,11 +1174,11 @@ export default function BookingDetailsPage() {
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
-                        <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
+                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
                           {formatEnumLabel(payment.purpose)}
                         </span>
                         <span className="text-slate-300">•</span>
-                        <span className="bg-slate-200/60 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
+                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
                           {getPaymentMethodLabel(payment.method)}
                         </span>
                         <span className="text-slate-300">•</span>
@@ -1174,7 +1188,7 @@ export default function BookingDetailsPage() {
                       </div>
 
                       {(payment.referenceId || payment.payerDetail) && (
-                        <div className="mt-3 grid gap-2 rounded-lg border border-slate-200/60 bg-white px-3.5 py-3 text-xs text-slate-600 sm:grid-cols-2">
+                        <div className="mt-3 grid gap-2 border-l-2 border-slate-200 pl-3.5 py-0.5 text-xs text-slate-600 sm:grid-cols-2">
                           {payment.referenceId && (
                             <div>
                               <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
@@ -1198,7 +1212,7 @@ export default function BookingDetailsPage() {
                         </div>
                       )}
 
-                      <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-200/60 pt-4 text-xs font-medium text-slate-600">
+                      <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-100 pt-4 text-xs font-medium text-slate-600">
                         <div className="flex items-center gap-1.5">
                           <span className="text-slate-400">Refunded:</span>
                           <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
@@ -1216,8 +1230,8 @@ export default function BookingDetailsPage() {
                       </div>
 
                       {payment.refunds.length > 0 && (
-                        <div className="mt-3.5 space-y-2 rounded-lg bg-white border border-slate-200/60 px-3.5 py-3 text-xs text-slate-600 shadow-inner">
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                        <div className="mt-3.5 space-y-2 border-l-2 border-amber-200 pl-3.5 py-0.5 text-xs text-slate-600">
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-amber-600/80 mb-1">
                             Refund Transactions
                           </div>
                           {payment.refunds.map((refund) => (
@@ -1300,7 +1314,7 @@ export default function BookingDetailsPage() {
                       )}
 
                       {payment.note && (
-                        <p className="mt-3.5 text-xs font-medium text-slate-500 bg-slate-100/50 p-2.5 rounded-lg border border-slate-200/40">
+                        <p className="mt-3.5 text-xs font-medium text-slate-500 border-l-2 border-slate-200 pl-3.5 py-0.5">
                           <span className="font-semibold text-slate-700 block mb-0.5">
                             Note:
                           </span>
@@ -1662,14 +1676,14 @@ function FolioSection({
         </div>
       )}
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-4 divide-y divide-slate-100">
         {booking.folioCharges.length === 0 ? (
-          <p className="text-sm text-slate-500">No folio charges recorded.</p>
+          <p className="text-sm text-slate-500 py-2">No folio charges recorded.</p>
         ) : (
           booking.folioCharges.map((charge) => (
             <div
               key={charge.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm"
+              className="flex flex-wrap items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0 text-sm"
             >
               <div>
                 <div className="font-semibold text-slate-900">

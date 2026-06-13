@@ -19,6 +19,7 @@ import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import {
   FiChevronDown,
+  FiChevronUp,
   FiLogIn,
   FiLogOut,
   FiClock,
@@ -26,6 +27,7 @@ import {
   FiDollarSign,
   FiRefreshCw,
   FiTool,
+  FiCheck,
 } from "react-icons/fi";
 
 const {
@@ -156,95 +158,176 @@ function OperationsBoard({
   cashierRows: CashierSummaryResponse["rows"];
   isLoading: boolean;
 }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem("rently_admin_operations_collapsed");
+      return saved ? JSON.parse(saved) === true : false;
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCollapsed = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("rently_admin_operations_collapsed", JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  const totals = useMemo(() => {
+    let expectedCash = 0;
+    let refunds = 0;
+    let netCollected = 0;
+    const byMethod: Record<string, number> = {};
+
+    cashierRows.forEach((row) => {
+      expectedCash += row.expectedCash;
+      refunds += row.refunds;
+      netCollected += row.netCollected;
+      Object.entries(row.byMethod).forEach(([method, amount]) => {
+        byMethod[method] = (byMethod[method] || 0) + (amount as number);
+      });
+    });
+
+    return { expectedCash, refunds, netCollected, byMethod };
+  }, [cashierRows]);
+
   const summaryItems = board
     ? [
         {
           label: "Arrivals",
           value: board.summary.arrivals,
-          icon: <FiLogIn className="h-4 w-4 text-indigo-600" />,
-          bg: "bg-indigo-50/40 border-indigo-100",
-          iconBg: "bg-indigo-50",
+          icon: <FiLogIn className="h-3.5 w-3.5 text-indigo-700" />,
+          bg: "bg-gradient-to-br from-indigo-50 to-indigo-100/30 border-indigo-300 hover:border-indigo-400",
+          iconBg: "bg-indigo-100/80 border border-indigo-300/50",
+          textLabel: "text-indigo-800/90",
+          textValue: "text-indigo-950",
+          textDesc: "text-indigo-700/80",
           description: "Expected check-ins today",
         },
         {
           label: "Departures",
           value: board.summary.departures,
-          icon: <FiLogOut className="h-4 w-4 text-sky-600" />,
-          bg: "bg-sky-50/40 border-sky-100",
-          iconBg: "bg-sky-50",
+          icon: <FiLogOut className="h-3.5 w-3.5 text-sky-700" />,
+          bg: "bg-gradient-to-br from-sky-50 to-sky-100/30 border-sky-300 hover:border-sky-400",
+          iconBg: "bg-sky-100/80 border border-sky-300/50",
+          textLabel: "text-sky-800/90",
+          textValue: "text-sky-950",
+          textDesc: "text-sky-700/80",
           description: "Expected check-outs today",
         },
         {
           label: "In house",
           value: board.summary.inHouse,
-          icon: <FiHome className="h-4 w-4 text-emerald-600" />,
-          bg: "bg-emerald-50/40 border-emerald-100",
-          iconBg: "bg-emerald-50",
+          icon: <FiHome className="h-3.5 w-3.5 text-emerald-700" />,
+          bg: "bg-gradient-to-br from-emerald-50 to-emerald-100/30 border-emerald-300 hover:border-emerald-400",
+          iconBg: "bg-emerald-100/80 border border-emerald-300/50",
+          textLabel: "text-emerald-800/90",
+          textValue: "text-emerald-950",
+          textDesc: "text-emerald-700/80",
           description: "Guests currently staying",
         },
         {
           label: "Late arrivals",
           value: board.summary.lateArrivals,
-          icon: <FiClock className="h-4 w-4 text-amber-600" />,
-          bg: "bg-amber-50/40 border-amber-100",
-          iconBg: "bg-amber-50",
+          icon: <FiClock className="h-3.5 w-3.5 text-amber-700" />,
+          bg: "bg-gradient-to-br from-amber-50 to-amber-100/30 border-amber-300 hover:border-amber-400",
+          iconBg: "bg-amber-100/80 border border-amber-300/50",
+          textLabel: "text-amber-800/90",
+          textValue: "text-amber-950",
+          textDesc: "text-amber-700/80",
           description: "Missed scheduled check-in",
         },
         {
           label: "Unassigned",
           value: board.summary.unassignedArrivals,
-          icon: <FiAlertTriangle className="h-4 w-4 text-rose-600" />,
-          bg: "bg-rose-50/40 border-rose-100",
-          iconBg: "bg-rose-55",
+          icon: <FiAlertTriangle className="h-3.5 w-3.5 text-rose-700" />,
+          bg: "bg-gradient-to-br from-rose-50 to-rose-100/30 border-rose-300 hover:border-rose-400",
+          iconBg: "bg-rose-100/80 border border-rose-300/50",
+          textLabel: "text-rose-800/90",
+          textValue: "text-rose-950",
+          textDesc: "text-rose-700/80",
           description: "Needs room assignment",
         },
         {
           label: "Balance due",
           value: board.summary.balanceDue,
-          icon: <FiDollarSign className="h-4 w-4 text-slate-600" />,
-          bg: "bg-slate-50 border-slate-200",
-          iconBg: "bg-slate-100",
+          icon: <FiDollarSign className="h-3.5 w-3.5 text-slate-700" />,
+          bg: "bg-gradient-to-br from-slate-50 to-slate-100/30 border-slate-350 hover:border-slate-450",
+          iconBg: "bg-slate-200/80 border border-slate-300/50",
+          textLabel: "text-slate-800/90",
+          textValue: "text-slate-950",
+          textDesc: "text-slate-700/80",
           description: "Bookings with outstanding dues",
         },
         {
           label: "Housekeeping",
           value: board.summary.housekeeping,
-          icon: <FiClipboard className="h-4 w-4 text-purple-600" />,
-          bg: "bg-purple-50/40 border-purple-100",
-          iconBg: "bg-purple-50",
+          icon: <FiClipboard className="h-3.5 w-3.5 text-purple-700" />,
+          bg: "bg-gradient-to-br from-purple-50 to-purple-100/30 border-purple-300 hover:border-purple-400",
+          iconBg: "bg-purple-100/80 border border-purple-300/50",
+          textLabel: "text-purple-800/90",
+          textValue: "text-purple-950",
+          textDesc: "text-purple-700/80",
           description: "Dirty or cleaning rooms",
         },
         {
           label: "Refund attention",
           value: board.summary.refundAttention,
-          icon: <FiRefreshCw className="h-4 w-4 text-orange-600" />,
-          bg: "bg-orange-50/40 border-orange-100",
-          iconBg: "bg-orange-50",
+          icon: <FiRefreshCw className="h-3.5 w-3.5 text-orange-700" />,
+          bg: "bg-gradient-to-br from-orange-50 to-orange-100/30 border-orange-300 hover:border-orange-400",
+          iconBg: "bg-orange-100/80 border border-orange-300/50",
+          textLabel: "text-orange-800/90",
+          textValue: "text-orange-950",
+          textDesc: "text-orange-700/80",
           description: "Active refund requests",
         },
         {
           label: "Maintenance",
           value: board.summary.maintenanceConflicts,
-          icon: <FiTool className="h-4 w-4 text-red-600" />,
-          bg: "bg-red-50/40 border-red-100",
-          iconBg: "bg-red-55",
+          icon: <FiTool className="h-3.5 w-3.5 text-red-700" />,
+          bg: "bg-gradient-to-br from-red-50 to-red-100/30 border-red-300 hover:border-red-400",
+          iconBg: "bg-red-100/80 border border-red-300/50",
+          textLabel: "text-red-800/90",
+          textValue: "text-red-950",
+          textDesc: "text-red-700/80",
           description: "Maintenance conflicts",
         },
       ]
     : [];
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">
-            Front-desk operations
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {board
-              ? `${board.propertyName} business day in ${board.timezone}`
-              : "Loading property operations..."}
-          </p>
+    <section className="rounded-xl border border-slate-300 bg-white shadow-sm">
+      <div className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between ${!isCollapsed ? "border-b border-slate-300" : ""}`}>
+        <div className="flex items-start gap-3">
+          <button
+            onClick={toggleCollapsed}
+            className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            title={isCollapsed ? "Expand operations board" : "Collapse operations board"}
+            aria-label={isCollapsed ? "Expand operations board" : "Collapse operations board"}
+          >
+            {isCollapsed ? (
+              <FiChevronDown className="h-4 w-4" />
+            ) : (
+              <FiChevronUp className="h-4 w-4" />
+            )}
+          </button>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              Front-desk operations
+            </h2>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {board
+                ? `${board.propertyName} business day in ${board.timezone}`
+                : "Loading property operations..."}
+            </p>
+          </div>
         </div>
         <label className="text-sm font-semibold text-slate-700">
           Business date
@@ -257,150 +340,213 @@ function OperationsBoard({
         </label>
       </div>
 
-      {isLoading ? (
-        <div className="p-5 text-sm text-slate-500">Loading operations...</div>
-      ) : (
-        <>
-          <div className="grid gap-3 p-5 sm:grid-cols-3 xl:grid-cols-5">
-            {summaryItems.map((item) => (
-              <div
-                key={item.label}
-                className={`rounded-xl border p-4 transition-all duration-200 hover:shadow-md ${item.bg}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      {item.label}
-                    </span>
-                    <div className="text-3xl font-extrabold text-slate-900 leading-none">
-                      {item.value}
+      {!isCollapsed && (
+        isLoading ? (
+          <div className="p-5 text-sm text-slate-500">Loading operations...</div>
+        ) : (
+          <>
+            <div className="grid gap-2.5 p-4 sm:grid-cols-3 xl:grid-cols-5">
+              {summaryItems.map((item) => (
+                <div
+                  key={item.label}
+                  className={`rounded-lg border p-2.5 transition-all duration-200 ${item.bg}`}
+                >
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="space-y-0.5">
+                      <span className={`text-[10px] font-extrabold uppercase tracking-wider ${item.textLabel}`}>
+                        {item.label}
+                      </span>
+                      <div className={`text-2xl font-black leading-none ${item.textValue}`}>
+                        {item.value}
+                      </div>
+                    </div>
+                    <div className={`rounded-md p-1.5 shrink-0 ${item.iconBg}`}>
+                      {item.icon}
                     </div>
                   </div>
-                  <div className={`rounded-lg p-2 ${item.iconBg}`}>
-                    {item.icon}
-                  </div>
+                  <p className={`mt-1.5 text-[9px] font-medium leading-tight ${item.textDesc}`}>
+                    {item.description}
+                  </p>
                 </div>
-                <p className="mt-2.5 text-[10px] font-semibold text-slate-400">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-6 border-t border-slate-200 p-5 lg:grid-cols-2 bg-slate-50/50">
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                Immediate attention
-              </h3>
-              <div className="mt-4 space-y-3">
-                {board &&
-                board.lateArrivals.length +
-                  board.unassignedArrivals.length +
-                  board.maintenanceConflicts.length >
-                  0 ? (
-                  <>
-                    {board.lateArrivals.map((booking) => (
-                      <a
-                        key={`late-${booking.id}`}
-                        href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                        className="flex items-center gap-3 rounded-xl border border-amber-100 bg-amber-50/30 hover:bg-amber-50/60 px-4 py-3 text-amber-900 shadow-sm transition duration-200 hover:border-amber-200"
-                      >
-                        <FiClock className="h-5 w-5 text-amber-500 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-sm">Late Arrival Alert</div>
-                          <div className="text-xs text-amber-700 mt-0.5 font-medium">
-                            Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName}
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                    {board.unassignedArrivals.map((booking) => (
-                      <a
-                        key={`unassigned-${booking.id}`}
-                        href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                        className="flex items-center gap-3 rounded-xl border border-rose-100 bg-rose-50/30 hover:bg-rose-50/60 px-4 py-3 text-rose-900 shadow-sm transition duration-200 hover:border-rose-200"
-                      >
-                        <FiAlertTriangle className="h-5 w-5 text-rose-500 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-sm">Room Assignment Required</div>
-                          <div className="text-xs text-rose-700 mt-0.5 font-medium">
-                            Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName || "Guest"}
-                          </div>
-                        </div>
-                      </a>
-                    ))}
-                    {board.maintenanceConflicts.map((conflict) => (
-                      <div
-                        key={`${conflict.maintenanceId}-${conflict.booking.id}`}
-                        className="flex items-center gap-3 rounded-xl border border-red-100 bg-red-50/30 px-4 py-3 text-red-900 shadow-sm"
-                      >
-                        <FiTool className="h-5 w-5 text-red-500 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="font-semibold text-sm">{formatEnumLabel(conflict.priority)} Maintenance Conflict</div>
-                          <div className="text-xs text-red-700 mt-0.5 font-medium">
-                            Room block affects booking Ref: <span className="font-bold">{conflict.booking.bookingRef}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                ) : (
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50/30 px-4 py-3 text-sm font-semibold text-emerald-800">
-                    No urgent operational exceptions.
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
 
-            <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                Cashier by employee
-              </h3>
-              <div className="mt-4 space-y-3">
-                {cashierRows.length > 0 ? (
-                  cashierRows.map((row) => (
-                    <div
-                      key={row.receivedByUserId ?? "SYSTEM"}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl border border-slate-100 bg-white p-4 gap-3 shadow-sm hover:shadow-md transition duration-200"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full bg-indigo-500" />
-                          {row.receivedByName}
+            <div className="grid gap-4 border-t border-slate-300 p-4 lg:grid-cols-2 bg-slate-50/50">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                  Cashier by employee
+                </h3>
+                <div className="mt-4 space-y-3">
+                  {cashierRows.length > 0 ? (
+                    <>
+                      {/* Grand Total Row */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border-l-4 border-l-indigo-600 border border-slate-300 bg-indigo-50/15 p-2.5 gap-3 transition-all duration-200">
+                        <div className="flex items-start gap-2.5 min-w-0">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-indigo-600 text-white font-extrabold text-sm border border-indigo-700/50">
+                            Σ
+                          </div>
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5 leading-tight">
+                              <span className="font-bold text-xs text-indigo-950">
+                                Grand Total
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 font-medium">
+                              <span className="flex items-center gap-1">
+                                Expected Cash: <strong className="text-slate-700 font-semibold">{formatMoney(totals.expectedCash)}</strong>
+                              </span>
+                              <span className="text-slate-300">•</span>
+                              <span className="flex items-center gap-1">
+                                Refunds: <strong className="text-rose-600 font-semibold">{formatMoney(totals.refunds)}</strong>
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-slate-500 font-medium">
-                          <span>Expected Cash: <strong className="text-slate-700">{formatMoney(row.expectedCash)}</strong></span>
-                          <span className="text-slate-300">|</span>
-                          <span>Refunds: <strong className="text-red-600">{formatMoney(row.refunds)}</strong></span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 sm:border-l border-indigo-200/50 pt-2 sm:pt-0 sm:pl-3 gap-1">
+                            <div className="text-[9px] font-bold uppercase tracking-wider text-indigo-500/80">Net Collected</div>
+                            <div className={`text-lg font-black tracking-tight ${totals.netCollected >= 0 ? "text-emerald-600" : "text-rose-600"} leading-none`}>
+                              {formatMoney(totals.netCollected)}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setShowDetails(!showDetails)}
+                            className="flex items-center gap-1 rounded border border-slate-200 bg-white hover:bg-slate-50 px-2 py-1 text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            title={showDetails ? "Hide breakdown per employee" : "Show breakdown per employee"}
+                          >
+                            {showDetails ? "Hide details" : "Details"}
+                            {showDetails ? <FiChevronUp className="h-3 w-3" /> : <FiChevronDown className="h-3 w-3" />}
+                          </button>
                         </div>
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {Object.entries(row.byMethod).map(([method, amount]) => (
-                            <span
-                              key={method}
-                              className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 uppercase border border-slate-200/50"
+                      </div>
+
+                      {/* Employee Breakdown List */}
+                      {showDetails && (
+                        <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 pt-1.5 border-t border-dashed border-slate-200">
+                          {cashierRows.map((row) => (
+                            <div
+                              key={row.receivedByUserId ?? "SYSTEM"}
+                              className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-slate-300 bg-white p-2.5 gap-3 hover:border-slate-400 transition-all duration-200"
                             >
-                              {formatEnumLabel(method)}: {formatMoney(amount)}
-                            </span>
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-300/50">
+                                  {row.receivedByName.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 space-y-0.5">
+                                  <div className="flex flex-wrap items-center gap-1.5 leading-tight">
+                                    <span className="font-bold text-xs text-slate-900">
+                                      {row.receivedByName}
+                                    </span>
+                                    {Object.entries(row.byMethod).map(([method, amount]) => (
+                                      <span
+                                        key={method}
+                                        className="inline-flex items-center rounded bg-slate-50 border border-slate-200 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 uppercase tracking-wider"
+                                      >
+                                        {formatEnumLabel(method)}: {formatMoney(amount)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 font-medium">
+                                    <span className="flex items-center gap-1">
+                                      Expected Cash: <strong className="text-slate-700 font-semibold">{formatMoney(row.expectedCash)}</strong>
+                                    </span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className="flex items-center gap-1">
+                                      Refunds: <strong className="text-rose-600 font-semibold">{formatMoney(row.refunds)}</strong>
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-3 gap-1">
+                                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Net Collected</div>
+                                <div className={`text-lg font-black tracking-tight ${row.netCollected >= 0 ? "text-emerald-600" : "text-rose-600"} leading-none`}>
+                                  {formatMoney(row.netCollected)}
+                                </div>
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                      <div className="flex flex-col items-start sm:items-end justify-center shrink-0 border-t sm:border-t-0 sm:border-l border-slate-100 pt-3 sm:pt-0 sm:pl-4">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Net Collected</div>
-                        <div className={`text-xl font-black ${row.netCollected >= 0 ? "text-emerald-700" : "text-red-700"} mt-0.5`}>
-                          {formatMoney(row.netCollected)}
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
+                      No successful payments for this business date.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                  Immediate attention
+                </h3>
+                <div className="mt-4 space-y-3 max-h-[300px] overflow-y-auto pr-2">
+                  {board &&
+                  board.lateArrivals.length +
+                    board.unassignedArrivals.length +
+                    board.maintenanceConflicts.length >
+                    0 ? (
+                    <>
+                      {board.lateArrivals.map((booking) => (
+                        <a
+                          key={`late-${booking.id}`}
+                          href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
+                          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 px-3 py-2 text-amber-900 transition duration-200 hover:border-amber-400"
+                        >
+                          <FiClock className="h-4 w-4 text-amber-500 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs">Late Arrival Alert</div>
+                            <div className="text-[10px] text-amber-700 mt-0.5 font-medium">
+                              Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName}
+                            </div>
+                          </div>
+                        </a>
+                      ))}
+                      {board.unassignedArrivals.map((booking) => (
+                        <a
+                          key={`unassigned-${booking.id}`}
+                          href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
+                          className="flex items-center gap-2.5 rounded-lg border border-rose-300 bg-rose-50/30 hover:bg-rose-50/60 px-3 py-2 text-rose-900 transition duration-200 hover:border-rose-400"
+                        >
+                          <FiAlertTriangle className="h-4 w-4 text-rose-500 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs">Room Assignment Required</div>
+                            <div className="text-[10px] text-rose-700 mt-0.5 font-medium">
+                              Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName || "Guest"}
+                            </div>
+                          </div>
+                        </a>
+                      ))}
+                      {board.maintenanceConflicts.map((conflict) => (
+                        <div
+                          key={`${conflict.maintenanceId}-${conflict.booking.id}`}
+                          className="flex items-center gap-2.5 rounded-lg border border-red-350 bg-red-50/30 px-3 py-2 text-red-900"
+                        >
+                          <FiTool className="h-4 w-4 text-red-500 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs">{formatEnumLabel(conflict.priority)} Maintenance Conflict</div>
+                            <div className="text-[10px] text-red-700 mt-0.5 font-medium">
+                              Room block affects booking Ref: <span className="font-bold">{conflict.booking.bookingRef}</span>
+                            </div>
+                          </div>
                         </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="flex items-center rounded-lg border-l-4 border-l-emerald-600 border border-slate-300 bg-emerald-50/15 p-2.5 gap-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-emerald-600 text-white font-extrabold text-sm border border-emerald-700/50">
+                        <FiCheck className="h-4 w-4" />
+                      </div>
+                      <div className="font-bold text-xs text-emerald-950 leading-tight">
+                        No urgent operational exceptions.
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
-                    No successful payments for this business date.
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </>
+          </>
+        )
       )}
     </section>
   );
