@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 
 import { HttpError } from "@/common/errors/http-error.js";
 import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { requirePasswordChangeComplete } from "@/common/middleware/password-change.middleware.js";
+import { signAccessToken } from "@/common/utils/jwt.js";
 import { hashPassword } from "@/common/utils/password.js";
 import { prisma } from "@/db/prisma.js";
 import {
@@ -311,6 +314,35 @@ test("MANAGER can access operations modules only", async () => {
     403,
     "FORBIDDEN",
   );
+});
+
+test("MANAGER operations routes are not blocked by earlier admin-only routers", async () => {
+  await import("dotenv/config");
+  const { app } = await import("@/app.js");
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address() as AddressInfo;
+    const token = signAccessToken({
+      sub: state.managerId,
+      role: UserRole.MANAGER,
+    });
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v1/properties/${state.propertyAId}/bookings?page=1&limit=10`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    assert.equal(response.status, 200);
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
 });
 
 test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {

@@ -18,6 +18,7 @@ import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
 import {
   clearBookingCheckoutDraftForBooking,
+  getBookingBillingCheckoutToken,
   getBookingCheckoutDraft,
 } from "@/features/bookings/bookingCheckoutDraft";
 import {
@@ -118,14 +119,19 @@ export default function BookingPaymentProcessPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const checkoutToken =
-    bookingQuery.data !== undefined &&
-    checkoutDraft?.createdBookingId === bookingQuery.data.id
-      ? checkoutDraft.payload.inventoryLockToken
+    bookingQuery.data !== undefined
+      ? getBookingBillingCheckoutToken(bookingQuery.data.id, checkoutDraft)
       : undefined;
+  const completedFromBooking =
+    bookingQuery.data !== undefined &&
+    intent !== null &&
+    hasIntentCompleted(bookingQuery.data, intent);
+  const completedFromMutation =
+    paymentMutation.data?.payment.status === "SUCCEEDED";
   const billingDocumentsQuery = useBookingBillingDocuments(
     bookingQuery.data?.id,
     checkoutToken,
-    paymentMutation.isSuccess,
+    completedFromMutation || completedFromBooking,
   );
   const downloadBillingDocument = useDownloadBillingDocument(checkoutToken);
   const billingDocuments = billingDocumentsQuery.data ?? [];
@@ -189,7 +195,6 @@ export default function BookingPaymentProcessPage() {
 
   const booking = bookingQuery.data;
   const amount = getPaymentAmount(booking, intent);
-  const completedFromBooking = hasIntentCompleted(booking, intent);
   const intentIssue = getIntentIssue(booking, intent);
   const paymentError = paymentMutation.error
     ? normalizeApiError(paymentMutation.error).message

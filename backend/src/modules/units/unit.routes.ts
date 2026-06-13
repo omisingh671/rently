@@ -14,20 +14,27 @@ const router = Router();
  */
 router.use(authenticate, requirePasswordChangeComplete);
 
-/**
- * Admin-only routes
- */
-router.use(authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]));
-
+const authorizeUnitManagement = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+]);
 
 /**
  * Nested under Property
  * GET    /admin/properties/:propertyId/units
  * POST   /admin/properties/:propertyId/units
  */
-router.get("/properties/:propertyId/units", controller.list);
+router.get(
+  "/properties/:propertyId/units",
+  authorizeUnitManagement,
+  controller.list,
+);
 
-router.post("/properties/:propertyId/units", controller.create);
+router.post(
+  "/properties/:propertyId/units",
+  authorizeUnitManagement,
+  controller.create,
+);
 
 /**
  * Unit by ID
@@ -35,10 +42,10 @@ router.post("/properties/:propertyId/units", controller.create);
  * PATCH  /admin/units/:id
  * DELETE /admin/units/:id
  */
-router.get("/units/:id", controller.getById);
+router.get("/units/:id", authorizeUnitManagement, controller.getById);
 
-router.patch("/units/:id", controller.update);
+router.patch("/units/:id", authorizeUnitManagement, controller.update);
 
-router.delete("/units/:id", controller.remove);
+router.delete("/units/:id", authorizeUnitManagement, controller.remove);
 
 export default router;

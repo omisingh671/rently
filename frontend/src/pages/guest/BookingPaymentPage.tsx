@@ -18,6 +18,7 @@ import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
 import {
   clearBookingCheckoutDraftForBooking,
+  getBookingBillingCheckoutToken,
   getBookingCheckoutDraft,
 } from "@/features/bookings/bookingCheckoutDraft";
 import { useBooking } from "@/features/bookings/hooks";
@@ -188,9 +189,8 @@ export default function BookingPaymentPage() {
     loadedBooking !== undefined &&
     ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status);
   const checkoutToken =
-    loadedBooking !== undefined &&
-    checkoutDraft?.createdBookingId === loadedBooking.id
-      ? checkoutDraft.payload.inventoryLockToken
+    loadedBooking !== undefined
+      ? getBookingBillingCheckoutToken(loadedBooking.id, checkoutDraft)
       : undefined;
   const billingDocumentsQuery = useBookingBillingDocuments(
     loadedBooking?.id,

@@ -1,5 +1,6 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Request, RequestHandler } from "express";
 import { verifyAccessToken } from "@/common/utils/jwt.js";
+import { prisma } from "@/db/prisma.js";
 import { HttpError } from "../errors/http-error.js";
 
 export interface AuthRequest extends Request {
@@ -9,11 +10,28 @@ export interface AuthRequest extends Request {
   };
 }
 
-export const authenticate = (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction,
-) => {
+const getCurrentAuthUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      role: true,
+      isActive: true,
+    },
+  });
+
+  if (!user) {
+    throw new HttpError(401, "UNAUTHORIZED", "User not found");
+  }
+
+  if (!user.isActive) {
+    throw new HttpError(403, "USER_DISABLED", "User account is disabled");
+  }
+
+  return user;
+};
+
+export const authenticate: RequestHandler = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -26,20 +44,17 @@ export const authenticate = (
   }
 
   const payload = verifyAccessToken(token);
+  const user = await getCurrentAuthUser(payload.sub);
 
-  req.user = {
-    userId: payload.sub,
-    role: payload.role,
+  (req as AuthRequest).user = {
+    userId: user.id,
+    role: user.role,
   };
 
   next();
 };
 
-export const optionalAuthenticate = (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction,
-) => {
+export const optionalAuthenticate: RequestHandler = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -57,10 +72,11 @@ export const optionalAuthenticate = (
   }
 
   const payload = verifyAccessToken(token);
+  const user = await getCurrentAuthUser(payload.sub);
 
-  req.user = {
-    userId: payload.sub,
-    role: payload.role,
+  (req as AuthRequest).user = {
+    userId: user.id,
+    role: user.role,
   };
 
   next();
