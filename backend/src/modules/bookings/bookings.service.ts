@@ -2205,6 +2205,55 @@ export const voidBookingFolioCharge = async (
 const toLocalBusinessDateValue = (date: Date, timeZone: string) =>
   getLocalDateValue(date, timeZone);
 
+const getTimeZoneOffset = (date: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const getPart = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const localTimestamp = Date.UTC(
+    getPart("year"),
+    getPart("month") - 1,
+    getPart("day"),
+    getPart("hour"),
+    getPart("minute"),
+    getPart("second"),
+  );
+  return localTimestamp - date.getTime();
+};
+
+const toBusinessDateBoundary = (date: Date, timeZone: string) => {
+  const localMidnight = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate(),
+  );
+  const initial = new Date(localMidnight);
+  const firstPass = new Date(localMidnight - getTimeZoneOffset(initial, timeZone));
+  return new Date(localMidnight - getTimeZoneOffset(firstPass, timeZone));
+};
+
+const getRefundRecordedByUserId = (metadata: Prisma.JsonValue) => {
+  if (
+    metadata === null ||
+    Array.isArray(metadata) ||
+    typeof metadata !== "object"
+  ) {
+    return null;
+  }
+  const recordedByUserId = metadata.recordedByUserId;
+  return typeof recordedByUserId === "string" && recordedByUserId.length > 0
+    ? recordedByUserId
+    : null;
+};
+
 export const getOperationsBoard = async (
   userId: string,
   propertyId: string,
@@ -2373,14 +2422,23 @@ export const getCashierSummary = async (
 ) => {
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    select: { tenant: { select: { timezone: true } } },
+  });
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const rangeStart = toBusinessDateBoundary(from, property.tenant.timezone);
+  const rangeEnd = toBusinessDateBoundary(to, property.tenant.timezone);
   const [payments, refunds] = await Promise.all([
     prisma.payment.findMany({
       where: {
         propertyId,
         status: PaymentStatus.SUCCEEDED,
         OR: [
-          { paidAt: { gte: from, lt: to } },
-          { paidAt: null, createdAt: { gte: from, lt: to } },
+          { paidAt: { gte: rangeStart, lt: rangeEnd } },
+          { paidAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
         ],
       },
       include: {
@@ -2399,8 +2457,8 @@ export const getCashierSummary = async (
         propertyId,
         status: PaymentRefundStatus.SUCCEEDED,
         OR: [
-          { processedAt: { gte: from, lt: to } },
-          { processedAt: null, createdAt: { gte: from, lt: to } },
+          { processedAt: { gte: rangeStart, lt: rangeEnd } },
+          { processedAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
         ],
       },
       include: {
@@ -2425,6 +2483,7 @@ export const getCashierSummary = async (
       receivedByName: string;
       byMethod: Record<string, number>;
       refunds: number;
+      cashRefunds: number;
       history: Array<{
         id: string;
         bookingId: string;
@@ -2446,6 +2505,7 @@ export const getCashierSummary = async (
       receivedByName: name,
       byMethod: {} as Record<string, number>,
       refunds: 0,
+      cashRefunds: 0,
       history: [] as Array<{
         id: string;
         bookingId: string;
@@ -2460,6 +2520,24 @@ export const getCashierSummary = async (
     rows.set(key, created);
     return created;
   };
+
+  const refundActorIds = Array.from(
+    new Set(
+      refunds
+        .map((refund) => getRefundRecordedByUserId(refund.metadata))
+        .filter((id): id is string => id !== null),
+    ),
+  );
+  const refundActors =
+    refundActorIds.length === 0
+      ? []
+      : await prisma.user.findMany({
+          where: { id: { in: refundActorIds } },
+          select: { id: true, fullName: true },
+        });
+  const refundActorNames = new Map(
+    refundActors.map((refundActor) => [refundActor.id, refundActor.fullName]),
+  );
 
   for (const payment of payments) {
     const row = rowFor(
@@ -2480,11 +2558,18 @@ export const getCashierSummary = async (
     });
   }
   for (const refund of refunds) {
+    const recordedByUserId = getRefundRecordedByUserId(refund.metadata);
+    // Legacy refunds have no processor metadata, so retain the payment receiver.
     const row = rowFor(
-      refund.payment.receivedByUserId,
-      refund.payment.receivedBy?.fullName ?? "Online / System",
+      recordedByUserId ?? refund.payment.receivedByUserId,
+      (recordedByUserId
+        ? refundActorNames.get(recordedByUserId)
+        : refund.payment.receivedBy?.fullName) ?? "Online / System",
     );
     row.refunds += Number(refund.amount);
+    if (refund.method === PaymentMethod.CASH) {
+      row.cashRefunds += Number(refund.amount);
+    }
     row.history.push({
       id: refund.id,
       bookingId: refund.bookingId,
@@ -2499,23 +2584,22 @@ export const getCashierSummary = async (
 
   return {
     propertyId,
-    from: from.toISOString(),
-    to: to.toISOString(),
+    from: rangeStart.toISOString(),
+    to: rangeEnd.toISOString(),
     rows: Array.from(rows.values()).map((row) => {
       const collected = Object.values(row.byMethod).reduce(
         (sum, amount) => sum + amount,
         0,
       );
       const cashCollected = row.byMethod[PaymentMethod.CASH] ?? 0;
-      
-      // Sort history descending by time
       row.history.sort((a, b) => b.time.getTime() - a.time.getTime());
+      const { cashRefunds, ...publicRow } = row;
 
       return {
-        ...row,
+        ...publicRow,
         collected,
         netCollected: collected - row.refunds,
-        expectedCash: cashCollected - row.refunds,
+        expectedCash: cashCollected - cashRefunds,
       };
     }),
   };

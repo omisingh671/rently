@@ -276,7 +276,13 @@ export const getCashierSummaryApi = async (
   const { data } = await axiosInstance.get<
     ApiSuccessResponse<CashierSummaryResponse>
   >(API_ENDPOINTS.operations.cashierSummaryByProperty(propertyId), { params });
-  return data.data;
+  return {
+    ...data.data,
+    rows: data.data.rows.map((row) => ({
+      ...row,
+      history: Array.isArray(row.history) ? row.history : [],
+    })),
+  };
 };
 
 export const listEnquiriesApi = async (

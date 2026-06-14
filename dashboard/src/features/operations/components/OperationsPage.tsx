@@ -106,6 +106,15 @@ const formatMoney = (value: number | string) =>
     maximumFractionDigits: 0,
   }).format(Number(value));
 
+const formatTransactionTime = (value: string, timeZone?: string) =>
+  new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(timeZone ? { timeZone } : {}),
+  }).format(new Date(value));
+
 const getBookingAssignedSummary = (booking: AdminBooking) => {
   if (booking.items.length === 0) {
     return booking.targetLabel;
@@ -423,7 +432,7 @@ function OperationsBoard({
 
                       {/* Employee Breakdown List */}
                       {showDetails && (
-                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 pt-1.5 border-t border-dashed border-slate-200">
+                        <div className="space-y-3 pt-1.5 border-t border-dashed border-slate-200">
                           {cashierRows.map((row) => {
                             const empKey = row.receivedByUserId ?? "SYSTEM";
                             const isExpanded = expandedEmployeeKey === empKey;
@@ -490,7 +499,7 @@ function OperationsBoard({
                                       Payment History ({row.history?.length ?? 0})
                                     </h4>
                                     {row.history && row.history.length > 0 ? (
-                                      <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                                      <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1">
                                         {row.history.map((tx) => (
                                           <div
                                             key={tx.id}
@@ -519,6 +528,9 @@ function OperationsBoard({
                                               </span>
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
+                                              <span className="text-[9px] font-semibold text-slate-400">
+                                                {formatTransactionTime(tx.time, board?.timezone)}
+                                              </span>
                                               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                                 {formatEnumLabel(tx.method)}
                                               </span>

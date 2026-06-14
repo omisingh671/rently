@@ -2981,6 +2981,173 @@ test("hotel operations lifecycle is versioned, audited, and marks rooms dirty", 
   assert.equal(rejected.reason.code, "BOOKING_VERSION_CONFLICT");
 });
 
+test("cashier summary shows other managers and respects the property business date", async () => {
+  const cashierManager = await prisma.user.create({
+    data: {
+      fullName: "Payment Test Cashier Manager",
+      email: `${testId}-cashier-manager@sucasa.test`,
+      passwordHash,
+      role: UserRole.MANAGER,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  await prisma.propertyAssignment.create({
+    data: {
+      propertyId: state.propertyId,
+      userId: cashierManager.id,
+      role: PropertyAssignmentRole.MANAGER,
+      assignedByUserId: state.superAdminId,
+    },
+  });
+
+  const booking = await createBooking(
+    new Date("2037-03-10T00:00:00.000Z"),
+    new Date("2037-03-12T00:00:00.000Z"),
+  );
+  const includedManagerPayment = await prisma.payment.create({
+    data: {
+      bookingId: booking.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentStatus.SUCCEEDED,
+      purpose: PaymentPurpose.BALANCE,
+      method: PaymentMethod.CASH,
+      amount: 1000,
+      currency: "INR",
+      idempotencyKey: `${testId}-cashier-manager-payment`,
+      receivedByUserId: state.managerId,
+      paidAt: new Date("2037-03-09T18:30:00.000Z"),
+    },
+  });
+  await prisma.payment.createMany({
+    data: [
+      {
+        bookingId: booking.id,
+        propertyId: state.propertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.CASH,
+        amount: 700,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-before-boundary`,
+        receivedByUserId: state.managerId,
+        paidAt: new Date("2037-03-09T18:29:59.000Z"),
+      },
+      {
+        bookingId: booking.id,
+        propertyId: state.propertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.UPI_MANUAL,
+        amount: 500,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-other-manager-payment`,
+        receivedByUserId: cashierManager.id,
+        paidAt: new Date("2037-03-10T18:29:59.000Z"),
+      },
+      {
+        bookingId: booking.id,
+        propertyId: state.otherPropertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.CASH,
+        amount: 999,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-other-property`,
+        receivedByUserId: cashierManager.id,
+        paidAt: new Date("2037-03-10T10:00:00.000Z"),
+      },
+    ],
+  });
+  await prisma.paymentRefund.create({
+    data: {
+      bookingId: booking.id,
+      paymentId: includedManagerPayment.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: PaymentMethod.CASH,
+      amount: 100,
+      currency: "INR",
+      reason: "Cash returned by the second manager",
+      idempotencyKey: `${testId}-cashier-refund`,
+      metadata: {
+        recordedByUserId: cashierManager.id,
+        source: "DASHBOARD_MANUAL_REFUND",
+      },
+      processedAt: new Date("2037-03-10T12:00:00.000Z"),
+    },
+  });
+  await prisma.paymentRefund.create({
+    data: {
+      bookingId: booking.id,
+      paymentId: includedManagerPayment.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: PaymentMethod.UPI_MANUAL,
+      amount: 50,
+      currency: "INR",
+      reason: "Legacy refund without processor metadata",
+      idempotencyKey: `${testId}-cashier-legacy-refund`,
+      processedAt: new Date("2037-03-10T13:00:00.000Z"),
+    },
+  });
+
+  const summary = await dashboardService.getCashierSummary(
+    state.managerId,
+    state.propertyId,
+    new Date("2037-03-10T00:00:00.000Z"),
+    new Date("2037-03-11T00:00:00.000Z"),
+  );
+
+  assert.equal(summary.from, "2037-03-09T18:30:00.000Z");
+  assert.equal(summary.to, "2037-03-10T18:30:00.000Z");
+  assert.equal(summary.rows.length, 2);
+
+  const managerRow = summary.rows.find(
+    (row) => row.receivedByUserId === state.managerId,
+  );
+  const cashierRow = summary.rows.find(
+    (row) => row.receivedByUserId === cashierManager.id,
+  );
+  assert.ok(managerRow);
+  assert.ok(cashierRow);
+  assert.equal(managerRow.collected, 1000);
+  assert.equal(managerRow.refunds, 50);
+  assert.equal(managerRow.netCollected, 950);
+  assert.equal(managerRow.expectedCash, 1000);
+  assert.deepEqual(
+    managerRow.history.map((item) => item.type),
+    ["REFUND", "PAYMENT"],
+  );
+  assert.equal(cashierRow.collected, 500);
+  assert.equal(cashierRow.refunds, 100);
+  assert.equal(cashierRow.netCollected, 400);
+  assert.equal(cashierRow.expectedCash, -100);
+  assert.deepEqual(
+    cashierRow.history.map((item) => item.type),
+    ["PAYMENT", "REFUND"],
+  );
+  assert.equal(
+    summary.rows.reduce((total, row) => total + row.collected, 0),
+    1500,
+  );
+  assert.equal(
+    summary.rows.reduce((total, row) => total + row.refunds, 0),
+    150,
+  );
+});
+
 test("housekeeping requires the dirty-cleaning-clean-inspected sequence", async () => {
   const dirty = await prisma.room.findUniqueOrThrow({
     where: { id: state.assignmentRoomId },
