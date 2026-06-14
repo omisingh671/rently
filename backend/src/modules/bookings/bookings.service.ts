@@ -2383,7 +2383,16 @@ export const getCashierSummary = async (
           { paidAt: null, createdAt: { gte: from, lt: to } },
         ],
       },
-      include: { receivedBy: true },
+      include: {
+        receivedBy: true,
+        booking: {
+          select: {
+            id: true,
+            bookingRef: true,
+            guestNameSnapshot: true,
+          },
+        },
+      },
     }),
     prisma.paymentRefund.findMany({
       where: {
@@ -2395,6 +2404,13 @@ export const getCashierSummary = async (
         ],
       },
       include: {
+        booking: {
+          select: {
+            id: true,
+            bookingRef: true,
+            guestNameSnapshot: true,
+          },
+        },
         payment: {
           include: { receivedBy: true },
         },
@@ -2409,6 +2425,16 @@ export const getCashierSummary = async (
       receivedByName: string;
       byMethod: Record<string, number>;
       refunds: number;
+      history: Array<{
+        id: string;
+        bookingId: string;
+        bookingRef: string;
+        guestName: string;
+        amount: number;
+        type: "PAYMENT" | "REFUND";
+        method: PaymentMethod;
+        time: Date;
+      }>;
     }
   >();
   const rowFor = (id: string | null, name: string) => {
@@ -2420,6 +2446,16 @@ export const getCashierSummary = async (
       receivedByName: name,
       byMethod: {} as Record<string, number>,
       refunds: 0,
+      history: [] as Array<{
+        id: string;
+        bookingId: string;
+        bookingRef: string;
+        guestName: string;
+        amount: number;
+        type: "PAYMENT" | "REFUND";
+        method: PaymentMethod;
+        time: Date;
+      }>,
     };
     rows.set(key, created);
     return created;
@@ -2432,6 +2468,16 @@ export const getCashierSummary = async (
     );
     row.byMethod[payment.method] =
       (row.byMethod[payment.method] ?? 0) + Number(payment.amount);
+    row.history.push({
+      id: payment.id,
+      bookingId: payment.bookingId,
+      bookingRef: payment.booking.bookingRef,
+      guestName: payment.booking.guestNameSnapshot,
+      amount: Number(payment.amount),
+      type: "PAYMENT",
+      method: payment.method,
+      time: payment.paidAt ?? payment.createdAt,
+    });
   }
   for (const refund of refunds) {
     const row = rowFor(
@@ -2439,6 +2485,16 @@ export const getCashierSummary = async (
       refund.payment.receivedBy?.fullName ?? "Online / System",
     );
     row.refunds += Number(refund.amount);
+    row.history.push({
+      id: refund.id,
+      bookingId: refund.bookingId,
+      bookingRef: refund.booking.bookingRef,
+      guestName: refund.booking.guestNameSnapshot,
+      amount: Number(refund.amount),
+      type: "REFUND",
+      method: refund.method,
+      time: refund.processedAt ?? refund.createdAt,
+    });
   }
 
   return {
@@ -2451,6 +2507,10 @@ export const getCashierSummary = async (
         0,
       );
       const cashCollected = row.byMethod[PaymentMethod.CASH] ?? 0;
+      
+      // Sort history descending by time
+      row.history.sort((a, b) => b.time.getTime() - a.time.getTime());
+
       return {
         ...row,
         collected,

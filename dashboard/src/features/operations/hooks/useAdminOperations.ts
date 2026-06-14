@@ -115,10 +115,7 @@ export const useAdminOperations = (
   const invalidateBookingState = (nextPropertyId = propertyId) => {
     if (!nextPropertyId) return;
     queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.bookings(nextPropertyId),
-    });
-    queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.roomBoards(nextPropertyId),
+      queryKey: ADMIN_KEYS.operations.byProperty(nextPropertyId),
     });
   };
 
@@ -246,10 +243,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       booking,
     );
     queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.bookings(booking.propertyId),
-    });
-    queryClient.invalidateQueries({
-      queryKey: ADMIN_KEYS.operations.roomBoards(booking.propertyId),
+      queryKey: ADMIN_KEYS.operations.byProperty(booking.propertyId),
     });
   };
 

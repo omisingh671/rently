@@ -26,7 +26,6 @@ import type {
 import {
   FiAlertTriangle,
   FiArrowLeft,
-  FiCalendar,
   FiCheckCircle,
   FiCreditCard,
   FiDownload,
@@ -307,6 +306,7 @@ export default function BookingDetailsPage() {
     useState<RoomMovePreview | null>(null);
   const [roomMovePricingAction, setRoomMovePricingAction] =
     useState<RoomMovePricingAction>("CHARGE_DIFFERENCE");
+  const [activeSummaryTab, setActiveSummaryTab] = useState<"booking" | "payment">("booking");
 
   const {
     data: booking,
@@ -809,31 +809,87 @@ export default function BookingDetailsPage() {
     );
   }
 
+  const nights = Math.ceil(
+    (new Date(booking.checkOut).getTime() - new Date(booking.checkIn).getTime()) /
+      (1000 * 60 * 60 * 24),
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            icon={<FiArrowLeft />}
-            onClick={() => navigate(adminPath(ADMIN_ROUTES.BOOKINGS))}
-          >
-            Bookings
-          </Button>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+      <div>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          icon={<FiArrowLeft />}
+          onClick={() => navigate(adminPath(ADMIN_ROUTES.BOOKINGS))}
+        >
+          Bookings
+        </Button>
+      </div>
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 font-mono">
               {booking.bookingRef}
             </h2>
             <StatusBadge status={booking.status} />
           </div>
-          <p className="mt-1 text-sm text-slate-500">
-            {booking.propertyName} / {getStayLabel(booking)}
-            {isFetching ? " / refreshing..." : ""}
-          </p>
+          <div className="text-sm font-semibold text-slate-650 flex flex-wrap items-center gap-1.5">
+            <span className="text-indigo-650 bg-indigo-50 border border-indigo-100 rounded-md px-2 py-0.5 text-xs">{booking.propertyName}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-2 py-0.5 text-xs">{getStayLabel(booking)}</span>
+            {isFetching && <span className="text-slate-400 text-xs animate-pulse">(refreshing...)</span>}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 bg-slate-50/70 border border-slate-200/50 rounded-lg p-3 shrink-0">
+          <div className="text-center">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-In</span>
+            <span className="font-bold text-slate-800 text-sm">{formatDate(booking.checkIn)}</span>
+          </div>
+          <div className="flex flex-col items-center shrink-0 min-w-16">
+            <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+              {nights} {nights === 1 ? "night" : "nights"}
+            </span>
+            <div className="w-full h-0.5 bg-slate-300 relative mt-1.5">
+              <div className="absolute top-1/2 left-0 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+              <div className="absolute top-1/2 right-0 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+            </div>
+          </div>
+          <div className="text-center">
+            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Check-Out</span>
+            <span className="font-bold text-slate-800 text-sm">{formatDate(booking.checkOut)}</span>
+          </div>
         </div>
       </div>
+
+      {Number(booking.balanceAmount) > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border-l-4 border-l-amber-500 border border-amber-200 bg-amber-50/15 px-4 py-3 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <FiAlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div className="min-w-0">
+              <div className="font-extrabold text-sm text-amber-950">Outstanding Balance Due</div>
+              <div className="text-xs text-amber-800 font-semibold mt-0.5">
+                This folio has an unpaid balance of <span className="font-bold text-amber-950">{formatMoney(booking.balanceAmount)}</span>. Please collect the payment before or during check-in.
+              </div>
+            </div>
+          </div>
+          {canRecordBalance && (
+            <Button
+              type="button"
+              size="sm"
+              variant="warning"
+              disabled={isMutating}
+              onClick={() => openAction("recordPayment")}
+              className="shrink-0 font-bold"
+            >
+              Collect {formatMoney(booking.balanceAmount)}
+            </Button>
+          )}
+        </div>
+      )}
 
       {(actionError || roomsQuery.isError) && (
         <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -843,120 +899,129 @@ export default function BookingDetailsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[7fr_3fr]">
         <div className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">
-              Booking Summary
-            </h3>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <InfoItem
-                icon={<FiUser />}
-                label="Guest"
-                value={booking.guestNameSnapshot}
-              />
-              <InfoItem label="Email" value={booking.guestEmailSnapshot} />
-              <InfoItem
-                label="Contact"
-                value={booking.guestContactSnapshot ?? "Not provided"}
-              />
-              <InfoItem label="Guest count" value={`${booking.guestCount}`} />
-              <InfoItem
-                icon={<FiCalendar />}
-                label="Check in"
-                value={formatDate(booking.checkIn)}
-              />
-              <InfoItem
-                label="Check out"
-                value={formatDate(booking.checkOut)}
-              />
-              <InfoItem
-                icon={<FiHome />}
-                label="Stay/Product"
-                value={getStayLabel(booking)}
-              />
-              <InfoItem
-                label="Assigned room/unit"
-                value={getAssignedLabel(booking)}
-              />
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex border-b border-slate-200">
+              <button
+                type="button"
+                onClick={() => setActiveSummaryTab("booking")}
+                className={`pb-3 text-sm font-semibold transition-all border-b-2 px-4 cursor-pointer -mb-px flex items-center gap-1.5 ${
+                  activeSummaryTab === "booking"
+                    ? "border-indigo-600 text-indigo-600 font-bold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <FiUser className="h-4 w-4 shrink-0" />
+                <span>Booking Summary</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSummaryTab("payment")}
+                className={`pb-3 text-sm font-semibold transition-all border-b-2 px-4 cursor-pointer -mb-px flex items-center gap-1.5 ${
+                  activeSummaryTab === "payment"
+                    ? "border-indigo-600 text-indigo-600 font-bold"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <FiCreditCard className="h-4 w-4 shrink-0" />
+                <span>Payment & Billing</span>
+              </button>
             </div>
-          </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">
-              Payment Summary
-            </h3>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <InfoItem
-                label="Subtotal"
-                value={formatMoney(booking.subtotalAmount)}
-              />
-              <InfoItem
-                label="Total amount"
-                value={formatMoney(booking.totalAmount)}
-              />
-              <InfoItem
-                label="Paid amount"
-                value={formatMoney(booking.paidAmount)}
-              />
-              <InfoItem
-                label="Refunded"
-                value={formatMoney(booking.refundedAmount)}
-              />
-              <InfoItem
-                label="Net paid"
-                value={formatMoney(booking.netPaidAmount)}
-              />
-              <InfoItem
-                label="Refundable"
-                value={formatMoney(booking.refundableAmount)}
-              />
-              <InfoItem
-                label="Balance due"
-                value={formatMoney(booking.balanceAmount)}
-              />
-              <InfoItem
-                label="Token expected"
-                value={formatMoney(booking.upfrontAmount)}
-              />
-              <InfoItem
-                label="Payment status"
-                value={formatEnumLabel(booking.paymentStatus)}
-              />
-              <InfoItem
-                label="Payment policy"
-                value={formatEnumLabel(booking.paymentPolicy)}
-              />
-              <InfoItem
-                label="Discount"
-                value={formatMoney(booking.discountAmount)}
-              />
-              <InfoItem label="Tax" value={formatMoney(booking.taxAmount)} />
-              <InfoItem
-                label="Coupon used"
-                value={booking.couponCode ?? "None"}
-              />
-            </div>
-            {booking.taxBreakdown.length > 0 && (
-              <div className="mt-5 rounded-md border border-slate-100 bg-slate-50 px-3 py-3 text-sm">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Tax breakdown
+            <div className="mt-4">
+              {activeSummaryTab === "booking" ? (
+                <div className="overflow-x-auto mt-3">
+                  <table className="min-w-full text-sm">
+                    <tbody>
+                      <SummaryRow label="Guest Name" value={booking.guestNameSnapshot} />
+                      <SummaryRow label="Guest Email" value={booking.guestEmailSnapshot} />
+                      <SummaryRow label="Contact Number" value={booking.guestContactSnapshot ?? "Not provided"} />
+                      <SummaryRow label="Guest Count" value={`${booking.guestCount} guests`} />
+                      <SummaryRow label="Check-In Date" value={formatDate(booking.checkIn)} />
+                      <SummaryRow label="Check-Out Date" value={formatDate(booking.checkOut)} />
+                      <SummaryRow label="Stay Type / Product" value={getStayLabel(booking)} />
+                      <SummaryRow label="Assigned Room/Unit" value={getAssignedLabel(booking)} />
+                    </tbody>
+                  </table>
                 </div>
-                <div className="space-y-2">
-                  {booking.taxBreakdown.map((tax) => (
-                    <div
-                      key={`${tax.taxId}-${tax.included ? "included" : "exclusive"}`}
-                      className="flex items-center justify-between gap-3"
-                    >
-                      <span className="text-slate-600">
-                        {tax.name} {tax.included ? "(included)" : ""}
-                      </span>
-                      <span className="font-semibold text-slate-900">
-                        {formatMoney(String(tax.taxAmount))}
-                      </span>
+              ) : (
+                <div className="space-y-4">
+                  <div className="overflow-x-auto mt-3">
+                    <table className="min-w-full text-sm">
+                      <tbody>
+                        <SummaryRow label="Subtotal" value={formatMoney(booking.subtotalAmount)} />
+                        <SummaryRow label="Discount" value={formatMoney(booking.discountAmount)} />
+                        <SummaryRow label="Tax" value={formatMoney(booking.taxAmount)} />
+                        <SummaryRow
+                          label="Total Amount"
+                          value={formatMoney(booking.totalAmount)}
+                          className="bg-indigo-50/20 text-indigo-950 font-bold"
+                        />
+                        <SummaryRow
+                          label="Paid Amount"
+                          value={formatMoney(booking.paidAmount)}
+                          className="bg-emerald-50/15 text-emerald-950 font-bold"
+                        />
+                        <SummaryRow
+                          label="Refunded"
+                          value={formatMoney(booking.refundedAmount)}
+                          className={Number(booking.refundedAmount) > 0 ? "bg-amber-50/25 text-amber-950" : ""}
+                        />
+                        <SummaryRow label="Net Paid" value={formatMoney(booking.netPaidAmount)} />
+                        <SummaryRow label="Refundable" value={formatMoney(booking.refundableAmount)} />
+                        <SummaryRow
+                          label="Balance Due"
+                          value={
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span>{formatMoney(booking.balanceAmount)}</span>
+                              {Number(booking.balanceAmount) <= 0 ? (
+                                <span className="inline-flex items-center rounded bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-emerald-800 border border-emerald-200">
+                                  Paid
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded bg-rose-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-rose-800 border border-rose-200 animate-pulse">
+                                  Due
+                                </span>
+                              )}
+                            </div>
+                          }
+                          className={Number(booking.balanceAmount) > 0
+                            ? "bg-rose-50/20 text-rose-950 font-extrabold"
+                            : "bg-emerald-50/25 text-emerald-950 font-extrabold"
+                          }
+                        />
+                        <SummaryRow label="Token expected" value={formatMoney(booking.upfrontAmount)} />
+                        <SummaryRow label="Payment status" value={formatEnumLabel(booking.paymentStatus)} />
+                        <SummaryRow label="Payment policy" value={formatEnumLabel(booking.paymentPolicy)} />
+                        <SummaryRow label="Coupon used" value={booking.couponCode ?? "None"} />
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {booking.taxBreakdown.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4 text-sm">
+                      <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                        Tax breakdown
+                      </div>
+                      <div className="space-y-2">
+                        {booking.taxBreakdown.map((tax) => (
+                          <div
+                            key={`${tax.taxId}-${tax.included ? "included" : "exclusive"}`}
+                            className="flex items-center justify-between gap-3 text-xs"
+                          >
+                            <span className="text-slate-600 font-semibold">
+                              {tax.name} {tax.included ? "(included)" : ""}
+                            </span>
+                            <span className="font-bold text-slate-900">
+                              {formatMoney(String(tax.taxAmount))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </section>
 
           <FolioSection
@@ -1071,11 +1136,37 @@ export default function BookingDetailsPage() {
         </div>
 
         <aside className="space-y-6">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">
-              Operational Actions
-            </h3>
-            <div className="mt-4 grid gap-3">
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Operational Actions
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Manage guest stay lifecycle and room allocations.
+              </p>
+            </div>
+
+            <div className="grid gap-2.5">
+              {canCheckIn && (
+                <ActionButton
+                  theme="emerald"
+                  icon={<FiLogIn />}
+                  disabled={isMutating}
+                  onClick={() => openAction("checkIn")}
+                >
+                  Check In
+                </ActionButton>
+              )}
+              {canCheckOut && (
+                <ActionButton
+                  theme="slate"
+                  icon={<FiLogOut />}
+                  disabled={isMutating}
+                  onClick={() => openAction("checkOut")}
+                >
+                  Check Out
+                </ActionButton>
+              )}
               {canRecordBalance && (
                 <ActionButton
                   theme="indigo"
@@ -1102,24 +1193,14 @@ export default function BookingDetailsPage() {
                       : "Assign Room"}
                 </ActionButton>
               )}
-              {canCheckIn && (
+              {canUseAdminCorrection && (
                 <ActionButton
-                  theme="emerald"
-                  icon={<FiLogIn />}
+                  theme="orange"
+                  icon={<FiEdit3 />}
                   disabled={isMutating}
-                  onClick={() => openAction("checkIn")}
+                  onClick={() => openAction("statusOverride")}
                 >
-                  Check In
-                </ActionButton>
-              )}
-              {canCheckOut && (
-                <ActionButton
-                  theme="slate"
-                  icon={<FiLogOut />}
-                  disabled={isMutating}
-                  onClick={() => openAction("checkOut")}
-                >
-                  Check Out
+                  Fix Status Mistake
                 </ActionButton>
               )}
               {canMarkNoShow && (
@@ -1142,41 +1223,24 @@ export default function BookingDetailsPage() {
                   Cancel Booking
                 </ActionButton>
               )}
-              {canUseAdminCorrection && (
-                <ActionButton
-                  theme="orange"
-                  icon={<FiEdit3 />}
-                  disabled={isMutating}
-                  onClick={() => openAction("statusOverride")}
-                >
-                  Fix Status Mistake
-                </ActionButton>
-              )}
             </div>
+
             {booking.status === "CONFIRMED" && booking.noShowEligible && (
-              <p className="mt-3 text-xs font-semibold text-amber-700">
-                No-show eligible
-              </p>
+              <div className="mt-3 rounded-md bg-amber-50/60 border border-amber-250 p-2 text-xs font-semibold text-amber-850 flex items-center gap-1.5">
+                <FiAlertTriangle className="text-amber-500" />
+                <span>No-show eligible</span>
+              </div>
             )}
-            {booking.status === "CONFIRMED" &&
-              Number(booking.balanceAmount) > 0 && (
-                <p className="mt-3 text-xs text-slate-500">
-                  Balance due before check-in:{" "}
-                  {formatMoney(booking.balanceAmount)}
-                </p>
-              )}
             {booking.status === "CHECKED_IN" && !canOverrideCheckedInRoom && (
-              <p className="mt-3 text-xs text-slate-500">
-                Room changes after check-in require confirmation and an audit
-                note.
+              <p className="mt-3 text-xs text-slate-500 leading-normal italic">
+                Room changes after check-in require confirmation and an audit note.
               </p>
             )}
             {(booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
               Number(booking.refundableAmount) > 0 && (
-                <p className="mt-3 text-xs text-slate-500">
-                  Refundable balance available:{" "}
-                  {formatMoney(booking.refundableAmount)}
-                </p>
+                <div className="mt-3 rounded-md bg-indigo-50/60 border border-indigo-250 p-2 text-xs font-semibold text-indigo-850 flex items-center gap-1.5 animate-pulse">
+                  <span>Refundable balance: {formatMoney(booking.refundableAmount)}</span>
+                </div>
               )}
           </section>
 
@@ -1465,8 +1529,8 @@ export default function BookingDetailsPage() {
 
                       {payment.note && (
                         <p className="mt-3.5 text-xs font-medium text-slate-500 border-l-2 border-slate-200 pl-3.5 py-0.5">
-                          <span className="font-semibold text-slate-700 block mb-0.5">
-                            Note:
+                          <span className="font-semibold text-slate-700">
+                            Note:{" "}
                           </span>
                           {payment.note}
                         </p>
@@ -1540,13 +1604,13 @@ export default function BookingDetailsPage() {
                 billingDocuments.map((document) => (
                   <div
                     key={document.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
+                    className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
                   >
-                    <div>
-                      <div className="font-semibold text-slate-900">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900 truncate">
                         {document.documentNumber}
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-slate-500 truncate">
                         {formatEnumLabel(document.type)} /{" "}
                         {formatEnumLabel(document.status)}{" "}
                         / {formatMoney(document.total)}
@@ -1638,23 +1702,24 @@ function PageState({
   );
 }
 
-function InfoItem({
-  icon,
+
+
+function SummaryRow({
   label,
   value,
+  className = "",
 }: {
-  icon?: ReactNode;
   label: string;
-  value: string;
+  value: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="rounded-md bg-slate-50 p-3">
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <div className="mt-1 text-sm font-medium text-slate-900">{value}</div>
-    </div>
+    <tr className={`transition-all hover:bg-slate-50/20 border-b border-slate-500/30 last:border-0 ${className}`}>
+      <td className="px-6 py-4 font-medium text-slate-500 text-sm w-2/5 whitespace-nowrap">
+        {label}
+      </td>
+      <td className="px-6 py-4 font-semibold text-slate-900 text-sm">{value}</td>
+    </tr>
   );
 }
 
@@ -2473,7 +2538,7 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={`
-        w-full inline-flex items-center justify-center gap-2.5 rounded-lg border px-4 py-2.5 text-sm font-semibold cursor-pointer
+        w-full inline-flex items-center justify-center gap-2.5 rounded-lg border-2 px-4 py-2.5 text-sm font-semibold cursor-pointer
         transition-all duration-200 ease-in-out
         hover:-translate-y-0.5 active:translate-y-0
         focus:outline-none focus:ring-2 focus:ring-offset-1

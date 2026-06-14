@@ -159,6 +159,7 @@ function OperationsBoard({
   isLoading: boolean;
 }) {
   const [showDetails, setShowDetails] = useState(false);
+  const [expandedEmployeeKey, setExpandedEmployeeKey] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       const saved = localStorage.getItem("rently_admin_operations_collapsed");
@@ -349,7 +350,7 @@ function OperationsBoard({
               {summaryItems.map((item) => (
                 <div
                   key={item.label}
-                  className={`rounded-lg border p-2.5 transition-all duration-200 ${item.bg}`}
+                  className={`rounded-lg border p-2.5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-default ${item.bg}`}
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="space-y-0.5">
@@ -423,48 +424,125 @@ function OperationsBoard({
                       {/* Employee Breakdown List */}
                       {showDetails && (
                         <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 pt-1.5 border-t border-dashed border-slate-200">
-                          {cashierRows.map((row) => (
-                            <div
-                              key={row.receivedByUserId ?? "SYSTEM"}
-                              className="flex flex-col sm:flex-row sm:items-center justify-between rounded-lg border border-slate-300 bg-white p-2.5 gap-3 hover:border-slate-400 transition-all duration-200"
-                            >
-                              <div className="flex items-start gap-2.5 min-w-0">
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-300/50">
-                                  {row.receivedByName.slice(0, 2).toUpperCase()}
-                                </div>
-                                <div className="min-w-0 space-y-0.5">
-                                  <div className="flex flex-wrap items-center gap-1.5 leading-tight">
-                                    <span className="font-bold text-xs text-slate-900">
-                                      {row.receivedByName}
-                                    </span>
-                                    {Object.entries(row.byMethod).map(([method, amount]) => (
-                                      <span
-                                        key={method}
-                                        className="inline-flex items-center rounded bg-slate-50 border border-slate-200 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 uppercase tracking-wider"
-                                      >
-                                        {formatEnumLabel(method)}: {formatMoney(amount)}
-                                      </span>
-                                    ))}
+                          {cashierRows.map((row) => {
+                            const empKey = row.receivedByUserId ?? "SYSTEM";
+                            const isExpanded = expandedEmployeeKey === empKey;
+                            return (
+                              <div
+                                key={empKey}
+                                className="flex flex-col rounded-lg border border-slate-300 bg-white hover:border-slate-400 transition-all duration-200"
+                              >
+                                {/* Header (Clickable to Expand) */}
+                                <div
+                                  className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 gap-3 cursor-pointer select-none"
+                                  onClick={() => setExpandedEmployeeKey(isExpanded ? null : empKey)}
+                                >
+                                  <div className="flex items-start gap-2.5 min-w-0">
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 font-bold text-xs border border-indigo-300/50">
+                                      {row.receivedByName.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 space-y-0.5">
+                                      <div className="flex flex-wrap items-center gap-1.5 leading-tight">
+                                        <span className="font-bold text-xs text-slate-900">
+                                          {row.receivedByName}
+                                        </span>
+                                        {Object.entries(row.byMethod).map(([method, amount]) => (
+                                          <span
+                                            key={method}
+                                            className="inline-flex items-center rounded bg-slate-50 border border-slate-200 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 uppercase tracking-wider"
+                                          >
+                                            {formatEnumLabel(method)}: {formatMoney(amount)}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 font-medium">
+                                        <span className="flex items-center gap-1">
+                                          Expected Cash: <strong className="text-slate-700 font-semibold">{formatMoney(row.expectedCash)}</strong>
+                                        </span>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="flex items-center gap-1">
+                                          Refunds: <strong className="text-rose-600 font-semibold">{formatMoney(row.refunds)}</strong>
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500 font-medium">
-                                    <span className="flex items-center gap-1">
-                                      Expected Cash: <strong className="text-slate-700 font-semibold">{formatMoney(row.expectedCash)}</strong>
-                                    </span>
-                                    <span className="text-slate-300">•</span>
-                                    <span className="flex items-center gap-1">
-                                      Refunds: <strong className="text-rose-600 font-semibold">{formatMoney(row.refunds)}</strong>
-                                    </span>
+                                  <div className="flex items-center gap-2.5 shrink-0 ml-auto sm:ml-0">
+                                    <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-3 gap-1">
+                                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Net Collected</div>
+                                      <div className={`text-lg font-black tracking-tight ${row.netCollected >= 0 ? "text-emerald-600" : "text-rose-600"} leading-none`}>
+                                        {formatMoney(row.netCollected)}
+                                      </div>
+                                    </div>
+                                    <div className="text-slate-450 shrink-0">
+                                      {isExpanded ? (
+                                        <FiChevronUp className="h-4 w-4" />
+                                      ) : (
+                                        <FiChevronDown className="h-4 w-4" />
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
+
+                                {/* Expandable Detail Section */}
+                                {isExpanded && (
+                                  <div className="border-t border-slate-100 bg-slate-50/50 p-2.5 rounded-b-lg">
+                                    <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-450 mb-2">
+                                      Payment History ({row.history?.length ?? 0})
+                                    </h4>
+                                    {row.history && row.history.length > 0 ? (
+                                      <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                                        {row.history.map((tx) => (
+                                          <div
+                                            key={tx.id}
+                                            className="flex items-center justify-between rounded bg-white border border-slate-200 p-2 text-xs gap-3 shadow-2xs"
+                                          >
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <span
+                                                className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider border ${
+                                                  tx.type === "PAYMENT"
+                                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                                                    : "bg-rose-50 text-rose-700 border-rose-200/60"
+                                                }`}
+                                              >
+                                                {tx.type}
+                                              </span>
+                                              <a
+                                                href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(tx.bookingId))}
+                                                className="font-bold font-mono text-indigo-600 hover:text-indigo-855 hover:underline shrink-0"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                {tx.bookingRef}
+                                              </a>
+                                              <span className="text-slate-300 shrink-0">|</span>
+                                              <span className="text-slate-700 truncate font-semibold">
+                                                {tx.guestName}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 shrink-0">
+                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                                {formatEnumLabel(tx.method)}
+                                              </span>
+                                              <span
+                                                className={`font-extrabold ${
+                                                  tx.type === "PAYMENT" ? "text-slate-900" : "text-rose-600"
+                                                }`}
+                                              >
+                                                {tx.type === "PAYMENT" ? "" : "-"}{formatMoney(tx.amount)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-slate-500 font-medium py-1">
+                                        No payments or refunds recorded.
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center shrink-0 border-t sm:border-t-0 sm:border-l border-slate-200 pt-2 sm:pt-0 sm:pl-3 gap-1">
-                                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Net Collected</div>
-                                <div className={`text-lg font-black tracking-tight ${row.netCollected >= 0 ? "text-emerald-600" : "text-rose-600"} leading-none`}>
-                                  {formatMoney(row.netCollected)}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </>
@@ -491,13 +569,13 @@ function OperationsBoard({
                         <a
                           key={`late-${booking.id}`}
                           href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 px-3 py-2 text-amber-900 transition duration-200 hover:border-amber-400"
+                          className="flex items-center gap-3 rounded-lg border-y border-r border-l-4 border-l-amber-500 border-amber-200 bg-amber-50/15 hover:bg-amber-50/40 px-3.5 py-2.5 text-amber-900 transition-all duration-200 hover:shadow-xs hover:-translate-x-0.5"
                         >
-                          <FiClock className="h-4 w-4 text-amber-500 shrink-0" />
+                          <FiClock className="h-4.5 w-4.5 text-amber-600 shrink-0" />
                           <div className="min-w-0">
-                            <div className="font-bold text-xs">Late Arrival Alert</div>
-                            <div className="text-[10px] text-amber-700 mt-0.5 font-medium">
-                              Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName}
+                            <div className="font-extrabold text-xs tracking-tight text-amber-950">Late Arrival Alert</div>
+                            <div className="text-[10px] text-amber-800 mt-1 font-semibold">
+                              Ref: <span className="font-mono text-amber-950 bg-amber-100/60 px-1 py-0.5 rounded border border-amber-200/50">{booking.bookingRef}</span> • {booking.guestName}
                             </div>
                           </div>
                         </a>
@@ -506,13 +584,13 @@ function OperationsBoard({
                         <a
                           key={`unassigned-${booking.id}`}
                           href={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}
-                          className="flex items-center gap-2.5 rounded-lg border border-rose-300 bg-rose-50/30 hover:bg-rose-50/60 px-3 py-2 text-rose-900 transition duration-200 hover:border-rose-400"
+                          className="flex items-center gap-3 rounded-lg border-y border-r border-l-4 border-l-rose-500 border-rose-200 bg-rose-50/15 hover:bg-rose-50/40 px-3.5 py-2.5 text-rose-900 transition-all duration-200 hover:shadow-xs hover:-translate-x-0.5"
                         >
-                          <FiAlertTriangle className="h-4 w-4 text-rose-500 shrink-0" />
+                          <FiAlertTriangle className="h-4.5 w-4.5 text-rose-600 shrink-0" />
                           <div className="min-w-0">
-                            <div className="font-bold text-xs">Room Assignment Required</div>
-                            <div className="text-[10px] text-rose-700 mt-0.5 font-medium">
-                              Ref: <span className="font-bold">{booking.bookingRef}</span> • {booking.guestName || "Guest"}
+                            <div className="font-extrabold text-xs tracking-tight text-rose-950">Room Assignment Required</div>
+                            <div className="text-[10px] text-rose-800 mt-1 font-semibold">
+                              Ref: <span className="font-mono text-rose-950 bg-rose-100/60 px-1 py-0.5 rounded border border-rose-200/50">{booking.bookingRef}</span> • {booking.guestName || "Guest"}
                             </div>
                           </div>
                         </a>
@@ -520,13 +598,13 @@ function OperationsBoard({
                       {board.maintenanceConflicts.map((conflict) => (
                         <div
                           key={`${conflict.maintenanceId}-${conflict.booking.id}`}
-                          className="flex items-center gap-2.5 rounded-lg border border-red-350 bg-red-50/30 px-3 py-2 text-red-900"
+                          className="flex items-center gap-3 rounded-lg border-y border-r border-l-4 border-l-red-650 border-red-200 bg-red-50/15 px-3.5 py-2.5 text-red-900 shadow-2xs"
                         >
-                          <FiTool className="h-4 w-4 text-red-500 shrink-0" />
+                          <FiTool className="h-4.5 w-4.5 text-red-600 shrink-0" />
                           <div className="min-w-0">
-                            <div className="font-bold text-xs">{formatEnumLabel(conflict.priority)} Maintenance Conflict</div>
-                            <div className="text-[10px] text-red-700 mt-0.5 font-medium">
-                              Room block affects booking Ref: <span className="font-bold">{conflict.booking.bookingRef}</span>
+                            <div className="font-extrabold text-xs tracking-tight text-red-950">{formatEnumLabel(conflict.priority)} Maintenance Conflict</div>
+                            <div className="text-[10px] text-red-800 mt-1 font-semibold">
+                              Room block affects booking Ref: <span className="font-mono text-red-950 bg-red-100/60 px-1 py-0.5 rounded border border-red-200/50">{conflict.booking.bookingRef}</span>
                             </div>
                           </div>
                         </div>
@@ -832,8 +910,8 @@ export default function OperationsPage({ module }: Props) {
                     <th className="whitespace-nowrap px-6 py-4">Guest</th>
                     <th className="whitespace-nowrap px-6 py-4">Assigned Room/Unit</th>
                     <th className="whitespace-nowrap px-6 py-4">Dates</th>
-                    <th className="whitespace-nowrap px-6 py-4">Financials</th>
-                    <th className="whitespace-nowrap px-6 py-4">Status</th>
+                    <th className="whitespace-nowrap px-6 py-4 text-right">Financials</th>
+                    <th className="whitespace-nowrap px-6 py-4 text-center">Status</th>
                     <th className="whitespace-nowrap px-6 py-4 text-right">Details</th>
                   </tr>
                 ) : module === "enquiries" ? (
@@ -876,7 +954,7 @@ export default function OperationsPage({ module }: Props) {
                 (items as AdminBooking[]).map((booking, index) => (
                   <tr
                     key={booking.id}
-                    className="transition-colors hover:bg-slate-50/80"
+                    className="transition-all duration-150 hover:bg-indigo-50/15"
                   >
                     <td className="px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap">
                       {(page - 1) * limit + index + 1}
@@ -884,19 +962,25 @@ export default function OperationsPage({ module }: Props) {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <GuestAvatar name={booking.guestName} />
-                        <div className="min-w-0">
-                          <div className="truncate font-semibold text-slate-900">
-                            {booking.guestName}
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-bold text-slate-900 text-sm">
+                              {booking.guestName}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1 text-xs text-slate-500">
-                            <FiMail className="shrink-0" />
-                            <span className="truncate">{booking.guestEmail}</span>
+                          <div className="flex items-center text-xs text-slate-500 font-medium">
+                            <span className="flex items-center gap-1 min-w-0">
+                              <FiMail className="shrink-0 text-slate-400" />
+                              <span className="truncate" title={booking.guestEmail}>{booking.guestEmail}</span>
+                            </span>
                           </div>
-                          <div className="text-xs font-semibold text-slate-500">
-                            Ref: {booking.bookingRef}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            Guests: {booking.guestCount}
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            <span className="inline-flex items-center gap-1 shrink-0 bg-indigo-50/70 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold border border-indigo-100">
+                              👤 {booking.guestCount} {booking.guestCount === 1 ? "guest" : "guests"}
+                            </span>
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-650 border border-slate-200">
+                              {booking.bookingRef}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -910,27 +994,29 @@ export default function OperationsPage({ module }: Props) {
                         <span>{formatDate(booking.checkOut)}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-baseline gap-0.5 text-lg font-bold text-indigo-700">
-                          <span>{formatMoney(booking.totalAmount)}</span>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="text-base font-black text-indigo-700 leading-tight">
+                          {formatMoney(booking.totalAmount)}
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider">
+                        <div className="flex items-center justify-end gap-1 text-[9px] font-extrabold uppercase tracking-wider">
                           {Number(booking.upfrontAmount) > 0 ? (
-                            <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">Token: {formatMoney(booking.upfrontAmount)}</span>
+                            <span className="text-emerald-600 bg-emerald-50/60 border border-emerald-200 px-1.5 py-0.5 rounded">Token: {formatMoney(booking.upfrontAmount)}</span>
                           ) : (
-                            <span className="text-slate-400">No upfront</span>
+                            <span className="text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">No upfront</span>
                           )}
                         </div>
                         {getBookingRefundIndicator(booking) && (
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                          <div className="text-[9px] font-extrabold uppercase tracking-wider text-amber-650 bg-amber-50/60 border border-amber-200 px-1.5 py-0.5 rounded mt-0.5">
                             {getBookingRefundIndicator(booking)}
                           </div>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <StatusBadge status={booking.status} />
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex justify-center">
+                        <StatusBadge status={booking.status} />
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right whitespace-nowrap">
                       <Button

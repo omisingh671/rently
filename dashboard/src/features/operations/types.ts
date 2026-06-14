@@ -493,6 +493,16 @@ export type CashierSummaryResponse = {
     collected: number;
     netCollected: number;
     expectedCash: number;
+    history: Array<{
+      id: string;
+      bookingId: string;
+      bookingRef: string;
+      guestName: string;
+      amount: number;
+      type: "PAYMENT" | "REFUND";
+      method: PaymentMethod;
+      time: string;
+    }>;
   }>;
 };
 
