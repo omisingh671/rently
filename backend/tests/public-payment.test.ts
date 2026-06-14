@@ -2279,15 +2279,20 @@ test("dashboard moves a whole-unit booking without reducing it to one room", asy
     include: { rooms: true },
   });
   const destinationRoomIds = destinationUnit.rooms.map((room) => room.id);
-  const destinationProduct = await prisma.roomPricing.findUniqueOrThrow({
-    where: { id: state.pricingId },
-    select: { productId: true },
+  const destinationProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Whole Unit`,
+      occupancy: 6,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
   });
   await prisma.roomPricing.create({
     data: {
       propertyId: state.propertyId,
       unitId: destinationUnit.id,
-      productId: destinationProduct.productId,
+      productId: destinationProduct.id,
       rateType: RateType.NIGHTLY,
       pricingTier: PricingTier.STANDARD,
       minNights: 1,

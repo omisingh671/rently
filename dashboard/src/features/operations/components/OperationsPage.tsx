@@ -422,7 +422,7 @@ function OperationsBoard({
 
                       {/* Employee Breakdown List */}
                       {showDetails && (
-                        <div className="space-y-3 max-h-[220px] overflow-y-auto pr-2 pt-1.5 border-t border-dashed border-slate-200">
+                        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 pt-1.5 border-t border-dashed border-slate-200">
                           {cashierRows.map((row) => (
                             <div
                               key={row.receivedByUserId ?? "SYSTEM"}

@@ -1640,6 +1640,10 @@ const buildRoomMovePricingPreview = async (
 
   const isUnitBooking = booking.targetType === BookingTargetType.UNIT;
   const orderedRooms = roomIds.map((id) => rooms.find((room) => room.id === id)!);
+  const destinationUnitCapacity = orderedRooms.reduce(
+    (total, room) => total + Math.max(0, room.maxOccupancy),
+    0,
+  );
   const pricingTargets = isUnitBooking
     ? [
         {
@@ -1677,7 +1681,14 @@ const buildRoomMovePricingPreview = async (
           { OR: [{ validTo: null }, { validTo: { gte: booking.checkOut } }] },
           { OR: [{ maxNights: null }, { maxNights: { gte: affectedNights } }] },
           ...(target.targetType === BookingTargetType.UNIT
-            ? []
+            ? [
+                {
+                  OR: [
+                    { roomId: null, unitId: target.room.unitId },
+                    { roomId: null, unitId: null },
+                  ],
+                },
+              ]
             : [
                 {
                   OR: [
@@ -1690,12 +1701,12 @@ const buildRoomMovePricingPreview = async (
         ],
         minNights: { lte: affectedNights },
         product: {
-          occupancy: target.item.guestCount,
+          occupancy:
+            target.targetType === BookingTargetType.UNIT
+              ? destinationUnitCapacity
+              : target.item.guestCount,
           hasAC: target.item.comfortOption === "AC",
         },
-        ...(target.targetType === BookingTargetType.UNIT
-          ? { roomId: null, unitId: target.room.unitId }
-          : {}),
       },
       orderBy: { price: "asc" },
     });
@@ -1708,7 +1719,9 @@ const buildRoomMovePricingPreview = async (
       throw new HttpError(
         422,
         "PRICE_NOT_CONFIGURED",
-        `No active price is configured for room ${target.room.number}`,
+        target.targetType === BookingTargetType.UNIT
+          ? `No active price is configured for unit ${target.room.unit.unitNumber} at capacity ${destinationUnitCapacity}`
+          : `No active price is configured for room ${target.room.number}`,
       );
     }
 
