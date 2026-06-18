@@ -47,12 +47,20 @@ Completed extraction:
 - `bookings.tax-breakdown.ts`
   - tax breakdown parsing
   - tax breakdown JSON serialization
+- `bookings.targets.ts`
+  - property-scope resolution for public options
+  - inventory lock coverage checks
+  - target keys and target de-duplication support
+  - room guest allocation and comfort validation
+  - active pricing lookup for selected targets
+  - array invariant helper
 
 Current line counts:
 
-- `bookings.service.ts`: 2,265 lines
+- `bookings.service.ts`: 2,081 lines
 - `bookings.access.ts`: 82 lines
 - `bookings.financials.ts`: 68 lines
+- `bookings.targets.ts`: 207 lines
 - `bookings.tax-breakdown.ts`: 21 lines
 
 Verification completed:
