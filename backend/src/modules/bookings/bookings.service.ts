@@ -279,6 +279,62 @@ const assertBookingHasAssignedTarget = (booking: repo.DashboardBookingRecord) =>
   }
 };
 
+const getAssignedCheckInRoomIds = async (
+  tx: Prisma.TransactionClient,
+  booking: repo.DashboardBookingRecord,
+) => {
+  assertBookingHasAssignedTarget(booking);
+
+  const roomIds = new Set<string>();
+  const unitIds = new Set<string>();
+
+  for (const item of booking.items) {
+    if (item.roomId !== null) {
+      roomIds.add(item.roomId);
+      continue;
+    }
+
+    if (item.unitId !== null) {
+      unitIds.add(item.unitId);
+    }
+  }
+
+  if (unitIds.size > 0) {
+    const units = await tx.unit.findMany({
+      where: { id: { in: [...unitIds] } },
+      include: {
+        rooms: {
+          orderBy: { number: "asc" },
+        },
+      },
+    });
+
+    if (units.length !== unitIds.size) {
+      throw new HttpError(
+        422,
+        "BOOKING_ASSIGNMENT_REQUIRED",
+        "Assign a room or unit before check-in",
+      );
+    }
+
+    for (const unit of units) {
+      for (const room of unit.rooms) {
+        roomIds.add(room.id);
+      }
+    }
+  }
+
+  if (roomIds.size === 0) {
+    throw new HttpError(
+      422,
+      "BOOKING_ASSIGNMENT_REQUIRED",
+      "Assign a concrete room before check-in",
+    );
+  }
+
+  return [...roomIds];
+};
+
 const getBookingPaidAmount = (booking: repo.DashboardBookingRecord) =>
   booking.payments
     .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
@@ -1343,11 +1399,6 @@ export const checkInBooking = async (
   const actor = await getActor(userId);
   const initialBooking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, initialBooking.propertyId);
-  const selectedRoomIds =
-    input.roomIds ??
-    initialBooking.items
-      .map((item) => item.roomId)
-      .filter((roomId): roomId is string => roomId !== null);
   const assignment =
     input.roomIds !== undefined
       ? await resolveBookingRoomAssignments(initialBooking, input.roomIds, {
@@ -1377,13 +1428,8 @@ export const checkInBooking = async (
       requireAuditNote(input.note, "Audit note is required for late arrival");
     }
 
-    if (selectedRoomIds.length !== booking.items.length) {
-      throw new HttpError(
-        422,
-        "BOOKING_ASSIGNMENT_REQUIRED",
-        "Assign a concrete room for every booking item before check-in",
-      );
-    }
+    const selectedRoomIds =
+      input.roomIds ?? (await getAssignedCheckInRoomIds(tx, booking));
     await assertTransactionalRoomsAvailable(tx, booking, selectedRoomIds, true);
 
     const balanceAmount = getBookingBalanceAmount(booking);

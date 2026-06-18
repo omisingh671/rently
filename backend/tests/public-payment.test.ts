@@ -2337,6 +2337,128 @@ test("dashboard moves a whole-unit booking without reducing it to one room", asy
   assert.equal(moved.items[0]?.roomId, null);
 });
 
+test("dashboard checks in a whole-unit booking without reducing it to one room", async () => {
+  const checkIn = propertyDateOnly(new Date());
+  const destinationUnit = await prisma.unit.create({
+    data: {
+      propertyId: state.propertyId,
+      unitNumber: `${testId}-unit-checkin`,
+      floor: 7,
+      status: UnitStatus.ACTIVE,
+      rooms: {
+        create: ["A", "B", "C"].map((suffix) => ({
+          name: `Unit check-in room ${suffix}`,
+          number: `${testId}-checkin-${suffix}`,
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        })),
+      },
+    },
+    include: { rooms: true },
+  });
+  const destinationRoomIds = destinationUnit.rooms.map((room) => room.id);
+  const destinationProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Check-in Whole Unit`,
+      occupancy: 6,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: destinationUnit.id,
+      productId: destinationProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 4200,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
+  const booking = await createBooking(
+    new Date("2035-10-10T00:00:00.000Z"),
+    new Date("2035-10-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-unit-checkin-token`,
+  });
+
+  const currentRoom = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      targetType: "UNIT",
+      unitId: currentRoom.unitId,
+      roomId: null,
+      targetLabel: "Whole test unit",
+      items: {
+        updateMany: {
+          where: {},
+          data: {
+            targetType: "UNIT",
+            unitId: currentRoom.unitId,
+            roomId: null,
+            targetLabel: "Whole test unit",
+          },
+        },
+      },
+    },
+  });
+
+  const moved = await moveBookingWithPreview(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: destinationRoomIds,
+      note: "Moved the complete unit allocation before check-in.",
+    },
+  );
+  assert.equal(moved.targetType, "UNIT");
+  assert.equal(moved.unitId, destinationUnit.id);
+  assert.equal(moved.roomId, null);
+  assert.equal(moved.items[0]?.targetType, "UNIT");
+  assert.equal(moved.items[0]?.unitId, destinationUnit.id);
+  assert.equal(moved.items[0]?.roomId, null);
+
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      checkIn,
+      checkOut: addUtcDays(checkIn, 1),
+    },
+  });
+
+  const checkedIn = await dashboardService.checkInBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: moved.version,
+      identityVerified: true,
+      allowBalanceDueCheckIn: true,
+      note: "Front desk checked in the whole unit.",
+    },
+  );
+
+  assert.equal(checkedIn.status, BookingStatus.CHECKED_IN);
+  assert.equal(checkedIn.targetType, "UNIT");
+  assert.equal(checkedIn.unitId, destinationUnit.id);
+  assert.equal(checkedIn.roomId, null);
+  assert.equal(checkedIn.items[0]?.targetType, "UNIT");
+  assert.equal(checkedIn.items[0]?.unitId, destinationUnit.id);
+  assert.equal(checkedIn.items[0]?.roomId, null);
+});
+
 test("dashboard can reassign all rooms on a multi-room booking", async () => {
   const booking = await publicService.createBooking(
     state.guestId,

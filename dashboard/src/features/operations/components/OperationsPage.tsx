@@ -167,7 +167,6 @@ function OperationsBoard({
   cashierRows: CashierSummaryResponse["rows"];
   isLoading: boolean;
 }) {
-  const [showDetails, setShowDetails] = useState(false);
   const [expandedEmployeeKey, setExpandedEmployeeKey] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
@@ -419,28 +418,19 @@ function OperationsBoard({
                               {formatMoney(totals.netCollected)}
                             </div>
                           </div>
-                          <button
-                            onClick={() => setShowDetails(!showDetails)}
-                            className="flex items-center gap-1 rounded border border-slate-200 bg-white hover:bg-slate-50 px-2 py-1 text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            title={showDetails ? "Hide breakdown per employee" : "Show breakdown per employee"}
-                          >
-                            {showDetails ? "Hide details" : "Details"}
-                            {showDetails ? <FiChevronUp className="h-3 w-3" /> : <FiChevronDown className="h-3 w-3" />}
-                          </button>
                         </div>
                       </div>
 
                       {/* Employee Breakdown List */}
-                      {showDetails && (
-                        <div className="space-y-3 pt-1.5 border-t border-dashed border-slate-200">
-                          {cashierRows.map((row) => {
-                            const empKey = row.receivedByUserId ?? "SYSTEM";
-                            const isExpanded = expandedEmployeeKey === empKey;
-                            return (
-                              <div
-                                key={empKey}
-                                className="flex flex-col rounded-lg border border-slate-300 bg-white hover:border-slate-400 transition-all duration-200"
-                              >
+                      <div className="space-y-3 pt-1.5 border-t border-dashed border-slate-200">
+                        {cashierRows.map((row) => {
+                          const empKey = row.receivedByUserId ?? "SYSTEM";
+                          const isExpanded = expandedEmployeeKey === empKey;
+                          return (
+                            <div
+                              key={empKey}
+                              className="flex flex-col rounded-lg border border-slate-300 bg-white hover:border-slate-400 transition-all duration-200"
+                            >
                                 {/* Header (Clickable to Expand) */}
                                 <div
                                   className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 gap-3 cursor-pointer select-none"
@@ -499,7 +489,7 @@ function OperationsBoard({
                                       Payment History ({row.history?.length ?? 0})
                                     </h4>
                                     {row.history && row.history.length > 0 ? (
-                                      <div className="space-y-1.5 max-h-[240px] overflow-y-auto pr-1">
+                                      <div className="space-y-1.5 max-h-[180px] overflow-y-auto overscroll-contain pr-2">
                                         {row.history.map((tx) => (
                                           <div
                                             key={tx.id}
@@ -552,11 +542,10 @@ function OperationsBoard({
                                     )}
                                   </div>
                                 )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </>
                   ) : (
                     <div className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
