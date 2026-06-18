@@ -54,12 +54,19 @@ Completed extraction:
   - room guest allocation and comfort validation
   - active pricing lookup for selected targets
   - array invariant helper
+- `bookings.mapping.ts`
+  - booking item DTO mapping
+  - selected-space booking item create input mapping
+  - availability option item quote mapping
+  - quote item to booking item create input mapping
+  - existing booking quote item reconstruction
 
 Current line counts:
 
-- `bookings.service.ts`: 2,081 lines
+- `bookings.service.ts`: 1,922 lines
 - `bookings.access.ts`: 82 lines
 - `bookings.financials.ts`: 68 lines
+- `bookings.mapping.ts`: 184 lines
 - `bookings.targets.ts`: 207 lines
 - `bookings.tax-breakdown.ts`: 21 lines
 
