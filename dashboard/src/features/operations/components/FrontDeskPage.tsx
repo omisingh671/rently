@@ -199,24 +199,10 @@ function CashierPanel({
   const [expandedEmployeeKey, setExpandedEmployeeKey] = useState<string | null>(
     null,
   );
-
-  const totals = useMemo(() => {
-    let expectedCash = 0;
-    let refunds = 0;
-    let netCollected = 0;
-    const byMethod: Record<string, number> = {};
-
-    rows.forEach((row) => {
-      expectedCash += row.expectedCash;
-      refunds += row.refunds;
-      netCollected += row.netCollected;
-      Object.entries(row.byMethod).forEach(([method, amount]) => {
-        byMethod[method] = (byMethod[method] || 0) + (amount as number);
-      });
-    });
-
-    return { expectedCash, refunds, netCollected, byMethod };
-  }, [rows]);
+  const expectedCashTotal = useMemo(
+    () => rows.reduce((total, row) => total + row.expectedCash, 0),
+    [rows],
+  );
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -227,33 +213,15 @@ function CashierPanel({
               Cashier By Employee
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Payments, refunds, expected cash, and employee-level history.
+              Employee-level collection history and method breakdown.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-right text-xs sm:min-w-96">
-            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
-              <div className="font-bold uppercase tracking-wider text-slate-400">
-                Expected
-              </div>
-              <div className="font-black text-slate-900">
-                {formatMoney(totals.expectedCash)}
-              </div>
+          <div className="rounded-lg border border-teal-200 bg-teal-50/70 px-3 py-2 text-right">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-teal-700">
+              Expected Cash
             </div>
-            <div className="rounded-lg bg-rose-50 px-2 py-1.5">
-              <div className="font-bold uppercase tracking-wider text-rose-400">
-                Refunds
-              </div>
-              <div className="font-black text-rose-700">
-                {formatMoney(totals.refunds)}
-              </div>
-            </div>
-            <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
-              <div className="font-bold uppercase tracking-wider text-emerald-500">
-                Net
-              </div>
-              <div className="font-black text-emerald-700">
-                {formatMoney(totals.netCollected)}
-              </div>
+            <div className="text-lg font-black leading-none text-teal-950">
+              {formatMoney(expectedCashTotal)}
             </div>
           </div>
         </div>
@@ -643,6 +611,22 @@ export default function FrontDeskPage() {
           tone: OPERATION_PALETTE.unassigned,
         },
         {
+          label: "Housekeeping",
+          value: board.summary.housekeeping,
+          description: "Dirty or cleaning rooms",
+          icon: <FiCoffee className={`h-4 w-4 ${OPERATION_PALETTE.housekeeping.icon}`} />,
+          className: OPERATION_PALETTE.housekeeping.card,
+          tone: OPERATION_PALETTE.housekeeping,
+        },
+        {
+          label: "Maintenance",
+          value: board.summary.maintenanceConflicts,
+          description: "Maintenance conflicts",
+          icon: <FiTool className={`h-4 w-4 ${OPERATION_PALETTE.maintenance.icon}`} />,
+          className: OPERATION_PALETTE.maintenance.card,
+          tone: OPERATION_PALETTE.maintenance,
+        },
+        {
           label: "Balance Due",
           value: board.summary.balanceDue,
           description: "Bookings with outstanding dues",
@@ -659,28 +643,12 @@ export default function FrontDeskPage() {
           tone: OPERATION_PALETTE.cashier,
         },
         {
-          label: "Housekeeping",
-          value: board.summary.housekeeping,
-          description: "Dirty or cleaning rooms",
-          icon: <FiCoffee className={`h-4 w-4 ${OPERATION_PALETTE.housekeeping.icon}`} />,
-          className: OPERATION_PALETTE.housekeeping.card,
-          tone: OPERATION_PALETTE.housekeeping,
-        },
-        {
           label: "Refunds",
           value: board.summary.refundAttention,
           description: "Active refund requests",
           icon: <FiRefreshCw className={`h-4 w-4 ${OPERATION_PALETTE.refunds.icon}`} />,
           className: OPERATION_PALETTE.refunds.card,
           tone: OPERATION_PALETTE.refunds,
-        },
-        {
-          label: "Maintenance",
-          value: board.summary.maintenanceConflicts,
-          description: "Maintenance conflicts",
-          icon: <FiTool className={`h-4 w-4 ${OPERATION_PALETTE.maintenance.icon}`} />,
-          className: OPERATION_PALETTE.maintenance.card,
-          tone: OPERATION_PALETTE.maintenance,
         },
       ]
     : [];

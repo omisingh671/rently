@@ -41,7 +41,6 @@ const {
   FiMail,
   FiPlus,
   FiSearch,
-  FiUser,
 } = ICON_REGISTRY;
 
 type Module = "bookings" | "enquiries" | "quotes";
@@ -879,13 +878,10 @@ export default function OperationsPage({ module }: Props) {
                               <span className="truncate" title={booking.guestEmail}>{booking.guestEmail}</span>
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            <span className={`inline-flex items-center gap-1 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${bookingTone.pill}`}>
-                              <FiUser className="h-3 w-3" /> {booking.guestCount} {booking.guestCount === 1 ? "guest" : "guests"}
-                            </span>
-                            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold ${bookingTone.pill}`}>
-                              {booking.bookingRef}
-                            </span>
+                          <div className="pt-0.5 text-[11px] font-semibold text-slate-500">
+                            <span>{booking.guestCount} {booking.guestCount === 1 ? "guest" : "guests"}</span>
+                            <span className="mx-1.5 text-slate-300">/</span>
+                            <span className="font-mono text-slate-600">{booking.bookingRef}</span>
                           </div>
                         </div>
                       </div>
