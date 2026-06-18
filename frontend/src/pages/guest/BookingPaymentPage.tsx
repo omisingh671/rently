@@ -179,8 +179,10 @@ function BookingSummary({ booking }: { booking: Booking }) {
 }
 export default function BookingPaymentPage() {
   const { id } = useParams();
-  const bookingQuery = useBooking(id);
   const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
+  const checkoutToken =
+    id !== undefined ? getBookingBillingCheckoutToken(id, checkoutDraft) : undefined;
+  const bookingQuery = useBooking(id, true, checkoutToken);
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
@@ -188,10 +190,6 @@ export default function BookingPaymentPage() {
   const isConfirmed =
     loadedBooking !== undefined &&
     ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status);
-  const checkoutToken =
-    loadedBooking !== undefined
-      ? getBookingBillingCheckoutToken(loadedBooking.id, checkoutDraft)
-      : undefined;
   const billingDocumentsQuery = useBookingBillingDocuments(
     loadedBooking?.id,
     checkoutToken,

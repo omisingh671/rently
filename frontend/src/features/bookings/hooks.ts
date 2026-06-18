@@ -26,12 +26,18 @@ export const useBookings = (enabled = true) => {
   });
 };
 
-export const useBooking = (id?: string, enabled = true) => {
+export const useBooking = (
+  id?: string,
+  enabled = true,
+  checkoutToken?: string,
+) => {
   return useQuery<Booking, Error>({
-    queryKey: id ? BOOKING_KEYS.detail(id) : BOOKING_KEYS.detail(""),
+    queryKey: id
+      ? BOOKING_KEYS.detail(id, checkoutToken)
+      : BOOKING_KEYS.detail(""),
     queryFn: async () => {
       if (!id) throw new Error("Missing booking id");
-      return api.getBooking(id);
+      return api.getBooking(id, checkoutToken);
     },
     enabled: Boolean(id) && enabled,
     retry: false,
@@ -81,11 +87,16 @@ export const useUpdateBookingCheckout = () => {
   >({
     mutationFn: async ({ bookingId, payload }) =>
       api.updateBookingCheckout(bookingId, payload),
-    onSuccess: (booking) => {
+    onSuccess: (booking, variables) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({
         queryKey: BOOKING_KEYS.detail(booking.id),
       });
+      if (variables.payload.editToken !== undefined) {
+        queryClient.invalidateQueries({
+          queryKey: BOOKING_KEYS.detail(booking.id, variables.payload.editToken),
+        });
+      }
       queryClient.invalidateQueries({
         queryKey: PUBLIC_QUERY_KEYS.availability.check,
       });
@@ -105,15 +116,41 @@ export const useCreateManualPayment = () => {
       amount: number;
       purpose?: PaymentPurpose;
       status?: string;
+      checkoutToken?: string;
     }
   >({
-    mutationFn: ({ bookingId, idempotencyKey, amount, purpose, status }) =>
-      api.createManualPayment(bookingId, idempotencyKey, amount, purpose, status),
-    onSuccess: (data) => {
+    mutationFn: ({
+      bookingId,
+      idempotencyKey,
+      amount,
+      purpose,
+      status,
+      checkoutToken,
+    }) =>
+      api.createManualPayment(
+        bookingId,
+        idempotencyKey,
+        amount,
+        purpose,
+        status,
+        checkoutToken,
+      ),
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({
-        queryKey: BOOKING_KEYS.detail(data.booking.id),
+        queryKey: BOOKING_KEYS.detail(data.booking.id, variables.checkoutToken),
       });
+      queryClient.invalidateQueries({
+        queryKey: PUBLIC_QUERY_KEYS.billing.booking(data.booking.id),
+      });
+      if (variables.checkoutToken !== undefined) {
+        queryClient.invalidateQueries({
+          queryKey: PUBLIC_QUERY_KEYS.billing.booking(
+            data.booking.id,
+            variables.checkoutToken,
+          ),
+        });
+      }
     },
   });
 };

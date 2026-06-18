@@ -23,6 +23,7 @@ import {
   AdvancePaymentType,
   DiscountType,
   MaintenanceTargetType,
+  MaintenanceStatus,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -2867,6 +2868,70 @@ test("public booking checkout edit accepts matching guest edit token", async () 
   assert.equal(updated.guestContactNumber, "+91-9000000001");
 });
 
+test("public booking detail requires owner auth or checkout token", async () => {
+  const payload = {
+    bookingType: "SINGLE_TARGET",
+    spaceId: state.pricingThreeId,
+    from: new Date("2030-02-10T00:00:00.000Z"),
+    to: new Date("2030-02-12T00:00:00.000Z"),
+    guests: 2,
+    comfortOption: ComfortOption.AC,
+  } as const;
+  const lock = await publicService.createInventoryLock(undefined, payload, {
+    tenantSlug: state.tenantSlug,
+  });
+  const booking = await publicService.createBooking(
+    undefined,
+    {
+      ...payload,
+      inventoryLockToken: lock.lockToken,
+      guestDetails: {
+        name: "Anonymous Detail Guest",
+        email: `${testId}-anonymous-detail@sucasa.test`,
+        contactNumber: "+91-9000000002",
+      },
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.getBookingByIdForPublicAccess(
+        undefined,
+        booking.id,
+        undefined,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "BOOKING_ACCESS_FORBIDDEN");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.getBookingByIdForPublicAccess(
+        state.guestTwoId,
+        booking.id,
+        undefined,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "BOOKING_ACCESS_FORBIDDEN");
+      return true;
+    },
+  );
+
+  const tokenResult = await publicService.getBookingByIdForPublicAccess(
+    undefined,
+    booking.id,
+    lock.lockToken,
+  );
+  assert.equal(tokenResult.id, booking.id);
+});
+
 test("public booking checkout edit rejects paid booking", async () => {
   const booking = await publicService.createBooking(
     state.guestOneId,
@@ -3729,6 +3794,50 @@ test("maintenance overlap blocks booking and checkout locks", async () => {
       ),
     assertBookingConflict,
   );
+
+  await prisma.maintenanceBlock.update({
+    where: { id: block.id },
+    data: { status: MaintenanceStatus.RESOLVED },
+  });
+
+  const resolvedLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  assert.equal(resolvedLock.lockToken.length > 0, true);
+  await prisma.inventoryLock.deleteMany({
+    where: { lockToken: resolvedLock.lockToken },
+  });
+
+  await prisma.maintenanceBlock.update({
+    where: { id: block.id },
+    data: { status: MaintenanceStatus.CANCELLED },
+  });
+
+  const cancelledLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  assert.equal(cancelledLock.lockToken.length > 0, true);
+  await prisma.inventoryLock.deleteMany({
+    where: { lockToken: cancelledLock.lockToken },
+  });
 
   await prisma.maintenanceBlock.delete({ where: { id: block.id } });
 });

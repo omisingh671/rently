@@ -16,7 +16,8 @@ export const PUBLIC_QUERY_KEYS = {
   },
   bookings: {
     all: [...publicScope, "bookings"] as const,
-    detail: (id: string) => [...publicScope, "bookings", id] as const,
+    detail: (id: string, checkoutToken?: string) =>
+      [...publicScope, "bookings", id, checkoutToken ?? "auth"] as const,
   },
   billing: {
     booking: (bookingId: string, checkoutToken?: string) =>

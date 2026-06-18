@@ -116,7 +116,15 @@ export default function BookingCheckoutPage() {
   const user = useAuthStore((state) => state.user);
   const authStatus = useAuthStore((state) => state.status);
   const isAuthenticated = authStatus === "authenticated" && user !== null;
-  const editBookingQuery = useBooking(editBookingId, editBookingId !== undefined);
+  const editToken =
+    draft && draft.createdBookingId === editBookingId
+      ? draft.payload.inventoryLockToken
+      : undefined;
+  const editBookingQuery = useBooking(
+    editBookingId,
+    editBookingId !== undefined,
+    editToken,
+  );
   const profileQuery = useProfile(isAuthenticated);
   const createBookingMutation = useCreateBooking();
   const updateBookingCheckoutMutation = useUpdateBookingCheckout();
@@ -150,10 +158,6 @@ export default function BookingCheckoutPage() {
   }, [profile, user]);
   const editBooking = editBookingQuery.data;
   const isEditingCheckout = editBookingId !== undefined;
-  const editToken =
-    draft && draft.createdBookingId === editBookingId
-      ? draft.payload.inventoryLockToken
-      : undefined;
   const formValues =
     isEditingCheckout && editBooking
       ? buildBookingFormValues(editBooking)

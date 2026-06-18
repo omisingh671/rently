@@ -740,6 +740,9 @@ export default function BookingDetailsPage() {
     (booking.refundRequest.status === "REQUESTED" ||
       booking.refundRequest.status === "IN_REVIEW") &&
     Number(booking.refundableAmount) > 0;
+  const refundRequestPayment = canActOnRefundRequest
+    ? booking?.payments.find((payment) => Number(payment.refundableAmount) > 0)
+    : undefined;
   const canAssignRoom =
     booking !== undefined &&
     booking.status !== "CHECKED_OUT" &&
@@ -1334,6 +1337,19 @@ export default function BookingDetailsPage() {
                       }}
                     >
                       Mark In Review
+                    </Button>
+                  )}
+                  {refundRequestPayment !== undefined && (
+                    <Button
+                      type="button"
+                      size="md"
+                      variant="primary"
+                      disabled={isMutating}
+                      onClick={() =>
+                        openAction("recordRefund", refundRequestPayment.id)
+                      }
+                    >
+                      Process refund
                     </Button>
                   )}
                   <Button

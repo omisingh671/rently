@@ -685,10 +685,29 @@ test("anonymous checkout token can read only its booking documents", async () =>
     },
     { tenantSlug: state.tenantSlug },
   );
-  await paymentsService.createManualPayment({
+  await assert.rejects(
+    () =>
+      paymentsService.createManualPayment({
+        bookingId: booking.id,
+        idempotencyKey: `${testId}-anonymous-token-docs-denied`,
+      }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "PAYMENT_ACCESS_FORBIDDEN",
+  );
+
+  const payment = await paymentsService.createManualPayment({
     bookingId: booking.id,
+    checkoutToken: lock.lockToken,
     idempotencyKey: `${testId}-anonymous-token-docs`,
   });
+  const idempotentPayment = await paymentsService.createManualPayment({
+    bookingId: booking.id,
+    checkoutToken: lock.lockToken,
+    idempotencyKey: `${testId}-anonymous-token-docs`,
+  });
+  assert.equal(idempotentPayment.payment.id, payment.payment.id);
 
   const documents = await billingService.listPublicBookingDocuments(
     booking.id,

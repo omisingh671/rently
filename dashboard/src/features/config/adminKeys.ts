@@ -191,6 +191,16 @@ export const ADMIN_KEYS = {
       ] as const,
   },
 
+  galleries: {
+    all: () => [...ADMIN_KEYS.root, "galleries"] as const,
+
+    list: (params: {
+      propertyId?: string;
+      unitId?: string;
+      roomId?: string;
+    }) => [...ADMIN_KEYS.galleries.all(), "list", params] as const,
+  },
+
   maintenance: {
     all: () => [...ADMIN_KEYS.root, "maintenance"] as const,
 

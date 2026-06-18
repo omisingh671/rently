@@ -1225,6 +1225,32 @@ const assertBookingCheckoutEditable = async (
   );
 };
 
+const assertPublicBookingAccess = async (
+  booking: repo.PublicBookingRecord,
+  userId: string | undefined,
+  checkoutToken: string | undefined,
+) => {
+  if (userId !== undefined && userId === booking.userId) {
+    return;
+  }
+
+  if (checkoutToken !== undefined) {
+    const lock = await availabilityRepo.findReleasedInventoryLockByBookingToken(
+      booking.id,
+      checkoutToken,
+    );
+    if (lock) {
+      return;
+    }
+  }
+
+  throw new HttpError(
+    403,
+    "BOOKING_ACCESS_FORBIDDEN",
+    "You cannot access this booking",
+  );
+};
+
 const buildQuoteItemsFromBooking = (
   booking: repo.PublicBookingRecord,
 ): PublicBookingQuoteItemDTO[] =>
@@ -2216,13 +2242,17 @@ export const getBookingById = async (
   return mapBooking(await syncFulfilledRefundRequest(booking));
 };
 
-export const getBookingByIdPublic = async (
+export const getBookingByIdForPublicAccess = async (
+  userId: string | undefined,
   bookingId: string,
+  checkoutToken: string | undefined,
 ): Promise<PublicBookingDTO> => {
   const booking = await repo.findBookingById(bookingId);
   if (!booking) {
     throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   }
+
+  await assertPublicBookingAccess(booking, userId, checkoutToken);
 
   return mapBooking(await syncFulfilledRefundRequest(booking));
 };

@@ -9,6 +9,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { env } from "@/config/env.js";
 import { billingService } from "@/modules/billing/index.js";
 import type {
   CreateManualPaymentDTO,
@@ -100,6 +101,37 @@ const assertSameIdempotentPayment = (
   }
 };
 
+const assertPublicPaymentAccess = async (
+  bookingId: string,
+  input: CreateManualPaymentInput,
+  tx: Prisma.TransactionClient,
+) => {
+  if (input.actorUserId !== undefined || input.userId !== undefined) {
+    return;
+  }
+
+  if (input.checkoutToken === undefined) {
+    throw new HttpError(
+      403,
+      "PAYMENT_ACCESS_FORBIDDEN",
+      "A valid checkout token is required to pay for this booking",
+    );
+  }
+
+  const lock = await repo.findReleasedInventoryLockByBookingToken(
+    bookingId,
+    input.checkoutToken,
+    tx,
+  );
+  if (!lock) {
+    throw new HttpError(
+      403,
+      "PAYMENT_ACCESS_FORBIDDEN",
+      "A valid checkout token is required to pay for this booking",
+    );
+  }
+};
+
 const getBookingBalanceInfo = (
   booking: repo.BookingForPaymentRecord,
 ) => {
@@ -142,8 +174,16 @@ const getBookingBalanceInfo = (
 
 export const createManualPayment = async (
   input: CreateManualPaymentInput,
-): Promise<CreateManualPaymentDTO> =>
-  repo.runPaymentTransaction(async (tx) => {
+): Promise<CreateManualPaymentDTO> => {
+  if (input.status !== undefined && env.NODE_ENV === "production") {
+    throw new HttpError(
+      403,
+      "PAYMENT_STATUS_NOT_ALLOWED",
+      "Manual payment status simulation is not available in production",
+    );
+  }
+
+  return repo.runPaymentTransaction(async (tx) => {
     const purpose = input.purpose ?? PaymentPurpose.TOKEN;
     const method = input.method ?? PaymentMethod.MANUAL;
     const existingPayment = await repo.findPaymentByIdempotencyKey(
@@ -153,6 +193,7 @@ export const createManualPayment = async (
 
     if (existingPayment) {
       assertSameIdempotentPayment(existingPayment, input);
+      await assertPublicPaymentAccess(existingPayment.bookingId, input, tx);
       const bookingForExisting = await repo.findBookingForPayment(
         existingPayment.bookingId,
         undefined,
@@ -170,6 +211,8 @@ export const createManualPayment = async (
       }
       return mapManualPaymentResult(existingPayment, paidAmount, balanceAmount);
     }
+
+    await assertPublicPaymentAccess(input.bookingId, input, tx);
 
     const booking = await repo.findBookingForPayment(
       input.bookingId,
@@ -370,5 +413,4 @@ export const createManualPayment = async (
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });
-
-
+};

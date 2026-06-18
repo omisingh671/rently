@@ -102,12 +102,14 @@ export default function BookingPaymentProcessPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const intent = parsePaymentIntent(searchParams.get("intent"));
-  const bookingQuery = useBooking(id);
+  const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
+  const checkoutToken =
+    id !== undefined ? getBookingBillingCheckoutToken(id, checkoutDraft) : undefined;
+  const bookingQuery = useBooking(id, true, checkoutToken);
   const paymentMutation = useCreateManualPayment();
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
-  const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
 
   // Tabs and Form States for Gateway mockup
   const [activeTab, setActiveTab] = useState<"card" | "upi">("card");
@@ -118,10 +120,6 @@ export default function BookingPaymentProcessPage() {
   const [upiId, setUpiId] = useState("");
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const checkoutToken =
-    bookingQuery.data !== undefined
-      ? getBookingBillingCheckoutToken(bookingQuery.data.id, checkoutDraft)
-      : undefined;
   const completedFromBooking =
     bookingQuery.data !== undefined &&
     intent !== null &&
@@ -264,6 +262,7 @@ export default function BookingPaymentProcessPage() {
         amount,
         purpose: purposeByIntent[intent],
         status,
+        checkoutToken,
       },
       {
         onSuccess: (data) => {

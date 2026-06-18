@@ -99,8 +99,15 @@ export const createInventoryLock = async (
   return res.data?.data;
 };
 
-export const getBooking = async (id: string): Promise<Booking> => {
-  const res = await axiosInstance.get(`/public/bookings/${id}`);
+export const getBooking = async (
+  id: string,
+  checkoutToken?: string,
+): Promise<Booking> => {
+  const res = await axiosInstance.get(`/public/bookings/${id}`, {
+    params: {
+      ...(checkoutToken !== undefined && { checkoutToken }),
+    },
+  });
   return res.data?.data;
 };
 
@@ -149,11 +156,13 @@ export const createManualPayment = async (
   amount: number,
   purpose?: PaymentPurpose,
   status?: string,
+  checkoutToken?: string,
 ): Promise<CreateManualPaymentResponse> => {
   const res = await axiosInstance.post(
     `/public/bookings/${bookingId}/payments/manual`,
     {
       amount,
+      ...(checkoutToken !== undefined && { checkoutToken }),
       ...(purpose !== undefined && { purpose }),
       ...(status !== undefined && { status }),
     },

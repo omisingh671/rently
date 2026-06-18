@@ -59,6 +59,19 @@ export const findPaymentByIdempotencyKey = (
     include: paymentInclude,
   });
 
+export const findReleasedInventoryLockByBookingToken = (
+  bookingId: string,
+  lockToken: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.findFirst({
+    where: {
+      bookingId,
+      lockToken,
+      releasedAt: { not: null },
+    },
+  });
+
 export const sumSucceededPaymentsByBooking = async (
   bookingId: string,
   tx?: Prisma.TransactionClient,

@@ -4,6 +4,7 @@ import {
   BookingStatus,
   BookingTargetType,
   ComfortOption,
+  MaintenanceStatus,
   PropertyStatus,
   RoomStatus,
   UnitStatus,
@@ -265,6 +266,9 @@ export const hasOverlappingMaintenance = (
     .count({
       where: {
         propertyId,
+        status: {
+          notIn: [MaintenanceStatus.RESOLVED, MaintenanceStatus.CANCELLED],
+        },
         startDate: { lt: checkOut },
         endDate: { gt: checkIn },
         OR: [
@@ -398,4 +402,3 @@ export const runSerializableTransaction = <T>(
     maxWait: 5_000,
     timeout: 10_000,
   });
-
