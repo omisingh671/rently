@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { useAdminOperations } from "../hooks/useAdminOperations";
 import Button from "@/components/ui/Button";
@@ -17,6 +16,11 @@ import StatusBadge from "@/components/common/StatusBadge";
 import Pagination from "@/components/common/Pagination";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
+import { normalizeApiError } from "@/utils/errors";
+import {
+  OPERATION_PALETTE,
+  getBookingStatusTone,
+} from "../operationPalette";
 import {
   FiChevronDown,
   FiChevronUp,
@@ -37,13 +41,8 @@ const {
   FiMail,
   FiPlus,
   FiSearch,
+  FiUser,
 } = ICON_REGISTRY;
-import { normalizeApiError } from "@/utils/errors";
-import { ADMIN_KEYS } from "@/features/config/adminKeys";
-import {
-  getCashierSummaryApi,
-  getOperationsBoardApi,
-} from "../api";
 
 type Module = "bookings" | "enquiries" | "quotes";
 
@@ -85,19 +84,6 @@ const formatDate = (value: string) =>
     month: "short",
     year: "numeric",
   }).format(new Date(value));
-
-const toDateInput = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const addDays = (value: string, days: number) => {
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + days);
-  return toDateInput(date);
-};
 
 const formatMoney = (value: number | string) =>
   new Intl.NumberFormat("en-IN", {
@@ -154,7 +140,7 @@ const getBookingRefundIndicator = (booking: AdminBooking) => {
   return null;
 };
 
-function OperationsBoard({
+export function OperationsBoard({
   businessDate,
   onBusinessDateChange,
   board,
@@ -212,100 +198,64 @@ function OperationsBoard({
         {
           label: "Arrivals",
           value: board.summary.arrivals,
-          icon: <FiLogIn className="h-3.5 w-3.5 text-indigo-700" />,
-          bg: "bg-gradient-to-br from-indigo-50 to-indigo-100/30 border-indigo-300 hover:border-indigo-400",
-          iconBg: "bg-indigo-100/80 border border-indigo-300/50",
-          textLabel: "text-indigo-800/90",
-          textValue: "text-indigo-950",
-          textDesc: "text-indigo-700/80",
+          icon: <FiLogIn className={`h-3.5 w-3.5 ${OPERATION_PALETTE.arrivals.icon}`} />,
+          tone: OPERATION_PALETTE.arrivals,
           description: "Expected check-ins today",
         },
         {
           label: "Departures",
           value: board.summary.departures,
-          icon: <FiLogOut className="h-3.5 w-3.5 text-sky-700" />,
-          bg: "bg-gradient-to-br from-sky-50 to-sky-100/30 border-sky-300 hover:border-sky-400",
-          iconBg: "bg-sky-100/80 border border-sky-300/50",
-          textLabel: "text-sky-800/90",
-          textValue: "text-sky-950",
-          textDesc: "text-sky-700/80",
+          icon: <FiLogOut className={`h-3.5 w-3.5 ${OPERATION_PALETTE.departures.icon}`} />,
+          tone: OPERATION_PALETTE.departures,
           description: "Expected check-outs today",
         },
         {
           label: "In house",
           value: board.summary.inHouse,
-          icon: <FiHome className="h-3.5 w-3.5 text-emerald-700" />,
-          bg: "bg-gradient-to-br from-emerald-50 to-emerald-100/30 border-emerald-300 hover:border-emerald-400",
-          iconBg: "bg-emerald-100/80 border border-emerald-300/50",
-          textLabel: "text-emerald-800/90",
-          textValue: "text-emerald-950",
-          textDesc: "text-emerald-700/80",
+          icon: <FiHome className={`h-3.5 w-3.5 ${OPERATION_PALETTE.inHouse.icon}`} />,
+          tone: OPERATION_PALETTE.inHouse,
           description: "Guests currently staying",
         },
         {
           label: "Late arrivals",
           value: board.summary.lateArrivals,
-          icon: <FiClock className="h-3.5 w-3.5 text-amber-700" />,
-          bg: "bg-gradient-to-br from-amber-50 to-amber-100/30 border-amber-300 hover:border-amber-400",
-          iconBg: "bg-amber-100/80 border border-amber-300/50",
-          textLabel: "text-amber-800/90",
-          textValue: "text-amber-950",
-          textDesc: "text-amber-700/80",
+          icon: <FiClock className={`h-3.5 w-3.5 ${OPERATION_PALETTE.late.icon}`} />,
+          tone: OPERATION_PALETTE.late,
           description: "Missed scheduled check-in",
         },
         {
           label: "Unassigned",
           value: board.summary.unassignedArrivals,
-          icon: <FiAlertTriangle className="h-3.5 w-3.5 text-rose-700" />,
-          bg: "bg-gradient-to-br from-rose-50 to-rose-100/30 border-rose-300 hover:border-rose-400",
-          iconBg: "bg-rose-100/80 border border-rose-300/50",
-          textLabel: "text-rose-800/90",
-          textValue: "text-rose-950",
-          textDesc: "text-rose-700/80",
+          icon: <FiAlertTriangle className={`h-3.5 w-3.5 ${OPERATION_PALETTE.unassigned.icon}`} />,
+          tone: OPERATION_PALETTE.unassigned,
           description: "Needs room assignment",
         },
         {
           label: "Balance due",
           value: board.summary.balanceDue,
-          icon: <FiDollarSign className="h-3.5 w-3.5 text-slate-700" />,
-          bg: "bg-gradient-to-br from-slate-50 to-slate-100/30 border-slate-350 hover:border-slate-450",
-          iconBg: "bg-slate-200/80 border border-slate-300/50",
-          textLabel: "text-slate-800/90",
-          textValue: "text-slate-950",
-          textDesc: "text-slate-700/80",
+          icon: <FiDollarSign className={`h-3.5 w-3.5 ${OPERATION_PALETTE.balance.icon}`} />,
+          tone: OPERATION_PALETTE.balance,
           description: "Bookings with outstanding dues",
         },
         {
           label: "Housekeeping",
           value: board.summary.housekeeping,
-          icon: <FiClipboard className="h-3.5 w-3.5 text-purple-700" />,
-          bg: "bg-gradient-to-br from-purple-50 to-purple-100/30 border-purple-300 hover:border-purple-400",
-          iconBg: "bg-purple-100/80 border border-purple-300/50",
-          textLabel: "text-purple-800/90",
-          textValue: "text-purple-950",
-          textDesc: "text-purple-700/80",
+          icon: <FiClipboard className={`h-3.5 w-3.5 ${OPERATION_PALETTE.housekeeping.icon}`} />,
+          tone: OPERATION_PALETTE.housekeeping,
           description: "Dirty or cleaning rooms",
         },
         {
           label: "Refund attention",
           value: board.summary.refundAttention,
-          icon: <FiRefreshCw className="h-3.5 w-3.5 text-orange-700" />,
-          bg: "bg-gradient-to-br from-orange-50 to-orange-100/30 border-orange-300 hover:border-orange-400",
-          iconBg: "bg-orange-100/80 border border-orange-300/50",
-          textLabel: "text-orange-800/90",
-          textValue: "text-orange-950",
-          textDesc: "text-orange-700/80",
+          icon: <FiRefreshCw className={`h-3.5 w-3.5 ${OPERATION_PALETTE.refunds.icon}`} />,
+          tone: OPERATION_PALETTE.refunds,
           description: "Active refund requests",
         },
         {
           label: "Maintenance",
           value: board.summary.maintenanceConflicts,
-          icon: <FiTool className="h-3.5 w-3.5 text-red-700" />,
-          bg: "bg-gradient-to-br from-red-50 to-red-100/30 border-red-300 hover:border-red-400",
-          iconBg: "bg-red-100/80 border border-red-300/50",
-          textLabel: "text-red-800/90",
-          textValue: "text-red-950",
-          textDesc: "text-red-700/80",
+          icon: <FiTool className={`h-3.5 w-3.5 ${OPERATION_PALETTE.maintenance.icon}`} />,
+          tone: OPERATION_PALETTE.maintenance,
           description: "Maintenance conflicts",
         },
       ]
@@ -358,22 +308,22 @@ function OperationsBoard({
               {summaryItems.map((item) => (
                 <div
                   key={item.label}
-                  className={`rounded-lg border p-2.5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-default ${item.bg}`}
+                  className={`rounded-lg border p-2.5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-default ${item.tone.card}`}
                 >
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="space-y-0.5">
-                      <span className={`text-[10px] font-extrabold uppercase tracking-wider ${item.textLabel}`}>
+                      <span className={`text-[10px] font-extrabold uppercase tracking-wider ${item.tone.label}`}>
                         {item.label}
                       </span>
-                      <div className={`text-2xl font-black leading-none ${item.textValue}`}>
+                      <div className={`text-2xl font-black leading-none ${item.tone.value}`}>
                         {item.value}
                       </div>
                     </div>
-                    <div className={`rounded-md p-1.5 shrink-0 ${item.iconBg}`}>
+                    <div className={`rounded-md border p-1.5 shrink-0 ${item.tone.iconBox}`}>
                       {item.icon}
                     </div>
                   </div>
-                  <p className={`mt-1.5 text-[9px] font-medium leading-tight ${item.textDesc}`}>
+                  <p className={`mt-1.5 text-[9px] font-medium leading-tight ${item.tone.muted}`}>
                     {item.description}
                   </p>
                 </div>
@@ -668,9 +618,6 @@ export default function OperationsPage({ module }: Props) {
     source: "",
   });
   const [actionError, setActionError] = useState("");
-  const [businessDate, setBusinessDate] = useState(() =>
-    toDateInput(new Date()),
-  );
 
   const { properties, selectedPropertyId, setSelectedPropertyId, isLoading: isPropertyLoading } =
     useCurrentProperty();
@@ -695,39 +642,6 @@ export default function OperationsPage({ module }: Props) {
     updateQuote,
     isMutating,
   } = useAdminOperations(module, selectedPropertyId, page, limit, activeFilters);
-  const operationsBoardQuery = useQuery({
-    queryKey:
-      module === "bookings" && selectedPropertyId
-        ? ADMIN_KEYS.operations.operationsBoard(
-            selectedPropertyId,
-            businessDate,
-          )
-        : ADMIN_KEYS.operations.all(),
-    queryFn: () => {
-      if (!selectedPropertyId) throw new Error("PropertyId required");
-      return getOperationsBoardApi(selectedPropertyId, businessDate);
-    },
-    enabled: module === "bookings" && Boolean(selectedPropertyId),
-  });
-  const cashierSummaryQuery = useQuery({
-    queryKey:
-      module === "bookings" && selectedPropertyId
-        ? ADMIN_KEYS.operations.cashierSummary(
-            selectedPropertyId,
-            businessDate,
-            addDays(businessDate, 1),
-          )
-        : ADMIN_KEYS.operations.all(),
-    queryFn: () => {
-      if (!selectedPropertyId) throw new Error("PropertyId required");
-      return getCashierSummaryApi(selectedPropertyId, {
-        from: businessDate,
-        to: addDays(businessDate, 1),
-      });
-    },
-    enabled: module === "bookings" && Boolean(selectedPropertyId),
-  });
-
   const items = data?.items ?? [];
   const statuses = module === "bookings" ? bookingStatuses : leadStatuses;
   const visiblePagination =
@@ -769,19 +683,6 @@ export default function OperationsPage({ module }: Props) {
 
   return (
     <div className="space-y-6">
-      {module === "bookings" && selectedPropertyId && (
-        <OperationsBoard
-          businessDate={businessDate}
-          onBusinessDateChange={setBusinessDate}
-          board={operationsBoardQuery.data}
-          cashierRows={cashierSummaryQuery.data?.rows ?? []}
-          isLoading={
-            operationsBoardQuery.isPending || cashierSummaryQuery.isPending
-          }
-        />
-      )}
-
-
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center">
         <div className="relative flex-1 lg:max-w-md">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -952,12 +853,15 @@ export default function OperationsPage({ module }: Props) {
                   colSpan={module === "bookings" ? 7 : 6}
                 />
               ) : module === "bookings" ? (
-                (items as AdminBooking[]).map((booking, index) => (
+                (items as AdminBooking[]).map((booking, index) => {
+                  const bookingTone = getBookingStatusTone(booking.status);
+
+                  return (
                   <tr
                     key={booking.id}
-                    className="transition-all duration-150 hover:bg-indigo-50/15"
+                    className={`transition-all duration-150 ${bookingTone.rowHover}`}
                   >
-                    <td className="px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap">
+                    <td className={`border-l-4 px-6 py-4 text-center text-sm font-semibold text-slate-500 whitespace-nowrap ${bookingTone.tableAccent}`}>
                       {(page - 1) * limit + index + 1}
                     </td>
                     <td className="px-6 py-4">
@@ -976,10 +880,10 @@ export default function OperationsPage({ module }: Props) {
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            <span className="inline-flex items-center gap-1 shrink-0 bg-indigo-50/70 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-semibold border border-indigo-100">
-                              👤 {booking.guestCount} {booking.guestCount === 1 ? "guest" : "guests"}
+                            <span className={`inline-flex items-center gap-1 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${bookingTone.pill}`}>
+                              <FiUser className="h-3 w-3" /> {booking.guestCount} {booking.guestCount === 1 ? "guest" : "guests"}
                             </span>
-                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-650 border border-slate-200">
+                            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-mono font-semibold ${bookingTone.pill}`}>
                               {booking.bookingRef}
                             </span>
                           </div>
@@ -1030,7 +934,8 @@ export default function OperationsPage({ module }: Props) {
                       </Button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               ) : module === "enquiries" ? (
                 (items as AdminEnquiry[]).map((enquiry, index) => (
                   <tr key={enquiry.id} className="transition-colors hover:bg-slate-50/80">

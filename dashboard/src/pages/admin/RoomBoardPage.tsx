@@ -60,6 +60,25 @@ const statusActiveRingColors: Record<RoomBoardStatus, string> = {
   INACTIVE: "ring-slate-200/80",
 };
 
+const statusIconMutedColors: Record<RoomBoardStatus, string> = {
+  AVAILABLE: "text-emerald-700/20",
+  RESERVED: "text-amber-700/20",
+  OCCUPIED: "text-indigo-700/20",
+  MAINTENANCE: "text-rose-700/20",
+  INACTIVE: "text-slate-700/20",
+};
+
+const unitHeaderColors: Record<RoomBoardStatus, string> = {
+  AVAILABLE: "border-emerald-200 bg-emerald-50/70",
+  RESERVED: "border-amber-200 bg-amber-50/70",
+  OCCUPIED: "border-indigo-200 bg-indigo-50/70",
+  MAINTENANCE: "border-rose-200 bg-rose-50/70",
+  INACTIVE: "border-slate-200 bg-slate-50/80",
+};
+
+const isRoomBoardStatus = (value: string): value is RoomBoardStatus =>
+  summaryStatuses.some((item) => item.value === value);
+
 const toDateInput = (date: Date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -430,7 +449,7 @@ export default function RoomBoardPage() {
                   className={`flex items-center justify-between rounded-lg border px-5 py-4 text-left transition-all duration-200 active:translate-y-0 ${
                     isActive
                       ? `${activeStyles[item.value]} shadow-lg ring-2 ${ringClass}`
-                      : `${bgClass} ${borderClass} ${textClass} hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md`
+                      : `${bgClass} ${borderClass} ${textClass} hover:-translate-y-0.5 hover:shadow-md`
                   }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -443,7 +462,7 @@ export default function RoomBoardPage() {
                       {count}
                     </span>
                   </div>
-                  <span className={isActive ? "text-white/40" : "opacity-10"}>
+                  <span className={isActive ? "text-white/40" : statusIconMutedColors[item.value]}>
                     {statusIconMap[item.value]}
                   </span>
                 </button>
@@ -512,14 +531,21 @@ function UnitSection({
     status: RoomHousekeepingStatus,
   ) => void;
 }) {
+  const unitStatus = isRoomBoardStatus(unit.status) ? unit.status : "INACTIVE";
+  const borderClass =
+    STATUS_BORDER_DARK_COLORS[unitStatus] || "border-slate-300";
+  const headerClass =
+    unitHeaderColors[unitStatus] || "border-slate-200 bg-slate-50";
+  const textClass = STATUS_TEXT_COLORS[unitStatus] || "text-slate-700";
+
   return (
-    <section className="rounded-lg border border-slate-300 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-lg border-b border-slate-300 bg-slate-100 px-5 py-4">
+    <section className={`rounded-lg border bg-white ${borderClass}`}>
+      <div className={`flex flex-wrap items-center justify-between gap-4 rounded-t-lg border-b px-5 py-4 ${headerClass}`}>
         <div>
           <h3 className="text-base font-bold text-slate-900">
             Unit {unit.unitNumber}
           </h3>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-700">
+          <div className={`mt-1 flex items-center gap-2 text-xs ${textClass}`}>
             <span className="font-semibold">Floor {unit.floor}</span>
             <span>•</span>
             {!unit.isActive ? (
@@ -532,7 +558,7 @@ function UnitSection({
             )}
           </div>
         </div>
-        <div className="text-sm font-bold text-slate-700">
+        <div className={`text-sm font-bold ${textClass}`}>
           {unit.rooms.length} Room{unit.rooms.length === 1 ? "" : "s"}
         </div>
       </div>

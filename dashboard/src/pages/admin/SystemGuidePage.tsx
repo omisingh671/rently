@@ -1016,8 +1016,9 @@ export default function SystemGuidePage() {
                 </h1>
                 <p className="mt-2 text-slate-500">
                   Deep-dive into our core transaction engine: booking
-                  lifecycles, manual payment configurations, snapshot
-                  mechanisms, and the visual Room Board.
+                  lifecycles, front-desk operations, cashier reconciliation,
+                  room/unit assignment rules, folio handling, and the visual
+                  Room Board.
                 </p>
               </div>
 
@@ -1093,6 +1094,31 @@ export default function SystemGuidePage() {
                     efficiently.
                   </p>
                 </div>
+
+                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-2">
+                  <h4 className="font-semibold text-slate-950">
+                    Front-Desk Operations Board
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    The operations board follows the selected property timezone
+                    and business date. It groups arrivals, departures,
+                    in-house guests, late arrivals, unassigned stays,
+                    balance-due bookings, refund attention, housekeeping work,
+                    and maintenance conflicts into one daily cockpit.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 space-y-2">
+                  <h4 className="font-semibold text-slate-950">
+                    Folio, Housekeeping & Maintenance Controls
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Booking details support audited folio charges, voids,
+                    housekeeping transitions, maintenance conflict checks,
+                    emergency maintenance overrides, and status corrections
+                    with required notes where operational risk is higher.
+                  </p>
+                </div>
               </div>
 
               {/* Managing Booking Details & Staff Actions Section */}
@@ -1131,7 +1157,9 @@ export default function SystemGuidePage() {
                         Every status mutation creates an entry in the{" "}
                         <code>BookingStatusHistory</code> table, tracking the
                         acting staff user ID, a timestamp, and an optional
-                        administrative reason note.
+                        administrative reason note. Check-in also verifies the
+                        arrival date, identity confirmation, inspected room
+                        readiness, and balance-due override notes when needed.
                       </p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
@@ -1141,11 +1169,15 @@ export default function SystemGuidePage() {
                       </p>
                       <p className="mt-1 text-slate-600">
                         For <code>CONFIRMED</code> bookings, administrators can
-                        allocate a specific physical room number to the stay.
-                        The room dropdown automatically filters to display
-                        vacant physical rooms that match the exact{" "}
-                        <code>RoomProduct</code> (category and AC toggle)
-                        reserved by the customer.
+                        allocate a specific physical room or a complete unit to
+                        the stay. Single-room and multi-room bookings require
+                        exact concrete room assignments. Whole-unit bookings
+                        keep their <code>UNIT</code> assignment and display the
+                        assigned unit with all child rooms, such as Unit 300
+                        (300-A, 300-B, 300-C). During check-in the backend
+                        expands that unit into its concrete rooms for
+                        availability and housekeeping validation without
+                        reducing the booking to one room.
                       </p>
                     </div>
                   </div>
@@ -1158,10 +1190,10 @@ export default function SystemGuidePage() {
                       <p className="mt-1 text-slate-600">
                         If a guest pays in cash, card swipe, or bank wire during
                         check-in, staff can record an offline transaction. They
-                        input the Payment Amount, Payment Status (
-                        <code>PAID</code>), Provider (<code>MANUAL</code>), and
-                        a unique reference transaction code to successfully
-                        reconcile the balance.
+                        input the payment amount, method, received date,
+                        optional payer detail, and required reference proof for
+                        referenced offline methods. Successful payments feed the
+                        cashier summary and booking balance immediately.
                       </p>
                     </div>
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
@@ -1178,6 +1210,77 @@ export default function SystemGuidePage() {
                         later.
                       </p>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Front Desk Operations Board */}
+              <div className="p-5 rounded-2xl border border-slate-200 bg-white space-y-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <span className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                    <FiCalendar className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Front-Desk Operations Board & Cashier History
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Daily operating view for arrivals, attention queues,
+                      employee collections, and payment/refund history.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3 text-xs text-slate-600">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1.5">
+                    <p className="font-semibold text-slate-900 uppercase tracking-wider text-[10px]">
+                      1. Business-Date Summary
+                    </p>
+                    <p>
+                      The board follows the selected property timezone and
+                      business date. Summary counters surface arrivals,
+                      departures, in-house guests, late arrivals, unassigned
+                      bookings, outstanding balances, refund attention,
+                      housekeeping work, and maintenance conflicts.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1.5">
+                    <p className="font-semibold text-slate-900 uppercase tracking-wider text-[10px]">
+                      2. Immediate Attention Queues
+                    </p>
+                    <p>
+                      Late arrivals, bookings without assignments, dirty or
+                      cleaning rooms, and maintenance conflicts are grouped as
+                      actionable queues. Operators can jump directly from these
+                      rows into the booking detail or room-board workflow.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1.5">
+                    <p className="font-semibold text-slate-900 uppercase tracking-wider text-[10px]">
+                      3. Cashier By Employee
+                    </p>
+                    <p>
+                      The cashier card shows a grand total and employee-level
+                      rows by method, expected cash, refunds, and net
+                      collection. Employee rows are visible by default; each row
+                      expands to a scrollable <strong>Payment History</strong>{" "}
+                      list so long histories stay inside the card.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-lg text-xs text-indigo-950">
+                  <div className="flex gap-2">
+                    <FiInfo className="text-indigo-600 mt-0.5 shrink-0" />
+                    <p className="leading-relaxed">
+                      Cashier history contains both payments and refunds with
+                      booking reference, guest name, method, timestamp, and
+                      signed amount. It is designed for repeated front-desk
+                      reconciliation without hiding employee rows behind a
+                      global details toggle.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1234,8 +1337,8 @@ export default function SystemGuidePage() {
                     <ul className="pl-3 list-disc space-y-1 text-slate-500">
                       <li><strong>PENDING:</strong> The booking is drafted but unpaid. Reserved rooms are held temporarily.</li>
                       <li><strong>CONFIRMED:</strong> Payment/upfront amount is captured successfully. Physical inventory is officially blocked.</li>
-                      <li><strong>CHECKED_IN:</strong> Guest check-in has been completed. Room status dynamically shifts to occupied.</li>
-                      <li><strong>CHECKED_OUT:</strong> The stay is completed and closed. Historical data is archived.</li>
+                      <li><strong>CHECKED_IN:</strong> Guest check-in has been completed after identity, assignment, inspection, date, and balance checks pass.</li>
+                      <li><strong>CHECKED_OUT:</strong> The stay is completed and closed. Occupied rooms are marked dirty for housekeeping follow-up.</li>
                       <li><strong>CANCELLED:</strong> The booking is cancelled. Held inventory is released immediately.</li>
                       <li><strong>NO_SHOW:</strong> Guest failed to arrive. Room is released back into availability.</li>
                     </ul>
