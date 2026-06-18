@@ -1,5 +1,4 @@
 import {
-  AdvancePaymentType,
   BookingPaymentPolicy,
   BookingPaymentStatus,
   BookingRefundRequestStatus,
@@ -25,7 +24,6 @@ import {
   buildPolicySnapshot,
   calculatePolicyAdvanceAmount,
   getPaymentPolicyForAdvanceType,
-  parsePolicySnapshot,
 } from "@/modules/booking-policy/booking-policy.policy.js";
 import * as repo from "./bookings.repository.js";
 import * as spacesRepo from "@/modules/public/spaces/spaces.repository.js";
@@ -81,6 +79,15 @@ import {
   buildQuoteItemsFromBooking,
   mapBookingItems,
 } from "./bookings.mapping.js";
+import {
+  buildBookingPolicyPreview,
+  getBookingPolicyDto,
+  type PublicBookingPolicyPreviewDTO,
+} from "./bookings.policy.js";
+import {
+  normalizeCouponCode,
+  validateAndApplyCoupon,
+} from "./bookings.coupons.js";
 
 const now = () => new Date();
 const maxBookingTransactionAttempts = 3;
@@ -194,41 +201,6 @@ const syncFulfilledRefundRequest = async (
   }
 
   return updatedBooking;
-};
-
-export interface PublicBookingPolicyPreviewDTO {
-  bookingId: string;
-  status: BookingStatus;
-  paidAmount: number;
-  refundedAmount: number;
-  refundableAmount: number;
-  nonRefundableAmount: number;
-  tokenRefundable: boolean;
-  guestPolicyText: string;
-}
-
-const buildBookingPolicyPreview = async (
-  booking: repo.PublicBookingRecord,
-): Promise<PublicBookingPolicyPreviewDTO> => {
-  const policy = await getBookingPolicyDto(booking);
-  const paidAmount = getPaidAmount(booking);
-  const refundedAmount = getRefundedAmount(booking);
-  const nonRefundableAmount = getNonRefundableTokenAmount(booking, policy);
-  const refundableAmount = Math.max(
-    0,
-    paidAmount - refundedAmount - nonRefundableAmount,
-  );
-
-  return {
-    bookingId: booking.id,
-    status: booking.status,
-    paidAmount,
-    refundedAmount,
-    refundableAmount,
-    nonRefundableAmount,
-    tokenRefundable: policy.tokenRefundable,
-    guestPolicyText: policy.guestPolicyText,
-  };
 };
 
 const mapBooking = async (
@@ -347,40 +319,6 @@ const mapBooking = async (
     createdAt: booking.createdAt.toISOString(),
   };
 };
-
-const getBookingPolicyDto = async (
-  booking: Pick<repo.PublicBookingRecord, "propertyId" | "policySnapshot">,
-  tx?: Prisma.TransactionClient,
-) => {
-  const snapshot = parsePolicySnapshot(booking.policySnapshot);
-  if (snapshot !== null) {
-    const currentPolicy = await spacesService.ensureBookingPolicy(booking.propertyId, tx);
-    return {
-      ...mapSnapshotPolicy(booking.propertyId, snapshot as unknown as Record<string, unknown>),
-      checkInTime: currentPolicy.checkInTime,
-      checkOutTime: currentPolicy.checkOutTime,
-    };
-  }
-
-  return spacesService.mapPolicy(await spacesService.ensureBookingPolicy(booking.propertyId, tx));
-};
-
-const mapSnapshotPolicy = (
-  propertyId: string,
-  snapshot: Record<string, unknown>,
-) => ({
-  propertyId,
-  advancePaymentType: snapshot.advancePaymentType as AdvancePaymentType,
-  advancePaymentValue: Number(snapshot.advancePaymentValue),
-  tokenRefundable: Boolean(snapshot.tokenRefundable),
-  checkInTime: "12:00",
-  checkOutTime: "11:00",
-  cancellationRules: snapshot.cancellationRules as Record<string, unknown>,
-  refundRules: snapshot.refundRules as Record<string, unknown>,
-  earlyCheckoutRules: snapshot.earlyCheckoutRules as Record<string, unknown>,
-  noShowRules: snapshot.noShowRules as Record<string, unknown>,
-  guestPolicyText: String(snapshot.guestPolicyText),
-});
 
 const getBookingYearRange = (date: Date) => {
   const year = date.getUTCFullYear();
@@ -503,84 +441,6 @@ const resolveBookingGuestSnapshot = async (
     fullName: user.fullName,
     email: user.email,
     contactNumber: user.contactNumber,
-  };
-};
-
-const validateAndApplyCoupon = async (
-  propertyId: string,
-  code: string | undefined,
-  nights: number,
-  totalBeforeDiscount: number,
-  tx: Prisma.TransactionClient,
-  options: {
-    userId?: string | undefined;
-    currentCouponId?: string | undefined;
-    excludeBookingId?: string | undefined;
-  } = {},
-) => {
-  if (!code) return { couponId: undefined, discountAmount: 0 };
-
-  const coupon = await repo.findActiveCouponByCode(propertyId, code, now(), tx);
-
-  if (!coupon) {
-    throw new HttpError(422, "INVALID_COUPON", "Invalid or expired coupon code");
-  }
-
-  if (
-    coupon.id !== options.currentCouponId &&
-    coupon.maxUses !== null &&
-    coupon.usedCount >= coupon.maxUses
-  ) {
-    throw new HttpError(422, "COUPON_EXHAUSTED", "Coupon usage limit reached");
-  }
-
-  if (coupon.oncePerUser && options.userId) {
-    const previousBookingCount = await repo.countUserCouponBookings(
-      options.userId,
-      coupon.id,
-      options.excludeBookingId,
-      tx,
-    );
-    if (previousBookingCount > 0) {
-      throw new HttpError(
-        422,
-        "COUPON_ALREADY_USED",
-        "Coupon has already been used by this user",
-      );
-    }
-  }
-
-  if (coupon.minNights !== null && nights < coupon.minNights) {
-    throw new HttpError(
-      422,
-      "COUPON_MIN_NIGHTS",
-      `Coupon requires a minimum of ${coupon.minNights} nights`,
-    );
-  }
-
-  if (
-    coupon.minAmount !== null &&
-    totalBeforeDiscount < Number(coupon.minAmount)
-  ) {
-    throw new HttpError(
-      422,
-      "COUPON_MIN_AMOUNT",
-      `Coupon requires a minimum booking amount of ${Number(coupon.minAmount)}`,
-    );
-  }
-
-  let discountAmount = 0;
-  if (coupon.discountType === "PERCENTAGE") {
-    discountAmount = (totalBeforeDiscount * Number(coupon.discountValue)) / 100;
-  } else {
-    discountAmount = Number(coupon.discountValue);
-  }
-
-  discountAmount = Math.min(discountAmount, totalBeforeDiscount);
-
-  return {
-    couponId: coupon.id,
-    discountAmount: money(discountAmount),
   };
 };
 
@@ -833,11 +693,6 @@ const calculateExistingBookingCheckoutQuote = async (
     },
     tx,
   );
-};
-
-const normalizeCouponCode = (couponCode: string | null | undefined) => {
-  const trimmed = couponCode?.trim();
-  return trimmed ? trimmed.toUpperCase() : undefined;
 };
 
 export const createBookingForUser = async (

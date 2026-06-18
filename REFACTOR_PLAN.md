@@ -60,13 +60,25 @@ Completed extraction:
   - availability option item quote mapping
   - quote item to booking item create input mapping
   - existing booking quote item reconstruction
+- `bookings.policy.ts`
+  - booking policy snapshot mapping
+  - current policy fallback with live check-in/check-out times
+  - cancellation/refund preview DTO builder
+- `bookings.coupons.ts`
+  - coupon code normalization
+  - active coupon lookup and validation
+  - max-use and once-per-user checks
+  - minimum nights and minimum amount checks
+  - discount calculation before tax
 
 Current line counts:
 
-- `bookings.service.ts`: 1,922 lines
+- `bookings.service.ts`: 1,777 lines
 - `bookings.access.ts`: 82 lines
+- `bookings.coupons.ts`: 89 lines
 - `bookings.financials.ts`: 68 lines
 - `bookings.mapping.ts`: 184 lines
+- `bookings.policy.ts`: 87 lines
 - `bookings.targets.ts`: 207 lines
 - `bookings.tax-breakdown.ts`: 21 lines
 
