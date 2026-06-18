@@ -9,7 +9,6 @@ import {
   ComfortOption,
   Prisma,
   PaymentRefundStatus,
-  PaymentPurpose,
   PaymentStatus,
   TaxCalculationMode,
   TaxCategory,
@@ -51,6 +50,22 @@ import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.input
 import { prisma } from "@/db/prisma.js";
 import type { PublicBookingPolicyDTO } from "@/modules/public/spaces/spaces.dto.js";
 import * as availabilityRepo from "@/modules/public/availability/availability.repository.js";
+import {
+  assertBookingCheckoutEditable,
+  assertPublicBookingAccess,
+} from "./bookings.access.js";
+import {
+  activeRefundRequestStatuses,
+  getNonRefundableTokenAmount,
+  getPaidAmount,
+  getRefundedAmount,
+  getTokenPaidAmount,
+  getTokenPaymentStatus,
+} from "./bookings.financials.js";
+import {
+  getBookingTaxBreakdown,
+  toTaxBreakdownJson,
+} from "./bookings.tax-breakdown.js";
 
 const now = () => new Date();
 const maxBookingTransactionAttempts = 3;
@@ -121,86 +136,6 @@ interface QuoteCalculationResult extends PublicBookingQuoteDTO {
 }
 
 const money = (value: number) => Math.round(value * 100) / 100;
-
-const isTaxBreakdown = (value: unknown): value is PublicTaxBreakdownDTO[] =>
-  Array.isArray(value) &&
-  value.every(
-    (item) =>
-      typeof item === "object" &&
-      item !== null &&
-      "taxId" in item &&
-      "name" in item &&
-      "taxAmount" in item,
-  );
-
-const getBookingTaxBreakdown = (
-  value: Prisma.JsonValue | null,
-): PublicTaxBreakdownDTO[] => (isTaxBreakdown(value) ? value : []);
-
-const toTaxBreakdownJson = (
-  breakdown: PublicTaxBreakdownDTO[],
-): Prisma.InputJsonValue => breakdown as unknown as Prisma.InputJsonValue;
-
-const getNonRefundableTokenAmount = (
-  booking: repo.PublicBookingRecord,
-  policy: PublicBookingPolicyDTO,
-) =>
-  policy.tokenRefundable
-    ? 0
-    : booking.payments
-        .filter(
-          (payment) =>
-            payment.status === PaymentStatus.SUCCEEDED &&
-            payment.purpose === PaymentPurpose.TOKEN,
-        )
-        .reduce((total, payment) => total + Number(payment.amount), 0);
-
-const getTokenPaidAmount = (booking: repo.PublicBookingRecord) =>
-  booking.payments
-    .filter(
-      (payment) =>
-        payment.status === PaymentStatus.SUCCEEDED &&
-        payment.purpose === PaymentPurpose.TOKEN,
-    )
-    .reduce((total, payment) => total + Number(payment.amount), 0);
-
-const getTokenPaymentStatus = (
-  booking: repo.PublicBookingRecord,
-  tokenPaidAmount: number,
-) => {
-  if (
-    booking.paymentPolicy !== BookingPaymentPolicy.TOKEN_AT_BOOKING ||
-    Number(booking.upfrontAmount) <= 0
-  ) {
-    return "NOT_REQUIRED" as const;
-  }
-
-  return tokenPaidAmount > 0 ? "PAID" as const : "UNPAID" as const;
-};
-
-const getPaidAmount = (booking: repo.PublicBookingRecord) =>
-  booking.payments
-    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
-    .reduce((total, payment) => total + Number(payment.amount), 0);
-
-const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
-  BookingRefundRequestStatus.REQUESTED,
-  BookingRefundRequestStatus.IN_REVIEW,
-];
-
-const getRefundedAmount = (booking: repo.PublicBookingRecord) =>
-  booking.payments.reduce(
-    (total, payment) =>
-      total +
-      payment.refunds
-        .filter(
-          (refund) =>
-            refund.status === PaymentRefundStatus.PENDING ||
-            refund.status === PaymentRefundStatus.SUCCEEDED,
-        )
-        .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
-    0,
-  );
 
 const getRefundableAmount = async (booking: repo.PublicBookingRecord) => {
   const policy = await getBookingPolicyDto(booking);
@@ -1180,76 +1115,6 @@ const buildBookingItemCreateInputFromQuoteItem = (
   totalAmount: item.totalAmount,
   finalAmount: item.finalAmount,
 });
-
-const assertBookingCheckoutEditable = async (
-  booking: repo.PublicBookingRecord,
-  userId: string | undefined,
-  editToken: string | undefined,
-  tx: Prisma.TransactionClient,
-) => {
-  if (booking.paymentStatus !== BookingPaymentStatus.PENDING || getPaidAmount(booking) > 0) {
-    throw new HttpError(
-      409,
-      "BOOKING_PAYMENT_STARTED",
-      "Booking details cannot be edited after payment starts",
-    );
-  }
-
-  if (booking.status !== BookingStatus.PENDING) {
-    throw new HttpError(
-      409,
-      "BOOKING_CHECKOUT_LOCKED",
-      "Only pending bookings can be edited before payment",
-    );
-  }
-
-  if (userId !== undefined && userId === booking.userId) {
-    return;
-  }
-
-  if (editToken !== undefined) {
-    const lock = await availabilityRepo.findReleasedInventoryLockByBookingToken(
-      booking.id,
-      editToken,
-      tx,
-    );
-    if (lock) {
-      return;
-    }
-  }
-
-  throw new HttpError(
-    403,
-    "BOOKING_EDIT_FORBIDDEN",
-    "You cannot edit this booking checkout",
-  );
-};
-
-const assertPublicBookingAccess = async (
-  booking: repo.PublicBookingRecord,
-  userId: string | undefined,
-  checkoutToken: string | undefined,
-) => {
-  if (userId !== undefined && userId === booking.userId) {
-    return;
-  }
-
-  if (checkoutToken !== undefined) {
-    const lock = await availabilityRepo.findReleasedInventoryLockByBookingToken(
-      booking.id,
-      checkoutToken,
-    );
-    if (lock) {
-      return;
-    }
-  }
-
-  throw new HttpError(
-    403,
-    "BOOKING_ACCESS_FORBIDDEN",
-    "You cannot access this booking",
-  );
-};
 
 const buildQuoteItemsFromBooking = (
   booking: repo.PublicBookingRecord,

@@ -31,6 +31,8 @@
 
 ## Refactor Candidates
 
+Execution plan: see `REFACTOR_PLAN.md`.
+
 Required over 1000 lines:
 
 - `backend/src/modules/bookings/bookings.service.ts`
