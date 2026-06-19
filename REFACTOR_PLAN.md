@@ -165,12 +165,14 @@ Completed extraction:
   - assignment label lookup for DTO mapping
   - transactional room availability checks
   - room move pricing preview and pricing fingerprint
+  - existing assignment detection and complimentary room-move waiver guard
 - `bookings.lifecycle.ts`
   - optimistic version checks
   - versioned booking updates
   - status history writes
   - operation event writes
   - transaction-scoped booking lookup
+  - checkout balance-due guard
 - `bookings.operations.ts`
   - business-date boundary helpers
   - operations board payload assembly
@@ -180,6 +182,7 @@ Completed extraction:
   - folio charge transaction helper
   - folio charge void transaction helper
   - folio operation event metadata
+  - late-checkout extension charge posting with debit-note creation
 - `bookings.walk-in.ts`
   - walk-in guest lookup/update/create flow
   - stay-night calculation helper
@@ -196,17 +199,24 @@ Completed extraction:
 
 Current line counts:
 
-- `bookings.service.ts`: 1,173 lines
+- `bookings.service.ts`: 1,265 lines
 - `bookings.access.ts`: 38 lines
-- `bookings.assignment.ts`: 774 lines
+- `bookings.assignment.ts`: 1,057 lines
 - `bookings.financials.ts`: 271 lines
-- `bookings.folio.ts`: 125 lines
+- `bookings.folio.ts`: 255 lines
 - `bookings.housekeeping.ts`: 79 lines
-- `bookings.lifecycle.ts`: 99 lines
+- `bookings.lifecycle.ts`: 131 lines
 - `bookings.operations.ts`: 365 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines
 - `bookings.walk-in.ts`: 67 lines
+
+Verification completed:
+
+- `backend`: `npm run typecheck`
+- `backend`: `npm run test:payment`
+- `backend`: `npm run test:rbac`
+- `backend`: `npm run lint`
 
 Extract by responsibility:
 

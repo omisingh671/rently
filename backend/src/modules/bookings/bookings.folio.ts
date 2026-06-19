@@ -5,6 +5,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { billingService } from "@/modules/billing/index.js";
 import type {
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
@@ -12,12 +13,15 @@ import type {
   CreateBookingFolioChargeInput,
   VoidBookingFolioChargeInput,
 } from "./bookings.inputs.js";
+import { buildLateCheckoutExtensionPreview } from "./bookings.assignment.js";
+import type { DashboardActor } from "./bookings.access.js";
 import {
   assertExpectedBookingVersion,
   createOperationEvent,
   findTransactionBooking,
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
+import * as repo from "./bookings.repository.js";
 
 const getJsonString = (value: Prisma.JsonValue, key: string) => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -101,6 +105,46 @@ export const ensureLateCheckoutExtensionCharge = async (
     },
   });
 };
+
+export const postLateCheckoutExtensionCharge = async (
+  bookingId: string,
+  actor: DashboardActor,
+  input: {
+    expectedVersion?: number;
+    note?: string;
+  },
+) =>
+  repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    if (input.expectedVersion !== undefined) {
+      assertExpectedBookingVersion(booking.version, input.expectedVersion);
+    }
+    if (booking.status !== BookingStatus.CHECKED_IN) {
+      return {
+        extensionChargeId: null,
+        extensionPreview: null,
+      };
+    }
+    const extensionPreview = await buildLateCheckoutExtensionPreview(booking, tx);
+    const extensionCharge = await ensureLateCheckoutExtensionCharge(tx, {
+      booking,
+      actorUserId: actor.id,
+      preview: extensionPreview,
+      ...(input.note !== undefined && { note: input.note }),
+    });
+    if (extensionCharge !== null) {
+      await billingService.createDebitNoteForFolioCharge(
+        booking.id,
+        extensionCharge.id,
+        tx,
+      );
+    }
+
+    return {
+      extensionChargeId: extensionCharge?.id ?? null,
+      extensionPreview,
+    };
+  });
 
 export const createBookingFolioChargeInTransaction = async (
   tx: Prisma.TransactionClient,

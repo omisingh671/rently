@@ -2,9 +2,41 @@ import {
   BookingOperationEventType,
   BookingStatus,
   Prisma,
+  UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { getBookingBalanceAmount } from "./bookings.financials.js";
+import { isAdminOverrideRole, requireAuditNote } from "./bookings.helper.js";
 import * as repo from "./bookings.repository.js";
+
+export const assertCheckoutBalanceSettled = (input: {
+  booking: repo.DashboardBookingRecord;
+  actor: { role: UserRole };
+  allowBalanceDueCheckout?: boolean;
+  note?: string;
+}) => {
+  const balanceAmount = getBookingBalanceAmount(input.booking);
+  if (balanceAmount.greaterThan(0)) {
+    if (
+      input.allowBalanceDueCheckout !== true ||
+      !isAdminOverrideRole(input.actor.role)
+    ) {
+      throw new HttpError(
+        409,
+        "CHECK_OUT_BALANCE_DUE",
+        "Settle the folio before checkout or use an Admin override",
+      );
+    }
+    requireAuditNote(
+      input.note,
+      "Override note is required to check out with balance due",
+    );
+  }
+
+  return {
+    balanceAmount,
+  };
+};
 
 export const assertExpectedBookingVersion = (
   actualVersion: number,

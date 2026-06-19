@@ -17,7 +17,13 @@ import type {
   BookingRoomMovePreviewDTO,
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
-import { getLocalDateValue } from "./bookings.helper.js";
+import {
+  getLocalDateValue,
+  isAdminOverrideRole,
+  requireAuditNote,
+} from "./bookings.helper.js";
+import type { DashboardActor } from "./bookings.access.js";
+import type { MoveBookingRoomInput } from "./bookings.inputs.js";
 import {
   formatBookingRoomAssignmentLabel,
   formatBookingUnitAssignmentLabel,
@@ -72,6 +78,37 @@ export const assertBookingHasAssignedTarget = (
       "Assign a room or unit before check-in",
     );
   }
+};
+
+export const hasExistingAssignment = (booking: repo.DashboardBookingRecord) =>
+  booking.roomId !== null ||
+  booking.unitId !== null ||
+  booking.items.some((item) => item.roomId !== null || item.unitId !== null);
+
+export const assertComplimentaryUpgradeAllowed = (
+  actor: DashboardActor,
+  input: MoveBookingRoomInput,
+  pricingPreview: BookingRoomMovePreviewDTO,
+) => {
+  if (
+    input.pricingAction !== "COMPLIMENTARY_UPGRADE" ||
+    !pricingPreview.pricingRequired
+  ) {
+    return;
+  }
+
+  if (!isAdminOverrideRole(actor.role)) {
+    throw new HttpError(
+      403,
+      "ROOM_MOVE_WAIVER_RESTRICTED",
+      "Only Admin or Super Admin can waive a higher-priced room move",
+    );
+  }
+
+  requireAuditNote(
+    input.note,
+    "Audit note is required to waive a higher-priced room move",
+  );
 };
 
 export const getAssignedCheckInRoomIds = async (

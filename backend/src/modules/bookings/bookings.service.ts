@@ -27,14 +27,16 @@ import {
 } from "./bookings.helper.js";
 import { getBookingBalanceAmount } from "./bookings.financials.js";
 import {
+  assertComplimentaryUpgradeAllowed,
   assertBookingHasAssignedTarget,
   assertTransactionalRoomsAvailable,
-  buildLateCheckoutExtensionPreview,
   buildRoomMovePricingPreview,
   getAssignedCheckInRoomIds,
+  hasExistingAssignment,
   resolveBookingRoomAssignments,
 } from "./bookings.assignment.js";
 import {
+  assertCheckoutBalanceSettled,
   assertExpectedBookingVersion,
   createOperationEvent,
   createStatusHistory,
@@ -49,7 +51,7 @@ import {
 } from "./bookings.operations.js";
 import {
   createBookingFolioChargeInTransaction,
-  ensureLateCheckoutExtensionCharge,
+  postLateCheckoutExtensionCharge,
   voidBookingFolioChargeInTransaction,
 } from "./bookings.folio.js";
 import {
@@ -111,112 +113,6 @@ export {
   getPropertyScope,
   type DashboardActor,
   type DashboardPropertyScope,
-};
-
-const hasExistingAssignment = (booking: repo.DashboardBookingRecord) =>
-  booking.roomId !== null ||
-  booking.unitId !== null ||
-  booking.items.some((item) => item.roomId !== null || item.unitId !== null);
-
-const assertComplimentaryUpgradeAllowed = (
-  actor: DashboardActor,
-  input: MoveBookingRoomInput,
-  pricingPreview: BookingRoomMovePreviewDTO,
-) => {
-  if (
-    input.pricingAction !== "COMPLIMENTARY_UPGRADE" ||
-    !pricingPreview.pricingRequired
-  ) {
-    return;
-  }
-
-  if (!isAdminOverrideRole(actor.role)) {
-    throw new HttpError(
-      403,
-      "ROOM_MOVE_WAIVER_RESTRICTED",
-      "Only Admin or Super Admin can waive a higher-priced room move",
-    );
-  }
-
-  requireAuditNote(
-    input.note,
-    "Audit note is required to waive a higher-priced room move",
-  );
-};
-
-const postLateCheckoutExtensionCharge = async (
-  bookingId: string,
-  actor: DashboardActor,
-  input: {
-    expectedVersion?: number;
-    note?: string;
-  },
-) =>
-  repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    if (input.expectedVersion !== undefined) {
-      assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    }
-    if (booking.status !== BookingStatus.CHECKED_IN) {
-      return {
-        extensionChargeId: null,
-        extensionPreview: null,
-      };
-    }
-    const extensionPreview = await buildLateCheckoutExtensionPreview(booking, tx);
-    const extensionCharge = await ensureLateCheckoutExtensionCharge(tx, {
-      booking,
-      actorUserId: actor.id,
-      preview: extensionPreview,
-      ...(input.note !== undefined && { note: input.note }),
-    });
-    if (extensionCharge !== null) {
-      await billingService.createDebitNoteForFolioCharge(
-        booking.id,
-        extensionCharge.id,
-        tx,
-      );
-    }
-
-    return {
-      extensionChargeId: extensionCharge?.id ?? null,
-      extensionPreview,
-    };
-  });
-
-const assertCheckoutBalanceSettled = (
-  input: {
-    booking: repo.DashboardBookingRecord;
-    actor: DashboardActor;
-    allowBalanceDueCheckout?: boolean;
-    note?: string;
-    extensionChargeId?: string | null;
-    extensionPreview?: Awaited<
-      ReturnType<typeof postLateCheckoutExtensionCharge>
-    >["extensionPreview"];
-  },
-) => {
-  const balanceAmount = getBookingBalanceAmount(input.booking);
-  if (balanceAmount.greaterThan(0)) {
-    if (
-      input.allowBalanceDueCheckout !== true ||
-      !isAdminOverrideRole(input.actor.role)
-    ) {
-      throw new HttpError(
-        409,
-        "CHECK_OUT_BALANCE_DUE",
-        "Settle the folio before checkout or use an Admin override",
-      );
-    }
-    requireAuditNote(
-      input.note,
-      "Override note is required to check out with balance due",
-    );
-  }
-
-  return {
-    balanceAmount,
-  };
 };
 
 export const getRoomBoard = async (
@@ -557,8 +453,6 @@ export const updateBooking = async (
         booking: checkoutBooking,
         actor,
         ...(input.note !== undefined && { note: input.note }),
-        extensionChargeId: extension.extensionChargeId,
-        extensionPreview: extension.extensionPreview,
       });
 
       await tx.booking.update({
@@ -797,8 +691,6 @@ export const checkOutBooking = async (
         allowBalanceDueCheckout: input.allowBalanceDueCheckout,
       }),
       ...(input.note !== undefined && { note: input.note }),
-      extensionChargeId: extension.extensionChargeId,
-      extensionPreview: extension.extensionPreview,
     });
 
     const roomIds = booking.items
