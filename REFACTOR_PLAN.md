@@ -145,6 +145,22 @@ Target file:
 
 - `backend/src/modules/bookings/bookings.service.ts`
 
+Status: in progress.
+
+Completed extraction:
+
+- `bookings.financials.ts`
+  - paid/refunded/refundable/balance calculations
+  - refund request active/fulfilled synchronization
+  - payment acceptance checks
+  - refund provider/method validation
+  - refund recorder metadata lookup
+
+Current line counts:
+
+- `bookings.service.ts`: 2,814 lines
+- `bookings.financials.ts`: 271 lines
+
 Extract by responsibility:
 
 - lifecycle transition validation
