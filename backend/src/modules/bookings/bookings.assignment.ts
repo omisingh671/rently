@@ -13,7 +13,10 @@ import {
   UnitStatus,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
-import type { BookingRoomMovePreviewDTO } from "./bookings.dto.js";
+import type {
+  BookingRoomMovePreviewDTO,
+  BookingStayExtensionChargePreviewDTO,
+} from "./bookings.dto.js";
 import { getLocalDateValue } from "./bookings.helper.js";
 import {
   formatBookingRoomAssignmentLabel,
@@ -533,6 +536,253 @@ const dateOnlyDiff = (from: string, to: string) =>
 const moneyDecimal = (value: Prisma.Decimal | number | string) =>
   new Prisma.Decimal(value).toDecimalPlaces(2);
 
+type AssignmentRoom = Prisma.RoomGetPayload<{ include: { unit: true } }>;
+
+type EffectivePricingTarget = {
+  item: repo.DashboardBookingRecord["items"][number];
+  room: AssignmentRoom;
+  targetType: BookingTargetType;
+  occupancy: number;
+};
+
+const getPricingRank = (row: { roomId: string | null; unitId: string | null }) =>
+  row.roomId !== null ? 0 : row.unitId !== null ? 1 : 2;
+
+const findEffectivePricing = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    booking: repo.DashboardBookingRecord;
+    target: EffectivePricingTarget;
+    effectiveDate: string;
+    pricingThroughDate: Date;
+    nights: number;
+  },
+) => {
+  const effectiveDateStart = new Date(`${input.effectiveDate}T00:00:00.000Z`);
+  const pricingRows = await tx.roomPricing.findMany({
+    where: {
+      propertyId: input.booking.propertyId,
+      validFrom: { lte: effectiveDateStart },
+      AND: [
+        {
+          OR: [
+            { validTo: null },
+            { validTo: { gte: input.pricingThroughDate } },
+          ],
+        },
+        { OR: [{ maxNights: null }, { maxNights: { gte: input.nights } }] },
+        ...(input.target.targetType === BookingTargetType.UNIT
+          ? [
+              {
+                OR: [
+                  { roomId: null, unitId: input.target.room.unitId },
+                  { roomId: null, unitId: null },
+                ],
+              },
+            ]
+          : [
+              {
+                OR: [
+                  { roomId: input.target.room.id },
+                  { roomId: null, unitId: input.target.room.unitId },
+                  { roomId: null, unitId: null },
+                ],
+              },
+            ]),
+      ],
+      minNights: { lte: input.nights },
+      product: {
+        occupancy: input.target.occupancy,
+        hasAC: input.target.item.comfortOption === "AC",
+      },
+    },
+    orderBy: { price: "asc" },
+  });
+
+  const pricing = pricingRows.sort(
+    (left, right) =>
+      getPricingRank(left) - getPricingRank(right) ||
+      Number(left.price) - Number(right.price),
+  )[0];
+
+  if (!pricing) {
+    throw new HttpError(
+      422,
+      "PRICE_NOT_CONFIGURED",
+      input.target.targetType === BookingTargetType.UNIT
+        ? `No active price is configured for unit ${input.target.room.unit.unitNumber} at capacity ${input.target.occupancy}`
+        : `No active price is configured for room ${input.target.room.number}`,
+    );
+  }
+
+  return pricing;
+};
+
+const getApplicablePricingTaxes = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    booking: repo.DashboardBookingRecord;
+    targetType: BookingTargetType;
+    effectiveDate: string;
+    nightlyRate: Prisma.Decimal;
+  },
+) => {
+  const taxes = await tx.tax.findMany({
+    where: {
+      propertyId: input.booking.propertyId,
+      isActive: true,
+      validFrom: { lte: new Date(`${input.effectiveDate}T23:59:59.999Z`) },
+      OR: [
+        { validTo: null },
+        { validTo: { gte: new Date(`${input.effectiveDate}T00:00:00.000Z`) } },
+      ],
+      targetType: {
+        in: [TaxTargetType.ALL, input.targetType as TaxTargetType],
+      },
+    },
+  });
+  const gst = taxes
+    .filter(
+      (tax) =>
+        tax.category === TaxCategory.GST &&
+        tax.calculationMode ===
+          TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF &&
+        input.nightlyRate.greaterThanOrEqualTo(tax.minTariff ?? 0) &&
+        (tax.maxTariff === null || input.nightlyRate.lessThan(tax.maxTariff)),
+    )
+    .sort((left, right) => right.priority - left.priority)[0];
+
+  return [
+    ...(gst ? [gst] : []),
+    ...taxes.filter(
+      (tax) =>
+        tax.category === TaxCategory.GENERIC &&
+        tax.calculationMode === TaxCalculationMode.FLAT,
+    ),
+  ];
+};
+
+const getTaxAmountForLine = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    booking: repo.DashboardBookingRecord;
+    targetType: BookingTargetType;
+    effectiveDate: string;
+    nightlyRate: Prisma.Decimal;
+    taxableAmount: Prisma.Decimal;
+    taxInclusive: boolean;
+  },
+) => {
+  let exclusiveTaxAmount = new Prisma.Decimal(0);
+  const taxBreakdown: BookingRoomMovePreviewDTO["taxBreakdown"] = [];
+  const taxes = await getApplicablePricingTaxes(tx, input);
+
+  for (const tax of taxes) {
+    const rate = new Prisma.Decimal(tax.rate);
+    const amount =
+      tax.taxType === TaxType.PERCENTAGE
+        ? input.taxInclusive
+          ? input.taxableAmount.times(rate).div(new Prisma.Decimal(100).plus(rate))
+          : input.taxableAmount.times(rate).div(100)
+        : Prisma.Decimal.min(rate, input.taxableAmount);
+    const rounded = moneyDecimal(amount);
+    if (!input.taxInclusive) {
+      exclusiveTaxAmount = exclusiveTaxAmount.plus(rounded);
+    }
+    taxBreakdown.push({
+      taxId: tax.id,
+      name: tax.name,
+      rate: Number(tax.rate),
+      amount: rounded.toString(),
+    });
+  }
+
+  return {
+    exclusiveTaxAmount,
+    taxBreakdown,
+  };
+};
+
+const buildCurrentPricingTargets = async (
+  booking: repo.DashboardBookingRecord,
+  tx: Prisma.TransactionClient,
+) => {
+  const isUnitBooking = booking.targetType === BookingTargetType.UNIT;
+  const roomIds = uniqueIds([
+    booking.roomId,
+    ...booking.items.map((item) => item.roomId),
+  ]);
+  const unitIds = uniqueIds([
+    booking.unitId,
+    ...booking.items.map((item) => item.unitId),
+  ]);
+
+  const rooms = await tx.room.findMany({
+    where: {
+      OR: [
+        ...(roomIds.length > 0 ? [{ id: { in: roomIds } }] : []),
+        ...(unitIds.length > 0 ? [{ unitId: { in: unitIds } }] : []),
+      ],
+    },
+    include: { unit: true },
+    orderBy: { number: "asc" },
+  });
+  const roomsById = new Map(rooms.map((room) => [room.id, room]));
+  const roomsByUnitId = new Map<string, AssignmentRoom[]>();
+  for (const room of rooms) {
+    const unitRooms = roomsByUnitId.get(room.unitId) ?? [];
+    unitRooms.push(room);
+    roomsByUnitId.set(room.unitId, unitRooms);
+  }
+
+  if (isUnitBooking) {
+    const item = booking.items[0];
+    const unitId = item?.unitId ?? booking.unitId;
+    const unitRooms = unitId ? roomsByUnitId.get(unitId) ?? [] : [];
+    const room = unitRooms[0];
+    if (!item || !room) {
+      throw new HttpError(
+        422,
+        "BOOKING_ASSIGNMENT_REQUIRED",
+        "Booking must have assigned rooms before pricing a move",
+      );
+    }
+    return [
+      {
+        item,
+        room,
+        targetType: BookingTargetType.UNIT,
+        occupancy: unitRooms.reduce(
+          (total, unitRoom) => total + Math.max(0, unitRoom.maxOccupancy),
+          0,
+        ),
+      },
+    ] satisfies EffectivePricingTarget[];
+  }
+
+  return booking.items.map((item) => {
+    if (item.roomId === null) {
+      throw new HttpError(
+        422,
+        "BOOKING_ASSIGNMENT_REQUIRED",
+        "Booking must have assigned rooms before pricing a move",
+      );
+    }
+
+    const room = roomsById.get(item.roomId);
+    if (!room) {
+      throw new HttpError(404, "ROOM_NOT_FOUND", "Assigned room was not found");
+    }
+
+    return {
+      item,
+      room,
+      targetType: BookingTargetType.ROOM,
+      occupancy: item.guestCount,
+    };
+  }) satisfies EffectivePricingTarget[];
+};
+
 export const buildRoomMovePricingPreview = async (
   booking: repo.DashboardBookingRecord,
   roomIds: string[],
@@ -554,7 +804,6 @@ export const buildRoomMovePricingPreview = async (
     booking.status === BookingStatus.CHECKED_IN && today > checkInDate
       ? today
       : checkInDate;
-  const effectiveDateStart = new Date(`${effectiveDate}T00:00:00.000Z`);
   const affectedNights = dateOnlyDiff(effectiveDate, checkOutDate);
   if (affectedNights <= 0) {
     throw new HttpError(
@@ -582,7 +831,9 @@ export const buildRoomMovePricingPreview = async (
         item,
         room: orderedRooms[index],
         targetType: BookingTargetType.ROOM,
+        occupancy: item.guestCount,
       }));
+  const currentPricingTargets = await buildCurrentPricingTargets(booking, tx);
 
   let currentNightlyRate = new Prisma.Decimal(0);
   let destinationNightlyRate = new Prisma.Decimal(0);
@@ -591,68 +842,43 @@ export const buildRoomMovePricingPreview = async (
   const taxBreakdown: BookingRoomMovePreviewDTO["taxBreakdown"] = [];
   const pricingSnapshot: Array<Record<string, string>> = [];
 
-  for (const target of pricingTargets) {
-    if (!target.item || !target.room) {
+  for (const [index, target] of pricingTargets.entries()) {
+    const currentTarget = currentPricingTargets[index];
+    if (!target.item || !target.room || !currentTarget) {
       throw new HttpError(
         422,
         "ROOM_ASSIGNMENT_COUNT_MISMATCH",
         "Selected rooms do not match booking items",
       );
     }
-    const pricingRows = await tx.roomPricing.findMany({
-      where: {
-        propertyId: booking.propertyId,
-        validFrom: { lte: effectiveDateStart },
-        AND: [
-          { OR: [{ validTo: null }, { validTo: { gte: booking.checkOut } }] },
-          { OR: [{ maxNights: null }, { maxNights: { gte: affectedNights } }] },
-          ...(target.targetType === BookingTargetType.UNIT
-            ? [
-                {
-                  OR: [
-                    { roomId: null, unitId: target.room.unitId },
-                    { roomId: null, unitId: null },
-                  ],
-                },
-              ]
-            : [
-                {
-                  OR: [
-                    { roomId: target.room.id },
-                    { roomId: null, unitId: target.room.unitId },
-                    { roomId: null, unitId: null },
-                  ],
-                },
-              ]),
-        ],
-        minNights: { lte: affectedNights },
-        product: {
+
+    const [currentPricing, destinationPricing] = await Promise.all([
+      findEffectivePricing(tx, {
+        booking,
+        target: currentTarget,
+        effectiveDate,
+        pricingThroughDate: booking.checkOut,
+        nights: affectedNights,
+      }),
+      findEffectivePricing(tx, {
+        booking,
+        target: {
+          item: target.item,
+          room: target.room,
+          targetType: target.targetType,
           occupancy:
             target.targetType === BookingTargetType.UNIT
               ? destinationUnitCapacity
               : target.item.guestCount,
-          hasAC: target.item.comfortOption === "AC",
         },
-      },
-      orderBy: { price: "asc" },
-    });
-    const pricing = pricingRows.sort((left, right) => {
-      const rank = (row: (typeof pricingRows)[number]) =>
-        row.roomId !== null ? 0 : row.unitId !== null ? 1 : 2;
-      return rank(left) - rank(right) || Number(left.price) - Number(right.price);
-    })[0];
-    if (!pricing) {
-      throw new HttpError(
-        422,
-        "PRICE_NOT_CONFIGURED",
-        target.targetType === BookingTargetType.UNIT
-          ? `No active price is configured for unit ${target.room.unit.unitNumber} at capacity ${destinationUnitCapacity}`
-          : `No active price is configured for room ${target.room.number}`,
-      );
-    }
+        effectiveDate,
+        pricingThroughDate: booking.checkOut,
+        nights: affectedNights,
+      }),
+    ]);
 
-    const oldRate = moneyDecimal(target.item.pricePerNight);
-    const newRate = moneyDecimal(pricing.price);
+    const oldRate = moneyDecimal(currentPricing.price);
+    const newRate = moneyDecimal(destinationPricing.price);
     const positiveNightlyDifference = Prisma.Decimal.max(
       new Prisma.Decimal(0),
       newRate.minus(oldRate),
@@ -665,66 +891,25 @@ export const buildRoomMovePricingPreview = async (
     baseDifference = baseDifference.plus(lineDifference);
 
     if (lineDifference.greaterThan(0)) {
-      let lineTaxDifference = new Prisma.Decimal(0);
-      const taxes = await tx.tax.findMany({
-        where: {
-          propertyId: booking.propertyId,
-          isActive: true,
-          validFrom: { lte: new Date(`${effectiveDate}T23:59:59.999Z`) },
-          OR: [
-            { validTo: null },
-            { validTo: { gte: new Date(`${effectiveDate}T00:00:00.000Z`) } },
-          ],
-          targetType: {
-            in: [TaxTargetType.ALL, target.targetType as TaxTargetType],
-          },
-        },
+      const lineTax = await getTaxAmountForLine(tx, {
+        booking,
+        targetType: target.targetType,
+        effectiveDate,
+        nightlyRate: newRate,
+        taxableAmount: lineDifference,
+        taxInclusive: destinationPricing.taxInclusive,
       });
-      const gst = taxes
-        .filter(
-          (tax) =>
-            tax.category === TaxCategory.GST &&
-            tax.calculationMode ===
-              TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF &&
-            newRate.greaterThanOrEqualTo(tax.minTariff ?? 0) &&
-            (tax.maxTariff === null || newRate.lessThan(tax.maxTariff)),
-        )
-        .sort((left, right) => right.priority - left.priority)[0];
-      const applicableTaxes = [
-        ...(gst ? [gst] : []),
-        ...taxes.filter(
-          (tax) =>
-            tax.category === TaxCategory.GENERIC &&
-            tax.calculationMode === TaxCalculationMode.FLAT,
-        ),
-      ];
-      for (const tax of applicableTaxes) {
-        const rate = new Prisma.Decimal(tax.rate);
-        const amount =
-          tax.taxType === TaxType.PERCENTAGE
-            ? pricing.taxInclusive
-              ? lineDifference.times(rate).div(new Prisma.Decimal(100).plus(rate))
-              : lineDifference.times(rate).div(100)
-            : Prisma.Decimal.min(rate, lineDifference);
-        const rounded = moneyDecimal(amount);
-        if (!pricing.taxInclusive) {
-          lineTaxDifference = lineTaxDifference.plus(rounded);
-        }
-        taxBreakdown.push({
-          taxId: tax.id,
-          name: tax.name,
-          rate: Number(tax.rate),
-          amount: rounded.toString(),
-        });
-      }
-      taxDifference = taxDifference.plus(lineTaxDifference);
+      taxBreakdown.push(...lineTax.taxBreakdown);
+      taxDifference = taxDifference.plus(lineTax.exclusiveTaxAmount);
     }
     pricingSnapshot.push({
       itemId: target.item.id,
-      roomId: target.room.id,
-      pricingId: pricing.id,
-      oldRate: oldRate.toString(),
-      newRate: newRate.toString(),
+      currentRoomId: currentTarget.room.id,
+      destinationRoomId: target.room.id,
+      currentPricingId: currentPricing.id,
+      destinationPricingId: destinationPricing.id,
+      currentRate: oldRate.toString(),
+      destinationRate: newRate.toString(),
     });
   }
 
@@ -770,5 +955,76 @@ export const buildRoomMovePricingPreview = async (
       ? ["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]
       : ["CHARGE_DIFFERENCE"],
     taxBreakdown,
+  };
+};
+
+export const buildLateCheckoutExtensionPreview = async (
+  booking: repo.DashboardBookingRecord,
+  tx: Prisma.TransactionClient,
+  now = new Date(),
+): Promise<BookingStayExtensionChargePreviewDTO | null> => {
+  const timeZone = booking.property.tenant.timezone;
+  const originalCheckOutDate = getLocalIsoDate(booking.checkOut, timeZone);
+  const actualCheckOutDate = getLocalIsoDate(now, timeZone);
+  const extraNights = dateOnlyDiff(originalCheckOutDate, actualCheckOutDate);
+
+  if (extraNights <= 0) {
+    return null;
+  }
+
+  const currentPricingTargets = await buildCurrentPricingTargets(booking, tx);
+  const pricingThroughDate = new Date(`${actualCheckOutDate}T00:00:00.000Z`);
+  let nightlyRate = new Prisma.Decimal(0);
+  let baseAmount = new Prisma.Decimal(0);
+  let taxAmount = new Prisma.Decimal(0);
+  const taxBreakdown: BookingStayExtensionChargePreviewDTO["taxBreakdown"] = [];
+  const pricingSnapshot: BookingStayExtensionChargePreviewDTO["pricingSnapshot"] = [];
+
+  for (const target of currentPricingTargets) {
+    const pricing = await findEffectivePricing(tx, {
+      booking,
+      target,
+      effectiveDate: originalCheckOutDate,
+      pricingThroughDate,
+      nights: extraNights,
+    });
+    const lineNightlyRate = moneyDecimal(pricing.price);
+    const lineBaseAmount = moneyDecimal(lineNightlyRate.times(extraNights));
+    const lineTax = await getTaxAmountForLine(tx, {
+      booking,
+      targetType: target.targetType,
+      effectiveDate: originalCheckOutDate,
+      nightlyRate: lineNightlyRate,
+      taxableAmount: lineBaseAmount,
+      taxInclusive: pricing.taxInclusive,
+    });
+    nightlyRate = nightlyRate.plus(lineNightlyRate);
+    baseAmount = baseAmount.plus(lineBaseAmount);
+    taxAmount = taxAmount.plus(lineTax.exclusiveTaxAmount);
+    taxBreakdown.push(...lineTax.taxBreakdown);
+    pricingSnapshot.push({
+      itemId: target.item.id,
+      roomId: target.room.id,
+      pricingId: pricing.id,
+      nightlyRate: lineNightlyRate.toString(),
+    });
+  }
+
+  baseAmount = moneyDecimal(baseAmount);
+  taxAmount = moneyDecimal(taxAmount);
+  const totalAmount = moneyDecimal(baseAmount.plus(taxAmount));
+
+  return {
+    extraNights,
+    effectiveDate: originalCheckOutDate,
+    originalCheckOutDate,
+    actualCheckOutDate,
+    currentAssignment: booking.targetLabel,
+    nightlyRate: moneyDecimal(nightlyRate).toString(),
+    baseAmount: baseAmount.toString(),
+    taxAmount: taxAmount.toString(),
+    totalAmount: totalAmount.toString(),
+    taxBreakdown,
+    pricingSnapshot,
   };
 };

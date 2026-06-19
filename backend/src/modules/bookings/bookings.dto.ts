@@ -69,6 +69,30 @@ export interface BookingRoomMovePreviewDTO {
   }>;
 }
 
+export interface BookingStayExtensionChargePreviewDTO {
+  extraNights: number;
+  effectiveDate: string;
+  originalCheckOutDate: string;
+  actualCheckOutDate: string;
+  currentAssignment: string;
+  nightlyRate: string;
+  baseAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+  pricingSnapshot: Array<{
+    itemId: string;
+    roomId: string;
+    pricingId: string;
+    nightlyRate: string;
+  }>;
+}
+
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
   | "RESERVED"

@@ -6,6 +6,9 @@ import {
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type {
+  BookingStayExtensionChargePreviewDTO,
+} from "./bookings.dto.js";
+import type {
   CreateBookingFolioChargeInput,
   VoidBookingFolioChargeInput,
 } from "./bookings.inputs.js";
@@ -15,6 +18,89 @@ import {
   findTransactionBooking,
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
+
+const getJsonString = (value: Prisma.JsonValue, key: string) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const item = value[key];
+  return typeof item === "string" ? item : null;
+};
+
+const getJsonNumber = (value: Prisma.JsonValue, key: string) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const item = value[key];
+  return typeof item === "number" ? item : null;
+};
+
+export const ensureLateCheckoutExtensionCharge = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    booking: Awaited<ReturnType<typeof findTransactionBooking>>;
+    actorUserId: string;
+    preview: BookingStayExtensionChargePreviewDTO | null;
+    note?: string;
+  },
+) => {
+  if (input.preview === null) {
+    return null;
+  }
+
+  const existing = input.booking.folioCharges.find((charge) => {
+    if (
+      charge.status !== FolioChargeStatus.ACTIVE ||
+      charge.type !== "EXTENSION"
+    ) {
+      return false;
+    }
+
+    return (
+      getJsonString(charge.metadata, "source") === "LATE_CHECKOUT_EXTENSION" &&
+      getJsonString(charge.metadata, "originalCheckOutDate") ===
+        input.preview?.originalCheckOutDate &&
+      getJsonString(charge.metadata, "actualCheckOutDate") ===
+        input.preview?.actualCheckOutDate &&
+      getJsonNumber(charge.metadata, "extraNights") === input.preview?.extraNights
+    );
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  return tx.bookingFolioCharge.create({
+    data: {
+      bookingId: input.booking.id,
+      propertyId: input.booking.propertyId,
+      createdByUserId: input.actorUserId,
+      type: "EXTENSION",
+      description: `Late checkout extension: ${input.preview.extraNights} night${input.preview.extraNights === 1 ? "" : "s"}`,
+      amount: input.preview.totalAmount,
+      ...(input.note !== undefined && { note: input.note }),
+      metadata: {
+        source: "LATE_CHECKOUT_EXTENSION",
+        currentAssignment: input.preview.currentAssignment,
+        effectiveDate: input.preview.effectiveDate,
+        originalCheckOutDate: input.preview.originalCheckOutDate,
+        actualCheckOutDate: input.preview.actualCheckOutDate,
+        extraNights: input.preview.extraNights,
+        nightlyRate: input.preview.nightlyRate,
+        baseDifference: input.preview.baseAmount,
+        taxDifference: input.preview.taxAmount,
+        totalAdjustment: input.preview.totalAmount,
+        baseAmount: input.preview.baseAmount,
+        taxAmount: input.preview.taxAmount,
+        totalAmount: input.preview.totalAmount,
+        taxBreakdown: input.preview.taxBreakdown,
+        pricingSnapshot: input.preview.pricingSnapshot,
+      },
+    },
+  });
+};
 
 export const createBookingFolioChargeInTransaction = async (
   tx: Prisma.TransactionClient,
