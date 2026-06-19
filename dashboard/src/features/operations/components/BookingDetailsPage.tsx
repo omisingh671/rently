@@ -20,6 +20,7 @@ import type {
   BookingStatus,
   FolioChargeType,
   PaymentMethod,
+  PaymentPurpose,
   RoomMovePreview,
   RoomMovePricingAction,
 } from "../types";
@@ -117,6 +118,15 @@ const getPaymentMethodLabel = (method: PaymentMethod) => {
   if (method === "CARD_POS") return "Card / POS";
   return formatEnumLabel(method);
 };
+
+const paymentPurposeLabels: Record<PaymentPurpose, string> = {
+  TOKEN: "Booking token / advance",
+  BALANCE: "Balance due payment",
+  FULL_PAYMENT: "Full booking payment",
+};
+
+const getPaymentPurposeLabel = (purpose: PaymentPurpose) =>
+  paymentPurposeLabels[purpose];
 
 const getPaymentReferenceLabel = (method: PaymentMethod) => {
   if (method === "UPI_MANUAL") return "UPI transaction/reference ID";
@@ -1403,15 +1413,20 @@ export default function BookingDetailsPage() {
                         </span>
                       </div>
 
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
-                          {formatEnumLabel(payment.purpose)}
+                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Purpose
                         </span>
-                        <span className="text-slate-300">•</span>
+                        <span className="min-w-0 font-semibold text-slate-800">
+                          {getPaymentPurposeLabel(payment.purpose)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
                         <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
                           {getPaymentMethodLabel(payment.method)}
                         </span>
-                        <span className="text-slate-300">•</span>
+                        <span className="text-slate-300">/</span>
                         <span>
                           {formatDateTime(payment.paidAt ?? payment.createdAt)}
                         </span>
