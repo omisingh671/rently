@@ -32,7 +32,7 @@ Target file:
 
 - `backend/src/modules/public/bookings/bookings.service.ts`
 
-Status: in progress.
+Status: completed.
 
 Completed extraction:
 
@@ -149,6 +149,10 @@ Status: in progress.
 
 Completed extraction:
 
+- `bookings.access.ts`
+  - shared dashboard actor/property-scope helpers
+  - booking existence lookup
+  - role assertion helper
 - `bookings.financials.ts`
   - paid/refunded/refundable/balance calculations
   - refund request active/fulfilled synchronization
@@ -176,15 +180,33 @@ Completed extraction:
   - folio charge transaction helper
   - folio charge void transaction helper
   - folio operation event metadata
+- `bookings.walk-in.ts`
+  - walk-in guest lookup/update/create flow
+  - stay-night calculation helper
+- `bookings.payments.ts`
+  - dashboard balance payment validation and recording
+  - manual refund validation and idempotency checks
+  - refund request review/fulfillment update helpers
+- `bookings.housekeeping.ts`
+  - housekeeping transition table
+  - housekeeping status update transaction helper
+- `bookings.presenter.ts`
+  - dashboard booking DTO mapping wrappers
+  - transaction-scoped booking DTO mapping
 
 Current line counts:
 
-- `bookings.service.ts`: 1,691 lines
+- `bookings.service.ts`: 1,173 lines
+- `bookings.access.ts`: 38 lines
 - `bookings.assignment.ts`: 774 lines
 - `bookings.financials.ts`: 271 lines
 - `bookings.folio.ts`: 125 lines
+- `bookings.housekeeping.ts`: 79 lines
 - `bookings.lifecycle.ts`: 99 lines
 - `bookings.operations.ts`: 365 lines
+- `bookings.payments.ts`: 365 lines
+- `bookings.presenter.ts`: 49 lines
+- `bookings.walk-in.ts`: 67 lines
 
 Extract by responsibility:
 
@@ -205,6 +227,7 @@ Verification:
 - `backend`: `npm run test:payment`
 - `backend`: `npm run test:rbac`
 - `backend`: `npm run typecheck`
+- `backend`: `npm run lint`
 
 ## Phase 3: Dashboard Booking Details Page
 
