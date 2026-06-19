@@ -155,11 +155,36 @@ Completed extraction:
   - payment acceptance checks
   - refund provider/method validation
   - refund recorder metadata lookup
+- `bookings.assignment.ts`
+  - room assignment validation and update payloads
+  - assigned check-in room resolution
+  - assignment label lookup for DTO mapping
+  - transactional room availability checks
+  - room move pricing preview and pricing fingerprint
+- `bookings.lifecycle.ts`
+  - optimistic version checks
+  - versioned booking updates
+  - status history writes
+  - operation event writes
+  - transaction-scoped booking lookup
+- `bookings.operations.ts`
+  - business-date boundary helpers
+  - operations board payload assembly
+  - cashier refund actor lookup
+  - cashier summary row aggregation
+- `bookings.folio.ts`
+  - folio charge transaction helper
+  - folio charge void transaction helper
+  - folio operation event metadata
 
 Current line counts:
 
-- `bookings.service.ts`: 2,814 lines
+- `bookings.service.ts`: 1,691 lines
+- `bookings.assignment.ts`: 774 lines
 - `bookings.financials.ts`: 271 lines
+- `bookings.folio.ts`: 125 lines
+- `bookings.lifecycle.ts`: 99 lines
+- `bookings.operations.ts`: 365 lines
 
 Extract by responsibility:
 
