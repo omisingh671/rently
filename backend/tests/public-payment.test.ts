@@ -2073,6 +2073,206 @@ test("dashboard generic room update cannot bypass priced room move", async () =>
   );
 });
 
+test("room move preview prices destination room by selected room capacity override", async () => {
+  const [currentUnit, destinationUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: state.propertyId,
+        unitNumber: `${testId}-100`,
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: state.propertyId,
+        unitNumber: `${testId}-200`,
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [currentRoom, destinationRoom] = await Promise.all([
+    prisma.room.create({
+      data: {
+        unitId: currentUnit.id,
+        name: "Single Occupancy Room",
+        number: `${testId}-100-A`,
+        hasAC: true,
+        maxOccupancy: 1,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: destinationUnit.id,
+        name: "Deluxe Room",
+        number: `${testId}-200-A`,
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+  ]);
+  const [singleAcProduct, tripleAcProduct, tripleNonAcProduct] =
+    await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Single AC`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Triple AC`,
+          occupancy: 3,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Triple Non AC`,
+          occupancy: 3,
+          hasAC: false,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+  const currentPricing = await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      roomId: currentRoom.id,
+      unitId: currentUnit.id,
+      productId: singleAcProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 1750,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.roomPricing.createMany({
+    data: [
+      {
+        propertyId: state.propertyId,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2400,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        unitId: destinationUnit.id,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2700,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        roomId: destinationRoom.id,
+        unitId: destinationUnit.id,
+        productId: tripleNonAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2600,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        roomId: destinationRoom.id,
+        unitId: destinationUnit.id,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2850,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: currentPricing.id,
+      from: new Date("2036-01-05T00:00:00.000Z"),
+      to: new Date("2036-01-06T00:00:00.000Z"),
+      guests: 1,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const preview = await dashboardService.previewBookingRoomMove(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destinationRoom.id],
+    },
+  );
+
+  assert.equal(preview.currentNightlyRate, "1750");
+  assert.equal(preview.destinationNightlyRate, "2850");
+  assert.equal(preview.baseDifference, "1100");
+  assert.equal(preview.totalAdjustment, "1100");
+
+  await assert.rejects(
+    () =>
+      dashboardService.moveBookingRooms(state.superAdminId, booking.id, {
+        expectedVersion: 1,
+        roomIds: [destinationRoom.id],
+        note: "Stale frontend attempted zero adjustment.",
+        pricingAction: "CHARGE_DIFFERENCE",
+        pricingFingerprint: preview.pricingFingerprint,
+        expectedAdjustmentAmount: 0,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "PRICING_CHANGED");
+      return true;
+    },
+  );
+
+  const moved = await dashboardService.moveBookingRooms(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destinationRoom.id],
+      note: "Guest accepted paid move to 200-A.",
+      pricingAction: "CHARGE_DIFFERENCE",
+      pricingFingerprint: preview.pricingFingerprint,
+      expectedAdjustmentAmount: 1100,
+    },
+  );
+
+  assert.equal(moved.folioTotal, "1100");
+  const charge = await prisma.bookingFolioCharge.findFirstOrThrow({
+    where: { bookingId: booking.id, type: "ADJUSTMENT" },
+  });
+  assert.equal(charge.amount.toString(), "1100");
+});
+
 test("priced room move charges upgrade difference and creates debit note", async () => {
   const booking = await createBooking(
     new Date("2036-01-10T00:00:00.000Z"),
@@ -2084,18 +2284,6 @@ test("priced room move charges upgrade difference and creates debit note", async
     idempotencyKey: `${testId}-priced-move-full-payment`,
     amount: booking.totalPrice,
     purpose: PaymentPurpose.FULL_PAYMENT,
-  });
-  await prisma.booking.update({
-    where: { id: booking.id },
-    data: {
-      pricePerNight: 1000,
-      items: {
-        updateMany: {
-          where: {},
-          data: { pricePerNight: 1000 },
-        },
-      },
-    },
   });
 
   const tax = await prisma.tax.create({

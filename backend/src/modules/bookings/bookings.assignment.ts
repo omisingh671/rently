@@ -831,7 +831,7 @@ export const buildRoomMovePricingPreview = async (
         item,
         room: orderedRooms[index],
         targetType: BookingTargetType.ROOM,
-        occupancy: item.guestCount,
+        occupancy: Math.max(1, orderedRooms[index]?.maxOccupancy ?? item.guestCount),
       }));
   const currentPricingTargets = await buildCurrentPricingTargets(booking, tx);
 
@@ -852,32 +852,23 @@ export const buildRoomMovePricingPreview = async (
       );
     }
 
-    const [currentPricing, destinationPricing] = await Promise.all([
-      findEffectivePricing(tx, {
-        booking,
-        target: currentTarget,
-        effectiveDate,
-        pricingThroughDate: booking.checkOut,
-        nights: affectedNights,
-      }),
-      findEffectivePricing(tx, {
-        booking,
-        target: {
-          item: target.item,
-          room: target.room,
-          targetType: target.targetType,
-          occupancy:
-            target.targetType === BookingTargetType.UNIT
-              ? destinationUnitCapacity
-              : target.item.guestCount,
-        },
-        effectiveDate,
-        pricingThroughDate: booking.checkOut,
-        nights: affectedNights,
-      }),
-    ]);
+    const destinationPricing = await findEffectivePricing(tx, {
+      booking,
+      target: {
+        item: target.item,
+        room: target.room,
+        targetType: target.targetType,
+        occupancy:
+          target.targetType === BookingTargetType.UNIT
+            ? destinationUnitCapacity
+            : Math.max(1, target.room.maxOccupancy),
+      },
+      effectiveDate,
+      pricingThroughDate: booking.checkOut,
+      nights: affectedNights,
+    });
 
-    const oldRate = moneyDecimal(currentPricing.price);
+    const oldRate = moneyDecimal(target.item.pricePerNight);
     const newRate = moneyDecimal(destinationPricing.price);
     const positiveNightlyDifference = Prisma.Decimal.max(
       new Prisma.Decimal(0),
@@ -906,7 +897,6 @@ export const buildRoomMovePricingPreview = async (
       itemId: target.item.id,
       currentRoomId: currentTarget.room.id,
       destinationRoomId: target.room.id,
-      currentPricingId: currentPricing.id,
       destinationPricingId: destinationPricing.id,
       currentRate: oldRate.toString(),
       destinationRate: newRate.toString(),
