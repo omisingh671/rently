@@ -70,15 +70,42 @@ Completed extraction:
   - max-use and once-per-user checks
   - minimum nights and minimum amount checks
   - discount calculation before tax
+- `bookings.pricing.ts`
+  - coupon-before-tax quote calculation
+  - active tax lookup and GST slab selection
+  - inclusive and exclusive tax breakdown aggregation
+  - booking payment policy advance amount calculation
+  - quote totals and quote item recalculation
+- `bookings.presenter.ts`
+  - public booking DTO mapping
+  - payment/refund balance display amounts
+  - active refund request DTO mapping
+- `bookings.refunds.ts`
+  - refundable amount calculation
+  - mapped refundable amount calculation
+  - fulfilled refund request synchronization
+- `bookings.lifecycle.ts`
+  - night count calculation
+  - retryable booking transaction detection
+  - booking reference generation
+  - checkout inventory lock release
+- `bookings.guests.ts`
+  - authenticated guest snapshot resolution
+  - guest-account lookup/update/create flow
 
 Current line counts:
 
-- `bookings.service.ts`: 1,777 lines
+- `bookings.service.ts`: 1,199 lines
 - `bookings.access.ts`: 82 lines
 - `bookings.coupons.ts`: 89 lines
 - `bookings.financials.ts`: 68 lines
+- `bookings.guests.ts`: 98 lines
+- `bookings.lifecycle.ts`: 55 lines
 - `bookings.mapping.ts`: 184 lines
 - `bookings.policy.ts`: 87 lines
+- `bookings.presenter.ts`: 119 lines
+- `bookings.pricing.ts`: 259 lines
+- `bookings.refunds.ts`: 72 lines
 - `bookings.targets.ts`: 207 lines
 - `bookings.tax-breakdown.ts`: 21 lines
 

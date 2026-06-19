@@ -1,28 +1,14 @@
 import {
   BookingPaymentPolicy,
-  BookingPaymentStatus,
   BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
   BookingType,
-  ComfortOption,
   Prisma,
-  PaymentRefundStatus,
-  PaymentStatus,
-  TaxCalculationMode,
-  TaxCategory,
-  TaxScope,
-  TaxTargetType,
-  TaxType,
-  UserRole,
 } from "@/generated/prisma/client.js";
-import type { Tax } from "@/generated/prisma/client.js";
-import { randomUUID } from "node:crypto";
 import { HttpError } from "@/common/errors/http-error.js";
-import { hashPassword } from "@/common/utils/password.js";
 import {
   buildPolicySnapshot,
-  calculatePolicyAdvanceAmount,
   getPaymentPolicyForAdvanceType,
 } from "@/modules/booking-policy/booking-policy.policy.js";
 import * as repo from "./bookings.repository.js";
@@ -33,35 +19,21 @@ import * as availabilityService from "@/modules/public/availability/availability
 import type {
   CreatePublicBookingInput,
   PublicBookingQuoteInput,
-  PublicBookingGuestDetailsInput,
   PublicBookingCheckoutQuoteInput,
   UpdatePublicBookingCheckoutInput,
 } from "./bookings.inputs.js";
 import type {
   PublicBookingDTO,
   PublicBookingQuoteDTO,
-  PublicBookingQuoteItemDTO,
-  PublicTaxBreakdownDTO,
 } from "./bookings.dto.js";
 import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.inputs.js";
-import type { PublicBookingPolicyDTO } from "@/modules/public/spaces/spaces.dto.js";
 import * as availabilityRepo from "@/modules/public/availability/availability.repository.js";
 import {
   assertBookingCheckoutEditable,
   assertPublicBookingAccess,
 } from "./bookings.access.js";
-import {
-  activeRefundRequestStatuses,
-  getNonRefundableTokenAmount,
-  getPaidAmount,
-  getRefundedAmount,
-  getTokenPaidAmount,
-  getTokenPaymentStatus,
-} from "./bookings.financials.js";
-import {
-  getBookingTaxBreakdown,
-  toTaxBreakdownJson,
-} from "./bookings.tax-breakdown.js";
+import { activeRefundRequestStatuses } from "./bookings.financials.js";
+import { toTaxBreakdownJson } from "./bookings.tax-breakdown.js";
 import {
   allocateGuestsAcrossRooms,
   assertInventoryLockCoversTargets,
@@ -77,33 +49,30 @@ import {
   buildQuoteItemFromBookingInput,
   buildQuoteItemFromOptionItem,
   buildQuoteItemsFromBooking,
-  mapBookingItems,
 } from "./bookings.mapping.js";
 import {
   buildBookingPolicyPreview,
   getBookingPolicyDto,
   type PublicBookingPolicyPreviewDTO,
 } from "./bookings.policy.js";
+import { normalizeCouponCode } from "./bookings.coupons.js";
+import { calculateQuoteTotals } from "./bookings.pricing.js";
+import { mapBooking } from "./bookings.presenter.js";
 import {
-  normalizeCouponCode,
-  validateAndApplyCoupon,
-} from "./bookings.coupons.js";
+  getRefundableAmount,
+  syncFulfilledRefundRequest,
+} from "./bookings.refunds.js";
+import {
+  generateBookingRef,
+  getNights,
+  isRetryableBookingTransactionError,
+  maxBookingTransactionAttempts,
+  releaseBookingLock,
+} from "./bookings.lifecycle.js";
+import { resolveBookingGuestSnapshot } from "./bookings.guests.js";
 
 const now = () => new Date();
-const maxBookingTransactionAttempts = 3;
 const multiRoomTitle = "Multi-room stay";
-
-const getNights = (checkIn: Date, checkOut: Date) => {
-  const nights = Math.ceil(
-    (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24),
-  );
-
-  return Math.max(1, nights);
-};
-
-const isRetryableBookingTransactionError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  (error.code === "P2034" || error.code === "P2002");
 
 interface CreateBookingOptions {
   actorUserId?: string;
@@ -114,553 +83,6 @@ interface CreateBookingOptions {
   statusHistoryNote?: string;
   internalNotes?: string | null;
 }
-
-interface BookingGuestSnapshot {
-  userId: string;
-  fullName: string;
-  email: string;
-  contactNumber: string | null;
-}
-
-interface QuoteCalculationInput {
-  propertyId: string;
-  bookingType: BookingType;
-  checkIn: Date;
-  nights: number;
-  guestCount: number;
-  comfortOption: ComfortOption;
-  paymentPolicy: BookingPaymentPolicy;
-  upfrontAmount: number;
-  currency: string;
-  policy: PublicBookingPolicyDTO;
-  couponCode: string | undefined;
-  items: PublicBookingQuoteItemDTO[];
-  userId?: string | undefined;
-  currentCouponId?: string | undefined;
-  excludeBookingId?: string | undefined;
-}
-
-interface QuoteCalculationResult extends PublicBookingQuoteDTO {
-  couponId: string | undefined;
-}
-
-const money = (value: number) => Math.round(value * 100) / 100;
-
-const getRefundableAmount = async (booking: repo.PublicBookingRecord) => {
-  const policy = await getBookingPolicyDto(booking);
-  return Math.max(
-    0,
-    getPaidAmount(booking) -
-      getRefundedAmount(booking) -
-      getNonRefundableTokenAmount(booking, policy),
-  );
-};
-
-const getMappedRefundableAmount = async (booking: repo.PublicBookingRecord) => {
-  const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
-  const nonRefundableAmount = taxBreakdown
-    .filter((tax) => tax.isRefundable === false)
-    .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
-  const policy = await getBookingPolicyDto(booking);
-
-  return Math.max(
-    0,
-    getPaidAmount(booking) -
-      getRefundedAmount(booking) -
-      nonRefundableAmount -
-      getNonRefundableTokenAmount(booking, policy),
-  );
-};
-
-const syncFulfilledRefundRequest = async (
-  booking: repo.PublicBookingRecord,
-) => {
-  const refundRequest =
-    booking.refundRequests.find((request) =>
-      activeRefundRequestStatuses.includes(request.status),
-    ) ?? null;
-
-  if (
-    refundRequest === null ||
-    getRefundedAmount(booking) <= 0 ||
-    (await getMappedRefundableAmount(booking)) > 0
-  ) {
-    return booking;
-  }
-
-  const now = new Date();
-  await repo.updateRefundRequestById(refundRequest.id, {
-    status: BookingRefundRequestStatus.FULFILLED,
-    reviewedAt: refundRequest.reviewedAt ?? now,
-    fulfilledAt: refundRequest.fulfilledAt ?? now,
-  });
-
-  const updatedBooking = await repo.findBookingById(booking.id);
-  if (!updatedBooking) {
-    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
-  }
-
-  return updatedBooking;
-};
-
-const mapBooking = async (
-  booking: repo.PublicBookingRecord,
-): Promise<PublicBookingDTO> => {
-  const items = mapBookingItems(booking.items);
-  const title =
-    booking.bookingType === BookingType.MULTI_ROOM
-      ? booking.targetLabel
-      : `${booking.productName} - ${booking.targetLabel}`;
-  const paidAmount = booking.payments
-    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
-    .reduce((total, payment) => total + Number(payment.amount), 0);
-  const refundedAmount = booking.payments.reduce(
-    (total, payment) =>
-      total +
-      payment.refunds
-        .filter(
-          (refund) =>
-            refund.status === PaymentRefundStatus.PENDING ||
-            refund.status === PaymentRefundStatus.SUCCEEDED,
-        )
-        .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
-    0,
-  );
-  const taxBreakdown = getBookingTaxBreakdown(booking.taxBreakdown);
-  const nonRefundableAmount = taxBreakdown
-    .filter((tax) => tax.isRefundable === false)
-    .reduce((sum, tax) => sum + Number(tax.taxAmount), 0);
-  const policy = await getBookingPolicyDto(booking);
-  const nonRefundableTokenAmount = getNonRefundableTokenAmount(booking, policy);
-  const tokenPaidAmount = getTokenPaidAmount(booking);
-  
-  const netPaidAmount = Math.max(0, paidAmount - refundedAmount);
-  const refundableAmount = Math.max(
-    0,
-    paidAmount - refundedAmount - nonRefundableAmount - nonRefundableTokenAmount,
-  );
-  const balanceAmount =
-    booking.status === BookingStatus.CANCELLED || booking.status === BookingStatus.NO_SHOW
-      ? 0
-      : Math.max(0, Number(booking.totalAmount) - netPaidAmount);
-  const taxableAmount = Number(booking.taxableAmount);
-  const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [
-    BookingRefundRequestStatus.REQUESTED,
-    BookingRefundRequestStatus.IN_REVIEW,
-  ];
-  const refundRequest =
-    booking.refundRequests.find((request) =>
-      activeRefundRequestStatuses.includes(request.status),
-    ) ??
-    booking.refundRequests[0] ??
-    null;
-  const paymentStatus =
-    paidAmount <= 0
-      ? BookingPaymentStatus.PENDING
-      : refundedAmount >= paidAmount
-        ? BookingPaymentStatus.REFUNDED
-        : paidAmount < Number(booking.totalAmount)
-        ? BookingPaymentStatus.PARTIALLY_PAID
-        : BookingPaymentStatus.PAID;
-
-  return {
-    id: booking.id,
-    bookingRef: booking.bookingRef,
-    userId: booking.userId,
-    spaceId: booking.roomId ?? booking.unitId ?? booking.productId ?? booking.id,
-    propertyId: booking.propertyId,
-    bookingType: booking.bookingType,
-    guestCount: booking.guestCount,
-    comfortOption: booking.comfortOption,
-    title,
-    spaceName: booking.targetLabel,
-    status: booking.status,
-    paymentPolicy: booking.paymentPolicy,
-    paymentStatus,
-    upfrontAmount: Number(booking.upfrontAmount),
-    tokenPaidAmount,
-    tokenPaymentStatus: getTokenPaymentStatus(booking, tokenPaidAmount),
-    guestName: booking.guestNameSnapshot,
-    guestEmail: booking.guestEmailSnapshot,
-    guestContactNumber: booking.guestContactSnapshot ?? null,
-    from: booking.checkIn.toISOString(),
-    to: booking.checkOut.toISOString(),
-    pricePerNight: Number(booking.pricePerNight),
-    subtotalAmount: Number(booking.subtotalAmount),
-    totalPrice: Number(booking.totalAmount),
-    discountAmount: Number(booking.discountAmount),
-    taxableAmount,
-    taxAmount: Number(booking.taxAmount),
-    taxBreakdown,
-    paidAmount,
-    refundedAmount,
-    netPaidAmount,
-    refundableAmount,
-    balanceAmount,
-    remainingPayAtCheckIn: balanceAmount,
-    policy,
-    items,
-    internalNotes: booking.internalNotes ?? null,
-    cancellationReason: booking.cancellationReason ?? null,
-    cancelledAt: booking.cancelledAt?.toISOString() ?? null,
-    couponCode: booking.coupon?.code ?? null,
-    refundRequest:
-      refundRequest === null
-        ? null
-        : {
-            id: refundRequest.id,
-            status: refundRequest.status,
-            reason: refundRequest.reason,
-            adminNote: refundRequest.adminNote ?? null,
-            reviewedAt: refundRequest.reviewedAt?.toISOString() ?? null,
-            fulfilledAt: refundRequest.fulfilledAt?.toISOString() ?? null,
-            createdAt: refundRequest.createdAt.toISOString(),
-          },
-    createdAt: booking.createdAt.toISOString(),
-  };
-};
-
-const getBookingYearRange = (date: Date) => {
-  const year = date.getUTCFullYear();
-  return {
-    year,
-    start: new Date(Date.UTC(year, 0, 1)),
-    end: new Date(Date.UTC(year + 1, 0, 1)),
-  };
-};
-
-const generateBookingRef = async (
-  createdAt: Date,
-  tx: Prisma.TransactionClient,
-) => {
-  const { year, start, end } = getBookingYearRange(createdAt);
-  const count = await repo.countBookingsCreatedInYear(start, end, tx);
-  return `SCH-${year}-${String(count + 1).padStart(6, "0")}`;
-};
-
-const releaseBookingLock = async (
-  lockToken: string | undefined,
-  bookingId: string,
-  tx: Prisma.TransactionClient,
-) => {
-  if (lockToken === undefined) {
-    return;
-  }
-
-  await tx.inventoryLock.updateMany({
-    where: {
-      lockToken,
-      releasedAt: null,
-    },
-    data: {
-      releasedAt: now(),
-      bookingId,
-    },
-  });
-};
-
-const resolveBookingGuestSnapshot = async (
-  userId: string | undefined,
-  guestDetails: PublicBookingGuestDetailsInput | undefined,
-  tx: Prisma.TransactionClient,
-): Promise<BookingGuestSnapshot> => {
-  if (userId !== undefined) {
-    if (guestDetails !== undefined) {
-      return {
-        userId,
-        fullName: guestDetails.name,
-        email: guestDetails.email,
-        contactNumber: guestDetails.contactNumber,
-      };
-    }
-
-    const user = await repo.findUserSnapshotById(userId, tx);
-    if (!user) {
-      throw new HttpError(404, "USER_NOT_FOUND", "User not found");
-    }
-
-    return {
-      userId,
-      fullName: user.fullName,
-      email: user.email,
-      contactNumber: user.contactNumber,
-    };
-  }
-
-  if (guestDetails === undefined) {
-    throw new HttpError(
-      422,
-      "GUEST_DETAILS_REQUIRED",
-      "Guest name, email, and mobile number are required",
-    );
-  }
-
-  const email = guestDetails.email.trim().toLowerCase();
-  const existingUser = await repo.findUserByEmail(email, tx);
-
-  if (existingUser) {
-    if (existingUser.role !== UserRole.GUEST) {
-      throw new HttpError(
-        409,
-        "GUEST_EMAIL_REQUIRES_LOGIN",
-        "This email is already registered. Please log in to continue.",
-      );
-    }
-
-    const user = await repo.updateUserById(
-      existingUser.id,
-      {
-        fullName: guestDetails.name,
-        contactNumber: guestDetails.contactNumber,
-      },
-      tx,
-    );
-
-    return {
-      userId: user.id,
-      fullName: guestDetails.name,
-      email: user.email,
-      contactNumber: guestDetails.contactNumber,
-    };
-  }
-
-  const passwordHash = await hashPassword(randomUUID());
-  const user = await repo.createUser(
-    {
-      fullName: guestDetails.name,
-      email,
-      passwordHash,
-      role: UserRole.GUEST,
-      contactNumber: guestDetails.contactNumber,
-    },
-    tx,
-  );
-
-  return {
-    userId: user.id,
-    fullName: user.fullName,
-    email: user.email,
-    contactNumber: user.contactNumber,
-  };
-};
-
-const taxNameLooksLikeGst = (tax: Tax) =>
-  /\b(?:gst|cgst|sgst|igst)\b/i.test(tax.name);
-
-const getLegacyTaxTargets = (tax: Tax) =>
-  new Set(["ALL", "BOOKING", "STAY", tax.appliesTo.trim().toUpperCase()]);
-
-const taxMatchesTarget = (
-  tax: Tax,
-  targetType: BookingTargetType,
-) => {
-  if (
-    tax.targetType === TaxTargetType.ALL ||
-    String(tax.targetType) === String(targetType)
-  ) {
-    return true;
-  }
-
-  return getLegacyTaxTargets(tax).has(targetType);
-};
-
-const taxIsValidForStay = (tax: Tax, checkIn: Date) =>
-  (tax.validFrom === null || tax.validFrom <= checkIn) &&
-  (tax.validTo === null || tax.validTo >= checkIn);
-
-const isAccommodationGstSlab = (tax: Tax) =>
-  tax.category === TaxCategory.GST &&
-  tax.scope === TaxScope.ACCOMMODATION &&
-  tax.calculationMode === TaxCalculationMode.SLAB_PER_ITEM_NIGHTLY_TARIFF;
-
-const tariffMatchesTaxSlab = (
-  tariff: number,
-  tax: Tax,
-) => {
-  const minTariff = tax.minTariff === null ? 0 : Number(tax.minTariff);
-  const maxTariff = tax.maxTariff === null ? null : Number(tax.maxTariff);
-
-  return tariff >= minTariff && (maxTariff === null || tariff < maxTariff);
-};
-
-const getApplicableTaxes = (
-  taxes: Tax[],
-  item: PublicBookingQuoteItemDTO,
-  checkIn: Date,
-) => {
-  const targetTaxes = taxes.filter(
-    (tax) =>
-      taxIsValidForStay(tax, checkIn) && taxMatchesTarget(tax, item.targetType),
-  );
-  const gstSlabs = targetTaxes
-    .filter(isAccommodationGstSlab)
-    .filter((tax) => tariffMatchesTaxSlab(item.pricePerNight, tax))
-    .sort((left, right) => {
-      const priorityDiff = right.priority - left.priority;
-      if (priorityDiff !== 0) return priorityDiff;
-
-      const leftMin = left.minTariff === null ? 0 : Number(left.minTariff);
-      const rightMin = right.minTariff === null ? 0 : Number(right.minTariff);
-      return rightMin - leftMin;
-    });
-  const selectedGstSlab = gstSlabs[0];
-  const genericTaxes = targetTaxes.filter(
-    (tax) =>
-      tax.category === TaxCategory.GENERIC &&
-      tax.calculationMode === TaxCalculationMode.FLAT,
-  );
-
-  if (!selectedGstSlab) {
-    return genericTaxes;
-  }
-
-  return [
-    selectedGstSlab,
-    ...genericTaxes.filter((tax) => !taxNameLooksLikeGst(tax)),
-  ];
-};
-
-const calculateLineTax = (
-  taxableAmount: number,
-  tax: Tax,
-  included: boolean,
-) => {
-  const rate = Number(tax.rate);
-  if (tax.taxType === TaxType.PERCENTAGE) {
-    return included
-      ? money((taxableAmount * rate) / (100 + rate))
-      : money((taxableAmount * rate) / 100);
-  }
-
-  return money(Math.min(rate, taxableAmount));
-};
-
-const calculateQuoteTotals = async (
-  input: QuoteCalculationInput,
-  tx: Prisma.TransactionClient,
-): Promise<QuoteCalculationResult> => {
-  const subtotalAmount = money(
-    input.items.reduce((total, item) => total + item.totalAmount, 0),
-  );
-  const { couponId, discountAmount } = await validateAndApplyCoupon(
-    input.propertyId,
-    input.couponCode,
-    input.nights,
-    subtotalAmount,
-    tx,
-    {
-      userId: input.userId,
-      currentCouponId: input.currentCouponId,
-      excludeBookingId: input.excludeBookingId,
-    },
-  );
-  const discountedSubtotal = money(subtotalAmount - discountAmount);
-  const taxes = await repo.listActiveTaxes(input.propertyId, tx);
-  const exclusiveBreakdown = new Map<string, PublicTaxBreakdownDTO>();
-  const inclusiveBreakdown = new Map<string, PublicTaxBreakdownDTO>();
-  const calculatedItems: PublicBookingQuoteItemDTO[] = [];
-  let allocatedDiscountAmount = 0;
-
-  for (const [index, item] of input.items.entries()) {
-    const itemRatio = subtotalAmount > 0 ? item.totalAmount / subtotalAmount : 0;
-    const lineDiscountAmount =
-      index === input.items.length - 1
-        ? money(discountAmount - allocatedDiscountAmount)
-        : money(discountAmount * itemRatio);
-    allocatedDiscountAmount = money(allocatedDiscountAmount + lineDiscountAmount);
-    const lineSubtotalAmount = money(item.totalAmount);
-    const lineTaxableAmount = money(lineSubtotalAmount - lineDiscountAmount);
-    const itemTaxes = getApplicableTaxes(taxes, item, input.checkIn);
-    const itemBreakdown: PublicTaxBreakdownDTO[] = [];
-    let lineTaxAmount = 0;
-    let lineExclusiveTaxAmount = 0;
-
-    for (const tax of itemTaxes) {
-      const taxAmount = calculateLineTax(
-        lineTaxableAmount,
-        tax,
-        item.taxInclusive,
-      );
-      const key = `${tax.id}:${item.taxInclusive ? "included" : "exclusive"}`;
-      const targetMap = item.taxInclusive ? inclusiveBreakdown : exclusiveBreakdown;
-      const existing = targetMap.get(key);
-      const next: PublicTaxBreakdownDTO = {
-        taxId: tax.id,
-        name: tax.name,
-        taxType: tax.taxType,
-        rate: Number(tax.rate),
-        appliesTo: tax.targetType,
-        taxableAmount: money((existing?.taxableAmount ?? 0) + lineTaxableAmount),
-        taxAmount: money((existing?.taxAmount ?? 0) + taxAmount),
-        included: item.taxInclusive,
-        isRefundable: (tax as unknown as { isRefundable?: boolean }).isRefundable ?? true,
-      };
-
-      targetMap.set(key, next);
-      itemBreakdown.push({
-        ...next,
-        taxableAmount: lineTaxableAmount,
-        taxAmount,
-      });
-      lineTaxAmount = money(lineTaxAmount + taxAmount);
-      if (!item.taxInclusive) {
-        lineExclusiveTaxAmount = money(lineExclusiveTaxAmount + taxAmount);
-      }
-    }
-
-    calculatedItems.push({
-      ...item,
-      subtotalAmount: lineSubtotalAmount,
-      discountAmount: lineDiscountAmount,
-      taxableAmount: lineTaxableAmount,
-      taxAmount: lineTaxAmount,
-      taxBreakdown: itemBreakdown,
-      totalAmount: lineSubtotalAmount,
-      finalAmount: money(lineTaxableAmount + lineExclusiveTaxAmount),
-    });
-  }
-
-  const taxBreakdown = [
-    ...inclusiveBreakdown.values(),
-    ...exclusiveBreakdown.values(),
-  ];
-  const taxAmount = money(
-    taxBreakdown.reduce((total, tax) => total + tax.taxAmount, 0),
-  );
-  const exclusiveTaxAmount = money(
-    [...exclusiveBreakdown.values()].reduce(
-      (total, tax) => total + tax.taxAmount,
-      0,
-    ),
-  );
-  const totalAmount = money(discountedSubtotal + exclusiveTaxAmount);
-  const upfrontAmount =
-    input.paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT
-      ? 0
-      : money(Number(calculatePolicyAdvanceAmount(input.policy, totalAmount)));
-
-  return {
-    propertyId: input.propertyId,
-    bookingType: input.bookingType,
-    nights: input.nights,
-    guestCount: input.guestCount,
-    comfortOption: input.comfortOption,
-    currency: input.currency,
-    subtotalAmount,
-    discountAmount,
-    taxableAmount: discountedSubtotal,
-    taxAmount,
-    totalAmount,
-    paymentPolicy: input.paymentPolicy,
-    upfrontAmount,
-    remainingPayAtCheckIn: money(Math.max(0, totalAmount - upfrontAmount)),
-    policy: input.policy,
-    couponCode: input.couponCode?.trim().toUpperCase() ?? null,
-    taxBreakdown,
-    items: calculatedItems,
-    couponId,
-  };
-};
 
 const calculateExistingBookingCheckoutQuote = async (
   booking: repo.PublicBookingRecord,
