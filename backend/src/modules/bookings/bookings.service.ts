@@ -4,8 +4,6 @@ import {
   BookingStatus,
   BookingTargetType,
   BookingOperationEventType,
-  PaymentRefundStatus,
-  PaymentStatus,
   Prisma,
   RoomHousekeepingStatus,
   UserRole,
@@ -44,10 +42,8 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import {
-  buildCashierSummaryPayload,
-  buildOperationsBoardPayload,
-  getCashierRefundActorIds,
-  toBusinessDateBoundary,
+  buildCashierSummaryForProperty,
+  buildOperationsBoardForProperty,
 } from "./bookings.operations.js";
 import {
   createBookingFolioChargeInTransaction,
@@ -1003,54 +999,7 @@ export const getOperationsBoard = async (
 ) => {
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId },
-    include: { tenant: true },
-  });
-  if (!property) {
-    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
-  }
-  const [bookings, rooms, maintenanceBlocks] = await Promise.all([
-    prisma.booking.findMany({
-      where: {
-        propertyId,
-        status: {
-          in: [
-            BookingStatus.CONFIRMED,
-            BookingStatus.CHECKED_IN,
-            BookingStatus.CANCELLED,
-            BookingStatus.NO_SHOW,
-          ],
-        },
-      },
-      include: repo.dashboardBookingInclude,
-      orderBy: [{ checkIn: "asc" }, { createdAt: "asc" }],
-    }),
-    prisma.room.findMany({
-      where: { unit: { is: { propertyId } } },
-      include: { unit: true },
-      orderBy: [{ unit: { floor: "asc" } }, { number: "asc" }],
-    }),
-    prisma.maintenanceBlock.findMany({
-      where: {
-        propertyId,
-        status: { notIn: ["RESOLVED", "CANCELLED"] },
-      },
-      orderBy: [{ priority: "desc" }, { startDate: "asc" }],
-    }),
-  ]);
-
-  const mapped = await Promise.all(bookings.map((booking) => mapDashboardBooking(booking)));
-  return buildOperationsBoardPayload({
-    propertyId,
-    propertyName: property.name,
-    timezone: property.tenant.timezone,
-    businessDate,
-    bookings,
-    mappedBookings: mapped,
-    rooms,
-    maintenanceBlocks,
-  });
+  return buildOperationsBoardForProperty(propertyId, businessDate);
 };
 
 export const getCashierSummary = async (
@@ -1061,80 +1010,7 @@ export const getCashierSummary = async (
 ) => {
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId },
-    select: { tenant: { select: { timezone: true } } },
-  });
-  if (!property) {
-    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
-  }
-  const rangeStart = toBusinessDateBoundary(from, property.tenant.timezone);
-  const rangeEnd = toBusinessDateBoundary(to, property.tenant.timezone);
-  const [payments, refunds] = await Promise.all([
-    prisma.payment.findMany({
-      where: {
-        propertyId,
-        status: PaymentStatus.SUCCEEDED,
-        OR: [
-          { paidAt: { gte: rangeStart, lt: rangeEnd } },
-          { paidAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
-        ],
-      },
-      include: {
-        receivedBy: true,
-        booking: {
-          select: {
-            id: true,
-            bookingRef: true,
-            guestNameSnapshot: true,
-          },
-        },
-      },
-    }),
-    prisma.paymentRefund.findMany({
-      where: {
-        propertyId,
-        status: PaymentRefundStatus.SUCCEEDED,
-        OR: [
-          { processedAt: { gte: rangeStart, lt: rangeEnd } },
-          { processedAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
-        ],
-      },
-      include: {
-        booking: {
-          select: {
-            id: true,
-            bookingRef: true,
-            guestNameSnapshot: true,
-          },
-        },
-        payment: {
-          include: { receivedBy: true },
-        },
-      },
-    }),
-  ]);
-
-  const refundActorIds = getCashierRefundActorIds(refunds);
-  const refundActors =
-    refundActorIds.length === 0
-      ? []
-      : await prisma.user.findMany({
-          where: { id: { in: refundActorIds } },
-          select: { id: true, fullName: true },
-        });
-  const refundActorNames = new Map(
-    refundActors.map((refundActor) => [refundActor.id, refundActor.fullName]),
-  );
-
-  return buildCashierSummaryPayload({
-    propertyId,
-    rangeStart,
-    rangeEnd,
-    payments,
-    refunds,
-    refundActorNames,
-  });
+  return buildCashierSummaryForProperty(propertyId, from, to);
 };
 
 export const recordBookingBalancePayment = async (

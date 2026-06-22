@@ -176,8 +176,10 @@ Completed extraction:
 - `bookings.operations.ts`
   - business-date boundary helpers
   - operations board payload assembly
+  - operations board data loading
   - cashier refund actor lookup
   - cashier summary row aggregation
+  - cashier summary data loading
 - `bookings.folio.ts`
   - folio charge transaction helper
   - folio charge void transaction helper
@@ -200,14 +202,14 @@ Completed extraction:
 
 Current line counts:
 
-- `bookings.service.ts`: 1,200 lines
+- `bookings.service.ts`: 1,076 lines
 - `bookings.access.ts`: 38 lines
 - `bookings.assignment.ts`: 1,057 lines
 - `bookings.financials.ts`: 271 lines
 - `bookings.folio.ts`: 255 lines
 - `bookings.housekeeping.ts`: 79 lines
 - `bookings.lifecycle.ts`: 131 lines
-- `bookings.operations.ts`: 365 lines
+- `bookings.operations.ts`: 508 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines
 - `bookings.walk-in.ts`: 167 lines
