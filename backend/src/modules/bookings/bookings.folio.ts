@@ -7,10 +7,12 @@ import {
 import { HttpError } from "@/common/errors/http-error.js";
 import { billingService } from "@/modules/billing/index.js";
 import type {
+  BookingRoomMovePreviewDTO,
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
 import type {
   CreateBookingFolioChargeInput,
+  MoveBookingRoomInput,
   VoidBookingFolioChargeInput,
 } from "./bookings.inputs.js";
 import { buildLateCheckoutExtensionPreview } from "./bookings.assignment.js";
@@ -145,6 +147,60 @@ export const postLateCheckoutExtensionCharge = async (
       extensionPreview,
     };
   });
+
+export const createRoomMoveAdjustmentCharge = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    booking: Awaited<ReturnType<typeof findTransactionBooking>>;
+    actorUserId: string;
+    roomMove: MoveBookingRoomInput;
+    pricingPreview: BookingRoomMovePreviewDTO;
+    oldRoomIds: string[];
+  },
+) => {
+  if (
+    !input.pricingPreview.pricingRequired ||
+    input.roomMove.pricingAction !== "CHARGE_DIFFERENCE"
+  ) {
+    return null;
+  }
+
+  const charge = await tx.bookingFolioCharge.create({
+    data: {
+      bookingId: input.booking.id,
+      propertyId: input.booking.propertyId,
+      createdByUserId: input.actorUserId,
+      type: "ADJUSTMENT",
+      description: `Accommodation upgrade: ${input.pricingPreview.destinationAssignment}`,
+      amount: input.pricingPreview.totalAdjustment,
+      note: input.roomMove.note,
+      metadata: {
+        source: "PRICED_ROOM_MOVE",
+        pricingAction: input.roomMove.pricingAction,
+        currentAssignment: input.pricingPreview.currentAssignment,
+        destinationAssignment: input.pricingPreview.destinationAssignment,
+        effectiveDate: input.pricingPreview.effectiveDate,
+        affectedNights: input.pricingPreview.affectedNights,
+        currentNightlyRate: input.pricingPreview.currentNightlyRate,
+        destinationNightlyRate: input.pricingPreview.destinationNightlyRate,
+        baseDifference: input.pricingPreview.baseDifference,
+        taxDifference: input.pricingPreview.taxDifference,
+        totalAdjustment: input.pricingPreview.totalAdjustment,
+        taxBreakdown: input.pricingPreview.taxBreakdown,
+        pricingFingerprint: input.pricingPreview.pricingFingerprint,
+        oldRoomIds: input.oldRoomIds,
+        newRoomIds: input.roomMove.roomIds,
+      },
+    },
+  });
+  await billingService.createDebitNoteForFolioCharge(
+    input.booking.id,
+    charge.id,
+    tx,
+  );
+
+  return charge;
+};
 
 export const createBookingFolioChargeInTransaction = async (
   tx: Prisma.TransactionClient,

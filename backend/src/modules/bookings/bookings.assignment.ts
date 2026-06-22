@@ -64,6 +64,14 @@ const ensureRoomBelongsToProperty = (
 const getRoomAssignmentLabel = (room: { number: string; name: string }) =>
   `Room ${room.number} (${room.name})`;
 
+export type BookingRoomAssignmentResolution = {
+  bookingData: Prisma.BookingUpdateInput;
+  assignments: Array<{
+    itemId: string;
+    data: Prisma.BookingItemUpdateInput;
+  }>;
+};
+
 export const assertBookingHasAssignedTarget = (
   booking: repo.DashboardBookingRecord,
 ) => {
@@ -174,7 +182,7 @@ export const resolveBookingRoomAssignments = async (
     forceConcreteRooms?: boolean;
     allowLateAssignment?: boolean;
   } = {},
-) => {
+): Promise<BookingRoomAssignmentResolution> => {
   const isUnitBooking =
     booking.targetType === BookingTargetType.UNIT &&
     options.forceConcreteRooms !== true;

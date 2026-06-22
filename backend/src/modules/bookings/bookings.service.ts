@@ -5,13 +5,11 @@ import {
   BookingTargetType,
   BookingOperationEventType,
   Prisma,
-  RoomHousekeepingStatus,
   UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { createBookingForUser } from "@/modules/public/bookings/bookings.service.js";
 import { generateAvailabilityOptions } from "@/modules/public/availability/availability.service.js";
-import { billingService } from "@/modules/billing/index.js";
 import * as repo from "./bookings.repository.js";
 
 import { buildDashboardRoomBoard } from "./bookings-room-board.mapper.js";
@@ -21,7 +19,6 @@ import {
   assertBookingTransitionAllowed,
   isAdminOverrideRole,
   requireAuditNote,
-  getLocalDateValue,
 } from "./bookings.helper.js";
 import { getBookingBalanceAmount } from "./bookings.financials.js";
 import {
@@ -29,12 +26,13 @@ import {
   assertBookingHasAssignedTarget,
   assertTransactionalRoomsAvailable,
   buildRoomMovePricingPreview,
-  getAssignedCheckInRoomIds,
   hasExistingAssignment,
   resolveBookingRoomAssignments,
 } from "./bookings.assignment.js";
 import {
   assertCheckoutBalanceSettled,
+  checkInBookingInTransaction,
+  checkOutBookingInTransaction,
   assertExpectedBookingVersion,
   createOperationEvent,
   createStatusHistory,
@@ -47,6 +45,7 @@ import {
 } from "./bookings.operations.js";
 import {
   createBookingFolioChargeInTransaction,
+  createRoomMoveAdjustmentCharge,
   postLateCheckoutExtensionCharge,
   voidBookingFolioChargeInTransaction,
 } from "./bookings.folio.js";
@@ -55,7 +54,9 @@ import {
   recordBookingRefundForBooking,
   updateRefundRequestForBooking,
 } from "./bookings.payments.js";
-import { updateRoomHousekeepingInTransaction } from "./bookings.housekeeping.js";
+import {
+  updateRoomHousekeepingInTransaction,
+} from "./bookings.housekeeping.js";
 import {
   mapDashboardBooking,
   mapDashboardBookings,
@@ -505,96 +506,12 @@ export const checkInBooking = async (
       : undefined;
 
   return repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    assertBookingTransitionAllowed(booking.status, BookingStatus.CHECKED_IN);
-
-    const today = getLocalDateValue(new Date(), booking.property.tenant.timezone);
-    const arrivalDate = getLocalDateValue(
-      booking.checkIn,
-      booking.property.tenant.timezone,
-    );
-    if (today < arrivalDate) {
-      throw new HttpError(
-        409,
-        "CHECK_IN_TOO_EARLY",
-        "Guest can be checked in only on or after the check-in date",
-      );
-    }
-    if (today > arrivalDate) {
-      requireAuditNote(input.note, "Audit note is required for late arrival");
-    }
-
-    const selectedRoomIds =
-      input.roomIds ?? (await getAssignedCheckInRoomIds(tx, booking));
-    await assertTransactionalRoomsAvailable(tx, booking, selectedRoomIds, true);
-
-    const balanceAmount = getBookingBalanceAmount(booking);
-    if (balanceAmount.greaterThan(0)) {
-      if (input.allowBalanceDueCheckIn !== true) {
-        throw new HttpError(
-          409,
-          "CHECK_IN_BALANCE_DUE",
-          "Record balance payment before check-in or use an audited override",
-        );
-      }
-      requireAuditNote(
-        input.note,
-        "Override note is required to check in with balance due",
-      );
-    }
-
-    if (assignment !== undefined) {
-      for (const itemAssignment of assignment.assignments) {
-        await tx.bookingItem.update({
-          where: { id: itemAssignment.itemId },
-          data: itemAssignment.data,
-        });
-      }
-    }
-
-    const now = new Date();
-    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
-      status: BookingStatus.CHECKED_IN,
-      checkedInAt: now,
-      identityVerifiedAt: now,
-      ...(input.identityDocumentType !== undefined && {
-        identityDocumentType: input.identityDocumentType,
-        identityDocumentReference: input.identityDocumentReference,
-      }),
-      ...(assignment !== undefined && assignment.bookingData),
-    });
-    await createStatusHistory(tx, {
+    return checkInBookingInTransaction(tx, {
       bookingId,
-      fromStatus: booking.status,
-      toStatus: BookingStatus.CHECKED_IN,
       actorUserId: actor.id,
-      ...(input.note !== undefined && { note: input.note }),
+      checkIn: input,
+      ...(assignment !== undefined && { assignment }),
     });
-    await createOperationEvent(tx, {
-      bookingId,
-      propertyId: booking.propertyId,
-      actorUserId: actor.id,
-      eventType: BookingOperationEventType.CHECK_IN,
-      ...(input.note !== undefined && { note: input.note }),
-      metadata: {
-        roomIds: selectedRoomIds,
-        identityVerified: true,
-        lateArrival: today > arrivalDate,
-      },
-    });
-    if (balanceAmount.greaterThan(0)) {
-      await createOperationEvent(tx, {
-        bookingId,
-        propertyId: booking.propertyId,
-        actorUserId: actor.id,
-        eventType: BookingOperationEventType.BALANCE_OVERRIDE,
-        ...(input.note !== undefined && { note: input.note }),
-        metadata: { balanceAmount: balanceAmount.toString(), stage: "CHECK_IN" },
-      });
-    }
-
-    return mapTransactionBooking(tx, bookingId);
   });
 };
 
@@ -612,79 +529,13 @@ export const checkOutBooking = async (
   });
 
   return repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    assertBookingTransitionAllowed(booking.status, BookingStatus.CHECKED_OUT);
-    const { balanceAmount } = assertCheckoutBalanceSettled({
-      booking,
+    return checkOutBookingInTransaction(tx, {
+      bookingId,
       actor,
-      ...(input.allowBalanceDueCheckout !== undefined && {
-        allowBalanceDueCheckout: input.allowBalanceDueCheckout,
-      }),
-      ...(input.note !== undefined && { note: input.note }),
+      checkOut: input,
+      extensionChargeId: extension.extensionChargeId,
+      extraNights: extension.extensionPreview?.extraNights ?? 0,
     });
-
-    const roomIds = booking.items
-      .map((item) => item.roomId)
-      .filter((roomId): roomId is string => roomId !== null);
-    const now = new Date();
-    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
-      status: BookingStatus.CHECKED_OUT,
-      checkedOutAt: now,
-    });
-    for (const roomId of roomIds) {
-      const room = await tx.room.findUniqueOrThrow({ where: { id: roomId } });
-      await tx.room.update({
-        where: { id: roomId },
-        data: { housekeepingStatus: RoomHousekeepingStatus.DIRTY },
-      });
-      await tx.roomHousekeepingEvent.create({
-        data: {
-          propertyId: booking.propertyId,
-          roomId,
-          actorUserId: actor.id,
-          bookingId,
-          fromStatus: room.housekeepingStatus,
-          toStatus: RoomHousekeepingStatus.DIRTY,
-          note: input.note ?? "Room marked dirty after checkout",
-        },
-      });
-    }
-    await createStatusHistory(tx, {
-      bookingId,
-      fromStatus: booking.status,
-      toStatus: BookingStatus.CHECKED_OUT,
-      actorUserId: actor.id,
-      ...(input.note !== undefined && { note: input.note }),
-    });
-    await createOperationEvent(tx, {
-      bookingId,
-      propertyId: booking.propertyId,
-      actorUserId: actor.id,
-      eventType: BookingOperationEventType.CHECK_OUT,
-      ...(input.note !== undefined && { note: input.note }),
-      metadata: {
-        roomIds,
-        balanceAmount: balanceAmount.toString(),
-        extensionChargeId: extension.extensionChargeId,
-        extraNights: extension.extensionPreview?.extraNights ?? 0,
-      },
-    });
-    if (balanceAmount.greaterThan(0)) {
-      await createOperationEvent(tx, {
-        bookingId,
-        propertyId: booking.propertyId,
-        actorUserId: actor.id,
-        eventType: BookingOperationEventType.BALANCE_OVERRIDE,
-        ...(input.note !== undefined && { note: input.note }),
-        metadata: {
-          balanceAmount: balanceAmount.toString(),
-          stage: "CHECK_OUT",
-          extensionChargeId: extension.extensionChargeId,
-        },
-      });
-    }
-    return mapTransactionBooking(tx, bookingId);
   });
 };
 
@@ -812,46 +663,13 @@ export const moveBookingRooms = async (
     await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
       ...assignment.bookingData,
     });
-    let folioChargeId: string | null = null;
-    if (
-      pricingPreview.pricingRequired &&
-      input.pricingAction === "CHARGE_DIFFERENCE"
-    ) {
-      const charge = await tx.bookingFolioCharge.create({
-        data: {
-          bookingId,
-          propertyId: booking.propertyId,
-          createdByUserId: actor.id,
-          type: "ADJUSTMENT",
-          description: `Accommodation upgrade: ${pricingPreview.destinationAssignment}`,
-          amount: pricingPreview.totalAdjustment,
-          note: input.note,
-          metadata: {
-            source: "PRICED_ROOM_MOVE",
-            pricingAction: input.pricingAction,
-            currentAssignment: pricingPreview.currentAssignment,
-            destinationAssignment: pricingPreview.destinationAssignment,
-            effectiveDate: pricingPreview.effectiveDate,
-            affectedNights: pricingPreview.affectedNights,
-            currentNightlyRate: pricingPreview.currentNightlyRate,
-            destinationNightlyRate: pricingPreview.destinationNightlyRate,
-            baseDifference: pricingPreview.baseDifference,
-            taxDifference: pricingPreview.taxDifference,
-            totalAdjustment: pricingPreview.totalAdjustment,
-            taxBreakdown: pricingPreview.taxBreakdown,
-            pricingFingerprint: pricingPreview.pricingFingerprint,
-            oldRoomIds,
-            newRoomIds: input.roomIds,
-          },
-        },
-      });
-      folioChargeId = charge.id;
-      await billingService.createDebitNoteForFolioCharge(
-        bookingId,
-        charge.id,
-        tx,
-      );
-    }
+    const folioCharge = await createRoomMoveAdjustmentCharge(tx, {
+      booking,
+      actorUserId: actor.id,
+      roomMove: input,
+      pricingPreview,
+      oldRoomIds,
+    });
     await createOperationEvent(tx, {
       bookingId,
       propertyId: booking.propertyId,
@@ -877,7 +695,7 @@ export const moveBookingRooms = async (
           input.pricingAction === "COMPLIMENTARY_UPGRADE"
             ? pricingPreview.totalAdjustment
             : "0",
-        folioChargeId,
+        folioChargeId: folioCharge?.id ?? null,
       },
     });
     return mapTransactionBooking(tx, bookingId);

@@ -173,6 +173,8 @@ Completed extraction:
   - operation event writes
   - transaction-scoped booking lookup
   - checkout balance-due guard
+  - dedicated check-in transaction flow
+  - dedicated check-out transaction flow
 - `bookings.operations.ts`
   - business-date boundary helpers
   - operations board payload assembly
@@ -185,6 +187,7 @@ Completed extraction:
   - folio charge void transaction helper
   - folio operation event metadata
   - late-checkout extension charge posting with debit-note creation
+  - priced room-move adjustment charge posting with debit-note creation
 - `bookings.walk-in.ts`
   - walk-in guest lookup/update/create flow
   - stay-night calculation helper
@@ -196,19 +199,20 @@ Completed extraction:
 - `bookings.housekeeping.ts`
   - housekeeping transition table
   - housekeeping status update transaction helper
+  - checkout dirty-room marking and housekeeping audit events
 - `bookings.presenter.ts`
   - dashboard booking DTO mapping wrappers
   - transaction-scoped booking DTO mapping
 
 Current line counts:
 
-- `bookings.service.ts`: 1,076 lines
+- `bookings.service.ts`: 894 lines
 - `bookings.access.ts`: 38 lines
-- `bookings.assignment.ts`: 1,057 lines
+- `bookings.assignment.ts`: 1,065 lines
 - `bookings.financials.ts`: 271 lines
-- `bookings.folio.ts`: 255 lines
-- `bookings.housekeeping.ts`: 79 lines
-- `bookings.lifecycle.ts`: 131 lines
+- `bookings.folio.ts`: 311 lines
+- `bookings.housekeeping.ts`: 109 lines
+- `bookings.lifecycle.ts`: 334 lines
 - `bookings.operations.ts`: 508 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines

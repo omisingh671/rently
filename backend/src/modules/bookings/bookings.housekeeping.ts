@@ -77,3 +77,33 @@ export const updateRoomHousekeepingInTransaction = async (
     updatedAt: event.createdAt,
   };
 };
+
+export const markRoomsDirtyAfterCheckout = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    propertyId: string;
+    bookingId: string;
+    actorUserId: string;
+    roomIds: string[];
+    note?: string;
+  },
+) => {
+  for (const roomId of input.roomIds) {
+    const room = await tx.room.findUniqueOrThrow({ where: { id: roomId } });
+    await tx.room.update({
+      where: { id: roomId },
+      data: { housekeepingStatus: RoomHousekeepingStatus.DIRTY },
+    });
+    await tx.roomHousekeepingEvent.create({
+      data: {
+        propertyId: input.propertyId,
+        roomId,
+        actorUserId: input.actorUserId,
+        bookingId: input.bookingId,
+        fromStatus: room.housekeepingStatus,
+        toStatus: RoomHousekeepingStatus.DIRTY,
+        note: input.note ?? "Room marked dirty after checkout",
+      },
+    });
+  }
+};
