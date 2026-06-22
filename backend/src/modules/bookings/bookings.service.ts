@@ -3,8 +3,6 @@ import {
   BookingPaymentPolicy,
   BookingStatus,
   BookingTargetType,
-  BookingOperationEventType,
-  Prisma,
   UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -13,39 +11,31 @@ import { generateAvailabilityOptions } from "@/modules/public/availability/avail
 import * as repo from "./bookings.repository.js";
 
 import { buildDashboardRoomBoard } from "./bookings-room-board.mapper.js";
-import { isBookingNoShowEligible } from "./bookings.mapper.js";
 import {
-  assertBookingLifecycleDateAllowed,
-  assertBookingTransitionAllowed,
   isAdminOverrideRole,
   requireAuditNote,
 } from "./bookings.helper.js";
-import { getBookingBalanceAmount } from "./bookings.financials.js";
 import {
-  assertComplimentaryUpgradeAllowed,
-  assertBookingHasAssignedTarget,
-  assertTransactionalRoomsAvailable,
   buildRoomMovePricingPreview,
   hasExistingAssignment,
   resolveBookingRoomAssignments,
 } from "./bookings.assignment.js";
 import {
-  assertCheckoutBalanceSettled,
+  assertDashboardBookingStatusUpdateAllowed,
   checkInBookingInTransaction,
+  checkOutDashboardBookingUpdateInTransaction,
   checkOutBookingInTransaction,
+  correctBookingStatusInTransaction,
+  markBookingNoShowInTransaction,
   assertExpectedBookingVersion,
-  createOperationEvent,
-  createStatusHistory,
-  findTransactionBooking,
-  updateVersionedBooking,
 } from "./bookings.lifecycle.js";
+import { moveBookingRoomsInTransaction } from "./bookings.room-move.js";
 import {
   buildCashierSummaryForProperty,
   buildOperationsBoardForProperty,
 } from "./bookings.operations.js";
 import {
   createBookingFolioChargeInTransaction,
-  createRoomMoveAdjustmentCharge,
   postLateCheckoutExtensionCharge,
   voidBookingFolioChargeInTransaction,
 } from "./bookings.folio.js";
@@ -259,84 +249,8 @@ export const updateBooking = async (
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
 
-  const nextStatus = input.status;
-  const statusOverride = input.statusOverride === true;
-  const statusChanged =
-    nextStatus !== undefined && nextStatus !== booking.status;
-
-  if (statusChanged && nextStatus !== undefined) {
-    if (statusOverride) {
-      if (!isAdminOverrideRole(actor.role)) {
-        throw new HttpError(
-          403,
-          "FORBIDDEN",
-          "Only Admin or Super Admin can correct booking status",
-        );
-      }
-
-      requireAuditNote(
-        input.note,
-        "Audit note is required for status correction",
-      );
-    } else {
-      assertBookingTransitionAllowed(booking.status, nextStatus);
-
-      if (nextStatus === BookingStatus.CHECKED_IN) {
-        assertBookingHasAssignedTarget(booking);
-        assertBookingLifecycleDateAllowed(booking, nextStatus);
-        const balanceAmount = getBookingBalanceAmount(booking);
-        if (balanceAmount.greaterThan(0)) {
-          if (input.allowBalanceDueCheckIn !== true) {
-            throw new HttpError(
-              409,
-              "CHECK_IN_BALANCE_DUE",
-              "Record balance payment before check-in or add an override note",
-            );
-          }
-
-          requireAuditNote(
-            input.note,
-            "Override note is required to check in with balance due",
-          );
-        }
-      }
-
-      if (nextStatus === BookingStatus.CANCELLED) {
-        if (
-          booking.status === BookingStatus.CHECKED_IN &&
-          !isAdminOverrideRole(actor.role)
-        ) {
-          throw new HttpError(
-            403,
-            "CHECKED_IN_CANCELLATION_RESTRICTED",
-            "Only Admin or Super Admin can cancel after check-in",
-          );
-        }
-
-        if (actor.role === UserRole.MANAGER) {
-          requireAuditNote(
-            input.note,
-            "Cancellation note is required for manager cancellation",
-          );
-        }
-      }
-
-      if (nextStatus === BookingStatus.NO_SHOW) {
-        requireAuditNote(input.note, "No-show note is required");
-        if (!isBookingNoShowEligible(booking)) {
-          throw new HttpError(
-            409,
-            "NO_SHOW_NOT_ELIGIBLE",
-            "Booking is not eligible for no-show yet",
-          );
-        }
-      }
-
-      if (nextStatus === BookingStatus.CHECKED_OUT) {
-        assertBookingLifecycleDateAllowed(booking, nextStatus);
-      }
-    }
-  }
+  const { nextStatus, statusChanged, statusOverride } =
+    assertDashboardBookingStatusUpdateAllowed(booking, actor, input);
 
   if (input.roomId !== undefined && input.roomIds !== undefined) {
     throw new HttpError(
@@ -379,65 +293,15 @@ export const updateBooking = async (
     const extension = await postLateCheckoutExtensionCharge(bookingId, actor, {
       ...(input.note !== undefined && { note: input.note }),
     });
-    const updatedBooking = await repo.runBookingTransaction(async (tx) => {
-      const checkoutBooking = await findTransactionBooking(tx, bookingId);
-      const { balanceAmount } = assertCheckoutBalanceSettled({
-        booking: checkoutBooking,
+    return repo.runBookingTransaction(async (tx) => {
+      return checkOutDashboardBookingUpdateInTransaction(tx, {
+        bookingId,
         actor,
-        ...(input.note !== undefined && { note: input.note }),
-      });
-
-      await tx.booking.update({
-        where: { id: bookingId },
-        data: {
-          status: BookingStatus.CHECKED_OUT,
-          checkedOutAt: new Date(),
-          ...(input.internalNotes !== undefined && {
-            internalNotes: input.internalNotes,
-          }),
-        },
-      });
-      await createStatusHistory(tx, {
-        bookingId,
-        fromStatus: checkoutBooking.status,
-        toStatus: BookingStatus.CHECKED_OUT,
-        actorUserId: actor.id,
-        ...(input.note !== undefined && { note: input.note }),
-      });
-      await createOperationEvent(tx, {
-        bookingId,
-        propertyId: checkoutBooking.propertyId,
-        actorUserId: actor.id,
-        eventType: BookingOperationEventType.CHECK_OUT,
-        ...(input.note !== undefined && { note: input.note }),
-        metadata: {
-          balanceAmount: balanceAmount.toString(),
-          extensionChargeId: extension.extensionChargeId,
-          extraNights: extension.extensionPreview?.extraNights ?? 0,
-        },
-      });
-      if (balanceAmount.greaterThan(0)) {
-        await createOperationEvent(tx, {
-          bookingId,
-          propertyId: checkoutBooking.propertyId,
-          actorUserId: actor.id,
-          eventType: BookingOperationEventType.BALANCE_OVERRIDE,
-          ...(input.note !== undefined && { note: input.note }),
-          metadata: {
-            balanceAmount: balanceAmount.toString(),
-            stage: "CHECK_OUT",
-            extensionChargeId: extension.extensionChargeId,
-          },
-        });
-      }
-
-      return tx.booking.findUniqueOrThrow({
-        where: { id: bookingId },
-        include: repo.dashboardBookingInclude,
+        update: input,
+        extensionChargeId: extension.extensionChargeId,
+        extraNights: extension.extensionPreview?.extraNights ?? 0,
       });
     });
-
-    return mapDashboardBooking(updatedBooking);
   }
 
   const updatedBooking = await repo.updateBookingLifecycleById(
@@ -549,35 +413,11 @@ export const markBookingNoShow = async (
   await assertPropertyInScope(actor, initialBooking.propertyId);
 
   return repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    assertBookingTransitionAllowed(booking.status, BookingStatus.NO_SHOW);
-    if (!isBookingNoShowEligible(booking)) {
-      throw new HttpError(
-        409,
-        "NO_SHOW_NOT_ELIGIBLE",
-        "Booking is not eligible for no-show yet",
-      );
-    }
-    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
-      status: BookingStatus.NO_SHOW,
-      noShowAt: new Date(),
-    });
-    await createStatusHistory(tx, {
+    return markBookingNoShowInTransaction(tx, {
       bookingId,
-      fromStatus: booking.status,
-      toStatus: BookingStatus.NO_SHOW,
       actorUserId: actor.id,
-      note: input.note,
+      noShow: input,
     });
-    await createOperationEvent(tx, {
-      bookingId,
-      propertyId: booking.propertyId,
-      actorUserId: actor.id,
-      eventType: BookingOperationEventType.NO_SHOW,
-      note: input.note,
-    });
-    return mapTransactionBooking(tx, bookingId);
   });
 };
 
@@ -621,84 +461,13 @@ export const moveBookingRooms = async (
     .filter((roomId): roomId is string => roomId !== null);
 
   return repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    const pricingPreview = await buildRoomMovePricingPreview(
-      booking,
-      input.roomIds,
-      tx,
-    );
-    if (
-      pricingPreview.pricingFingerprint !== input.pricingFingerprint ||
-      !new Prisma.Decimal(pricingPreview.totalAdjustment).equals(
-        input.expectedAdjustmentAmount,
-      )
-    ) {
-      throw new HttpError(
-        409,
-        "PRICING_CHANGED",
-        "Room move pricing changed. Review the latest price before confirming.",
-      );
-    }
-    if (!pricingPreview.allowedPricingActions.includes(input.pricingAction)) {
-      throw new HttpError(
-        422,
-        "ROOM_MOVE_PRICING_ACTION_INVALID",
-        "Selected room move pricing action is not available",
-      );
-    }
-    assertComplimentaryUpgradeAllowed(actor, input, pricingPreview);
-    await assertTransactionalRoomsAvailable(
-      tx,
-      booking,
-      input.roomIds,
-      booking.status === BookingStatus.CHECKED_IN,
-    );
-    for (const itemAssignment of assignment.assignments) {
-      await tx.bookingItem.update({
-        where: { id: itemAssignment.itemId },
-        data: itemAssignment.data,
-      });
-    }
-    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
-      ...assignment.bookingData,
-    });
-    const folioCharge = await createRoomMoveAdjustmentCharge(tx, {
-      booking,
-      actorUserId: actor.id,
+    return moveBookingRoomsInTransaction(tx, {
+      bookingId,
+      actor,
       roomMove: input,
-      pricingPreview,
+      assignment,
       oldRoomIds,
     });
-    await createOperationEvent(tx, {
-      bookingId,
-      propertyId: booking.propertyId,
-      actorUserId: actor.id,
-      eventType:
-        oldRoomIds.length > 0
-          ? BookingOperationEventType.ROOM_MOVE
-          : BookingOperationEventType.ROOM_ASSIGNMENT,
-      note: input.note,
-      metadata: {
-        oldRoomIds,
-        newRoomIds: input.roomIds,
-        pricingAction: input.pricingAction,
-        pricingFingerprint: pricingPreview.pricingFingerprint,
-        currentNightlyRate: pricingPreview.currentNightlyRate,
-        destinationNightlyRate: pricingPreview.destinationNightlyRate,
-        affectedNights: pricingPreview.affectedNights,
-        effectiveDate: pricingPreview.effectiveDate,
-        baseDifference: pricingPreview.baseDifference,
-        taxDifference: pricingPreview.taxDifference,
-        totalAdjustment: pricingPreview.totalAdjustment,
-        waivedAmount:
-          input.pricingAction === "COMPLIMENTARY_UPGRADE"
-            ? pricingPreview.totalAdjustment
-            : "0",
-        folioChargeId: folioCharge?.id ?? null,
-      },
-    });
-    return mapTransactionBooking(tx, bookingId);
   });
 };
 
@@ -719,31 +488,11 @@ export const correctBookingStatus = async (
   await assertPropertyInScope(actor, initialBooking.propertyId);
 
   return repo.runBookingTransaction(async (tx) => {
-    const booking = await findTransactionBooking(tx, bookingId);
-    assertExpectedBookingVersion(booking.version, input.expectedVersion);
-    await updateVersionedBooking(tx, bookingId, input.expectedVersion, {
-      status: input.status,
-      ...(input.status !== BookingStatus.CANCELLED && {
-        cancellationReason: null,
-        cancelledAt: null,
-      }),
-    });
-    await createStatusHistory(tx, {
+    return correctBookingStatusInTransaction(tx, {
       bookingId,
-      fromStatus: booking.status,
-      toStatus: input.status,
       actorUserId: actor.id,
-      note: input.note,
+      correction: input,
     });
-    await createOperationEvent(tx, {
-      bookingId,
-      propertyId: booking.propertyId,
-      actorUserId: actor.id,
-      eventType: BookingOperationEventType.STATUS_CORRECTION,
-      note: input.note,
-      metadata: { fromStatus: booking.status, toStatus: input.status },
-    });
-    return mapTransactionBooking(tx, bookingId);
   });
 };
 

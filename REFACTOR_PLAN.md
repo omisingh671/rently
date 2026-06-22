@@ -166,6 +166,9 @@ Completed extraction:
   - transactional room availability checks
   - room move pricing preview and pricing fingerprint
   - existing assignment detection and complimentary room-move waiver guard
+- `bookings.room-move.ts`
+  - priced room-move transaction orchestration
+  - pricing fingerprint enforcement and room-move audit metadata
 - `bookings.lifecycle.ts`
   - optimistic version checks
   - versioned booking updates
@@ -175,6 +178,9 @@ Completed extraction:
   - checkout balance-due guard
   - dedicated check-in transaction flow
   - dedicated check-out transaction flow
+  - dedicated no-show transaction flow
+  - dedicated status-correction transaction flow
+  - generic dashboard status update validation and checkout transaction flow
 - `bookings.operations.ts`
   - business-date boundary helpers
   - operations board payload assembly
@@ -206,16 +212,17 @@ Completed extraction:
 
 Current line counts:
 
-- `bookings.service.ts`: 894 lines
+- `bookings.service.ts`: 643 lines
 - `bookings.access.ts`: 38 lines
 - `bookings.assignment.ts`: 1,065 lines
 - `bookings.financials.ts`: 271 lines
 - `bookings.folio.ts`: 311 lines
 - `bookings.housekeeping.ts`: 109 lines
-- `bookings.lifecycle.ts`: 334 lines
+- `bookings.lifecycle.ts`: 601 lines
 - `bookings.operations.ts`: 508 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines
+- `bookings.room-move.ts`: 125 lines
 - `bookings.walk-in.ts`: 167 lines
 
 Verification completed:
