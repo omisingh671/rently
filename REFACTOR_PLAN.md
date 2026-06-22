@@ -186,6 +186,7 @@ Completed extraction:
 - `bookings.walk-in.ts`
   - walk-in guest lookup/update/create flow
   - stay-night calculation helper
+  - dashboard manual availability DTO mapping
 - `bookings.payments.ts`
   - dashboard balance payment validation and recording
   - manual refund validation and idempotency checks
@@ -199,7 +200,7 @@ Completed extraction:
 
 Current line counts:
 
-- `bookings.service.ts`: 1,265 lines
+- `bookings.service.ts`: 1,200 lines
 - `bookings.access.ts`: 38 lines
 - `bookings.assignment.ts`: 1,057 lines
 - `bookings.financials.ts`: 271 lines
@@ -209,11 +210,12 @@ Current line counts:
 - `bookings.operations.ts`: 365 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines
-- `bookings.walk-in.ts`: 67 lines
+- `bookings.walk-in.ts`: 167 lines
 
 Verification completed:
 
 - `backend`: `npm run typecheck`
+- `backend`: `npm run test:booking`
 - `backend`: `npm run test:payment`
 - `backend`: `npm run test:rbac`
 - `backend`: `npm run lint`

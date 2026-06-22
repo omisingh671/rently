@@ -76,6 +76,7 @@ import {
   type DashboardPropertyScope,
 } from "./bookings.access.js";
 import {
+  buildManualBookingAvailabilityDTO,
   findOrCreateWalkInGuest,
   getStayNights,
 } from "./bookings.walk-in.js";
@@ -197,73 +198,7 @@ export const checkManualBookingAvailability = async (
     undefined,
     { pricePrivateRoomsByCapacity: false },
   );
-  const propertyOptions = options.filter(
-    (option) => option.propertyId === propertyId,
-  );
-  const availableItems = propertyOptions.map((option) => {
-    const firstItem = option.items[0];
-    const spaceId =
-      option.items.length === 1 && firstItem
-        ? firstItem.pricingId
-        : option.optionId;
-    return {
-      spaceId,
-      bookingOptionId: option.optionId,
-      title: option.title,
-      guestSplit: option.guestSplit,
-      comfortOption: option.comfortOption,
-      itemCount: option.itemCount,
-      nightlyTotal: option.nightlyTotal.toString(),
-      stayTotal: option.stayTotal.toString(),
-      available: true,
-      capacity: option.totalCapacity,
-      targetType:
-        option.items.length === 1 && firstItem
-          ? firstItem.target.targetType
-          : BookingTargetType.ROOM,
-      reason: null,
-      guestCount: input.guests,
-      pricePerNight: option.nightlyTotal.toString(),
-      priceBreakup: option.items.map((item) => item.pricePerNight.toString()),
-    };
-  });
-  const requestedSpaceIds = input.spaceIds ?? [];
-  const availableItemsBySpaceId = new Map(
-    availableItems.map((item) => [item.spaceId, item]),
-  );
-  const items =
-    requestedSpaceIds.length > 0
-      ? requestedSpaceIds.map(
-          (spaceId): DashboardManualBookingAvailabilityDTO["items"][number] =>
-            availableItemsBySpaceId.get(spaceId) ?? {
-              spaceId,
-              bookingOptionId: spaceId,
-              title: "Unavailable space",
-              guestSplit: "Unavailable",
-              comfortOption: input.comfortOption,
-              itemCount: 1,
-              nightlyTotal: "0",
-              stayTotal: "0",
-              available: false,
-              capacity: 0,
-              targetType: BookingTargetType.ROOM,
-              reason: "Already booked for selected dates",
-              guestCount: input.guests,
-              pricePerNight: null,
-              priceBreakup: [],
-            },
-        )
-      : availableItems;
-
-  return {
-    from: input.from.toISOString(),
-    to: input.to.toISOString(),
-    guests: input.guests,
-    availableSpaceIds: items
-      .filter((item) => item.available)
-      .map((item) => item.spaceId),
-    items,
-  };
+  return buildManualBookingAvailabilityDTO(propertyId, input, options);
 };
 
 export const createManualBooking = async (
