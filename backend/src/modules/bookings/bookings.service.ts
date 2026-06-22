@@ -11,13 +11,10 @@ import { generateAvailabilityOptions } from "@/modules/public/availability/avail
 import * as repo from "./bookings.repository.js";
 
 import { buildDashboardRoomBoard } from "./bookings-room-board.mapper.js";
-import {
-  isAdminOverrideRole,
-  requireAuditNote,
-} from "./bookings.helper.js";
+import { isAdminOverrideRole } from "./bookings.helper.js";
 import {
   buildRoomMovePricingPreview,
-  hasExistingAssignment,
+  resolveDashboardBookingUpdateAssignment,
   resolveBookingRoomAssignments,
 } from "./bookings.assignment.js";
 import {
@@ -28,6 +25,7 @@ import {
   correctBookingStatusInTransaction,
   markBookingNoShowInTransaction,
   assertExpectedBookingVersion,
+  updateDashboardBookingLifecycle,
 } from "./bookings.lifecycle.js";
 import { moveBookingRoomsInTransaction } from "./bookings.room-move.js";
 import {
@@ -252,38 +250,11 @@ export const updateBooking = async (
   const { nextStatus, statusChanged, statusOverride } =
     assertDashboardBookingStatusUpdateAllowed(booking, actor, input);
 
-  if (input.roomId !== undefined && input.roomIds !== undefined) {
-    throw new HttpError(
-      422,
-      "AMBIGUOUS_ROOM_ASSIGNMENT",
-      "Provide either roomId or roomIds, not both",
-    );
-  }
-
-  const roomIds =
-    input.roomIds ?? (input.roomId !== undefined ? [input.roomId] : undefined);
-  if (roomIds !== undefined && hasExistingAssignment(booking)) {
-    throw new HttpError(
-      409,
-      "PRICED_ROOM_MOVE_REQUIRED",
-      "Use the priced room move flow to change an existing room assignment",
-    );
-  }
-  const assignment =
-    roomIds !== undefined
-      ? await resolveBookingRoomAssignments(booking, roomIds)
-      : undefined;
-
-  if (
-    assignment !== undefined &&
-    booking.status === BookingStatus.CHECKED_IN &&
-    actor.role === UserRole.MANAGER
-  ) {
-    requireAuditNote(
-      input.note,
-      "Room-change note is required after check-in",
-    );
-  }
+  const assignment = await resolveDashboardBookingUpdateAssignment(
+    booking,
+    actor,
+    input,
+  );
 
   if (
     statusChanged &&
@@ -304,53 +275,15 @@ export const updateBooking = async (
     });
   }
 
-  const updatedBooking = await repo.updateBookingLifecycleById(
-    bookingId,
-    {
-      ...(input.status !== undefined && { status: input.status }),
-      ...(input.status === BookingStatus.CANCELLED && {
-        cancellationReason: input.note ?? "Cancelled from dashboard",
-        cancelledAt: new Date(),
-      }),
-      ...(statusOverride &&
-        statusChanged &&
-        input.status !== BookingStatus.CANCELLED && {
-          cancellationReason: null,
-          cancelledAt: null,
-        }),
-      ...(assignment !== undefined && assignment.bookingData),
-      ...(input.internalNotes !== undefined && {
-        internalNotes: input.internalNotes,
-      }),
-    },
-    statusChanged && nextStatus !== undefined
-      ? {
-          booking: {
-            connect: {
-              id: bookingId,
-            },
-          },
-          fromStatus: booking.status,
-          toStatus: nextStatus,
-          actor: {
-            connect: {
-              id: actor.id,
-            },
-          },
-          ...(input.note !== undefined && { note: input.note }),
-        }
-      : undefined,
-    assignment?.assignments,
-  );
-
-  if (
-    nextStatus === BookingStatus.CONFIRMED ||
-    nextStatus === BookingStatus.CANCELLED
-  ) {
-    await repo.releaseInventoryLocksByBooking(updatedBooking.id, new Date());
-  }
-
-  return mapDashboardBooking(updatedBooking);
+  return updateDashboardBookingLifecycle({
+    booking,
+    actorUserId: actor.id,
+    update: input,
+    nextStatus,
+    statusChanged,
+    statusOverride,
+    ...(assignment !== undefined && { assignment }),
+  });
 };
 
 export const checkInBooking = async (

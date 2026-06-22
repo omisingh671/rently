@@ -145,7 +145,7 @@ Target file:
 
 - `backend/src/modules/bookings/bookings.service.ts`
 
-Status: in progress.
+Status: completed.
 
 Completed extraction:
 
@@ -166,6 +166,7 @@ Completed extraction:
   - transactional room availability checks
   - room move pricing preview and pricing fingerprint
   - existing assignment detection and complimentary room-move waiver guard
+  - generic dashboard update assignment resolution
 - `bookings.room-move.ts`
   - priced room-move transaction orchestration
   - pricing fingerprint enforcement and room-move audit metadata
@@ -181,6 +182,7 @@ Completed extraction:
   - dedicated no-show transaction flow
   - dedicated status-correction transaction flow
   - generic dashboard status update validation and checkout transaction flow
+  - generic dashboard booking lifecycle update write/release flow
 - `bookings.operations.ts`
   - business-date boundary helpers
   - operations board payload assembly
@@ -212,13 +214,13 @@ Completed extraction:
 
 Current line counts:
 
-- `bookings.service.ts`: 643 lines
+- `bookings.service.ts`: 576 lines
 - `bookings.access.ts`: 38 lines
-- `bookings.assignment.ts`: 1,065 lines
+- `bookings.assignment.ts`: 1,111 lines
 - `bookings.financials.ts`: 271 lines
 - `bookings.folio.ts`: 311 lines
 - `bookings.housekeeping.ts`: 109 lines
-- `bookings.lifecycle.ts`: 601 lines
+- `bookings.lifecycle.ts`: 662 lines
 - `bookings.operations.ts`: 508 lines
 - `bookings.payments.ts`: 365 lines
 - `bookings.presenter.ts`: 49 lines

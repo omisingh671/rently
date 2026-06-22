@@ -11,6 +11,7 @@ import {
   TaxTargetType,
   TaxType,
   UnitStatus,
+  UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type {
@@ -23,7 +24,10 @@ import {
   requireAuditNote,
 } from "./bookings.helper.js";
 import type { DashboardActor } from "./bookings.access.js";
-import type { MoveBookingRoomInput } from "./bookings.inputs.js";
+import type {
+  MoveBookingRoomInput,
+  UpdateDashboardBookingInput,
+} from "./bookings.inputs.js";
 import {
   formatBookingRoomAssignmentLabel,
   formatBookingUnitAssignmentLabel,
@@ -422,6 +426,48 @@ export const resolveBookingRoomAssignments = async (
     } satisfies Prisma.BookingUpdateInput,
     assignments,
   };
+};
+
+export const resolveDashboardBookingUpdateAssignment = async (
+  booking: repo.DashboardBookingRecord,
+  actor: Pick<DashboardActor, "role">,
+  input: UpdateDashboardBookingInput,
+) => {
+  if (input.roomId !== undefined && input.roomIds !== undefined) {
+    throw new HttpError(
+      422,
+      "AMBIGUOUS_ROOM_ASSIGNMENT",
+      "Provide either roomId or roomIds, not both",
+    );
+  }
+
+  const roomIds =
+    input.roomIds ?? (input.roomId !== undefined ? [input.roomId] : undefined);
+  if (roomIds !== undefined && hasExistingAssignment(booking)) {
+    throw new HttpError(
+      409,
+      "PRICED_ROOM_MOVE_REQUIRED",
+      "Use the priced room move flow to change an existing room assignment",
+    );
+  }
+
+  const assignment =
+    roomIds !== undefined
+      ? await resolveBookingRoomAssignments(booking, roomIds)
+      : undefined;
+
+  if (
+    assignment !== undefined &&
+    booking.status === BookingStatus.CHECKED_IN &&
+    actor.role === UserRole.MANAGER
+  ) {
+    requireAuditNote(
+      input.note,
+      "Room-change note is required after check-in",
+    );
+  }
+
+  return assignment;
 };
 
 const uniqueIds = (ids: Array<string | null | undefined>) =>

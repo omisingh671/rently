@@ -28,7 +28,10 @@ import {
   requireAuditNote,
 } from "./bookings.helper.js";
 import { isBookingNoShowEligible } from "./bookings.mapper.js";
-import { mapTransactionBooking } from "./bookings.presenter.js";
+import {
+  mapDashboardBooking,
+  mapTransactionBooking,
+} from "./bookings.presenter.js";
 import * as repo from "./bookings.repository.js";
 
 export const assertCheckoutBalanceSettled = (input: {
@@ -361,6 +364,64 @@ export const checkInBookingInTransaction = async (
   }
 
   return mapTransactionBooking(tx, input.bookingId);
+};
+
+export const updateDashboardBookingLifecycle = async (input: {
+  booking: repo.DashboardBookingRecord;
+  actorUserId: string;
+  update: UpdateDashboardBookingInput;
+  assignment?: BookingRoomAssignmentResolution;
+  nextStatus: BookingStatus | undefined;
+  statusChanged: boolean;
+  statusOverride: boolean;
+}) => {
+  const updatedBooking = await repo.updateBookingLifecycleById(
+    input.booking.id,
+    {
+      ...(input.update.status !== undefined && { status: input.update.status }),
+      ...(input.update.status === BookingStatus.CANCELLED && {
+        cancellationReason: input.update.note ?? "Cancelled from dashboard",
+        cancelledAt: new Date(),
+      }),
+      ...(input.statusOverride &&
+        input.statusChanged &&
+        input.update.status !== BookingStatus.CANCELLED && {
+          cancellationReason: null,
+          cancelledAt: null,
+        }),
+      ...(input.assignment !== undefined && input.assignment.bookingData),
+      ...(input.update.internalNotes !== undefined && {
+        internalNotes: input.update.internalNotes,
+      }),
+    },
+    input.statusChanged && input.nextStatus !== undefined
+      ? {
+          booking: {
+            connect: {
+              id: input.booking.id,
+            },
+          },
+          fromStatus: input.booking.status,
+          toStatus: input.nextStatus,
+          actor: {
+            connect: {
+              id: input.actorUserId,
+            },
+          },
+          ...(input.update.note !== undefined && { note: input.update.note }),
+        }
+      : undefined,
+    input.assignment?.assignments,
+  );
+
+  if (
+    input.nextStatus === BookingStatus.CONFIRMED ||
+    input.nextStatus === BookingStatus.CANCELLED
+  ) {
+    await repo.releaseInventoryLocksByBooking(updatedBooking.id, new Date());
+  }
+
+  return mapDashboardBooking(updatedBooking);
 };
 
 export const checkOutBookingInTransaction = async (
