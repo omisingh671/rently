@@ -27,11 +27,11 @@ Main risks:
 
 Target:
 
-- `dashboard/src/features/operations/components/BookingDetailsPage.tsx` - 1,847 lines
+- `dashboard/src/features/operations/components/BookingDetailsPage.tsx` - 987 lines
 
 Why:
 
-- This is the biggest UI file and the highest dashboard bug risk.
+- This is no longer above 1,000 lines, but it remains a high-risk dashboard flow.
 - It owns operational booking actions, payment/refund actions, folio UI, billing documents, assignment, room moves, and terminal state handling.
 
 Plan:
@@ -40,19 +40,16 @@ Plan:
   - extracted booking action defaults, action types, status/payment/refund options, and payment reference requirements into `dashboard/src/features/operations/bookingActionLabels.ts`
   - extracted date/money formatting, stay/assignment labels, and payment display labels into `dashboard/src/features/operations/bookingDisplay.ts`
   - extracted the booking action modal, room assignment picker, and room-move pricing preview into `dashboard/src/features/operations/components/BookingActionModal.tsx`
+  - extracted the guest folio add/void UI into `dashboard/src/features/operations/components/BookingFolioPanel.tsx`
+  - extracted the refund-request card, payment ledger, refund transactions, and receipt actions into `dashboard/src/features/operations/components/BookingPaymentsPanel.tsx`
+  - extracted the invoice/receipt billing document section into `dashboard/src/features/operations/components/BookingBillingDocumentsPanel.tsx`
+  - extracted the operational action/status card into `dashboard/src/features/operations/components/BookingStatusPanel.tsx`
+  - extracted the current assignment card into `dashboard/src/features/operations/components/BookingAssignmentPanel.tsx`
+  - extracted booking action/modal form state and room selection toggling into `dashboard/src/features/operations/hooks/useBookingActionState.ts`
 - Extract presentational panels:
-  - `BookingStatusPanel`
-  - `BookingAssignmentPanel`
-  - `BookingPaymentsPanel`
   - `BookingRefundRequestPanel`
-  - `BookingBillingDocumentsPanel`
-  - `BookingFolioPanel`
 - Extract action state:
-  - `useBookingActionState`
-  - `useRefundActionState`
-- Extract labels/helpers:
-  - `bookingActionLabels.ts`
-  - payment/refund display helpers if duplicated
+  - `useRefundActionState` only if refund request callbacks remain noisy after the next review
 
 Do not change:
 
@@ -70,7 +67,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if route-level imports or exports change
 
-Status: in progress. Pure helpers and action modal extraction completed on 2026-07-10.
+Status: in progress. Pure helpers, action modal, folio panel, payments panel, billing documents panel, status panel, assignment panel, and booking action state extraction completed on 2026-07-10.
 
 Last verification:
 

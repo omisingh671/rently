@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "@/components/ui/Button";
-import Modal from "@/components/ui/Modal";
 import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
@@ -14,45 +13,31 @@ import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { getRoomBoardApi } from "../api";
-import {
-  getActionDefaults,
-  paymentMethodsRequiringReference,
-  type PendingAction,
-  type RiskAction,
-} from "../bookingActionLabels";
+import { paymentMethodsRequiringReference } from "../bookingActionLabels";
 import {
   formatDate,
   formatDateTime,
   formatMoney,
   getAssignedLabel,
-  getPaymentMethodLabel,
-  getPaymentPurposeLabel,
   getStayLabel,
   hasAssignedTarget,
 } from "../bookingDisplay";
 import { useAdminBooking } from "../hooks/useAdminOperations";
-import type {
-  AdminBooking,
-  BookingStatus,
-  FolioChargeType,
-  PaymentMethod,
-  RoomMovePreview,
-  RoomMovePricingAction,
-} from "../types";
+import { useBookingActionState } from "../hooks/useBookingActionState";
+import type { AdminBooking } from "../types";
 import {
   FiAlertTriangle,
   FiArrowLeft,
   FiCreditCard,
-  FiDownload,
   FiEdit3,
-  FiFileText,
-  FiHome,
-  FiLogIn,
-  FiLogOut,
-  FiSlash,
   FiUser,
 } from "react-icons/fi";
 import { BookingActionModal } from "./BookingActionModal";
+import { BookingAssignmentPanel } from "./BookingAssignmentPanel";
+import { BookingBillingDocumentsPanel } from "./BookingBillingDocumentsPanel";
+import { BookingFolioPanel } from "./BookingFolioPanel";
+import { BookingPaymentsPanel } from "./BookingPaymentsPanel";
+import { BookingStatusPanel } from "./BookingStatusPanel";
 
 const getMetadataString = (metadata: unknown, key: string) => {
   if (
@@ -75,28 +60,6 @@ export default function BookingDetailsPage() {
   const canUseAdminCorrection = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
-  const [pendingAction, setPendingAction] = useState<PendingAction | null>(
-    null,
-  );
-  const [note, setNote] = useState("");
-  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
-  const [selectedStatus, setSelectedStatus] =
-    useState<BookingStatus>("PENDING");
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
-  const [paymentReferenceId, setPaymentReferenceId] = useState("");
-  const [paymentPayerDetail, setPaymentPayerDetail] = useState("");
-  const [paymentPaidAt, setPaymentPaidAt] = useState("");
-  const [refundPaymentId, setRefundPaymentId] = useState("");
-  const [refundAmount, setRefundAmount] = useState("");
-  const [refundMethod, setRefundMethod] = useState<PaymentMethod>("CASH");
-  const [actionError, setActionError] = useState("");
-  const [hasInitializedRoomIds, setHasInitializedRoomIds] = useState(false);
-  const [identityVerified, setIdentityVerified] = useState(false);
-  const [roomMovePreview, setRoomMovePreview] =
-    useState<RoomMovePreview | null>(null);
-  const [roomMovePricingAction, setRoomMovePricingAction] =
-    useState<RoomMovePricingAction>("CHARGE_DIFFERENCE");
   const [activeSummaryTab, setActiveSummaryTab] = useState<"booking" | "payment">("booking");
 
   const {
@@ -130,9 +93,11 @@ export default function BookingDetailsPage() {
     (document) => document.type === "INVOICE",
   );
   const receiptByPaymentId = new Map(
-    billingDocuments
-      .filter((document) => document.type === "RECEIPT" && document.paymentId)
-      .map((document) => [document.paymentId, document]),
+    billingDocuments.flatMap((document) =>
+      document.type === "RECEIPT" && document.paymentId
+        ? [[document.paymentId, document] as const]
+        : [],
+    ),
   );
   const isBillingMutating = billingActions.isMutating;
   const canGenerateInvoice =
@@ -175,26 +140,40 @@ export default function BookingDetailsPage() {
       ) ?? [],
     [roomsQuery.data?.units],
   );
-
-  useEffect(() => {
-    if (pendingAction?.type === "assignRoom" && !hasInitializedRoomIds && booking && rooms.length > 0) {
-      let initialSelectedRoomIds: string[] = [];
-      if (booking.targetType === "UNIT" && booking.unitId) {
-        initialSelectedRoomIds = rooms
-          .filter((room) => room.unitId === booking.unitId)
-          .map((room) => room.id);
-      } else {
-        initialSelectedRoomIds = booking.items
-          .map((item) => item.roomId)
-          .filter((roomId): roomId is string => roomId !== null);
-      }
-      const timer = setTimeout(() => {
-        setSelectedRoomIds(initialSelectedRoomIds);
-        setHasInitializedRoomIds(true);
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [pendingAction?.type, booking, rooms, hasInitializedRoomIds]);
+  const {
+    pendingAction,
+    note,
+    selectedRoomIds,
+    selectedStatus,
+    paymentAmount,
+    paymentMethod,
+    paymentReferenceId,
+    paymentPayerDetail,
+    paymentPaidAt,
+    refundPaymentId,
+    refundAmount,
+    refundMethod,
+    actionError,
+    identityVerified,
+    roomMovePreview,
+    roomMovePricingAction,
+    setNote,
+    setSelectedStatus,
+    setPaymentAmount,
+    setPaymentMethod,
+    setPaymentReferenceId,
+    setPaymentPayerDetail,
+    setPaymentPaidAt,
+    setRefundAmount,
+    setRefundMethod,
+    setActionError,
+    setIdentityVerified,
+    setRoomMovePreview,
+    setRoomMovePricingAction,
+    openAction,
+    closeAction,
+    toggleAssignedRoom,
+  } = useBookingActionState({ booking, rooms });
 
   useEffect(() => {
     if (
@@ -236,99 +215,9 @@ export default function BookingDetailsPage() {
     booking,
     selectedRoomIds,
     previewRoomMove,
+    setActionError,
+    setRoomMovePreview,
   ]);
-
-  const openAction = (type: RiskAction, paymentId?: string) => {
-    setActionError("");
-    const nextAction = getActionDefaults(type);
-    if (type === "assignRoom" && booking?.status === "CHECKED_IN") {
-      nextAction.requiresNote = true;
-      nextAction.message =
-        booking.targetType === "UNIT"
-          ? "Changing the assigned unit after check-in is exceptional. Confirm the change and add an audit note."
-          : "Changing room after check-in is exceptional. Confirm the change and add an audit note.";
-    }
-    if (type === "assignRoom") {
-      nextAction.requiresNote = true;
-      if (booking?.targetType === "UNIT") {
-        nextAction.title = "Change Assigned Unit";
-        nextAction.message =
-          "Select any room in the destination unit. All rooms in that unit will be selected and validated together.";
-        nextAction.confirmLabel = "Confirm Unit Change";
-      }
-    }
-    if (type === "assignRoom" && booking && booking.items.length > 1) {
-      nextAction.title = "Change Assigned Rooms";
-      nextAction.message = `Select exactly ${booking.items.length} rooms for this booking. Current rooms are preselected.`;
-      nextAction.confirmLabel = "Confirm Room Changes";
-    }
-    if (type === "checkIn" && booking && Number(booking.balanceAmount) > 0) {
-      nextAction.requiresNote = true;
-      nextAction.message =
-        "This booking still has balance due. Add an override note to continue check-in.";
-    }
-    if (type === "checkOut" && booking && Number(booking.balanceAmount) > 0) {
-      nextAction.requiresNote = true;
-      nextAction.message =
-        "This folio has an outstanding balance. Only an Admin can check out with an audited override.";
-    }
-    setPendingAction(nextAction);
-    setNote("");
-    setIdentityVerified(false);
-    setRoomMovePreview(null);
-    setRoomMovePricingAction("CHARGE_DIFFERENCE");
-    if (type === "assignRoom" && booking) {
-      setHasInitializedRoomIds(false);
-      let initialSelectedRoomIds: string[] = [];
-      if (booking.targetType === "UNIT" && booking.unitId) {
-        initialSelectedRoomIds = rooms
-          .filter((room) => room.unitId === booking.unitId)
-          .map((room) => room.id);
-      } else {
-        initialSelectedRoomIds = booking.items
-          .map((item) => item.roomId)
-          .filter((roomId): roomId is string => roomId !== null);
-      }
-      setSelectedRoomIds(initialSelectedRoomIds);
-    }
-    if (type === "statusOverride" && booking) {
-      setSelectedStatus(booking.status);
-    }
-    if (type === "recordPayment" && booking) {
-      setPaymentAmount(booking.balanceAmount);
-      setPaymentMethod("CASH");
-      setPaymentReferenceId("");
-      setPaymentPayerDetail("");
-      setPaymentPaidAt(new Date().toISOString().slice(0, 16));
-    }
-    if (type === "recordRefund" && booking && paymentId) {
-      const payment = booking.payments.find((item) => item.id === paymentId);
-      setRefundPaymentId(paymentId);
-      setRefundAmount(payment?.refundableAmount ?? "");
-      setRefundMethod(
-        payment?.provider === "MANUAL" ? payment.method : "ONLINE_GATEWAY",
-      );
-    }
-  };
-
-  const closeAction = () => {
-    setPendingAction(null);
-    setNote("");
-    setPaymentAmount("");
-    setPaymentMethod("CASH");
-    setPaymentReferenceId("");
-    setPaymentPayerDetail("");
-    setPaymentPaidAt("");
-    setRefundPaymentId("");
-    setRefundAmount("");
-    setRefundMethod("CASH");
-    setSelectedRoomIds([]);
-    setActionError("");
-    setHasInitializedRoomIds(false);
-    setIdentityVerified(false);
-    setRoomMovePreview(null);
-    setRoomMovePricingAction("CHARGE_DIFFERENCE");
-  };
 
   const submitAction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -542,54 +431,6 @@ export default function BookingDetailsPage() {
     (booking.status === "CHECKED_IN" ||
       booking.status === "CONFIRMED" ||
       !booking.isCheckInDatePassed);
-  const toggleAssignedRoom = (roomId: string) => {
-    if (!booking) return;
-
-    const requiredRoomCount = booking.items.length;
-    setActionError("");
-    setRoomMovePreview(null);
-
-    if (booking.targetType === "UNIT") {
-      const selectedRoom = rooms.find((room) => room.id === roomId);
-      if (!selectedRoom) return;
-
-      const unitRooms = rooms.filter(
-        (room) => room.unitId === selectedRoom.unitId,
-      );
-      const unavailableRoom = unitRooms.find(
-        (room) =>
-          room.unitId !== booking.unitId &&
-          (room.status !== "AVAILABLE" || !room.isActive),
-      );
-      if (unavailableRoom) {
-        setActionError(
-          `Unit ${selectedRoom.unitNumber} cannot be selected because room ${unavailableRoom.number} is not available.`,
-        );
-        return;
-      }
-
-      setSelectedRoomIds(unitRooms.map((room) => room.id));
-      return;
-    }
-
-    if (requiredRoomCount === 1) {
-      setSelectedRoomIds([roomId]);
-      return;
-    }
-
-    const isSelected = selectedRoomIds.includes(roomId);
-    if (isSelected && selectedRoomIds.length <= requiredRoomCount) {
-      setActionError(
-        `This booking requires exactly ${requiredRoomCount} rooms. Keep ${requiredRoomCount} rooms selected.`,
-      );
-      return;
-    }
-
-    setSelectedRoomIds((current) =>
-      isSelected ? current.filter((id) => id !== roomId) : [...current, roomId],
-    );
-  };
-
   if (isPending) {
     return <PageState message="Loading booking details..." />;
   }
@@ -818,7 +659,7 @@ export default function BookingDetailsPage() {
             </div>
           </section>
 
-          <FolioSection
+          <BookingFolioPanel
             booking={booking}
             isMutating={isMutating}
             onCreate={createFolioCharge}
@@ -930,524 +771,82 @@ export default function BookingDetailsPage() {
         </div>
 
         <aside className="space-y-6">
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                Operational Actions
-              </h3>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Manage guest stay lifecycle and room allocations.
-              </p>
-            </div>
+          <BookingStatusPanel
+            booking={booking}
+            canCheckIn={canCheckIn}
+            canCheckOut={canCheckOut}
+            canRecordBalance={canRecordBalance}
+            canAssignRoom={canAssignRoom}
+            canUseAdminCorrection={canUseAdminCorrection}
+            canMarkNoShow={canMarkNoShow}
+            canCancel={canCancel}
+            canOverrideCheckedInRoom={canOverrideCheckedInRoom}
+            isMutating={isMutating}
+            onCheckIn={() => openAction("checkIn")}
+            onCheckOut={() => openAction("checkOut")}
+            onRecordPayment={() => openAction("recordPayment")}
+            onAssignRoom={() => openAction("assignRoom")}
+            onStatusOverride={() => openAction("statusOverride")}
+            onNoShow={() => openAction("noShow")}
+            onCancel={() => openAction("cancel")}
+          />
 
-            <div className="grid gap-2.5">
-              {canCheckIn && (
-                <ActionButton
-                  theme="emerald"
-                  icon={<FiLogIn />}
-                  disabled={isMutating}
-                  onClick={() => openAction("checkIn")}
-                >
-                  Check In
-                </ActionButton>
-              )}
-              {canCheckOut && (
-                <ActionButton
-                  theme="slate"
-                  icon={<FiLogOut />}
-                  disabled={isMutating}
-                  onClick={() => openAction("checkOut")}
-                >
-                  Check Out
-                </ActionButton>
-              )}
-              {canRecordBalance && (
-                <ActionButton
-                  theme="indigo"
-                  icon={<FiCreditCard />}
-                  disabled={isMutating}
-                  onClick={() => openAction("recordPayment")}
-                >
-                  Record Balance Payment
-                </ActionButton>
-              )}
-              {canAssignRoom && (
-                <ActionButton
-                  theme="sky"
-                  icon={<FiHome />}
-                  disabled={isMutating}
-                  onClick={() => openAction("assignRoom")}
-                >
-                  {booking.items.length > 1
-                    ? "Change Rooms"
-                    : booking.targetType === "UNIT"
-                      ? "Change Unit"
-                      : booking.roomId !== null
-                      ? "Change Room"
-                      : "Assign Room"}
-                </ActionButton>
-              )}
-              {canUseAdminCorrection && (
-                <ActionButton
-                  theme="orange"
-                  icon={<FiEdit3 />}
-                  disabled={isMutating}
-                  onClick={() => openAction("statusOverride")}
-                >
-                  Fix Status Mistake
-                </ActionButton>
-              )}
-              {canMarkNoShow && (
-                <ActionButton
-                  theme="amber"
-                  icon={<FiAlertTriangle />}
-                  disabled={isMutating}
-                  onClick={() => openAction("noShow")}
-                >
-                  Mark No-Show
-                </ActionButton>
-              )}
-              {canCancel && (
-                <ActionButton
-                  theme="rose"
-                  icon={<FiSlash />}
-                  disabled={isMutating}
-                  onClick={() => openAction("cancel")}
-                >
-                  Cancel Booking
-                </ActionButton>
-              )}
-            </div>
+          <BookingAssignmentPanel booking={booking} />
 
-            {booking.status === "CONFIRMED" && booking.noShowEligible && (
-              <div className="mt-3 rounded-md bg-amber-50/60 border border-amber-250 p-2 text-xs font-semibold text-amber-850 flex items-center gap-1.5">
-                <FiAlertTriangle className="text-amber-500" />
-                <span>No-show eligible</span>
-              </div>
-            )}
-            {booking.status === "CHECKED_IN" && !canOverrideCheckedInRoom && (
-              <p className="mt-3 text-xs text-slate-500 leading-normal italic">
-                Room changes after check-in require confirmation and an audit note.
-              </p>
-            )}
-            {(booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
-              Number(booking.refundableAmount) > 0 && (
-                <div className="mt-3 rounded-md bg-indigo-50/60 border border-indigo-250 p-2 text-xs font-semibold text-indigo-850 flex items-center gap-1.5 animate-pulse">
-                  <span>Refundable balance: {formatMoney(booking.refundableAmount)}</span>
-                </div>
-              )}
-          </section>
+          <BookingPaymentsPanel
+            booking={booking}
+            canShowRefunds={canShowRefunds}
+            canActOnRefundRequest={canActOnRefundRequest}
+            refundRequestPaymentId={refundRequestPayment?.id}
+            receiptByPaymentId={receiptByPaymentId}
+            isMutating={isMutating}
+            isBillingMutating={isBillingMutating}
+            onMarkRefundRequestInReview={() => {
+              if (!booking.refundRequest) return;
+              void updateRefundRequest({
+                requestId: booking.refundRequest.id,
+                payload: { status: "IN_REVIEW" },
+              }).catch((err: unknown) => {
+                setActionError(normalizeApiError(err).message);
+              });
+            }}
+            onProcessRefundRequest={(paymentId) =>
+              openAction("recordRefund", paymentId)
+            }
+            onRejectRefundRequest={() => openAction("rejectRefundRequest")}
+            onDownloadReceipt={(document) => {
+              setActionError("");
+              void billingActions
+                .downloadDocument(document)
+                .catch(handleBillingError);
+            }}
+            onGenerateReceipt={(paymentId) => {
+              setActionError("");
+              void billingActions
+                .generateReceipt(paymentId)
+                .catch(handleBillingError);
+            }}
+            onRecordRefund={(paymentId) => openAction("recordRefund", paymentId)}
+          />
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">
-              Current Assignment
-            </h3>
-            <div className="mt-4 flex items-center gap-3.5 text-slate-700">
-              <span className="rounded-lg bg-slate-100 p-2 text-slate-600 shrink-0">
-                <FiHome size={18} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                  Assigned Unit & Room
-                </span>
-                <span className="text-sm font-semibold text-slate-800">
-                  {getAssignedLabel(booking)}
-                </span>
-              </div>
-            </div>
-          </section>
-
-          {canShowRefunds && (
-            <div className="rounded-xl border border-amber-200 bg-linear-to-r from-amber-50/80 to-orange-50/50 p-5 shadow-sm">
-              <div className="flex gap-3.5 items-start">
-                <span className="rounded-lg bg-amber-100 p-2 text-amber-700 shrink-0">
-                  <FiAlertTriangle size={18} />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 block mb-1">
-                    Refund Request
-                  </span>
-                  {booking.refundRequest ? (
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="text-sm font-bold text-slate-800">
-                          Guest requested a refund
-                        </h4>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
-                            booking.refundRequest.status === "REQUESTED"
-                              ? "bg-amber-100 text-amber-800 border-amber-200"
-                              : booking.refundRequest.status === "IN_REVIEW"
-                                ? "bg-blue-50 text-blue-700 border-blue-100"
-                                : booking.refundRequest.status === "FULFILLED"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                : "bg-slate-100 text-slate-700 border-slate-200"
-                          }`}
-                        >
-                          {formatEnumLabel(booking.refundRequest.status)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-600 font-medium italic border-l-2 border-amber-400 pl-3 py-0.5 my-1.5 bg-amber-500/5 rounded-r">
-                        "{booking.refundRequest.reason}"
-                      </p>
-                      {booking.refundRequest.adminNote && (
-                        <p className="text-xs text-amber-800 font-medium">
-                          <span className="font-semibold">Admin Note:</span>{" "}
-                          {booking.refundRequest.adminNote}
-                        </p>
-                      )}
-                    </div>
-                  ) : Number(booking.refundableAmount) > 0 ? (
-                    <p className="text-xs text-slate-600">
-                      No active guest refund request. Admin can still record a
-                      manual refund.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-600 font-medium">
-                      Refund has been fully completed.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {canActOnRefundRequest && (
-                <div className="mt-5 flex flex-wrap justify-end gap-3 border-t border-amber-200/50 pt-4">
-                  {booking.refundRequest!.status === "REQUESTED" && (
-                    <Button
-                      type="button"
-                      size="md"
-                      variant="secondary"
-                      disabled={isMutating}
-                      onClick={() => {
-                        void updateRefundRequest({
-                          requestId: booking.refundRequest!.id,
-                          payload: { status: "IN_REVIEW" },
-                        }).catch((err: unknown) => {
-                          setActionError(normalizeApiError(err).message);
-                        });
-                      }}
-                    >
-                      Mark In Review
-                    </Button>
-                  )}
-                  {refundRequestPayment !== undefined && (
-                    <Button
-                      type="button"
-                      size="md"
-                      variant="primary"
-                      disabled={isMutating}
-                      onClick={() =>
-                        openAction("recordRefund", refundRequestPayment.id)
-                      }
-                    >
-                      Process refund
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="md"
-                    variant="danger"
-                    outline
-                    disabled={isMutating}
-                    onClick={() => openAction("rejectRefundRequest")}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-semibold text-slate-900">
-              Recorded Payments
-            </h3>
-            <div className="mt-4 divide-y divide-slate-200">
-              {booking.payments.length === 0 ? (
-                <p className="text-sm text-slate-500 py-2">No payments recorded.</p>
-              ) : (
-                booking.payments.map((payment) => {
-                  const isSucceeded = payment.status === "SUCCEEDED";
-                  const isFailed = payment.status === "FAILED";
-                  const isPending = payment.status === "PENDING";
-                  return (
-                    <div
-                      key={payment.id}
-                      className="py-5 first:pt-0 last:pb-0 transition duration-150"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xl font-bold text-slate-900 tracking-tight">
-                          {formatMoney(payment.amount)}
-                        </div>
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider border ${
-                            isSucceeded
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
-                              : isFailed
-                                ? "bg-rose-50 text-rose-700 border-rose-200/60"
-                                : isPending
-                                  ? "bg-amber-50 text-amber-700 border-amber-200/60"
-                                  : "bg-slate-100 text-slate-600 border-slate-200"
-                          }`}
-                        >
-                          {formatEnumLabel(payment.status)}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                          Purpose
-                        </span>
-                        <span className="min-w-0 font-semibold text-slate-800">
-                          {getPaymentPurposeLabel(payment.purpose)}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold text-[9px] tracking-wider uppercase">
-                          {getPaymentMethodLabel(payment.method)}
-                        </span>
-                        <span className="text-slate-300">/</span>
-                        <span>
-                          {formatDateTime(payment.paidAt ?? payment.createdAt)}
-                        </span>
-                      </div>
-
-                      {(payment.referenceId || payment.payerDetail) && (
-                        <div className="mt-3 grid gap-2 border-l-2 border-slate-200 pl-3.5 py-0.5 text-xs text-slate-600 sm:grid-cols-2">
-                          {payment.referenceId && (
-                            <div>
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                                Reference
-                              </span>
-                              <span className="mt-0.5 block font-semibold text-slate-800">
-                                {payment.referenceId}
-                              </span>
-                            </div>
-                          )}
-                          {payment.payerDetail && (
-                            <div>
-                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                                Payer detail
-                              </span>
-                              <span className="mt-0.5 block font-semibold text-slate-800">
-                                {payment.payerDetail}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="mt-4 flex flex-wrap gap-4 border-t border-slate-100 pt-4 text-xs font-medium text-slate-600">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-400">Refunded:</span>
-                          <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                            {formatMoney(payment.refundedAmount)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-slate-400">Refundable:</span>
-                          <span
-                            className={`font-bold px-2 py-0.5 rounded ${Number(payment.refundableAmount) > 0 ? "text-amber-800 bg-amber-50" : "text-slate-800 bg-slate-100"}`}
-                          >
-                            {formatMoney(payment.refundableAmount)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {payment.refunds.length > 0 && (
-                        <div className="mt-3.5 space-y-2 border-l-2 border-amber-200 pl-3.5 py-0.5 text-xs text-slate-600">
-                          <div className="text-[9px] font-bold uppercase tracking-wider text-amber-600/80 mb-1">
-                            Refund Transactions
-                          </div>
-                          {payment.refunds.map((refund) => (
-                            <div
-                              key={refund.id}
-                              className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-50 last:border-0 pb-1.5 last:pb-0"
-                            >
-                              <span className="flex items-center gap-1.5 font-medium text-slate-600">
-                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                {getPaymentMethodLabel(refund.method)} refund /{" "}
-                                {formatEnumLabel(refund.status)}
-                              </span>
-                              <span className="font-bold text-amber-800">
-                                -{formatMoney(refund.amount)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {payment.status === "SUCCEEDED" && (
-                        <div className="mt-4 flex flex-wrap gap-2 pt-1">
-                          {receiptByPaymentId.get(payment.id) ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              icon={<FiDownload />}
-                              disabled={isBillingMutating}
-                              onClick={() => {
-                                const receipt = receiptByPaymentId.get(
-                                  payment.id,
-                                );
-                                if (receipt) {
-                                  setActionError("");
-                                  void billingActions
-                                    .downloadDocument(receipt)
-                                    .catch(handleBillingError);
-                                }
-                              }}
-                            >
-                              Receipt
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              icon={<FiFileText />}
-                              disabled={isBillingMutating}
-                              onClick={() => {
-                                setActionError("");
-                                void billingActions
-                                  .generateReceipt(payment.id)
-                                  .catch(handleBillingError);
-                              }}
-                            >
-                              Generate Receipt
-                            </Button>
-                          )}
-                          {(booking.status === "CANCELLED" ||
-                            booking.status === "NO_SHOW") &&
-                            Number(payment.refundableAmount) > 0 && (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="warning"
-                                icon={<FiCreditCard />}
-                                disabled={isMutating}
-                                onClick={() =>
-                                  openAction("recordRefund", payment.id)
-                                }
-                              >
-                                {payment.provider === "MANUAL"
-                                  ? "Record Manual Refund"
-                                  : "Process Gateway Refund"}
-                              </Button>
-                            )}
-                        </div>
-                      )}
-
-                      {payment.note && (
-                        <p className="mt-3.5 text-xs font-medium text-slate-500 border-l-2 border-slate-200 pl-3.5 py-0.5">
-                          <span className="font-semibold text-slate-700">
-                            Note:{" "}
-                          </span>
-                          {payment.note}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Billing Documents
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Frozen invoice and receipt snapshots for this booking.
-                </p>
-              </div>
-              {invoiceDocument ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  icon={<FiDownload />}
-                  disabled={isBillingMutating}
-                  onClick={() => {
-                    setActionError("");
-                    void billingActions
-                      .downloadDocument(invoiceDocument)
-                      .catch(handleBillingError);
-                  }}
-                >
-                  Download Invoice
-                </Button>
-              ) : !canGenerateInvoice ? (
-                <p className="text-right text-xs text-slate-500">
-                  Full payment is required before invoice generation.
-                </p>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="primary"
-                  icon={<FiFileText />}
-                  disabled={isBillingMutating}
-                  onClick={() => {
-                    if (booking) {
-                      setActionError("");
-                      void billingActions
-                        .generateInvoice(booking.id)
-                        .catch(handleBillingError);
-                    }
-                  }}
-                >
-                  Generate Invoice
-                </Button>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {billingDocumentsQuery.isPending ? (
-                <p className="text-sm text-slate-500">Loading documents...</p>
-              ) : billingDocuments.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  No billing documents generated yet.
-                </p>
-              ) : (
-                billingDocuments.map((document) => (
-                  <div
-                    key={document.id}
-                    className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 truncate">
-                        {document.documentNumber}
-                      </div>
-                      <div className="text-xs text-slate-500 truncate">
-                        {formatEnumLabel(document.type)} /{" "}
-                        {formatEnumLabel(document.status)}{" "}
-                        / {formatMoney(document.total)}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      icon={<FiDownload />}
-                      disabled={isBillingMutating}
-                      onClick={() => {
-                        setActionError("");
-                        void billingActions
-                          .downloadDocument(document)
-                          .catch(handleBillingError);
-                      }}
-                    >
-                      Download
-                    </Button>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
+          <BookingBillingDocumentsPanel
+            billingDocuments={billingDocuments}
+            invoiceDocument={invoiceDocument}
+            isPending={billingDocumentsQuery.isPending}
+            canGenerateInvoice={canGenerateInvoice}
+            isBillingMutating={isBillingMutating}
+            onDownloadDocument={(document) => {
+              setActionError("");
+              void billingActions
+                .downloadDocument(document)
+                .catch(handleBillingError);
+            }}
+            onGenerateInvoice={() => {
+              if (!booking) return;
+              setActionError("");
+              void billingActions.generateInvoice(booking.id).catch(handleBillingError);
+            }}
+          />
         </aside>
       </div>
 
@@ -1499,7 +898,6 @@ export default function BookingDetailsPage() {
     </div>
   );
 }
-
 function PageState({
   message,
   isError = false,
@@ -1513,8 +911,6 @@ function PageState({
     </div>
   );
 }
-
-
 
 function SummaryRow({
   label,
@@ -1589,259 +985,3 @@ function InternalNotesSection({
     </section>
   );
 }
-
-function FolioSection({
-  booking,
-  isMutating,
-  onCreate,
-  onVoid,
-}: {
-  booking: AdminBooking;
-  isMutating: boolean;
-  onCreate: (payload: {
-    expectedVersion: number;
-    type: FolioChargeType;
-    description: string;
-    amount: number;
-    note?: string;
-  }) => Promise<AdminBooking>;
-  onVoid: (chargeId: string, reason: string) => Promise<AdminBooking>;
-}) {
-  const [type, setType] = useState<FolioChargeType>("INCIDENTAL");
-  const [description, setDescription] = useState("");
-  const [amount, setAmount] = useState("");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [voidChargeId, setVoidChargeId] = useState<string | null>(null);
-  const [voidReason, setVoidReason] = useState("");
-
-  const addCharge = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const numericAmount = Number(amount);
-    if (!description.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) {
-      setErrorMessage("Enter a description and valid positive amount.");
-      return;
-    }
-    try {
-      setErrorMessage("");
-      await onCreate({
-        expectedVersion: booking.version,
-        type,
-        description: description.trim(),
-        amount: numericAmount,
-      });
-      setDescription("");
-      setAmount("");
-    } catch (error) {
-      setErrorMessage(normalizeApiError(error).message);
-    }
-  };
-
-  const voidCharge = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!voidChargeId || !voidReason.trim()) return;
-    try {
-      setErrorMessage("");
-      await onVoid(voidChargeId, voidReason.trim());
-      setVoidChargeId(null);
-      setVoidReason("");
-    } catch (error) {
-      setErrorMessage(normalizeApiError(error).message);
-    }
-  };
-
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">Guest folio</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            Active operational charges: {formatMoney(booking.folioTotal)}
-          </p>
-        </div>
-      </div>
-
-      <form
-        onSubmit={addCharge}
-        className="mt-4 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-4"
-      >
-        <select
-          value={type}
-          disabled={isMutating}
-          onChange={(event) => setType(event.target.value as FolioChargeType)}
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
-        >
-          {(["INCIDENTAL", "PENALTY", "EXTENSION", "ADJUSTMENT"] as const).map(
-            (item) => (
-              <option key={item} value={item}>
-                {formatEnumLabel(item)}
-              </option>
-            ),
-          )}
-        </select>
-        <input
-          value={description}
-          maxLength={255}
-          disabled={isMutating}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Charge description"
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm md:col-span-2"
-        />
-        <div className="flex gap-2">
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={amount}
-            disabled={isMutating}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="Amount"
-            className="h-10 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"
-          />
-          <Button type="submit" size="sm" disabled={isMutating}>
-            Add
-          </Button>
-        </div>
-      </form>
-
-      {errorMessage && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {errorMessage}
-        </div>
-      )}
-
-      <div className="mt-4 divide-y divide-slate-100">
-        {booking.folioCharges.length === 0 ? (
-          <p className="text-sm text-slate-500 py-2">No folio charges recorded.</p>
-        ) : (
-          booking.folioCharges.map((charge) => (
-            <div
-              key={charge.id}
-              className="flex flex-wrap items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0 text-sm"
-            >
-              <div>
-                <div className="font-semibold text-slate-900">
-                  {charge.description}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {formatEnumLabel(charge.type)} / {charge.createdByName} /{" "}
-                  {formatDateTime(charge.createdAt)}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={charge.status === "VOID" ? "line-through text-slate-400" : "font-bold"}>
-                  {formatMoney(charge.amount)}
-                </span>
-                <StatusBadge status={charge.status} />
-                {charge.status === "ACTIVE" && (
-                  <button
-                    type="button"
-                    disabled={isMutating}
-                    onClick={() => {
-                      setVoidChargeId(charge.id);
-                      setVoidReason("");
-                    }}
-                    className="font-semibold text-rose-700 hover:underline disabled:opacity-50"
-                  >
-                    Void
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      <Modal
-        isOpen={voidChargeId !== null}
-        onClose={() => {
-          setVoidChargeId(null);
-          setVoidReason("");
-        }}
-        title="Void Folio Charge"
-        disableBackdropClose={isMutating}
-        disableEscapeClose={isMutating}
-      >
-        <form className="space-y-4" onSubmit={voidCharge}>
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            The charge remains in the immutable folio history. Add a clear audit
-            reason for the void.
-          </div>
-          <label className="block text-sm">
-            <span className="font-semibold text-slate-700">Audit reason</span>
-            <textarea
-              value={voidReason}
-              required
-              maxLength={1000}
-              disabled={isMutating}
-              onChange={(event) => setVoidReason(event.target.value)}
-              className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2"
-            />
-          </label>
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={isMutating}
-              onClick={() => setVoidChargeId(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="danger"
-              disabled={isMutating || !voidReason.trim()}
-            >
-              Void charge
-            </Button>
-          </div>
-        </form>
-      </Modal>
-    </section>
-  );
-}
-
-interface ActionButtonProps {
-  onClick: () => void;
-  disabled?: boolean;
-  icon: ReactNode;
-  children: ReactNode;
-  theme: "indigo" | "sky" | "emerald" | "slate" | "amber" | "rose" | "orange";
-}
-
-function ActionButton({
-  onClick,
-  disabled = false,
-  icon,
-  children,
-  theme,
-}: ActionButtonProps) {
-  const themeClasses: Record<ActionButtonProps["theme"], string> = {
-    indigo: "border-indigo-200 bg-indigo-50/45 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-800 hover:shadow-xs focus:ring-indigo-400/30",
-    sky: "border-sky-200 bg-sky-50/45 text-sky-700 hover:bg-sky-50 hover:border-sky-300 hover:text-sky-800 hover:shadow-xs focus:ring-sky-400/30",
-    emerald: "border-emerald-200 bg-emerald-50/45 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 hover:shadow-xs focus:ring-emerald-400/30",
-    slate: "border-slate-200 bg-slate-50/60 text-slate-700 hover:bg-slate-100 hover:border-slate-300 hover:text-slate-900 hover:shadow-xs focus:ring-slate-400/30",
-    amber: "border-amber-200 bg-amber-50/45 text-amber-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-800 hover:shadow-xs focus:ring-amber-400/30",
-    rose: "border-rose-200 bg-rose-50/45 text-rose-700 hover:bg-rose-50 hover:border-rose-300 hover:text-rose-800 hover:shadow-xs focus:ring-rose-400/30",
-    orange: "border-orange-200 bg-orange-50/45 text-orange-700 hover:bg-orange-50 hover:border-orange-300 hover:text-orange-800 hover:shadow-xs focus:ring-orange-400/30",
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`
-        w-full inline-flex items-center justify-center gap-2.5 rounded-lg border-2 px-4 py-2.5 text-sm font-semibold cursor-pointer
-        transition-all duration-200 ease-in-out
-        hover:-translate-y-0.5 active:translate-y-0
-        focus:outline-none focus:ring-2 focus:ring-offset-1
-        disabled:cursor-not-allowed disabled:opacity-50 disabled:transform-none disabled:shadow-none
-        ${themeClasses[theme]}
-      `}
-    >
-      <span className="shrink-0 text-lg">{icon}</span>
-      <span>{children}</span>
-    </button>
-  );
-}
-

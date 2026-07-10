@@ -88,7 +88,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Dashboard
 
-- `BookingDetailsPage.tsx` is still the highest UI risk at 1,847 lines.
+- `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
 - `OperationsPage.tsx` is 1,123 lines and mixes summary, cashier, activity, filters, and layout.
 - Admin pages are too large: `SystemGuidePage.tsx` 1,583 lines, `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, `RoomBoardPage.tsx` 703 lines.
 - Dashboard lacks focused component tests for booking/payment/refund states.
@@ -105,7 +105,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Over 1000 Lines
 
-- `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 1,847
 - `dashboard/src/pages/admin/SystemGuidePage.tsx`: 1,583
 - `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
 - `backend/src/modules/public/availability/availability.service.ts`: 1,492
@@ -116,6 +115,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Warning Zone
 
+- `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
 - `frontend/src/pages/guest/BookingPaymentProcessPage.tsx`: 922
 - `frontend/src/pages/guest/SpacesListPage.tsx`: 884
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
@@ -129,9 +129,9 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 Work step by step. Do not attempt all improvements in one pass.
 
 1. Dashboard `BookingDetailsPage.tsx`
-   - Highest UI bug risk and largest file.
-   - Pure action/display helpers and the booking action modal have been extracted.
-   - Continue with presentational panels and action-state hooks.
+   - High UI bug risk because it owns booking action submission.
+   - Pure action/display helpers, booking action modal, folio panel, payments panel, billing documents panel, status panel, assignment panel, and booking action state have been extracted.
+   - Continue only with meaningful submit-handler or refund-state cleanup; otherwise move to the next high-risk screen.
    - Keep API calls, route, query keys, and visible workflow unchanged.
 
 2. Frontend `BookingPaymentProcessPage.tsx`
@@ -229,6 +229,42 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
   - moved the booking action modal, room assignment picker, and room-move pricing preview out of the page
   - reduced `BookingDetailsPage.tsx` from 2,382 to 1,847 lines
   - kept action state, submit handlers, routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` folio panel slice completed:
+  - added `dashboard/src/features/operations/components/BookingFolioPanel.tsx`
+  - moved the guest folio add/void UI out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,847 to 1,636 lines
+  - kept parent mutation handlers, routes, query keys, API calls, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` payments panel slice completed:
+  - added `dashboard/src/features/operations/components/BookingPaymentsPanel.tsx`
+  - moved the refund-request card, payment ledger, refund transactions, and receipt actions out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,636 to 1,376 lines
+  - kept parent mutation handlers, billing actions, routes, query keys, API calls, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` billing documents panel slice completed:
+  - added `dashboard/src/features/operations/components/BookingBillingDocumentsPanel.tsx`
+  - moved invoice/receipt document rendering and document buttons out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,376 to 1,299 lines
+  - kept billing hooks/actions, routes, query keys, API calls, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` status panel slice completed:
+  - added `dashboard/src/features/operations/components/BookingStatusPanel.tsx`
+  - moved the operational action/status card and private action button helper out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,299 to 1,160 lines
+  - kept action ownership, routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` assignment panel slice completed:
+  - added `dashboard/src/features/operations/components/BookingAssignmentPanel.tsx`
+  - moved the current assignment card out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,160 to 1,143 lines
+  - kept routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` action state slice completed:
+  - added `dashboard/src/features/operations/hooks/useBookingActionState.ts`
+  - moved booking action/modal form state, action open/close defaults, and room selection toggling out of the page
+  - reduced `BookingDetailsPage.tsx` from 1,143 to 987 lines
+  - kept submit handlers, routes, query keys, API calls, mutations, and visible behavior unchanged
   - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
 - Removed stale `APP_HEALTH.md` and `REFACTOR_PLAN.md`.
 - Created fresh system tracker and split improvement trackers:
