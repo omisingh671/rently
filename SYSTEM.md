@@ -1,0 +1,241 @@
+# Rently System Health
+
+Last updated: 2026-07-10
+
+## Purpose
+
+This is the live system health and improvement tracker for Rently. Keep this file current as backend, dashboard, and frontend improvements land.
+
+The goal is production readiness through meaningful, behavior-preserving improvements:
+
+- keep existing public API contracts, DTO shapes, query keys, routes, and user-visible workflows stable unless a separate bug fix explicitly requires a change
+- reduce UI bugs by extracting repeated layout, state, and form patterns into reusable components and hooks
+- reduce long-file risk by moving isolated rendering, mapping, calculation, and validation logic into focused modules
+- avoid adding abstraction unless it removes real duplication or makes a risky flow easier to test
+- update `SYSTEM.md`, `IMPROVE_BACKEND.md`, `IMPROVE_DASHBOARD_.md`, and `IMPROVE_FRONTEND_.md` after each completed step
+
+## Current Architecture
+
+Rently is a modular monolith with three app packages and no root `package.json`.
+
+### Backend
+
+- Path: `backend`
+- Stack: Node.js, Express, TypeScript, Prisma, MySQL/MariaDB, Zod
+- Shape: route -> controller -> service -> repository, with DTO/mappers and runtime validation
+- Scripts:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm run build`
+  - `npm run test:booking`
+  - `npm run test:payment`
+  - `npm run test:rbac`
+  - `npm run test:reporting`
+  - `npm run check`
+
+### Dashboard
+
+- Path: `dashboard`
+- Stack: React, TypeScript, Vite, React Query, Zustand, Tailwind CSS
+- Shape: feature folders, centralized API layer, centralized query keys in `dashboard/src/features/config/adminKeys.ts`
+- Scripts:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm run build`
+  - `npm run test:dashboard-health`
+  - `npm run check`
+
+### Frontend
+
+- Path: `frontend`
+- Stack: React, TypeScript, Vite, React Query, Zustand, Tailwind CSS
+- Shape: feature folders, centralized API layer, tenant/property-aware public query keys in `frontend/src/configs/publicQueryKeys.ts`
+- Scripts:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm run build`
+  - `npm run check`
+
+## Current Health Summary
+
+Overall status: good foundation, but not yet production-clean.
+
+The backend already has strong security and correctness guardrails: Zod env parsing, Helmet, CORS allowlist validation, request body limits, public/auth rate limits, centralized error handling, Prisma error masking, DTO/mapping layers, property scoping helpers, and focused backend tests for booking, payment, RBAC, and reporting.
+
+The dashboard and frontend already use modern React patterns, centralized Axios instances, React Query, typed config, reusable base components, and deterministic query-key helpers. The main risk is not missing framework structure; it is large page-level components that own too much rendering and action state.
+
+## Production Strengths
+
+- Backend env validation blocks unsafe production CORS origins and requires production S3 storage configuration.
+- Backend public booking/payment access has been hardened so booking details and anonymous manual payments require owner auth or matching checkout token.
+- Public availability ignores resolved/cancelled maintenance blocks.
+- Booking totals, pricing snapshots, refunds, folio charges, lifecycle state, and billing documents remain server-owned.
+- Dashboard query keys are centralized through `ADMIN_KEYS`.
+- Frontend public query keys include tenant/property scope and split authenticated booking access from checkout-token access.
+- Backend tests exist for public booking, public payment, dashboard RBAC, and reporting analytics.
+- Dashboard has a targeted pricing coverage test.
+- Shared UI/input building blocks exist in both dashboard and frontend.
+
+## Current Gaps
+
+### Backend
+
+- Public availability service is still large and complex: `backend/src/modules/public/availability/availability.service.ts` is 1,492 lines.
+- Public booking service remains large: `backend/src/modules/public/bookings/bookings.service.ts` is 1,199 lines.
+- Dashboard booking helper extraction improved the main service, but some helper files are now large, especially `bookings.assignment.ts` at 1,111 lines.
+- Billing service is close to the warning threshold at 732 lines.
+- There is no broad automated coverage for every dashboard/frontend workflow that depends on booking/payment/refund behavior.
+
+### Dashboard
+
+- `BookingDetailsPage.tsx` is still the highest UI risk at 1,847 lines.
+- `OperationsPage.tsx` is 1,123 lines and mixes summary, cashier, activity, filters, and layout.
+- Admin pages are too large: `SystemGuidePage.tsx` 1,583 lines, `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, `RoomBoardPage.tsx` 703 lines.
+- Dashboard lacks focused component tests for booking/payment/refund states.
+- Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
+
+### Frontend
+
+- Guest booking detail page is large: `BookingDetailPage.tsx` is 1,036 lines.
+- Guest payment process page is 922 lines and still uses a mock/sandbox card and UPI flow. This must be replaced by a real provider checkout or clearly gated from production.
+- Guest spaces list page is 884 lines and mixes filters, availability query, result rendering, empty states, and mobile layout.
+- Frontend lacks focused component tests for checkout, payment, booking detail, refund/cancellation, and availability states.
+
+## Large File Inventory
+
+### Over 1000 Lines
+
+- `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 1,847
+- `dashboard/src/pages/admin/SystemGuidePage.tsx`: 1,583
+- `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
+- `backend/src/modules/public/availability/availability.service.ts`: 1,492
+- `backend/src/modules/public/bookings/bookings.service.ts`: 1,199
+- `dashboard/src/features/operations/components/OperationsPage.tsx`: 1,123
+- `backend/src/modules/bookings/bookings.assignment.ts`: 1,111
+- `frontend/src/pages/guest/BookingDetailPage.tsx`: 1,036
+
+### Warning Zone
+
+- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx`: 922
+- `frontend/src/pages/guest/SpacesListPage.tsx`: 884
+- `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
+- `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
+- `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
+- `backend/src/modules/billing/billing.service.ts`: 732
+- `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
+
+## Improvement Order
+
+Work step by step. Do not attempt all improvements in one pass.
+
+1. Dashboard `BookingDetailsPage.tsx`
+   - Highest UI bug risk and largest file.
+   - Pure action/display helpers and the booking action modal have been extracted.
+   - Continue with presentational panels and action-state hooks.
+   - Keep API calls, route, query keys, and visible workflow unchanged.
+
+2. Frontend `BookingPaymentProcessPage.tsx`
+   - Production readiness risk because it exposes a mock/sandbox card and UPI flow.
+   - First gate the mock flow away from production or document an explicit provider integration boundary.
+   - Then extract payment method form, payment summary, terminal state, and mutation helpers.
+
+3. Backend public availability
+   - Extract option generation, capacity matching, conflict checks, and DTO mapping.
+   - Preserve option IDs, response shape, pricing rules, and maintenance behavior.
+
+4. Dashboard `OperationsPage.tsx`
+   - Extract summary cards, cashier by method, employee history, booking activity tables, and filters.
+   - Preserve scroll behavior and current-property refetch behavior.
+
+5. Frontend `BookingDetailPage.tsx` and `SpacesListPage.tsx`
+   - Extract booking status panels, billing/refund panels, availability filters, result cards, and empty/error states.
+   - Preserve checkout-token behavior and public query keys.
+
+6. Backend public booking and billing services
+   - Continue extracting calculation, mapping, lifecycle, document, and access helpers.
+   - Keep pricing/payment/billing truth server-owned.
+
+7. Dashboard admin pages
+   - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
+
+## Reusable UI Direction
+
+Create reusable components only where the same shape appears more than once or where a large page has clear panel boundaries.
+
+Good candidates:
+
+- `PageHeader` / `PageToolbar`
+- `FilterBar`
+- `MetricCard`
+- `StatusPanel`
+- `ActionFooter`
+- `ConfirmActionModal`
+- `PaymentSummary`
+- `BookingSummary`
+- `BillingDocumentsPanel`
+- `RefundRequestPanel`
+- `EmptyState`
+- `InlineError`
+- `LoadingSection`
+- `ResponsiveTabs` or `SegmentedControl`
+
+Avoid:
+
+- generic mega-components that need many feature-specific props
+- moving business rules into UI components
+- changing DTOs or query keys just to make components easier
+- cross-package shared UI unless repeated duplication becomes a real maintenance problem
+
+## Verification Policy
+
+Docs-only changes: no code checks required.
+
+Backend-only changes:
+
+- start with targeted backend test for the touched module
+- run `npm run typecheck`
+- add `npm run lint` or `npm run build` only when exports, config, schema, or shared contracts change
+
+Dashboard-only changes:
+
+- run `npm run typecheck`
+- run `npm run lint`
+- run `npm run build` when route exports, shared API types, or route-level imports change
+
+Frontend-only changes:
+
+- run `npm run typecheck`
+- run `npm run lint`
+- run `npm run build` when route-level imports, config, or shared API behavior changes
+
+Shared booking, pricing, payment, billing, auth, tenant, property scoping, or security changes:
+
+- run focused backend tests first
+- run affected app typecheck/lint
+- run broader checks only when the contract truly crosses apps
+
+## Live Progress Log
+
+### 2026-07-10
+
+- Dashboard `BookingDetailsPage.tsx` first slice completed:
+  - added `dashboard/src/features/operations/bookingActionLabels.ts`
+  - added `dashboard/src/features/operations/bookingDisplay.ts`
+  - reduced `BookingDetailsPage.tsx` from 2,585 to 2,382 lines
+  - kept routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `BookingDetailsPage.tsx` action modal slice completed:
+  - added `dashboard/src/features/operations/components/BookingActionModal.tsx`
+  - moved the booking action modal, room assignment picker, and room-move pricing preview out of the page
+  - reduced `BookingDetailsPage.tsx` from 2,382 to 1,847 lines
+  - kept action state, submit handlers, routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Removed stale `APP_HEALTH.md` and `REFACTOR_PLAN.md`.
+- Created fresh system tracker and split improvement trackers:
+  - `SYSTEM.md`
+  - `IMPROVE_BACKEND.md`
+  - `IMPROVE_DASHBOARD_.md`
+  - `IMPROVE_FRONTEND_.md`
+- Current status was based on targeted code inspection and current line counts.
+- No code behavior changed.
+- No checks were run because this was a docs-only update.
