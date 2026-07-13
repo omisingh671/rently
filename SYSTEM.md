@@ -81,16 +81,16 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Backend
 
 - Public availability service remains large at 1,284 lines, but capacity/allocation, inventory conflicts, space validation, internal option types, and public DTO presentation now have focused modules. Pricing enrichment and option-generation orchestration remain together intentionally.
-- Public booking service remains large at 1,164 lines after extracting existing-booking checkout quote reconstruction into `bookings.checkout-quote.ts`.
+- Public booking service remains large at 1,126 lines after extracting checkout quote reconstruction and bounded transaction-retry mechanics into focused helpers.
 - Dashboard booking helper extraction improved the main service, but some helper files are now large, especially `bookings.assignment.ts` at 1,111 lines.
-- Billing service is close to the warning threshold at 732 lines.
+- Billing service is reduced to 645 lines after extracting pure document snapshot construction into `billing.snapshots.ts`.
 - There is no broad automated coverage for every dashboard/frontend workflow that depends on booking/payment/refund behavior.
 
 ### Dashboard
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
 - `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
-- Admin pages are too large: `SystemGuidePage.tsx` 1,583 lines, `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, `RoomBoardPage.tsx` 703 lines.
+- Remaining admin pages are too large: `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, and `RoomBoardPage.tsx` 703 lines. `SystemGuidePage.tsx` is now a 91-line tab and layout shell backed by seven page-local static sections.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
 
@@ -105,10 +105,9 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Over 1000 Lines
 
-- `dashboard/src/pages/admin/SystemGuidePage.tsx`: 1,583
 - `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
 - `backend/src/modules/public/availability/availability.service.ts`: 1,284
-- `backend/src/modules/public/bookings/bookings.service.ts`: 1,164
+- `backend/src/modules/public/bookings/bookings.service.ts`: 1,126
 - `backend/src/modules/bookings/bookings.assignment.ts`: 1,111
 
 ### Warning Zone
@@ -117,7 +116,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
-- `backend/src/modules/billing/billing.service.ts`: 732
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
 
 ## Improvement Order
@@ -158,10 +156,15 @@ Work step by step. Do not attempt all improvements in one pass.
 
 6. Backend public booking and billing services
    - Completed for public booking: existing-booking checkout quote reconstruction is extracted into `bookings.checkout-quote.ts` while transaction and coupon-update ownership remains in the service.
-   - Access and DTO presentation already have focused helper modules; continue by reviewing the remaining embedded retry loops without duplicating those boundaries.
+   - Completed for public booking: bounded Prisma concurrency retry mechanics are centralized in `bookings.lifecycle.ts` while transaction callbacks and caller-specific exhausted-error behavior remain service-owned.
+   - Completed for billing: pure document snapshot and folio-total construction is extracted into `billing.snapshots.ts` while numbering, transactions, idempotency, access, DTO mapping, and PDF rendering remain in their current owners.
+   - Public booking and billing are complete for the current scoped extraction; continue with dashboard admin pages.
    - Keep pricing/payment/billing truth server-owned.
 
 7. Dashboard admin pages
+   - Completed for System Guide: all seven static tabs are extracted into page-local section components.
+   - `SystemGuidePage.tsx` retains tab configuration, active state, navigation, layout, and route ownership at 91 lines.
+   - Continue with `PricingPage.tsx`, then the remaining admin pages, while preserving existing admin-table architecture.
    - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
 
 ## Reusable UI Direction
@@ -224,6 +227,21 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Dashboard System Guide static-page extraction completed:
+  - added seven page-local components for Overview, Tenancy, Inventory, Pricing, Leads, Operations, and Permissions
+  - reduced `SystemGuidePage.tsx` from 1,583 to 91 lines
+  - preserved tab configuration, active-tab state, navigation, layout, route ownership, styling, and visible guide content
+  - verification passed: dashboard typecheck and targeted ESLint
+- Backend billing snapshot extraction completed:
+  - added `billing.snapshots.ts` for guest, property, tenant, booking, price, payment, line-item, and folio-total snapshot construction
+  - reduced `billing.service.ts` from 732 to 645 lines
+  - preserved document numbering, transactions, idempotent creation, frozen snapshots, access checks, DTOs, and PDF rendering
+  - verification passed: backend `npm run test:payment` (57 passing), `npm run typecheck`, and `npm run lint`
+- Backend public-booking transaction retry extraction completed:
+  - added `runBookingTransactionWithRetry` to `bookings.lifecycle.ts`
+  - reduced `bookings.service.ts` from 1,164 to 1,126 lines
+  - preserved transaction callbacks, three-attempt retry behavior, retryable Prisma codes, creation conflict mapping, and checkout-update terminal behavior
+  - verification passed: backend `npm run typecheck`, `npm run test:booking` (45 passing), and `npm run lint`
 - Dashboard `OperationsPage.tsx` extraction completed:
   - added `OperationsImmediateAttentionPanel.tsx`, `OperationsFilters.tsx`, and `OperationsRecordsTable.tsx`
   - reduced `OperationsPage.tsx` from 831 to 314 lines

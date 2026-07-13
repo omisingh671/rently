@@ -62,9 +62,8 @@ import {
 import {
   generateBookingRef,
   getNights,
-  isRetryableBookingTransactionError,
-  maxBookingTransactionAttempts,
   releaseBookingLock,
+  runBookingTransactionWithRetry,
 } from "./bookings.lifecycle.js";
 import { resolveBookingGuestSnapshot } from "./bookings.guests.js";
 import { calculateExistingBookingCheckoutQuote } from "./bookings.checkout-quote.js";
@@ -94,8 +93,8 @@ export const createBookingForUser = async (
     getRequiredPropertyId(scope.propertyScope, input.propertyId);
   const nights = getNights(input.from, input.to);
 
-  for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
-    try {
+  return runBookingTransactionWithRetry(
+    async () => {
       const booking = await repo.runSerializableTransaction(async (tx) => {
         const createdAt = now();
         const bookingRef = await generateBookingRef(createdAt, tx);
@@ -578,30 +577,15 @@ export const createBookingForUser = async (
       });
 
       return mapBooking(booking);
-    } catch (error) {
-      if (
-        attempt < maxBookingTransactionAttempts &&
-        isRetryableBookingTransactionError(error)
-      ) {
-        continue;
-      }
-
-      if (isRetryableBookingTransactionError(error)) {
-        throw new HttpError(
+    },
+    {
+      mapExhaustedError: () =>
+        new HttpError(
           409,
           "BOOKING_CONFLICT",
           "Selected space is no longer available for these dates",
-        );
-      }
-
-      throw error;
-    }
-  }
-
-  throw new HttpError(
-    409,
-    "BOOKING_CONFLICT",
-    "Selected space is no longer available for these dates",
+        ),
+    },
   );
 };
 
@@ -907,80 +891,58 @@ export const updateBookingCheckout = async (
   bookingId: string,
   input: UpdatePublicBookingCheckoutInput,
 ): Promise<PublicBookingDTO> => {
-  for (let attempt = 1; attempt <= maxBookingTransactionAttempts; attempt += 1) {
-    try {
-      return await repo.runSerializableTransaction(async (tx) => {
-        const booking = await repo.findBookingById(bookingId, tx);
-        if (!booking) {
-          throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
-        }
-
-        await assertBookingCheckoutEditable(
-          booking,
-          userId,
-          input.editToken,
-          tx,
-        );
-
-        const quote = await calculateExistingBookingCheckoutQuote(
-          booking,
-          input.couponCode === undefined
-            ? (booking.coupon?.code ?? null)
-            : input.couponCode,
-          tx,
-        );
-        const currentCouponId = booking.couponId ?? undefined;
-        const nextCouponId = quote.couponId;
-
-        if (currentCouponId !== undefined && currentCouponId !== nextCouponId) {
-          await repo.decrementCouponUsage(currentCouponId, tx);
-        }
-
-        if (nextCouponId !== undefined && nextCouponId !== currentCouponId) {
-          await repo.incrementCouponUsage(nextCouponId, tx);
-        }
-
-        const updatedBooking = await repo.updateBookingById(
-          booking.id,
-          {
-            guestNameSnapshot: input.guestDetails.name,
-            guestEmailSnapshot: input.guestDetails.email,
-            guestContactSnapshot: input.guestDetails.contactNumber,
-            subtotalAmount: quote.subtotalAmount,
-            discountAmount: quote.discountAmount,
-            taxableAmount: quote.taxableAmount,
-            taxAmount: quote.taxAmount,
-            taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
-            totalAmount: quote.totalAmount,
-            upfrontAmount: quote.upfrontAmount,
-            ...(nextCouponId !== currentCouponId && {
-              coupon:
-                nextCouponId !== undefined
-                  ? { connect: { id: nextCouponId } }
-                  : { disconnect: true },
-            }),
-          },
-          tx,
-        );
-
-        return mapBooking(updatedBooking);
-      });
-    } catch (error) {
-      if (
-        attempt < maxBookingTransactionAttempts &&
-        isRetryableBookingTransactionError(error)
-      ) {
-        continue;
+  return runBookingTransactionWithRetry(() =>
+    repo.runSerializableTransaction(async (tx) => {
+      const booking = await repo.findBookingById(bookingId, tx);
+      if (!booking) {
+        throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
       }
 
-      throw error;
-    }
-  }
+      await assertBookingCheckoutEditable(booking, userId, input.editToken, tx);
 
-  throw new HttpError(
-    409,
-    "BOOKING_CONFLICT",
-    "Selected space is no longer available for these dates",
+      const quote = await calculateExistingBookingCheckoutQuote(
+        booking,
+        input.couponCode === undefined
+          ? (booking.coupon?.code ?? null)
+          : input.couponCode,
+        tx,
+      );
+      const currentCouponId = booking.couponId ?? undefined;
+      const nextCouponId = quote.couponId;
+
+      if (currentCouponId !== undefined && currentCouponId !== nextCouponId) {
+        await repo.decrementCouponUsage(currentCouponId, tx);
+      }
+
+      if (nextCouponId !== undefined && nextCouponId !== currentCouponId) {
+        await repo.incrementCouponUsage(nextCouponId, tx);
+      }
+
+      const updatedBooking = await repo.updateBookingById(
+        booking.id,
+        {
+          guestNameSnapshot: input.guestDetails.name,
+          guestEmailSnapshot: input.guestDetails.email,
+          guestContactSnapshot: input.guestDetails.contactNumber,
+          subtotalAmount: quote.subtotalAmount,
+          discountAmount: quote.discountAmount,
+          taxableAmount: quote.taxableAmount,
+          taxAmount: quote.taxAmount,
+          taxBreakdown: toTaxBreakdownJson(quote.taxBreakdown),
+          totalAmount: quote.totalAmount,
+          upfrontAmount: quote.upfrontAmount,
+          ...(nextCouponId !== currentCouponId && {
+            coupon:
+              nextCouponId !== undefined
+                ? { connect: { id: nextCouponId } }
+                : { disconnect: true },
+          }),
+        },
+        tx,
+      );
+
+      return mapBooking(updatedBooking);
+    }),
   );
 };
 

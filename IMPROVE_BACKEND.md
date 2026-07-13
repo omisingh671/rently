@@ -70,7 +70,7 @@ Status: completed for the scoped behavior-preserving extraction. Capacity/alloca
 
 Target:
 
-- `backend/src/modules/public/bookings/bookings.service.ts` - 1,164 lines
+- `backend/src/modules/public/bookings/bookings.service.ts` - 1,126 lines
 - `backend/src/modules/public/bookings/bookings.checkout-quote.ts` - 40 lines
 
 Why:
@@ -81,7 +81,7 @@ Why:
 Plan:
 
 - Keep orchestration in the service.
-- Review the remaining embedded transaction/retry loops without changing transaction boundaries.
+- Completed: moved the shared retry mechanics into `bookings.lifecycle.ts` while keeping transaction callbacks and caller-specific exhausted-error behavior in the service.
 - Completed: extracted existing-booking checkout quote reconstruction into `bookings.checkout-quote.ts`.
 - Checkout-token and owner access already have a focused owner in `bookings.access.ts`; do not duplicate it.
 - Public booking DTO presentation already has a focused owner in `bookings.presenter.ts`; do not duplicate it.
@@ -101,7 +101,7 @@ Verification:
 - `backend`: `npm run test:payment` if payment/billing access is touched
 - `backend`: `npm run typecheck`
 
-Status: in progress. Existing-booking checkout quote reconstruction now owns currency, policy, nights, booking-item reconstruction, coupon normalization, and quote calculation while receiving the existing transaction client. Access checks, coupon fallback choice, coupon usage updates, retry loops, transactions, and DTO mapping remain service-owned. Verified with `npm run typecheck`, `npm run test:booking` (45 passing), and `npm run lint`.
+Status: completed for the scoped behavior-preserving extraction. Existing-booking checkout quote reconstruction now owns currency, policy, nights, booking-item reconstruction, coupon normalization, and quote calculation while receiving the existing transaction client. `bookings.lifecycle.ts` now owns the bounded Prisma concurrency retry mechanics. The service retains creation and checkout-update orchestration, transaction callbacks, access checks, coupon fallback and usage updates, caller-specific exhausted-error mapping, and DTO mapping. Verified with `npm run typecheck`, `npm run test:booking` (45 passing), and `npm run lint`.
 
 ## Priority 3: Dashboard Booking Helpers
 
@@ -143,7 +143,8 @@ Status: monitor; extract only when touching the related flow.
 
 Target:
 
-- `backend/src/modules/billing/billing.service.ts` - 732 lines
+- `backend/src/modules/billing/billing.service.ts` - 645 lines
+- `backend/src/modules/billing/billing.snapshots.ts` - 101 lines
 
 Why:
 
@@ -152,9 +153,9 @@ Why:
 
 Plan:
 
-- Extract billing document numbering helpers.
-- Extract snapshot mapping helpers.
-- Extract public access checks if duplicated.
+- Reviewed: document numbering already has a focused transactional owner in `billing.repository.ts`; do not duplicate it.
+- Completed: extracted pure snapshot construction and folio-total calculation into `billing.snapshots.ts`.
+- Reviewed: the public booking access check is not duplicated; keep it service-owned.
 - Extract document rendering orchestration if it grows.
 
 Do not change:
@@ -169,7 +170,7 @@ Verification:
 - `backend`: `npm run test:payment`
 - `backend`: `npm run typecheck`
 
-Status: not started.
+Status: completed for the current scoped extraction. Pure guest, property, tenant, booking, price, payment, line-item, and folio-total snapshot construction now has a focused owner. The service retains document creation orchestration, retries, numbering calls, idempotency recovery, access checks, DTO mapping, settings, and PDF rendering. Invoice, receipt, debit-note, frozen-snapshot, access, and numbering behavior are preserved. Verified with `npm run test:payment` (57 passing), `npm run typecheck`, and `npm run lint`.
 
 ## Backend Production Hardening Backlog
 

@@ -1,7 +1,11 @@
 import { Prisma } from "@/generated/prisma/client.js";
 import * as repo from "./bookings.repository.js";
 
-export const maxBookingTransactionAttempts = 3;
+const maxBookingTransactionAttempts = 3;
+
+interface BookingTransactionRetryOptions {
+  mapExhaustedError?: (error: unknown) => Error;
+}
 
 export const getNights = (checkIn: Date, checkOut: Date) => {
   const nights = Math.ceil(
@@ -11,9 +15,32 @@ export const getNights = (checkIn: Date, checkOut: Date) => {
   return Math.max(1, nights);
 };
 
-export const isRetryableBookingTransactionError = (error: unknown) =>
+const isRetryableBookingTransactionError = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError &&
   (error.code === "P2034" || error.code === "P2002");
+
+export const runBookingTransactionWithRetry = async <Result>(
+  operation: () => Promise<Result>,
+  options: BookingTransactionRetryOptions = {},
+): Promise<Result> => {
+  let attempt = 1;
+
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isRetryableBookingTransactionError(error)) {
+        throw error;
+      }
+
+      if (attempt >= maxBookingTransactionAttempts) {
+        throw options.mapExhaustedError?.(error) ?? error;
+      }
+
+      attempt += 1;
+    }
+  }
+};
 
 const getBookingYearRange = (date: Date) => {
   const year = date.getUTCFullYear();

@@ -121,7 +121,14 @@ Last verification:
 
 Targets:
 
-- `dashboard/src/pages/admin/SystemGuidePage.tsx` - 1,583 lines
+- `dashboard/src/pages/admin/SystemGuidePage.tsx` - 91 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuideOverviewSection.tsx` - 150 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuideTenancySection.tsx` - 141 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuideInventorySection.tsx` - 135 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuidePricingSection.tsx` - 440 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuideLeadsSection.tsx` - 107 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuideOperationsSection.tsx` - 434 lines
+- `dashboard/src/pages/admin/system-guide/SystemGuidePermissionsSection.tsx` - 157 lines
 - `dashboard/src/pages/admin/PricingPage.tsx` - 1,515 lines
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx` - 872 lines
 - `dashboard/src/pages/admin/UserManagementPage.tsx` - 859 lines
@@ -135,6 +142,7 @@ Why:
 Plan:
 
 - Split each page into page-local sections before creating shared abstractions.
+- Completed for System Guide: extracted all seven static tabs into page-local section components under `pages/admin/system-guide`.
 - Preserve existing admin-table architecture.
 - Use existing components first:
   - `AdminTable`
@@ -162,7 +170,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if shared route/page imports change
 
-Status: not started.
+Status: in progress for the Admin Pages priority. System Guide extraction was completed on 2026-07-13: its page now owns only tab configuration, active state, navigation, layout, and route ownership while seven page-local components own the static guide content. Continue with `PricingPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
 
 ## Reusable Dashboard UI Candidates
 
