@@ -79,7 +79,7 @@ Last verification:
 
 Target:
 
-- `dashboard/src/features/operations/components/OperationsPage.tsx` - 1,123 lines
+- `dashboard/src/features/operations/components/OperationsPage.tsx` - 831 lines
 
 Why:
 
@@ -88,12 +88,13 @@ Why:
 
 Plan:
 
-- Extract operations summary cards.
-- Extract cashier by method section.
-- Extract cashier employee history section.
-- Extract booking activity tables.
-- Extract date/property filters.
-- Preserve the current overflow boundary for nested payment history.
+- Completed:
+  - extracted operations summary cards into `dashboard/src/features/operations/components/OperationsSummaryCards.tsx`
+  - extracted cashier totals, cashier by employee rows, and nested payment history into `dashboard/src/features/operations/components/OperationsCashierPanel.tsx`
+- Remaining:
+  - Extract booking activity tables.
+  - Extract date/property filters.
+  - Preserve the current overflow boundary for nested payment history.
 
 Do not change:
 
@@ -108,7 +109,13 @@ Verification:
 - `dashboard`: `npm run typecheck`
 - `dashboard`: `npm run lint`
 
-Status: not started.
+Status: in progress. Operations summary cards and cashier panel extraction completed on 2026-07-10.
+
+Last verification:
+
+- `dashboard`: `npm run typecheck` - passed
+- `dashboard`: `npm run lint` - passed
+- `dashboard`: `npm run build` - skipped because route exports and runtime contracts did not change
 
 ## Priority 3: Admin Pages
 

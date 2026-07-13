@@ -89,7 +89,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Dashboard
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
-- `OperationsPage.tsx` is 1,123 lines and mixes summary, cashier, activity, filters, and layout.
+- `OperationsPage.tsx` is improved to 831 lines and still mixes activity tables, filters, and layout.
 - Admin pages are too large: `SystemGuidePage.tsx` 1,583 lines, `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, `RoomBoardPage.tsx` 703 lines.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
@@ -109,7 +109,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 - `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
 - `backend/src/modules/public/availability/availability.service.ts`: 1,492
 - `backend/src/modules/public/bookings/bookings.service.ts`: 1,199
-- `dashboard/src/features/operations/components/OperationsPage.tsx`: 1,123
 - `backend/src/modules/bookings/bookings.assignment.ts`: 1,111
 - `frontend/src/pages/guest/BookingDetailPage.tsx`: 1,036
 
@@ -120,6 +119,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 - `frontend/src/pages/guest/SpacesListPage.tsx`: 884
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
+- `dashboard/src/features/operations/components/OperationsPage.tsx`: 831
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
 - `backend/src/modules/billing/billing.service.ts`: 732
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
@@ -134,18 +134,19 @@ Work step by step. Do not attempt all improvements in one pass.
    - Continue only with meaningful submit-handler or refund-state cleanup; otherwise move to the next high-risk screen.
    - Keep API calls, route, query keys, and visible workflow unchanged.
 
-2. Frontend `BookingPaymentProcessPage.tsx`
+2. Dashboard `OperationsPage.tsx`
+   - Operations summary cards and cashier panel have been extracted.
+   - Continue with booking activity tables or filters only if the extraction stays low risk.
+   - Preserve current-property refetch behavior and existing table/filter semantics.
+
+3. Frontend `BookingPaymentProcessPage.tsx`
    - Production readiness risk because it exposes a mock/sandbox card and UPI flow.
    - First gate the mock flow away from production or document an explicit provider integration boundary.
    - Then extract payment method form, payment summary, terminal state, and mutation helpers.
 
-3. Backend public availability
+4. Backend public availability
    - Extract option generation, capacity matching, conflict checks, and DTO mapping.
    - Preserve option IDs, response shape, pricing rules, and maintenance behavior.
-
-4. Dashboard `OperationsPage.tsx`
-   - Extract summary cards, cashier by method, employee history, booking activity tables, and filters.
-   - Preserve scroll behavior and current-property refetch behavior.
 
 5. Frontend `BookingDetailPage.tsx` and `SpacesListPage.tsx`
    - Extract booking status panels, billing/refund panels, availability filters, result cards, and empty/error states.
@@ -265,6 +266,18 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
   - moved booking action/modal form state, action open/close defaults, and room selection toggling out of the page
   - reduced `BookingDetailsPage.tsx` from 1,143 to 987 lines
   - kept submit handlers, routes, query keys, API calls, mutations, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `OperationsPage.tsx` summary cards slice completed:
+  - added `dashboard/src/features/operations/components/OperationsSummaryCards.tsx`
+  - moved operations KPI card construction and rendering out of the page
+  - reduced `OperationsPage.tsx` from 1,123 to 1,027 lines
+  - kept business date, collapse state, cashier totals, `Expected Cash` placement, nested payment-history scrolling, query keys, and visible behavior unchanged
+  - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
+- Dashboard `OperationsPage.tsx` cashier panel slice completed:
+  - added `dashboard/src/features/operations/components/OperationsCashierPanel.tsx`
+  - moved cashier totals, cashier by employee rows, and nested payment history out of the page
+  - reduced `OperationsPage.tsx` from 1,027 to 831 lines
+  - kept `Expected Cash` placement, nested payment-history scrolling, business date, collapse state, query keys, and visible behavior unchanged
   - verification passed: dashboard `npm run typecheck`, dashboard `npm run lint`
 - Removed stale `APP_HEALTH.md` and `REFACTOR_PLAN.md`.
 - Created fresh system tracker and split improvement trackers:
