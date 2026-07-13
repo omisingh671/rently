@@ -137,7 +137,9 @@ Targets:
 - `dashboard/src/features/pricing/components/PricingCouponsSection.tsx` - 265 lines
 - `dashboard/src/features/pricing/components/PricingFormHeader.tsx` - 29 lines
 - `dashboard/src/features/pricing/components/pricingSectionStyles.ts` - 14 lines
-- `dashboard/src/pages/admin/WalkInBookingPage.tsx` - 872 lines
+- `dashboard/src/pages/admin/WalkInBookingPage.tsx` - 475 lines
+- `dashboard/src/features/operations/components/WalkInBookingFormFields.tsx` - 184 lines
+- `dashboard/src/features/operations/components/WalkInBookingAvailabilityList.tsx` - 256 lines
 - `dashboard/src/pages/admin/UserManagementPage.tsx` - 859 lines
 - `dashboard/src/pages/admin/RoomBoardPage.tsx` - 703 lines
 
@@ -155,6 +157,8 @@ Plan:
 - Completed for Pricing: extracted the Price Rules/Rates form and table presentation into `PricingRatesSection.tsx` while retaining form state, target resets, edit mapping, payload construction, mutations, and deletion ownership in the page.
 - Completed for Pricing: extracted the Taxes form and table presentation into `PricingTaxesSection.tsx` while retaining calculation-mode resets, validation, payload construction, edit mapping, submit/activation mutations, and invalidation in the page.
 - Completed for Pricing: extracted the Coupons form and table presentation into `PricingCouponsSection.tsx` while retaining validation, payload construction, edit mapping, submit/activation mutations, and invalidation in the page.
+- Completed for Walk-In Booking: extracted the controlled guest and stay field groups plus their form/error types into `WalkInBookingFormFields.tsx` while retaining form state, validation derivation, availability resets, mutations, and submission in the page.
+- Completed for Walk-In Booking: extracted availability loading/empty states and option-row presentation into `WalkInBookingAvailabilityList.tsx` while retaining availability data, selection/capacity logic, errors, mutations, and submission in the page.
 - Preserve existing admin-table architecture.
 - Use existing components first:
   - `AdminTable`
@@ -182,7 +186,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if shared route/page imports change
 
-Status: in progress for the Admin Pages priority. System Guide and Pricing scoped extractions are complete. `PricingPage.tsx` is now a 468-line orchestration container retaining form state, data hooks, validation, payload construction, submit/delete/activation mutations, target and calculation-mode resets, edit/cancel decisions, query invalidation, property/tab selection, error presentation, and section wiring. Continue with `WalkInBookingPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
+Status: in progress for the Admin Pages priority. System Guide, Pricing, and Walk-In Booking scoped extractions are complete. `WalkInBookingPage.tsx` is now a 475-line orchestration container retaining form state, validation derivation, availability data and resets, selection/capacity logic, mutations, errors, and submission. Focused components own the controlled guest/stay fields and availability option presentation. Continue with `UserManagementPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
 
 ## Reusable Dashboard UI Candidates
 

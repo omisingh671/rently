@@ -90,7 +90,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
 - `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
-- Remaining admin pages are large: `WalkInBookingPage.tsx` is 872 lines, `UserManagementPage.tsx` is 859 lines, and `RoomBoardPage.tsx` is 703 lines. `PricingPage.tsx` is now a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
+- Remaining large admin pages include `UserManagementPage.tsx` at 859 lines and `RoomBoardPage.tsx` at 703 lines. `WalkInBookingPage.tsx` is now a 475-line orchestration container backed by focused form-field and availability-list components. `PricingPage.tsx` is a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
 
@@ -112,7 +112,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Warning Zone
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
-- `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
@@ -168,7 +167,10 @@ Work step by step. Do not attempt all improvements in one pass.
    - Completed for Pricing: Price Rules/Rates form and table presentation is extracted into `PricingRatesSection.tsx`; state, target resets, edit mapping, payload construction, mutations, and deletion remain page-owned.
    - Completed for Pricing: Taxes form/table presentation is extracted into `PricingTaxesSection.tsx`; state, calculation-mode resets, validation, payload construction, edit mapping, mutations, and invalidation remain page-owned.
    - Completed for Pricing: Coupons form/table presentation is extracted into `PricingCouponsSection.tsx`; state, validation, payload construction, edit mapping, mutations, and invalidation remain page-owned.
-   - Pricing is complete for the current scoped extraction at 468 lines; continue with `WalkInBookingPage.tsx` while preserving validation, mutation invalidation, and existing table behavior.
+   - Pricing is complete for the current scoped extraction at 468 lines.
+   - Completed for Walk-In Booking: guest/stay controlled field groups and their form/error types are extracted into `WalkInBookingFormFields.tsx`; state, validation derivation, availability resets, mutations, and submission remain page-owned.
+   - Completed for Walk-In Booking: availability loading/empty states and option-row presentation are extracted into `WalkInBookingAvailabilityList.tsx`; availability data, selection/capacity logic, errors, mutations, and submission remain page-owned.
+   - Walk-In Booking is complete for the current scoped extraction at 475 lines; continue with `UserManagementPage.tsx`.
    - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
 
 ## Reusable UI Direction
@@ -231,6 +233,16 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Dashboard Walk-In Booking availability presentation extraction completed:
+  - added `WalkInBookingAvailabilityList.tsx`
+  - reduced `WalkInBookingPage.tsx` from 700 to 475 lines
+  - preserved availability loading/empty states, option cards, pricing/capacity display, selection callbacks, page-owned calculations, mutations, errors, and submission
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard Walk-In Booking guest/stay field extraction completed:
+  - added `WalkInBookingFormFields.tsx`
+  - reduced `WalkInBookingPage.tsx` from 872 to 700 lines
+  - preserved controlled-input behavior, validation display, form state, availability resets, mutations, and submission
+  - verification passed: dashboard typecheck and targeted ESLint
 - Dashboard Pricing Coupons extraction completed:
   - added `PricingCouponsSection.tsx`
   - reduced `PricingPage.tsx` from 703 to 468 lines
