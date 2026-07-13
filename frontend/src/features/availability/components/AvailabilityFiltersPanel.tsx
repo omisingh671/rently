@@ -51,14 +51,14 @@ export default function AvailabilityFiltersPanel({
   return (
     <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-end">
       <div
-        className={`grid flex-1 items-end gap-4 sm:grid-cols-2 ${
+        className={`grid grid-cols-2 flex-1 items-end gap-4 ${
           showCityFilter
             ? "lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_1.2fr_auto]"
             : "lg:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto]"
         }`}
       >
         {showCityFilter && (
-          <label className="block sm:col-span-2 lg:col-span-1">
+          <label className="col-span-2 block lg:col-span-1">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
               City
             </span>

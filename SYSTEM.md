@@ -98,7 +98,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - Guest booking detail page is reduced to 537 lines after extracting stay/guest, cancelled/no-show refund-state, payment-summary, billing-documents, and shared refund-status presentation.
 - Guest payment process page is reduced to 467 lines. Its mock card/UPI flow is explicitly development-only, and controlled form state, validation, payment method forms, summary, and terminal states are extracted; real provider integration remains a separate production enhancement.
-- Guest spaces list page is reduced to 488 lines after extracting controlled filters, responsive controls, non-success states, and pure option merge/group/sort/selection rules; it retains query, booking, layout, and successful-result orchestration.
+- Guest spaces list page is reduced to 488 lines after extracting controlled filters, responsive controls, non-success states, and pure option merge/group/sort/selection rules; it retains query, booking, layout, and successful-result orchestration. Grid-mode option cards use responsive `auto-fit`/`1fr` columns to fill the results-container width, while small-screen filters retain paired From/To and Guests/Comfort rows.
 - Frontend lacks focused component tests for checkout, payment, booking detail, refund/cancellation, and availability states.
 
 ## Large File Inventory
@@ -241,6 +241,15 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Frontend availability mobile-filter layout correction completed:
+  - City spans the full filter grid on small screens
+  - From/To and Guests/Comfort each remain in a two-field row
+  - preserves desktop grid sizing, filter values, clear behavior, and availability callbacks
+  - verification passed: frontend typecheck and targeted ESLint
+- Frontend availability grid-width correction completed:
+  - changed grid-mode option columns from fixed-width `auto-fill` tracks to responsive `auto-fit` `1fr` tracks
+  - preserves the 22rem minimum card width, card content, comfort selection, booking callbacks, and stack view
+  - verification passed: frontend typecheck and targeted ESLint
 - Dashboard scoped milestone verification completed:
   - final `BookingDetailsPage.tsx` submit/refund review found no worthwhile extraction beyond the existing presentation and state owners
   - full dashboard typecheck and lint passed

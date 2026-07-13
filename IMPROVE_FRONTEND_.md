@@ -156,7 +156,7 @@ Verification:
 - `frontend`: `npm run lint`
 - `backend`: `npm run test:booking` only if API assumptions are touched
 
-Status: completed for the scoped refactor. The page now owns URL parameters, geolocation, property scope, React state/memoization, deterministic query keys, query execution, booking/navigation, layout preference, and successful-result composition. Controlled filters, non-success states, and pure availability presentation rules have focused owners; existing grid/stack cards remain the result-card owners. Verified with `npm run typecheck` and targeted ESLint after each slice. Backend tests were skipped because API assumptions and availability parameters did not change.
+Status: completed for the scoped refactor. The page now owns URL parameters, geolocation, property scope, React state/memoization, deterministic query keys, query execution, booking/navigation, layout preference, and successful-result composition. Controlled filters, non-success states, and pure availability presentation rules have focused owners; existing grid/stack cards remain the result-card owners. Grid-mode columns use `auto-fit` plus `1fr` sizing so each row fills the available results-container width. On small screens, City remains full-width while From/To and Guests/Comfort each retain a two-field row. Verified with `npm run typecheck` and targeted ESLint after each slice. Backend tests were skipped because API assumptions and availability parameters did not change.
 
 ## Reusable Frontend UI Candidates
 
