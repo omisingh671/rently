@@ -82,7 +82,12 @@ Last verification:
 
 Target:
 
-- `frontend/src/pages/guest/BookingDetailPage.tsx` - 1,036 lines
+- `frontend/src/pages/guest/BookingDetailPage.tsx` - 537 lines
+- `frontend/src/features/bookings/components/BookingCancellationPanel.tsx` - 143 lines
+- `frontend/src/features/bookings/components/BookingPaymentSummaryPanel.tsx` - 214 lines
+- `frontend/src/features/bookings/components/BookingStaySummaryPanel.tsx` - 177 lines
+- `frontend/src/features/bookings/bookingDisplay.ts` - 36 lines
+- `frontend/src/features/billing/components/BookingBillingDocumentsPanel.tsx` - 74 lines
 
 Why:
 
@@ -91,12 +96,12 @@ Why:
 
 Plan:
 
-- Extract booking summary.
-- Extract payment summary.
-- Extract billing documents panel.
-- Extract cancellation/refund state panel.
-- Extract terminal state actions.
-- Extract display helpers into `bookingDisplay.ts` if repeated.
+- Completed: extracted stay, booked-item, and guest-information presentation into `BookingStaySummaryPanel.tsx`.
+- Completed: extracted payment breakdown and payment-state presentation into `BookingPaymentSummaryPanel.tsx`.
+- Completed: extracted billing-document loading, empty, error, and list presentation into `BookingBillingDocumentsPanel.tsx`.
+- Completed: extracted the cancelled/no-show refund-state panel into `BookingCancellationPanel.tsx`.
+- Keep terminal action buttons and refund/cancellation modals with their mutation orchestration; extracting them now would create a prop-heavy boundary without reducing workflow risk.
+- Completed: centralized the repeated cancellation/refund label helper in `bookingDisplay.ts` and reused it in the booking list and detail panel.
 - Consider `useBookingAccessToken` only if token parsing/navigation logic is duplicated.
 
 Do not change:
@@ -113,13 +118,14 @@ Verification:
 - `frontend`: `npm run lint`
 - `frontend`: `npm run build` if route imports or query hooks change
 
-Status: not started.
+Status: completed for the scoped presentation refactor. The page is now the query, derived-rule, navigation, mutation, error, and modal-orchestration owner. Stay/guest details, payment summary, cancellation/no-show state, billing documents, and repeated refund-status wording have focused presentation owners. Verified with `npm run typecheck` and targeted ESLint after each slice. Build was skipped because route configuration, query hooks, and API contracts did not change.
 
 ## Priority 3: Spaces List / Availability UI
 
 Target:
 
-- `frontend/src/pages/guest/SpacesListPage.tsx` - 884 lines
+- `frontend/src/pages/guest/SpacesListPage.tsx` - 731 lines
+- `frontend/src/features/availability/components/AvailabilityFiltersPanel.tsx` - 191 lines
 
 Why:
 
@@ -128,11 +134,11 @@ Why:
 
 Plan:
 
-- Extract search/filter controls.
-- Extract availability result cards.
-- Extract selected option details.
+- Completed: extracted controlled search/filter controls and their desktop/mobile button layouts into `AvailabilityFiltersPanel.tsx`.
+- Keep using the existing `OptionGridCard` and `OptionStackCard` result components; another card abstraction would duplicate their responsibility.
+- Keep selected-comfort derivation and option selection in the page until a smaller orchestration boundary is clear.
 - Extract empty/error/loading states.
-- Extract mobile filter layout only if it reduces repeated responsive markup.
+- Completed with the shared filter panel; desktop and mobile clear/check controls now share the same controlled props.
 
 Do not change:
 
@@ -148,7 +154,7 @@ Verification:
 - `frontend`: `npm run lint`
 - `backend`: `npm run test:booking` only if API assumptions are touched
 
-Status: not started.
+Status: in progress. URL parameters, geolocation city selection, property-specific mode, availability query/key, validation, refetch, and clear behavior remain page-owned. Verified with `npm run typecheck` and targeted ESLint. Backend tests were skipped because API assumptions and availability parameters did not change.
 
 ## Reusable Frontend UI Candidates
 

@@ -80,7 +80,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Backend
 
-- Public availability service is still large and complex: `backend/src/modules/public/availability/availability.service.ts` is 1,492 lines.
+- Public availability service remains large at 1,284 lines, but capacity/allocation, inventory conflicts, space validation, internal option types, and public DTO presentation now have focused modules. Pricing enrichment and option-generation orchestration remain together intentionally.
 - Public booking service remains large: `backend/src/modules/public/bookings/bookings.service.ts` is 1,199 lines.
 - Dashboard booking helper extraction improved the main service, but some helper files are now large, especially `bookings.assignment.ts` at 1,111 lines.
 - Billing service is close to the warning threshold at 732 lines.
@@ -96,9 +96,9 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Frontend
 
-- Guest booking detail page is large: `BookingDetailPage.tsx` is 1,036 lines.
+- Guest booking detail page is reduced to 537 lines after extracting stay/guest, cancelled/no-show refund-state, payment-summary, billing-documents, and shared refund-status presentation.
 - Guest payment process page is reduced to 467 lines. Its mock card/UPI flow is explicitly development-only, and controlled form state, validation, payment method forms, summary, and terminal states are extracted; real provider integration remains a separate production enhancement.
-- Guest spaces list page is 884 lines and mixes filters, availability query, result rendering, empty states, and mobile layout.
+- Guest spaces list page is reduced to 731 lines after extracting controlled availability filters and responsive clear/check controls; it still owns query orchestration, option grouping/selection, and result states.
 - Frontend lacks focused component tests for checkout, payment, booking detail, refund/cancellation, and availability states.
 
 ## Large File Inventory
@@ -107,19 +107,18 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - `dashboard/src/pages/admin/SystemGuidePage.tsx`: 1,583
 - `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
-- `backend/src/modules/public/availability/availability.service.ts`: 1,492
+- `backend/src/modules/public/availability/availability.service.ts`: 1,284
 - `backend/src/modules/public/bookings/bookings.service.ts`: 1,199
 - `backend/src/modules/bookings/bookings.assignment.ts`: 1,111
-- `frontend/src/pages/guest/BookingDetailPage.tsx`: 1,036
 
 ### Warning Zone
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
-- `frontend/src/pages/guest/SpacesListPage.tsx`: 884
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
 - `backend/src/modules/billing/billing.service.ts`: 732
+- `frontend/src/pages/guest/SpacesListPage.tsx`: 731
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
 
 ## Improvement Order
@@ -143,11 +142,17 @@ Work step by step. Do not attempt all improvements in one pass.
    - The page retains booking/payment orchestration, payment payload construction, idempotency, mutations, billing queries, and terminal-state selection.
 
 4. Backend public availability
-   - Extract option generation, capacity matching, conflict checks, and DTO mapping.
+   - Completed: room/unit capacity and greedy guest-allocation helpers are extracted into `availability.capacity.ts`.
+   - Completed: shared booking, maintenance, and inventory-lock conflict checks are extracted into `availability.conflicts.ts` without changing repository semantics or the public service API.
+   - Completed: public option DTO mapping and internal option types are extracted into `availability.presenter.ts` and `availability.types.ts`.
+   - Pricing enrichment and option-generation orchestration remain in the service because separating them safely requires a wider pricing-focused change.
    - Preserve option IDs, response shape, pricing rules, and maintenance behavior.
 
 5. Frontend `BookingDetailPage.tsx` and `SpacesListPage.tsx`
-   - Extract booking status panels, billing/refund panels, availability filters, result cards, and empty/error states.
+   - Completed for booking detail: stay/guest details, cancelled/no-show refund state, payment summary, billing documents, and repeated refund-status presentation are extracted.
+   - The booking-detail page retains queries, derived workflow rules, navigation, mutations, errors, and modal orchestration at 537 lines; further modal extraction is not currently worthwhile.
+   - Completed for spaces list: controlled availability filters and responsive clear/check controls are extracted.
+   - Existing grid/stack option cards remain the result-presentation owners; continue with loading, error, and empty states without duplicating card abstractions.
    - Preserve checkout-token behavior and public query keys.
 
 6. Backend public booking and billing services

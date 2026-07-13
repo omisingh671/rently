@@ -30,7 +30,11 @@ Main risks:
 
 Target:
 
-- `backend/src/modules/public/availability/availability.service.ts` - 1,492 lines
+- `backend/src/modules/public/availability/availability.service.ts` - 1,284 lines
+- `backend/src/modules/public/availability/availability.capacity.ts` - 62 lines
+- `backend/src/modules/public/availability/availability.conflicts.ts` - 82 lines
+- `backend/src/modules/public/availability/availability.presenter.ts` - 61 lines
+- `backend/src/modules/public/availability/availability.types.ts` - 54 lines
 
 Why:
 
@@ -39,11 +43,11 @@ Why:
 
 Plan:
 
-- Extract availability criteria normalization.
-- Extract capacity/guest matching helpers.
-- Extract booking-target conflict checks.
-- Extract maintenance conflict checks only if repository boundaries stay clear.
-- Extract option DTO mapping.
+- Keep request criteria normalization in `availability.schema.ts`, where Zod already owns date, guest, comfort, and city parsing.
+- Completed: extracted room/unit capacity and guest-allocation helpers into `availability.capacity.ts`.
+- Completed: extracted shared booking, maintenance, and inventory-lock conflict checks into `availability.conflicts.ts`.
+- Completed: moved space availability validation into the conflict module while preserving the service export used by booking flows.
+- Completed: extracted public option DTO mapping into `availability.presenter.ts` and shared internal option types into `availability.types.ts`.
 - Add or preserve focused tests for city/property/date/guest/comfort behavior.
 
 Do not change:
@@ -60,7 +64,7 @@ Verification:
 - `backend`: `npm run typecheck`
 - Add `npm run lint` if multiple files change.
 
-Status: not started.
+Status: completed for the scoped behavior-preserving extraction. Capacity/allocation, inventory conflicts, space validation, internal option types, and public DTO presentation now have focused owners. The service retains pricing enrichment and option-generation orchestration because moving those together would create a wider high-risk change. Option IDs, DTOs, pricing totals, tenant/property scope, maintenance behavior, transaction clients, service exports, and error responses are preserved. Verified with `npm run typecheck`, `npm run test:booking` (45 passing), and `npm run lint` after each slice.
 
 ## Priority 2: Public Booking Service
 
