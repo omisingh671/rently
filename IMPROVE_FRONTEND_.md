@@ -29,7 +29,7 @@ Main risks:
 
 Target:
 
-- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx` - 922 lines
+- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx` - 934 lines
 
 Why:
 
@@ -38,9 +38,10 @@ Why:
 
 Plan:
 
-- First decide the production boundary:
-  - integrate a real provider checkout, or
-  - gate the current mock/sandbox flow behind an explicit non-production env flag
+- Production boundary completed:
+  - the mock/sandbox flow requires `VITE_ENABLE_MOCK_PAYMENTS=true`
+  - production builds always disable the simulator even if the variable is set
+  - completed-payment states remain accessible when the simulator is disabled
 - Keep backend manual payment access proof and idempotency behavior unchanged.
 - After the boundary is clear, extract:
   - `PaymentMethodTabs`
@@ -65,7 +66,13 @@ Verification:
 - `frontend`: `npm run build` if route-level imports or env config changes
 - `backend`: `npm run test:payment` if payment payload/access behavior changes
 
-Status: not started.
+Status: in progress. Production boundary completed on 2026-07-13; component and state extraction remains.
+
+Last verification:
+
+- `frontend`: `npm run typecheck` - passed
+- `frontend`: `npm run lint` - passed
+- `frontend`: `npm run build` - passed
 
 ## Priority 2: Guest Booking Detail Page
 

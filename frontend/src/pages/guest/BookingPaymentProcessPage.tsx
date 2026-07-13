@@ -15,6 +15,7 @@ import {
 } from "react-icons/fi";
 
 import Button from "@/components/ui/Button";
+import { publicEnv } from "@/configs/env";
 import { ROUTES } from "@/configs/routePaths";
 import {
   clearBookingCheckoutDraftForBooking,
@@ -473,6 +474,17 @@ export default function BookingPaymentProcessPage() {
           </div>
         </div>
       </section>
+    );
+  }
+
+  if (!publicEnv.mockPaymentsEnabled) {
+    return (
+      <ProcessState
+        tone="info"
+        title="Online payment unavailable"
+        message="Online payment is not configured. Return to your booking and contact the property for payment assistance."
+        bookingId={booking.id}
+      />
     );
   }
 

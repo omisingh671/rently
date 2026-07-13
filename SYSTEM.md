@@ -89,7 +89,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Dashboard
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
-- `OperationsPage.tsx` is improved to 831 lines and still mixes activity tables, filters, and layout.
+- `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
 - Admin pages are too large: `SystemGuidePage.tsx` 1,583 lines, `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, `RoomBoardPage.tsx` 703 lines.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
@@ -97,7 +97,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Frontend
 
 - Guest booking detail page is large: `BookingDetailPage.tsx` is 1,036 lines.
-- Guest payment process page is 922 lines and still uses a mock/sandbox card and UPI flow. This must be replaced by a real provider checkout or clearly gated from production.
+- Guest payment process page is 934 lines. Its mock card/UPI flow is now explicitly development-only and disabled in production builds; provider integration and component/state extraction remain.
 - Guest spaces list page is 884 lines and mixes filters, availability query, result rendering, empty states, and mobile layout.
 - Frontend lacks focused component tests for checkout, payment, booking detail, refund/cancellation, and availability states.
 
@@ -115,11 +115,10 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Warning Zone
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
-- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx`: 922
+- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx`: 934
 - `frontend/src/pages/guest/SpacesListPage.tsx`: 884
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
-- `dashboard/src/features/operations/components/OperationsPage.tsx`: 831
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
 - `backend/src/modules/billing/billing.service.ts`: 732
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
@@ -135,14 +134,13 @@ Work step by step. Do not attempt all improvements in one pass.
    - Keep API calls, route, query keys, and visible workflow unchanged.
 
 2. Dashboard `OperationsPage.tsx`
-   - Operations summary cards and cashier panel have been extracted.
-   - Continue with booking activity tables or filters only if the extraction stays low risk.
-   - Preserve current-property refetch behavior and existing table/filter semantics.
+   - Completed: operations summary, cashier details, immediate-attention alerts, filters, and activity tables are extracted.
+   - The page remains the query, mutation, pagination, error, and layout orchestration container.
+   - Current-property refetch behavior and existing table/filter semantics are preserved.
 
 3. Frontend `BookingPaymentProcessPage.tsx`
-   - Production readiness risk because it exposes a mock/sandbox card and UPI flow.
-   - First gate the mock flow away from production or document an explicit provider integration boundary.
-   - Then extract payment method form, payment summary, terminal state, and mutation helpers.
+   - The mock/sandbox card and UPI flow is gated behind a development-only env flag and cannot render in production builds.
+   - Next extract payment method form, payment summary, terminal state, and mutation helpers.
 
 4. Backend public availability
    - Extract option generation, capacity matching, conflict checks, and DTO mapping.
@@ -216,6 +214,19 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 - run broader checks only when the contract truly crosses apps
 
 ## Live Progress Log
+
+### 2026-07-13
+
+- Dashboard `OperationsPage.tsx` extraction completed:
+  - added `OperationsImmediateAttentionPanel.tsx`, `OperationsFilters.tsx`, and `OperationsRecordsTable.tsx`
+  - reduced `OperationsPage.tsx` from 831 to 314 lines
+  - preserved current-property switching, query/mutation ownership, pagination, table semantics, and nested cashier-history overflow
+  - verification passed: dashboard typecheck and targeted ESLint
+- Frontend payment simulator production boundary completed:
+  - added strict `VITE_ENABLE_MOCK_PAYMENTS` parsing to centralized public env config
+  - limited the simulator to explicit Vite development mode and kept production builds disabled
+  - preserved completed-payment display, booking access, query keys, billing invalidation, and payment payload behavior
+  - verification passed: frontend `npm run typecheck`, `npm run lint`, and `npm run build`
 
 ### 2026-07-10
 

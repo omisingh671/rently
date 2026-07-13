@@ -79,7 +79,7 @@ Last verification:
 
 Target:
 
-- `dashboard/src/features/operations/components/OperationsPage.tsx` - 831 lines
+- `dashboard/src/features/operations/components/OperationsPage.tsx` - 314 lines
 
 Why:
 
@@ -91,10 +91,10 @@ Plan:
 - Completed:
   - extracted operations summary cards into `dashboard/src/features/operations/components/OperationsSummaryCards.tsx`
   - extracted cashier totals, cashier by employee rows, and nested payment history into `dashboard/src/features/operations/components/OperationsCashierPanel.tsx`
-- Remaining:
-  - Extract booking activity tables.
-  - Extract date/property filters.
-  - Preserve the current overflow boundary for nested payment history.
+  - extracted immediate-attention alerts into `dashboard/src/features/operations/components/OperationsImmediateAttentionPanel.tsx`
+  - extracted search, property, status, and source controls into `dashboard/src/features/operations/components/OperationsFilters.tsx`
+  - extracted booking, enquiry, and quote tables into `dashboard/src/features/operations/components/OperationsRecordsTable.tsx`
+  - preserved the existing nested payment-history overflow boundary
 
 Do not change:
 
@@ -109,12 +109,12 @@ Verification:
 - `dashboard`: `npm run typecheck`
 - `dashboard`: `npm run lint`
 
-Status: in progress. Operations summary cards and cashier panel extraction completed on 2026-07-10.
+Status: completed on 2026-07-13. `OperationsPage.tsx` now owns query state, mutations, pagination, error presentation, and layout orchestration.
 
 Last verification:
 
 - `dashboard`: `npm run typecheck` - passed
-- `dashboard`: `npm run lint` - passed
+- targeted dashboard ESLint - passed
 - `dashboard`: `npm run build` - skipped because route exports and runtime contracts did not change
 
 ## Priority 3: Admin Pages
