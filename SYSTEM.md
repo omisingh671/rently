@@ -97,7 +97,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Frontend
 
 - Guest booking detail page is large: `BookingDetailPage.tsx` is 1,036 lines.
-- Guest payment process page is 934 lines. Its mock card/UPI flow is now explicitly development-only and disabled in production builds; provider integration and component/state extraction remain.
+- Guest payment process page is reduced to 467 lines. Its mock card/UPI flow is explicitly development-only, and controlled form state, validation, payment method forms, summary, and terminal states are extracted; real provider integration remains a separate production enhancement.
 - Guest spaces list page is 884 lines and mixes filters, availability query, result rendering, empty states, and mobile layout.
 - Frontend lacks focused component tests for checkout, payment, booking detail, refund/cancellation, and availability states.
 
@@ -115,7 +115,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Warning Zone
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
-- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx`: 934
 - `frontend/src/pages/guest/SpacesListPage.tsx`: 884
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx`: 872
 - `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
@@ -140,7 +139,8 @@ Work step by step. Do not attempt all improvements in one pass.
 
 3. Frontend `BookingPaymentProcessPage.tsx`
    - The mock/sandbox card and UPI flow is gated behind a development-only env flag and cannot render in production builds.
-   - Next extract payment method form, payment summary, terminal state, and mutation helpers.
+   - Completed: payment method forms, payment summary, terminal states, and controlled form-state hook are extracted.
+   - The page retains booking/payment orchestration, payment payload construction, idempotency, mutations, billing queries, and terminal-state selection.
 
 4. Backend public availability
    - Extract option generation, capacity matching, conflict checks, and DTO mapping.
@@ -227,6 +227,27 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
   - limited the simulator to explicit Vite development mode and kept production builds disabled
   - preserved completed-payment display, booking access, query keys, billing invalidation, and payment payload behavior
   - verification passed: frontend `npm run typecheck`, `npm run lint`, and `npm run build`
+- Frontend payment method form extraction completed:
+  - added `PaymentMethodTabs.tsx`, `CardPaymentForm.tsx`, and `UpiPaymentForm.tsx`
+  - reduced `BookingPaymentProcessPage.tsx` from 934 to 770 lines
+  - kept form state, validation, formatting handlers, simulator outcomes, and payment mutation ownership in the page
+  - verification passed: frontend typecheck and targeted ESLint
+- Frontend payment summary extraction completed:
+  - added `PaymentSummaryPanel.tsx`
+  - reduced `BookingPaymentProcessPage.tsx` from 770 to 738 lines
+  - kept booking-derived labels and amounts owned by the page
+  - verification passed: frontend typecheck and targeted ESLint
+- Frontend payment terminal-state extraction completed:
+  - added `PaymentProcessState.tsx`, `PaymentFailureState.tsx`, `PaymentProcessingState.tsx`, and `PaymentSuccessState.tsx`
+  - reduced `BookingPaymentProcessPage.tsx` from 738 to 514 lines
+  - kept terminal-state selection, retry handling, authentication decisions, billing queries/download callbacks, and payment mutation ownership in the page
+  - verification passed: frontend typecheck and targeted ESLint
+- Frontend payment form-state hook extraction completed:
+  - added `usePaymentProcessState.ts`
+  - reduced `BookingPaymentProcessPage.tsx` from 514 to 467 lines
+  - moved controlled field state, input formatting, validation, and reset behavior into the hook
+  - kept payment payload construction, idempotency keys, query refetches, and mutation execution in the page
+  - verification passed: frontend typecheck and targeted ESLint
 
 ### 2026-07-10
 

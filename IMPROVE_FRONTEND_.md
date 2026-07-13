@@ -29,7 +29,7 @@ Main risks:
 
 Target:
 
-- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx` - 934 lines
+- `frontend/src/pages/guest/BookingPaymentProcessPage.tsx` - 467 lines
 
 Why:
 
@@ -43,12 +43,15 @@ Plan:
   - production builds always disable the simulator even if the variable is set
   - completed-payment states remain accessible when the simulator is disabled
 - Keep backend manual payment access proof and idempotency behavior unchanged.
-- After the boundary is clear, extract:
+- Component extraction completed:
   - `PaymentMethodTabs`
   - `CardPaymentForm`
   - `UpiPaymentForm`
   - `PaymentSummaryPanel`
-  - `PaymentTerminalState`
+  - `PaymentProcessState`
+  - `PaymentFailureState`
+  - `PaymentProcessingState`
+  - `PaymentSuccessState`
   - `usePaymentProcessState`
 
 Do not change:
@@ -66,13 +69,14 @@ Verification:
 - `frontend`: `npm run build` if route-level imports or env config changes
 - `backend`: `npm run test:payment` if payment payload/access behavior changes
 
-Status: in progress. Production boundary completed on 2026-07-13; component and state extraction remains.
+Status: completed on 2026-07-13. The page now owns booking/payment orchestration, idempotency, mutations, billing queries, and terminal-state selection while extracted components and the state hook own presentation and controlled form behavior.
 
 Last verification:
 
 - `frontend`: `npm run typecheck` - passed
-- `frontend`: `npm run lint` - passed
-- `frontend`: `npm run build` - passed
+- targeted frontend ESLint - passed
+- full frontend lint - skipped because targeted ESLint covered the touched files
+- `frontend`: `npm run build` - skipped because routes, query hooks, env config, and shared API contracts did not change
 
 ## Priority 2: Guest Booking Detail Page
 
@@ -184,7 +188,7 @@ Avoid:
 
 ## Frontend Production Hardening Backlog
 
-- Replace or gate mock/sandbox payment UI before production.
+- Integrate a real payment provider before enabling live online payments; the mock/sandbox UI is development-only.
 - Add focused component tests for payment success/failure/denial states when a test setup is introduced.
 - Add focused tests for authenticated booking detail and checkout-token booking detail rendering.
 - Manual QA public availability search by city/property/date/guest/comfort after availability UI extraction.
