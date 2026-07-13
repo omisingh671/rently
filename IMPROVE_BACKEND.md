@@ -70,7 +70,8 @@ Status: completed for the scoped behavior-preserving extraction. Capacity/alloca
 
 Target:
 
-- `backend/src/modules/public/bookings/bookings.service.ts` - 1,199 lines
+- `backend/src/modules/public/bookings/bookings.service.ts` - 1,164 lines
+- `backend/src/modules/public/bookings/bookings.checkout-quote.ts` - 40 lines
 
 Why:
 
@@ -80,10 +81,10 @@ Why:
 Plan:
 
 - Keep orchestration in the service.
-- Extract remaining transaction/retry helpers if still embedded.
-- Extract quote/booking reconstruction helpers only where behavior is already pure.
-- Extract checkout-token and owner access helpers only if duplication remains.
-- Extract public booking detail presenter logic if the service still formats response details directly.
+- Review the remaining embedded transaction/retry loops without changing transaction boundaries.
+- Completed: extracted existing-booking checkout quote reconstruction into `bookings.checkout-quote.ts`.
+- Checkout-token and owner access already have a focused owner in `bookings.access.ts`; do not duplicate it.
+- Public booking DTO presentation already has a focused owner in `bookings.presenter.ts`; do not duplicate it.
 
 Do not change:
 
@@ -100,7 +101,7 @@ Verification:
 - `backend`: `npm run test:payment` if payment/billing access is touched
 - `backend`: `npm run typecheck`
 
-Status: not started.
+Status: in progress. Existing-booking checkout quote reconstruction now owns currency, policy, nights, booking-item reconstruction, coupon normalization, and quote calculation while receiving the existing transaction client. Access checks, coupon fallback choice, coupon usage updates, retry loops, transactions, and DTO mapping remain service-owned. Verified with `npm run typecheck`, `npm run test:booking` (45 passing), and `npm run lint`.
 
 ## Priority 3: Dashboard Booking Helpers
 

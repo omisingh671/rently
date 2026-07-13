@@ -48,14 +48,11 @@ import {
   buildBookingItemCreateInputFromQuoteItem,
   buildQuoteItemFromBookingInput,
   buildQuoteItemFromOptionItem,
-  buildQuoteItemsFromBooking,
 } from "./bookings.mapping.js";
 import {
   buildBookingPolicyPreview,
-  getBookingPolicyDto,
   type PublicBookingPolicyPreviewDTO,
 } from "./bookings.policy.js";
-import { normalizeCouponCode } from "./bookings.coupons.js";
 import { calculateQuoteTotals } from "./bookings.pricing.js";
 import { mapBooking } from "./bookings.presenter.js";
 import {
@@ -70,6 +67,7 @@ import {
   releaseBookingLock,
 } from "./bookings.lifecycle.js";
 import { resolveBookingGuestSnapshot } from "./bookings.guests.js";
+import { calculateExistingBookingCheckoutQuote } from "./bookings.checkout-quote.js";
 
 const now = () => new Date();
 const multiRoomTitle = "Multi-room stay";
@@ -83,39 +81,6 @@ interface CreateBookingOptions {
   statusHistoryNote?: string;
   internalNotes?: string | null;
 }
-
-const calculateExistingBookingCheckoutQuote = async (
-  booking: repo.PublicBookingRecord,
-  couponCode: string | null | undefined,
-  tx: Prisma.TransactionClient,
-) => {
-  const propertyCurrency = await repo.findPropertyCurrencyById(
-    booking.propertyId,
-    tx,
-  );
-  const policy = await getBookingPolicyDto(booking, tx);
-
-  return calculateQuoteTotals(
-    {
-      propertyId: booking.propertyId,
-      bookingType: booking.bookingType,
-      checkIn: booking.checkIn,
-      nights: getNights(booking.checkIn, booking.checkOut),
-      guestCount: booking.guestCount,
-      comfortOption: booking.comfortOption,
-      paymentPolicy: booking.paymentPolicy,
-      upfrontAmount: Number(booking.upfrontAmount),
-      currency: propertyCurrency?.tenant.defaultCurrency ?? "INR",
-      policy,
-      couponCode: normalizeCouponCode(couponCode),
-      items: buildQuoteItemsFromBooking(booking),
-      userId: booking.userId,
-      currentCouponId: booking.couponId ?? undefined,
-      excludeBookingId: booking.id,
-    },
-    tx,
-  );
-};
 
 export const createBookingForUser = async (
   userId: string | undefined,

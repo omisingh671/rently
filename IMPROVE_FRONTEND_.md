@@ -124,8 +124,10 @@ Status: completed for the scoped presentation refactor. The page is now the quer
 
 Target:
 
-- `frontend/src/pages/guest/SpacesListPage.tsx` - 731 lines
+- `frontend/src/pages/guest/SpacesListPage.tsx` - 488 lines
+- `frontend/src/features/availability/availabilityPresentation.ts` - 240 lines
 - `frontend/src/features/availability/components/AvailabilityFiltersPanel.tsx` - 191 lines
+- `frontend/src/features/availability/components/AvailabilityResultsState.tsx` - 71 lines
 
 Why:
 
@@ -136,8 +138,8 @@ Plan:
 
 - Completed: extracted controlled search/filter controls and their desktop/mobile button layouts into `AvailabilityFiltersPanel.tsx`.
 - Keep using the existing `OptionGridCard` and `OptionStackCard` result components; another card abstraction would duplicate their responsibility.
-- Keep selected-comfort derivation and option selection in the page until a smaller orchestration boundary is clear.
-- Extract empty/error/loading states.
+- Completed: extracted deterministic result merging, grouping, sorting, sectioning, selected-comfort resolution, selected-option mapping, and variant price labels into `availabilityPresentation.ts`.
+- Completed: extracted booking-error, invalid-date, loading, API-error, and no-results presentation into `AvailabilityResultsState.tsx`.
 - Completed with the shared filter panel; desktop and mobile clear/check controls now share the same controlled props.
 
 Do not change:
@@ -154,7 +156,7 @@ Verification:
 - `frontend`: `npm run lint`
 - `backend`: `npm run test:booking` only if API assumptions are touched
 
-Status: in progress. URL parameters, geolocation city selection, property-specific mode, availability query/key, validation, refetch, and clear behavior remain page-owned. Verified with `npm run typecheck` and targeted ESLint. Backend tests were skipped because API assumptions and availability parameters did not change.
+Status: completed for the scoped refactor. The page now owns URL parameters, geolocation, property scope, React state/memoization, deterministic query keys, query execution, booking/navigation, layout preference, and successful-result composition. Controlled filters, non-success states, and pure availability presentation rules have focused owners; existing grid/stack cards remain the result-card owners. Verified with `npm run typecheck` and targeted ESLint after each slice. Backend tests were skipped because API assumptions and availability parameters did not change.
 
 ## Reusable Frontend UI Candidates
 
