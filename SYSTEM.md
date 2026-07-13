@@ -90,7 +90,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
 - `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
-- Remaining admin pages are too large: `PricingPage.tsx` 1,515 lines, `WalkInBookingPage.tsx` 872 lines, `UserManagementPage.tsx` 859 lines, and `RoomBoardPage.tsx` 703 lines. `SystemGuidePage.tsx` is now a 91-line tab and layout shell backed by seven page-local static sections.
+- Remaining admin pages are large: `WalkInBookingPage.tsx` is 872 lines, `UserManagementPage.tsx` is 859 lines, and `RoomBoardPage.tsx` is 703 lines. `PricingPage.tsx` is now a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
 
@@ -105,7 +105,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Over 1000 Lines
 
-- `dashboard/src/pages/admin/PricingPage.tsx`: 1,515
 - `backend/src/modules/public/availability/availability.service.ts`: 1,284
 - `backend/src/modules/public/bookings/bookings.service.ts`: 1,126
 - `backend/src/modules/bookings/bookings.assignment.ts`: 1,111
@@ -164,7 +163,12 @@ Work step by step. Do not attempt all improvements in one pass.
 7. Dashboard admin pages
    - Completed for System Guide: all seven static tabs are extracted into page-local section components.
    - `SystemGuidePage.tsx` retains tab configuration, active state, navigation, layout, and route ownership at 91 lines.
-   - Continue with `PricingPage.tsx`, then the remaining admin pages, while preserving existing admin-table architecture.
+   - Completed for Pricing: static guide definitions, guide presentation, and modal rendering are extracted into `PricingGuideModal.tsx` while help-topic state remains page-owned.
+   - Completed for Pricing: Rate Products form/table presentation is extracted into `PricingProductsSection.tsx`; form state, validation, mutations, edit/cancel decisions, and invalidation remain page-owned.
+   - Completed for Pricing: Price Rules/Rates form and table presentation is extracted into `PricingRatesSection.tsx`; state, target resets, edit mapping, payload construction, mutations, and deletion remain page-owned.
+   - Completed for Pricing: Taxes form/table presentation is extracted into `PricingTaxesSection.tsx`; state, calculation-mode resets, validation, payload construction, edit mapping, mutations, and invalidation remain page-owned.
+   - Completed for Pricing: Coupons form/table presentation is extracted into `PricingCouponsSection.tsx`; state, validation, payload construction, edit mapping, mutations, and invalidation remain page-owned.
+   - Pricing is complete for the current scoped extraction at 468 lines; continue with `WalkInBookingPage.tsx` while preserving validation, mutation invalidation, and existing table behavior.
    - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
 
 ## Reusable UI Direction
@@ -227,6 +231,31 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Dashboard Pricing Coupons extraction completed:
+  - added `PricingCouponsSection.tsx`
+  - reduced `PricingPage.tsx` from 703 to 468 lines
+  - preserved coupon form state, validation, payload construction, edit mapping, submit/activation mutations, table content, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard Pricing Taxes extraction completed:
+  - added `PricingTaxesSection.tsx`
+  - reduced `PricingPage.tsx` from 998 to 703 lines
+  - preserved tax form state, calculation-mode resets, validation, payload construction, edit mapping, submit/activation mutations, table content, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard Pricing Price Rules/Rates extraction completed:
+  - added `PricingRatesSection.tsx`
+  - reduced `PricingPage.tsx` from 1,245 to 998 lines
+  - preserved rate form state, target resets, edit mapping, validation, payload construction, submit/delete mutations, table content, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard Pricing Rate Products extraction completed:
+  - added `PricingProductsSection.tsx`, `PricingFormHeader.tsx`, and `pricingSectionStyles.ts`
+  - reduced `PricingPage.tsx` from 1,366 to 1,245 lines
+  - preserved product form state, validation, submit mutation, edit/cancel behavior, loading state, table content, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard Pricing guide extraction completed:
+  - added `PricingGuideModal.tsx`
+  - reduced `PricingPage.tsx` from 1,515 to 1,366 lines
+  - preserved guide content, modal behavior, help-topic state, pricing forms, mutations, validation, tables, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
 - Dashboard System Guide static-page extraction completed:
   - added seven page-local components for Overview, Tenancy, Inventory, Pricing, Leads, Operations, and Permissions
   - reduced `SystemGuidePage.tsx` from 1,583 to 91 lines

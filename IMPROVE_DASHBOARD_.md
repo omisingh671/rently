@@ -129,7 +129,14 @@ Targets:
 - `dashboard/src/pages/admin/system-guide/SystemGuideLeadsSection.tsx` - 107 lines
 - `dashboard/src/pages/admin/system-guide/SystemGuideOperationsSection.tsx` - 434 lines
 - `dashboard/src/pages/admin/system-guide/SystemGuidePermissionsSection.tsx` - 157 lines
-- `dashboard/src/pages/admin/PricingPage.tsx` - 1,515 lines
+- `dashboard/src/pages/admin/PricingPage.tsx` - 468 lines
+- `dashboard/src/features/pricing/components/PricingGuideModal.tsx` - 158 lines
+- `dashboard/src/features/pricing/components/PricingProductsSection.tsx` - 150 lines
+- `dashboard/src/features/pricing/components/PricingRatesSection.tsx` - 309 lines
+- `dashboard/src/features/pricing/components/PricingTaxesSection.tsx` - 328 lines
+- `dashboard/src/features/pricing/components/PricingCouponsSection.tsx` - 265 lines
+- `dashboard/src/features/pricing/components/PricingFormHeader.tsx` - 29 lines
+- `dashboard/src/features/pricing/components/pricingSectionStyles.ts` - 14 lines
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx` - 872 lines
 - `dashboard/src/pages/admin/UserManagementPage.tsx` - 859 lines
 - `dashboard/src/pages/admin/RoomBoardPage.tsx` - 703 lines
@@ -143,6 +150,11 @@ Plan:
 
 - Split each page into page-local sections before creating shared abstractions.
 - Completed for System Guide: extracted all seven static tabs into page-local section components under `pages/admin/system-guide`.
+- Completed for Pricing: extracted static guide definitions, guide presentation, and modal rendering into `PricingGuideModal.tsx` while keeping help-topic state and guide-button callbacks in the page.
+- Completed for Pricing: extracted the Rate Products form/table presentation into `PricingProductsSection.tsx` and moved the repeated form header and section styles into focused reusable owners.
+- Completed for Pricing: extracted the Price Rules/Rates form and table presentation into `PricingRatesSection.tsx` while retaining form state, target resets, edit mapping, payload construction, mutations, and deletion ownership in the page.
+- Completed for Pricing: extracted the Taxes form and table presentation into `PricingTaxesSection.tsx` while retaining calculation-mode resets, validation, payload construction, edit mapping, submit/activation mutations, and invalidation in the page.
+- Completed for Pricing: extracted the Coupons form and table presentation into `PricingCouponsSection.tsx` while retaining validation, payload construction, edit mapping, submit/activation mutations, and invalidation in the page.
 - Preserve existing admin-table architecture.
 - Use existing components first:
   - `AdminTable`
@@ -170,7 +182,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if shared route/page imports change
 
-Status: in progress for the Admin Pages priority. System Guide extraction was completed on 2026-07-13: its page now owns only tab configuration, active state, navigation, layout, and route ownership while seven page-local components own the static guide content. Continue with `PricingPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
+Status: in progress for the Admin Pages priority. System Guide and Pricing scoped extractions are complete. `PricingPage.tsx` is now a 468-line orchestration container retaining form state, data hooks, validation, payload construction, submit/delete/activation mutations, target and calculation-mode resets, edit/cancel decisions, query invalidation, property/tab selection, error presentation, and section wiring. Continue with `WalkInBookingPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
 
 ## Reusable Dashboard UI Candidates
 
