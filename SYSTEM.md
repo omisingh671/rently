@@ -90,7 +90,7 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
 - `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
-- Remaining large admin pages include `UserManagementPage.tsx` at 859 lines and `RoomBoardPage.tsx` at 703 lines. `WalkInBookingPage.tsx` is now a 475-line orchestration container backed by focused form-field and availability-list components. `PricingPage.tsx` is a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
+- `RoomBoardPage.tsx` remains the largest targeted admin page at 703 lines. `UserManagementPage.tsx` is now a 459-line orchestration container backed by focused actions-dropdown, edit-form, and table components. `WalkInBookingPage.tsx` is a 475-line orchestration container backed by focused form-field and availability-list components. `PricingPage.tsx` is a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
 
@@ -112,7 +112,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 ### Warning Zone
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
-- `dashboard/src/pages/admin/UserManagementPage.tsx`: 859
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
 - `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
 
@@ -171,6 +170,10 @@ Work step by step. Do not attempt all improvements in one pass.
    - Completed for Walk-In Booking: guest/stay controlled field groups and their form/error types are extracted into `WalkInBookingFormFields.tsx`; state, validation derivation, availability resets, mutations, and submission remain page-owned.
    - Completed for Walk-In Booking: availability loading/empty states and option-row presentation are extracted into `WalkInBookingAvailabilityList.tsx`; availability data, selection/capacity logic, errors, mutations, and submission remain page-owned.
    - Walk-In Booking is complete for the current scoped extraction at 475 lines; continue with `UserManagementPage.tsx`.
+   - Completed for User Management: the portal-backed actions dropdown and pending indicators are extracted into `UserActionsDropdown.tsx`; RBAC decisions, confirmation state, mutations, action errors, and invalidation remain page-owned.
+   - Completed for User Management: the edit-user controlled form, validation, server-error presentation, and self-user field restrictions are extracted into `EditManagedUserForm.tsx`; selected-user state, modal lifecycle, update mutation, success feedback, and invalidation remain page-owned.
+   - Completed for User Management: the existing admin-table presentation, loading/error/empty states, serial numbering, status labels, and actions wiring are extracted into `ManagedUsersTable.tsx`; query data, pagination, current-user identity, pending-action state, RBAC, confirmations, mutations, and invalidation remain page-owned.
+   - User Management is complete for the current scoped extraction at 459 lines; continue with `RoomBoardPage.tsx`.
    - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
 
 ## Reusable UI Direction
@@ -233,6 +236,21 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Dashboard User Management table extraction completed:
+  - added `ManagedUsersTable.tsx`
+  - reduced `UserManagementPage.tsx` from 534 to 459 lines
+  - preserved the existing admin-table architecture, loading/error/empty states, row numbering, status labels, action callbacks, page-owned pagination, RBAC, confirmations, mutations, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard User Management edit-form extraction completed:
+  - added `EditManagedUserForm.tsx`
+  - reduced `UserManagementPage.tsx` from 685 to 534 lines
+  - preserved controlled fields, name validation, server errors, self-user restrictions, page-owned modal state, update mutation, success feedback, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
+- Dashboard User Management actions-dropdown extraction completed:
+  - added `UserActionsDropdown.tsx`
+  - reduced `UserManagementPage.tsx` from 859 to 685 lines
+  - preserved dropdown positioning/dismissal, pending indicators, action callbacks, page-owned RBAC decisions, confirmations, mutations, errors, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
 - Dashboard Walk-In Booking availability presentation extraction completed:
   - added `WalkInBookingAvailabilityList.tsx`
   - reduced `WalkInBookingPage.tsx` from 700 to 475 lines

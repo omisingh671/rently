@@ -140,7 +140,10 @@ Targets:
 - `dashboard/src/pages/admin/WalkInBookingPage.tsx` - 475 lines
 - `dashboard/src/features/operations/components/WalkInBookingFormFields.tsx` - 184 lines
 - `dashboard/src/features/operations/components/WalkInBookingAvailabilityList.tsx` - 256 lines
-- `dashboard/src/pages/admin/UserManagementPage.tsx` - 859 lines
+- `dashboard/src/pages/admin/UserManagementPage.tsx` - 459 lines
+- `dashboard/src/features/users/components/UserActionsDropdown.tsx` - 180 lines
+- `dashboard/src/features/users/components/EditManagedUserForm.tsx` - 162 lines
+- `dashboard/src/features/users/components/ManagedUsersTable.tsx` - 128 lines
 - `dashboard/src/pages/admin/RoomBoardPage.tsx` - 703 lines
 
 Why:
@@ -159,6 +162,9 @@ Plan:
 - Completed for Pricing: extracted the Coupons form and table presentation into `PricingCouponsSection.tsx` while retaining validation, payload construction, edit mapping, submit/activation mutations, and invalidation in the page.
 - Completed for Walk-In Booking: extracted the controlled guest and stay field groups plus their form/error types into `WalkInBookingFormFields.tsx` while retaining form state, validation derivation, availability resets, mutations, and submission in the page.
 - Completed for Walk-In Booking: extracted availability loading/empty states and option-row presentation into `WalkInBookingAvailabilityList.tsx` while retaining availability data, selection/capacity logic, errors, mutations, and submission in the page.
+- Completed for User Management: extracted the portal-backed actions dropdown and pending indicators into `UserActionsDropdown.tsx` while retaining RBAC decisions, confirmation state, mutations, action errors, and query invalidation in the page.
+- Completed for User Management: extracted the edit-user controlled form, validation, server-error presentation, and self-user field restrictions into `EditManagedUserForm.tsx` while retaining selected-user state, modal lifecycle, update mutation, success feedback, and invalidation in the page.
+- Completed for User Management: extracted the existing admin-table presentation, loading/error/empty states, serial numbering, status labels, and action-dropdown wiring into `ManagedUsersTable.tsx` while retaining query data, pagination, current-user identity, pending-action state, RBAC, confirmations, mutations, and invalidation in the page.
 - Preserve existing admin-table architecture.
 - Use existing components first:
   - `AdminTable`
@@ -186,7 +192,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if shared route/page imports change
 
-Status: in progress for the Admin Pages priority. System Guide, Pricing, and Walk-In Booking scoped extractions are complete. `WalkInBookingPage.tsx` is now a 475-line orchestration container retaining form state, validation derivation, availability data and resets, selection/capacity logic, mutations, errors, and submission. Focused components own the controlled guest/stay fields and availability option presentation. Continue with `UserManagementPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
+Status: in progress for the Admin Pages priority. System Guide, Pricing, Walk-In Booking, and User Management scoped extractions are complete. `UserManagementPage.tsx` is now a 459-line orchestration container retaining user queries, selected-user/modal state, RBAC decisions, confirmations, mutations, action errors/success, pagination/filter state, current-user identity, and query invalidation. Focused components own the actions dropdown, edit-user form, and managed-users table presentation. Continue with `RoomBoardPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
 
 ## Reusable Dashboard UI Candidates
 
