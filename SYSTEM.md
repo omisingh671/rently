@@ -88,9 +88,9 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 ### Dashboard
 
-- `BookingDetailsPage.tsx` is improved to 987 lines, but remains a high-risk flow because it still owns booking action submission handlers.
+- `BookingDetailsPage.tsx` is improved to 987 lines and remains operationally high risk, but its remaining submit handler is the intentional owner of action validation, expected versions, mutation payloads, errors, and modal closure.
 - `OperationsPage.tsx` is reduced to 314 lines and now keeps query state, mutations, pagination, errors, and layout orchestration while extracted components own filters, activity tables, summaries, cashier details, and alerts.
-- `RoomBoardPage.tsx` remains the largest targeted admin page at 703 lines. `UserManagementPage.tsx` is now a 459-line orchestration container backed by focused actions-dropdown, edit-form, and table components. `WalkInBookingPage.tsx` is a 475-line orchestration container backed by focused form-field and availability-list components. `PricingPage.tsx` is a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
+- `RoomBoardPage.tsx` is now a 401-line orchestration container backed by focused unit/room and status-summary components. `UserManagementPage.tsx` is a 459-line orchestration container backed by focused actions-dropdown, edit-form, and table components. `WalkInBookingPage.tsx` is a 475-line orchestration container backed by focused form-field and availability-list components. `PricingPage.tsx` is a 468-line orchestration container backed by focused guide, Products, Rates, Taxes, and Coupons components. `SystemGuidePage.tsx` is a 91-line tab and layout shell backed by seven page-local static sections.
 - Dashboard lacks focused component tests for booking/payment/refund states.
 - Duplicate component families exist between dashboard and frontend. Do not introduce cross-app package complexity yet, but keep component APIs aligned.
 
@@ -113,7 +113,6 @@ The dashboard and frontend already use modern React patterns, centralized Axios 
 
 - `dashboard/src/features/operations/components/BookingDetailsPage.tsx`: 987
 - `dashboard/src/features/operations/components/FrontDeskPage.tsx`: 758
-- `dashboard/src/pages/admin/RoomBoardPage.tsx`: 703
 
 ## Improvement Order
 
@@ -122,7 +121,8 @@ Work step by step. Do not attempt all improvements in one pass.
 1. Dashboard `BookingDetailsPage.tsx`
    - High UI bug risk because it owns booking action submission.
    - Pure action/display helpers, booking action modal, folio panel, payments panel, billing documents panel, status panel, assignment panel, and booking action state have been extracted.
-   - Continue only with meaningful submit-handler or refund-state cleanup; otherwise move to the next high-risk screen.
+   - Final submit-handler/refund-state review completed: refund presentation and modal state already have focused owners, while the remaining submit handler is intentional mutation orchestration.
+   - Complete for the current scope; do not extract a high-dependency submission hook without a concrete behavior change or test-driven need.
    - Keep API calls, route, query keys, and visible workflow unchanged.
 
 2. Dashboard `OperationsPage.tsx`
@@ -155,7 +155,7 @@ Work step by step. Do not attempt all improvements in one pass.
    - Completed for public booking: existing-booking checkout quote reconstruction is extracted into `bookings.checkout-quote.ts` while transaction and coupon-update ownership remains in the service.
    - Completed for public booking: bounded Prisma concurrency retry mechanics are centralized in `bookings.lifecycle.ts` while transaction callbacks and caller-specific exhausted-error behavior remain service-owned.
    - Completed for billing: pure document snapshot and folio-total construction is extracted into `billing.snapshots.ts` while numbering, transactions, idempotency, access, DTO mapping, and PDF rendering remain in their current owners.
-   - Public booking and billing are complete for the current scoped extraction; continue with dashboard admin pages.
+   - Public booking and billing are complete for the current scoped extraction; dashboard admin pages are also complete for their current scope.
    - Keep pricing/payment/billing truth server-owned.
 
 7. Dashboard admin pages
@@ -174,6 +174,11 @@ Work step by step. Do not attempt all improvements in one pass.
    - Completed for User Management: the edit-user controlled form, validation, server-error presentation, and self-user field restrictions are extracted into `EditManagedUserForm.tsx`; selected-user state, modal lifecycle, update mutation, success feedback, and invalidation remain page-owned.
    - Completed for User Management: the existing admin-table presentation, loading/error/empty states, serial numbering, status labels, and actions wiring are extracted into `ManagedUsersTable.tsx`; query data, pagination, current-user identity, pending-action state, RBAC, confirmations, mutations, and invalidation remain page-owned.
    - User Management is complete for the current scoped extraction at 459 lines; continue with `RoomBoardPage.tsx`.
+   - Completed for Room Board: unit headers, room tiles, booking/maintenance details, status styling, and housekeeping-step presentation are extracted into `RoomBoardUnitSection.tsx`; property/date/status/search filters, derived summaries, housekeeping mutation, RBAC, errors, and invalidation remain page-owned.
+   - Completed for Room Board: total/per-status summary cards, icons, styles, active state, counts, and toggle wiring are extracted into `RoomBoardSummaryCards.tsx`; selected-status state, summary data, room filtering, queries, and housekeeping operations remain page-owned.
+   - Room Board is complete for the current scoped extraction at 401 lines.
+   - Dashboard admin pages are complete for the current scope.
+   - The focused `BookingDetailsPage.tsx` submit-handler/refund-state review found no additional worthwhile extraction, so all current dashboard priorities are complete.
    - Split admin pages into page-specific sections and hooks while preserving existing admin-table architecture.
 
 ## Reusable UI Direction
@@ -236,6 +241,22 @@ Shared booking, pricing, payment, billing, auth, tenant, property scoping, or se
 
 ### 2026-07-13
 
+- Dashboard scoped milestone verification completed:
+  - final `BookingDetailsPage.tsx` submit/refund review found no worthwhile extraction beyond the existing presentation and state owners
+  - full dashboard typecheck and lint passed
+  - dashboard production build passed; the first sandboxed build attempt was blocked from reading the Vite config, then passed outside the sandbox
+  - dashboard-health pricing coverage passed: 2 tests
+  - all current dashboard priorities are complete
+- Dashboard Room Board status-summary extraction completed:
+  - added `RoomBoardSummaryCards.tsx`
+  - reduced `RoomBoardPage.tsx` from 515 to 401 lines
+  - preserved total/status counts, active-card styling, Total clearing status and search, active-status clearing only status, page-owned filtering, queries, and housekeeping operations
+  - verification passed after removing one unused extraction residue: dashboard typecheck and targeted ESLint
+- Dashboard Room Board unit/room presentation extraction completed:
+  - added `RoomBoardUnitSection.tsx`
+  - reduced `RoomBoardPage.tsx` from 703 to 515 lines
+  - preserved unit/room content, booking and maintenance details, status styling, housekeeping progression, page-owned queries/filters, RBAC, mutation errors, and query invalidation
+  - verification passed: dashboard typecheck and targeted ESLint
 - Dashboard User Management table extraction completed:
   - added `ManagedUsersTable.tsx`
   - reduced `UserManagementPage.tsx` from 534 to 459 lines

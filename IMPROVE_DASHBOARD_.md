@@ -46,10 +46,10 @@ Plan:
   - extracted the operational action/status card into `dashboard/src/features/operations/components/BookingStatusPanel.tsx`
   - extracted the current assignment card into `dashboard/src/features/operations/components/BookingAssignmentPanel.tsx`
   - extracted booking action/modal form state and room selection toggling into `dashboard/src/features/operations/hooks/useBookingActionState.ts`
-- Extract presentational panels:
-  - `BookingRefundRequestPanel`
-- Extract action state:
-  - `useRefundActionState` only if refund request callbacks remain noisy after the next review
+- Reviewed and intentionally retained:
+  - refund-request presentation already has a focused owner inside `BookingPaymentsPanel`
+  - refund/modal form state already has a focused owner in `useBookingActionState`
+  - `submitAction` remains page-owned because it coordinates action-specific validation, expected versions, mutation payloads, errors, and modal closure; moving it would introduce a large dependency surface without a clearer boundary
 
 Do not change:
 
@@ -67,13 +67,14 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if route-level imports or exports change
 
-Status: in progress. Pure helpers, action modal, folio panel, payments panel, billing documents panel, status panel, assignment panel, and booking action state extraction completed on 2026-07-10.
+Status: completed for the current scoped refactor. Pure helpers, action modal, folio panel, payments/refund presentation, billing documents panel, status panel, assignment panel, and booking action state have focused owners. A final submit-handler/refund-state review on 2026-07-13 found no additional extraction that would improve ownership without replacing local orchestration with a high-dependency hook.
 
-Last verification:
+Last verification on 2026-07-13:
 
 - `dashboard`: `npm run typecheck` - passed
 - `dashboard`: `npm run lint` - passed
-- `dashboard`: `npm run build` - skipped because route exports and runtime contracts did not change
+- `dashboard`: `npm run build` - passed
+- `dashboard`: `npm run test:dashboard-health` - passed, 2 tests
 
 ## Priority 2: Operations Page
 
@@ -144,7 +145,9 @@ Targets:
 - `dashboard/src/features/users/components/UserActionsDropdown.tsx` - 180 lines
 - `dashboard/src/features/users/components/EditManagedUserForm.tsx` - 162 lines
 - `dashboard/src/features/users/components/ManagedUsersTable.tsx` - 128 lines
-- `dashboard/src/pages/admin/RoomBoardPage.tsx` - 703 lines
+- `dashboard/src/pages/admin/RoomBoardPage.tsx` - 401 lines
+- `dashboard/src/features/operations/components/RoomBoardUnitSection.tsx` - 219 lines
+- `dashboard/src/features/operations/components/RoomBoardSummaryCards.tsx` - 140 lines
 
 Why:
 
@@ -165,6 +168,8 @@ Plan:
 - Completed for User Management: extracted the portal-backed actions dropdown and pending indicators into `UserActionsDropdown.tsx` while retaining RBAC decisions, confirmation state, mutations, action errors, and query invalidation in the page.
 - Completed for User Management: extracted the edit-user controlled form, validation, server-error presentation, and self-user field restrictions into `EditManagedUserForm.tsx` while retaining selected-user state, modal lifecycle, update mutation, success feedback, and invalidation in the page.
 - Completed for User Management: extracted the existing admin-table presentation, loading/error/empty states, serial numbering, status labels, and action-dropdown wiring into `ManagedUsersTable.tsx` while retaining query data, pagination, current-user identity, pending-action state, RBAC, confirmations, mutations, and invalidation in the page.
+- Completed for Room Board: extracted unit headers, room tiles, booking/maintenance details, status styling, and housekeeping-step presentation into `RoomBoardUnitSection.tsx` while retaining property/date/status/search filters, derived summaries, housekeeping mutation, RBAC, errors, and invalidation in the page.
+- Completed for Room Board: extracted total/per-status summary cards, icons, color styles, active state, counts, and toggle wiring into `RoomBoardSummaryCards.tsx` while retaining selected-status state, summary data, room filtering, queries, and housekeeping operations in the page.
 - Preserve existing admin-table architecture.
 - Use existing components first:
   - `AdminTable`
@@ -192,7 +197,7 @@ Verification:
 - `dashboard`: `npm run lint`
 - `dashboard`: `npm run build` if shared route/page imports change
 
-Status: in progress for the Admin Pages priority. System Guide, Pricing, Walk-In Booking, and User Management scoped extractions are complete. `UserManagementPage.tsx` is now a 459-line orchestration container retaining user queries, selected-user/modal state, RBAC decisions, confirmations, mutations, action errors/success, pagination/filter state, current-user identity, and query invalidation. Focused components own the actions dropdown, edit-user form, and managed-users table presentation. Continue with `RoomBoardPage.tsx`. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
+Status: completed for the current Admin Pages scope. System Guide, Pricing, Walk-In Booking, User Management, and Room Board scoped extractions are complete. `RoomBoardPage.tsx` is now a 401-line orchestration container retaining property/date/status/search state, queries, derived filtering/totals, housekeeping mutation, RBAC, errors, and invalidation. Focused components own unit/room presentation and status-summary cards. Dashboard typecheck and targeted ESLint passed; build was skipped because route exports and shared runtime contracts did not change.
 
 ## Reusable Dashboard UI Candidates
 
