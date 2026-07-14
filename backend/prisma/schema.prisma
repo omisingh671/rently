@@ -211,6 +211,33 @@ enum EmailDeliveryType {
   PASSWORD_RESET
 }
 
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum NotificationEventKey {
+  BOOKING_CREATED
+  BOOKING_CANCELLED
+  PAYMENT_SUCCEEDED
+  REFUND_SUCCEEDED
+  USER_REGISTERED
+  BOOKING_CHECKED_IN
+  BOOKING_CHECKED_OUT
+}
+
+enum NotificationSettingScope {
+  GLOBAL
+  PROPERTY
+}
+
+enum NotificationSettingState {
+  USE_GLOBAL
+  ENABLED
+  DISABLED
+}
+
 enum LeadStatus {
   NEW
   IN_PROGRESS
@@ -310,6 +337,7 @@ model User {
   housekeepingEvents         RoomHousekeepingEvent[]
   createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
   voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
+  notificationSettingAudits  NotificationSettingAudit[]
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -375,6 +403,82 @@ model EmailDeliveryJob {
   @@index([status, updatedAt])
   @@index([userId, createdAt])
   @@map("email_delivery_jobs")
+}
+
+model NotificationGlobalSetting {
+  id        String               @id @default(uuid())
+  eventKey  NotificationEventKey
+  channel   NotificationChannel
+  enabled   Boolean              @default(false)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([eventKey, channel])
+  @@map("notification_global_settings")
+}
+
+model PropertyNotificationOverride {
+  id         String                   @id @default(uuid())
+  propertyId String
+  eventKey   NotificationEventKey
+  channel    NotificationChannel
+  state      NotificationSettingState
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, eventKey, channel])
+  @@index([propertyId])
+  @@map("property_notification_overrides")
+}
+
+model NotificationSettingAudit {
+  id            String                   @id @default(uuid())
+  actorUserId   String
+  scope         NotificationSettingScope
+  propertyId    String?
+  eventKey      NotificationEventKey
+  channel       NotificationChannel
+  previousState NotificationSettingState?
+  nextState     NotificationSettingState
+  correlationId String?                  @db.VarChar(128)
+  createdAt     DateTime                 @default(now())
+
+  actor    User      @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([propertyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("notification_setting_audits")
+}
+
+model NotificationDeliveryJob {
+  id                  String                  @id @default(uuid())
+  idempotencyKey      String                  @unique @db.VarChar(191)
+  eventKey            NotificationEventKey
+  channel             NotificationChannel
+  propertyId          String?
+  recipient           String
+  payload             Json
+  status              SideEffectJobStatus     @default(PENDING)
+  attemptCount        Int                     @default(0)
+  maxAttempts         Int                     @default(3)
+  lastError           String?                 @db.Text
+  providerMessageId   String?
+  correlationId       String?                 @db.VarChar(128)
+  processingStartedAt DateTime?
+  sentAt              DateTime?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([status, updatedAt])
+  @@index([propertyId, createdAt])
+  @@index([eventKey, createdAt])
+  @@map("notification_delivery_jobs")
 }
 
 /**
@@ -451,6 +555,9 @@ model Property {
   galleries         Gallery[]
   billingSetting    BillingSetting?
   billingDocuments  BillingDocument[]
+  notificationOverrides PropertyNotificationOverride[]
+  notificationSettingAudits NotificationSettingAudit[]
+  notificationDeliveryJobs NotificationDeliveryJob[]
 
   @@unique([tenantId, name, city, state])
   @@unique([tenantId, slug])

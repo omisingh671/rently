@@ -70,6 +70,17 @@ export const API_ENDPOINTS = {
     retry: (deliveryId: string) => `/email-deliveries/${deliveryId}/retry`,
   },
 
+  notifications: {
+    settings: "/notification-settings",
+    globalSetting: "/notification-settings/global",
+    propertyOverride: (propertyId: string) =>
+      `/properties/${propertyId}/notification-overrides`,
+    audits: "/notification-setting-audits",
+    deliveries: "/notification-deliveries",
+    retryDelivery: (deliveryId: string) =>
+      `/notification-deliveries/${deliveryId}/retry`,
+  },
+
   propertyAssignments: {
     list: "/property-assignments",
     create: "/property-assignments",

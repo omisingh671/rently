@@ -63,6 +63,7 @@ const ChangePasswordPage = lazy(
   () => import("@/pages/profile/ChangePasswordPage"),
 );
 const SystemGuidePage = lazy(() => import("@/pages/admin/SystemGuidePage"));
+const NotificationsPage = lazy(() => import("@/pages/admin/NotificationsPage"));
 
 const routes: RouteObject[] = [
   {
@@ -153,6 +154,10 @@ const routes: RouteObject[] = [
                       {
                         path: ADMIN_ROUTES.AMENITIES,
                         element: <AmenitiesPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.NOTIFICATIONS,
+                        element: <NotificationsPage />,
                       },
                     ],
                   },

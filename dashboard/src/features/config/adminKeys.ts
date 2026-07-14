@@ -195,6 +195,14 @@ export const ADMIN_KEYS = {
     all: () => [...ADMIN_KEYS.root, "email-deliveries"] as const,
   },
 
+  notifications: {
+    all: () => [...ADMIN_KEYS.root, "notifications"] as const,
+    settings: (propertyId?: string) =>
+      [...ADMIN_KEYS.notifications.all(), "settings", propertyId ?? "global"] as const,
+    audits: () => [...ADMIN_KEYS.notifications.all(), "audits"] as const,
+    deliveries: () => [...ADMIN_KEYS.notifications.all(), "deliveries"] as const,
+  },
+
   galleries: {
     all: () => [...ADMIN_KEYS.root, "galleries"] as const,
 

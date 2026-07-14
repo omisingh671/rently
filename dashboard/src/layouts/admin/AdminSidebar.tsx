@@ -27,6 +27,7 @@ const {
   FiInfo,
   FiActivity,
   FiCoffee,
+  FiBell,
 } = ICON_REGISTRY;
 
 interface AdminSidebarProps {
@@ -314,6 +315,14 @@ export default function AdminSidebar({
             icon={FiSettings}
             label="Settings"
           />
+
+          {admin.role === "SUPER_ADMIN" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.NOTIFICATIONS)}
+              icon={FiBell}
+              label="Notifications"
+            />
+          )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
             <>

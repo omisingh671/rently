@@ -17,6 +17,8 @@ import type {
 } from "./payments.dto.js";
 import type { CreateManualPaymentInput } from "./payments.inputs.js";
 import * as repo from "./payments.repository.js";
+import { NotificationEventKey } from "@/generated/prisma/enums.js";
+import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 
 const mapPayment = (payment: repo.PaymentRecord): PaymentDTO => ({
   id: payment.id,
@@ -183,7 +185,7 @@ export const createManualPayment = async (
     );
   }
 
-  return repo.runPaymentTransaction(async (tx) => {
+  const result = await repo.runPaymentTransaction(async (tx) => {
     const purpose = input.purpose ?? PaymentPurpose.TOKEN;
     const method = input.method ?? PaymentMethod.MANUAL;
     const existingPayment = await repo.findPaymentByIdempotencyKey(
@@ -413,4 +415,14 @@ export const createManualPayment = async (
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });
+  if (result.payment.status === PaymentStatus.SUCCEEDED) {
+    await publishBookingNotification({
+      eventKey: NotificationEventKey.PAYMENT_SUCCEEDED,
+      businessEventId: result.payment.id,
+      bookingId: result.payment.bookingId,
+      amount: String(result.payment.amount),
+      currency: result.payment.currency,
+    });
+  }
+  return result;
 };

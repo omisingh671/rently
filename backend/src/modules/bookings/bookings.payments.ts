@@ -6,6 +6,7 @@ import {
   PaymentRefundStatus,
   PaymentStatus,
   Prisma,
+  NotificationEventKey,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { parsePolicySnapshot } from "@/modules/booking-policy/booking-policy.policy.js";
@@ -30,6 +31,7 @@ import {
   getRefundPaymentStatus,
 } from "./bookings.financials.js";
 import * as repo from "./bookings.repository.js";
+import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 
 export const recordBookingBalancePaymentForBooking = async (
   actor: DashboardActor,
@@ -208,6 +210,13 @@ export const recordBookingRefundForBooking = async (
       );
     }
 
+    await publishBookingNotification({
+      eventKey: NotificationEventKey.REFUND_SUCCEEDED,
+      businessEventId: existingRefund.id,
+      bookingId: booking.id,
+      amount: existingRefund.amount.toString(),
+      currency: existingRefund.currency,
+    });
     return booking;
   }
 
@@ -281,7 +290,7 @@ export const recordBookingRefundForBooking = async (
           },
         };
 
-  return repo.createPaymentRefundForBooking(
+  const updatedBooking = await repo.createPaymentRefundForBooking(
     {
       booking: {
         connect: {
@@ -326,6 +335,14 @@ export const recordBookingRefundForBooking = async (
     getRefundPaymentStatus(projectedBooking),
     refundRequestUpdate,
   );
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.REFUND_SUCCEEDED,
+    businessEventId: idempotencyKey,
+    bookingId: booking.id,
+    amount: amount.toString(),
+    currency: payment.currency,
+  });
+  return updatedBooking;
 };
 
 export const updateRefundRequestForBooking = async (

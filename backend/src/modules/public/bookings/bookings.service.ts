@@ -6,6 +6,8 @@ import {
   BookingType,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { NotificationEventKey } from "@/generated/prisma/enums.js";
+import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import {
   buildPolicySnapshot,
@@ -95,7 +97,7 @@ export const createBookingForUser = async (
     getRequiredPropertyId(scope.propertyScope, input.propertyId);
   const nights = getNights(input.from, input.to);
 
-  return runBookingTransactionWithRetry(
+  const created = await runBookingTransactionWithRetry(
     async () => {
       const booking = await repo.runSerializableTransaction(async (tx) => {
         const createdAt = now();
@@ -589,6 +591,12 @@ export const createBookingForUser = async (
         ),
     },
   );
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CREATED,
+    businessEventId: created.id,
+    bookingId: created.id,
+  });
+  return created;
 };
 
 export const getBookingQuote = async (
@@ -1066,7 +1074,13 @@ export const cancelBooking = async (
     );
   }
 
-  return mapBooking(updatedBooking);
+  const result = mapBooking(updatedBooking);
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CANCELLED,
+    businessEventId: `${updatedBooking.id}:${updatedBooking.version}:cancelled`,
+    bookingId: updatedBooking.id,
+  });
+  return result;
 };
 
 export const createRefundRequest = async (

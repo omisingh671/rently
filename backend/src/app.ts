@@ -41,6 +41,7 @@ import { couponsRouter } from "@/modules/coupons/index.js";
 import { leadsRouter } from "@/modules/leads/index.js";
 import bookingsRouter from "@/modules/bookings/index.js";
 import emailDeliveriesRouter from "@/modules/email-deliveries/email-deliveries.routes.js";
+import { notificationsRouter } from "@/modules/notifications/index.js";
 
 
 const API_PREFIX = env.API_PREFIX;
@@ -203,6 +204,7 @@ app.use(`${API_PREFIX}`, couponsRouter);
 app.use(`${API_PREFIX}`, leadsRouter);
 app.use(`${API_PREFIX}`, bookingsRouter);
 app.use(`${API_PREFIX}`, emailDeliveriesRouter);
+app.use(`${API_PREFIX}`, notificationsRouter);
 
 
 /**
