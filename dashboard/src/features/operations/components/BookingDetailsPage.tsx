@@ -24,7 +24,7 @@ import {
 } from "../bookingDisplay";
 import { useAdminBooking } from "../hooks/useAdminOperations";
 import { useBookingActionState } from "../hooks/useBookingActionState";
-import type { AdminBooking } from "../types";
+import type { AdminBooking, StayExtensionPreview } from "../types";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -38,6 +38,7 @@ import { BookingBillingDocumentsPanel } from "./BookingBillingDocumentsPanel";
 import { BookingFolioPanel } from "./BookingFolioPanel";
 import { BookingPaymentsPanel } from "./BookingPaymentsPanel";
 import { BookingStatusPanel } from "./BookingStatusPanel";
+import { StayExtensionModal } from "./StayExtensionModal";
 
 const getMetadataString = (metadata: unknown, key: string) => {
   if (
@@ -61,6 +62,13 @@ export default function BookingDetailsPage() {
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
   const [activeSummaryTab, setActiveSummaryTab] = useState<"booking" | "payment">("booking");
+  const [isStayExtensionOpen, setIsStayExtensionOpen] = useState(false);
+  const [extensionDate, setExtensionDate] = useState("");
+  const [extensionNote, setExtensionNote] = useState("");
+  const [extensionOverrideReason, setExtensionOverrideReason] = useState("");
+  const [extensionPreview, setExtensionPreview] =
+    useState<StayExtensionPreview | null>(null);
+  const [extensionError, setExtensionError] = useState("");
 
   const {
     data: booking,
@@ -75,6 +83,9 @@ export default function BookingDetailsPage() {
     moveRooms,
     previewRoomMove,
     isPreviewingRoomMove,
+    previewStayExtension,
+    isPreviewingStayExtension,
+    extendStay,
     correctStatus,
     createFolioCharge,
     voidFolioCharge,
@@ -390,11 +401,63 @@ export default function BookingDetailsPage() {
     }
   };
 
+  const openStayExtension = () => {
+    if (!booking) return;
+    const nextCheckOut = new Date(booking.checkOut);
+    nextCheckOut.setUTCDate(nextCheckOut.getUTCDate() + 1);
+    setExtensionDate(nextCheckOut.toISOString().slice(0, 10));
+    setExtensionNote("");
+    setExtensionOverrideReason("");
+    setExtensionPreview(null);
+    setExtensionError("");
+    setIsStayExtensionOpen(true);
+  };
+
+  const previewExtension = async () => {
+    if (!booking || !extensionDate) return;
+    try {
+      setExtensionError("");
+      setExtensionPreview(
+        await previewStayExtension({
+          expectedVersion: booking.version,
+          newCheckOut: new Date(`${extensionDate}T00:00:00.000Z`).toISOString(),
+        }),
+      );
+    } catch (err) {
+      setExtensionPreview(null);
+      setExtensionError(normalizeApiError(err).message);
+    }
+  };
+
+  const submitStayExtension = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!booking || !extensionPreview) return;
+    try {
+      setExtensionError("");
+      await extendStay({
+        expectedVersion: booking.version,
+        newCheckOut: extensionPreview.newCheckOut,
+        pricingFingerprint: extensionPreview.pricingFingerprint,
+        note: extensionNote.trim(),
+        ...(extensionOverrideReason.trim() && {
+          overrideReason: extensionOverrideReason.trim(),
+        }),
+      });
+      setIsStayExtensionOpen(false);
+    } catch (err) {
+      setExtensionError(normalizeApiError(err).message);
+    }
+  };
+
   const canCheckIn =
     booking?.status === "CONFIRMED" &&
     booking !== undefined &&
     hasAssignedTarget(booking);
   const canCheckOut = booking?.status === "CHECKED_IN";
+  const canExtendStay =
+    booking !== undefined &&
+    (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") &&
+    hasAssignedTarget(booking);
   const canAdminCancelAfterCheckIn =
     booking?.status === "CHECKED_IN" && canUseAdminCorrection;
   const canCancel =
@@ -775,6 +838,7 @@ export default function BookingDetailsPage() {
             booking={booking}
             canCheckIn={canCheckIn}
             canCheckOut={canCheckOut}
+            canExtendStay={canExtendStay}
             canRecordBalance={canRecordBalance}
             canAssignRoom={canAssignRoom}
             canUseAdminCorrection={canUseAdminCorrection}
@@ -784,6 +848,7 @@ export default function BookingDetailsPage() {
             isMutating={isMutating}
             onCheckIn={() => openAction("checkIn")}
             onCheckOut={() => openAction("checkOut")}
+            onExtendStay={openStayExtension}
             onRecordPayment={() => openAction("recordPayment")}
             onAssignRoom={() => openAction("assignRoom")}
             onStatusOverride={() => openAction("statusOverride")}
@@ -894,6 +959,28 @@ export default function BookingDetailsPage() {
         onIdentityVerifiedChange={setIdentityVerified}
         onClose={closeAction}
         onSubmit={submitAction}
+      />
+      <StayExtensionModal
+        isOpen={isStayExtensionOpen}
+        currentCheckOut={booking.checkOut}
+        newCheckOut={extensionDate}
+        note={extensionNote}
+        overrideReason={extensionOverrideReason}
+        preview={extensionPreview}
+        canOverrideMaintenance={canUseAdminCorrection}
+        isPreviewing={isPreviewingStayExtension}
+        isSubmitting={isMutating}
+        errorMessage={extensionError}
+        onNewCheckOutChange={(value) => {
+          setExtensionDate(value);
+          setExtensionPreview(null);
+          setExtensionError("");
+        }}
+        onNoteChange={setExtensionNote}
+        onOverrideReasonChange={setExtensionOverrideReason}
+        onPreview={() => void previewExtension()}
+        onClose={() => setIsStayExtensionOpen(false)}
+        onSubmit={submitStayExtension}
       />
     </div>
   );

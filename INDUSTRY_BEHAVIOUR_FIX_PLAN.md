@@ -123,6 +123,8 @@ Status: **Completed**
 Priority: **P1**  
 Goal: extend a booking departure date without overselling inventory or losing pricing/audit history.
 
+Status: **Completed**
+
 ### Backend Design
 
 1. Add preview and commit endpoints:

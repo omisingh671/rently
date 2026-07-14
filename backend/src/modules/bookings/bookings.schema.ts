@@ -254,6 +254,24 @@ export const moveBookingRoomSchema = previewBookingRoomMoveSchema.extend({
   pricingAction: z.enum(["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]),
 });
 
+export const previewStayExtensionSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  newCheckOut: z.coerce.date().refine(
+    (date) =>
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0,
+    "New check-out must be a date-only UTC value",
+  ),
+});
+
+export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
+  pricingFingerprint: z.string().trim().length(64),
+  note: z.string().trim().min(1).max(1000),
+  overrideReason: z.string().trim().min(1).max(1000).optional(),
+});
+
 export const correctBookingStatusSchema = z.object({
   expectedVersion: expectedVersionSchema,
   status: z.nativeEnum(BookingStatus),

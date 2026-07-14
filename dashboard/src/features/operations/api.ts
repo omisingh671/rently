@@ -29,6 +29,9 @@ import type {
   MoveRoomPayload,
   PreviewRoomMovePayload,
   RoomMovePreview,
+  StayExtensionPreview,
+  PreviewStayExtensionPayload,
+  CommitStayExtensionPayload,
 } from "./types";
 
 type PageParams = {
@@ -192,6 +195,30 @@ export const previewBookingRoomMoveApi = async (
 ): Promise<RoomMovePreview> => {
   const { data } = await axiosInstance.post<ApiSuccessResponse<RoomMovePreview>>(
     API_ENDPOINTS.operations.bookingRoomMovePreviewById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const previewStayExtensionApi = async (
+  bookingId: string,
+  payload: PreviewStayExtensionPayload,
+): Promise<StayExtensionPreview> => {
+  const { data } = await axiosInstance.post<
+    ApiSuccessResponse<StayExtensionPreview>
+  >(
+    API_ENDPOINTS.operations.bookingStayExtensionPreviewById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const commitStayExtensionApi = async (
+  bookingId: string,
+  payload: CommitStayExtensionPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingStayExtensionById(bookingId),
     payload,
   );
   return data.data;

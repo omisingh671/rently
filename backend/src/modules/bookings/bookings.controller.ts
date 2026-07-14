@@ -25,6 +25,8 @@ import {
   operationsBoardQuerySchema,
   updateRoomHousekeepingSchema,
   voidBookingFolioChargeSchema,
+  previewStayExtensionSchema,
+  commitStayExtensionSchema,
 } from "./bookings.schema.js";
 
 const getUserId = (req: AuthRequest) => {
@@ -186,6 +188,31 @@ export const previewBookingRoomMove = async (req: AuthRequest, res: Response) =>
   const params = idParamsSchema.parse(req.params);
   const body = previewBookingRoomMoveSchema.parse(req.body);
   const data = await service.previewBookingRoomMove(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const previewStayExtension = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = previewStayExtensionSchema.parse(req.body);
+  const data = await service.previewStayExtension(getUserId(req), params.id, body);
+  res.json({ success: true, data });
+};
+
+export const extendStay = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = commitStayExtensionSchema.parse(req.body);
+  const data = await service.extendStay(getUserId(req), params.id, {
+    expectedVersion: body.expectedVersion,
+    newCheckOut: body.newCheckOut,
+    pricingFingerprint: body.pricingFingerprint,
+    note: body.note,
+    ...(body.overrideReason !== undefined && {
+      overrideReason: body.overrideReason,
+    }),
+  });
   res.json({ success: true, data });
 };
 

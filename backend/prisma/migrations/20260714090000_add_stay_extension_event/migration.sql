@@ -1,0 +1,14 @@
+ALTER TABLE `booking_operation_events`
+  MODIFY COLUMN `eventType` ENUM(
+    'CHECK_IN',
+    'CHECK_OUT',
+    'NO_SHOW',
+    'ROOM_ASSIGNMENT',
+    'ROOM_MOVE',
+    'STATUS_CORRECTION',
+    'BALANCE_OVERRIDE',
+    'MAINTENANCE_CONFLICT',
+    'FOLIO_CHARGE',
+    'FOLIO_CHARGE_VOID',
+    'STAY_EXTENSION'
+  ) NOT NULL;

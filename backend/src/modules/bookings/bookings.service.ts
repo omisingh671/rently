@@ -25,9 +25,14 @@ import {
   correctBookingStatusInTransaction,
   markBookingNoShowInTransaction,
   assertExpectedBookingVersion,
+  findTransactionBooking,
   updateDashboardBookingLifecycle,
 } from "./bookings.lifecycle.js";
 import { moveBookingRoomsInTransaction } from "./bookings.room-move.js";
+import {
+  buildStayExtensionPreview,
+  commitStayExtension,
+} from "./bookings.stay-extension.js";
 import {
   buildCashierSummaryForProperty,
   buildOperationsBoardForProperty,
@@ -77,6 +82,8 @@ import type {
   CreateBookingFolioChargeInput,
   MoveBookingRoomInput,
   PreviewBookingRoomMoveInput,
+  PreviewStayExtensionInput,
+  CommitStayExtensionInput,
   NoShowBookingInput,
   RecordDashboardBookingPaymentInput,
   RecordDashboardBookingRefundInput,
@@ -91,6 +98,7 @@ import type {
   DashboardManualBookingAvailabilityDTO,
   DashboardRoomBoardDTO,
   BookingRoomMovePreviewDTO,
+  BookingStayExtensionPreviewDTO,
 } from "./bookings.dto.js";
 
 export {
@@ -402,6 +410,42 @@ export const moveBookingRooms = async (
       oldRoomIds,
     });
   });
+};
+
+export const previewStayExtension = async (
+  userId: string,
+  bookingId: string,
+  input: PreviewStayExtensionInput,
+): Promise<BookingStayExtensionPreviewDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction(async (tx) =>
+    buildStayExtensionPreview(
+      tx,
+      await findTransactionBooking(tx, bookingId),
+      input,
+    ),
+  );
+};
+
+export const extendStay = async (
+  userId: string,
+  bookingId: string,
+  input: CommitStayExtensionInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction((tx) =>
+    commitStayExtension(tx, {
+      bookingId,
+      actor,
+      extension: input,
+    }),
+  );
 };
 
 export const correctBookingStatus = async (

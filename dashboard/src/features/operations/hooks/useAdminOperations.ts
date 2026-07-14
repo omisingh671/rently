@@ -14,6 +14,8 @@ import {
   markBookingNoShowApi,
   moveBookingRoomsApi,
   previewBookingRoomMoveApi,
+  previewStayExtensionApi,
+  commitStayExtensionApi,
   recordBalancePaymentApi,
   recordRefundApi,
   updateRefundRequestApi,
@@ -39,6 +41,8 @@ import type {
   VersionedBookingNotePayload,
   MoveRoomPayload,
   PreviewRoomMovePayload,
+  PreviewStayExtensionPayload,
+  CommitStayExtensionPayload,
 } from "../types";
 
 type Module = "bookings" | "enquiries" | "quotes";
@@ -294,6 +298,28 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     },
   });
 
+  const previewStayExtension = useMutation({
+    mutationFn: (payload: PreviewStayExtensionPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return previewStayExtensionApi(bookingId, payload);
+    },
+  });
+
+  const extendStay = useMutation({
+    mutationFn: (payload: CommitStayExtensionPayload) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return commitStayExtensionApi(bookingId, payload);
+    },
+    onSuccess: (booking) => {
+      syncBooking(booking);
+      queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.billing.all() });
+      queryClient.invalidateQueries({
+        queryKey: [...ADMIN_KEYS.root, "dashboard"],
+      });
+    },
+    onError: refreshBookingDetail,
+  });
+
   const correctStatus = useMutation({
     mutationFn: (payload: CorrectBookingStatusPayload) => {
       if (!bookingId) throw new Error("BookingId required");
@@ -368,6 +394,9 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     moveRooms: moveRooms.mutateAsync,
     previewRoomMove: previewRoomMove.mutateAsync,
     isPreviewingRoomMove: previewRoomMove.isPending,
+    previewStayExtension: previewStayExtension.mutateAsync,
+    isPreviewingStayExtension: previewStayExtension.isPending,
+    extendStay: extendStay.mutateAsync,
     correctStatus: correctStatus.mutateAsync,
     createFolioCharge: createFolioCharge.mutateAsync,
     voidFolioCharge: voidFolioCharge.mutateAsync,
@@ -380,6 +409,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       checkOutBooking.isPending ||
       markNoShow.isPending ||
       moveRooms.isPending ||
+      extendStay.isPending ||
       correctStatus.isPending ||
       createFolioCharge.isPending ||
       voidFolioCharge.isPending ||

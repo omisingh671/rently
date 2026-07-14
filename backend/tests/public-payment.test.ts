@@ -3885,3 +3885,35 @@ test("maintenance conflicts require an audited admin emergency override", async 
   });
   assert.equal(audited?.note, "Safety risk requires immediate relocation.");
 });
+
+test("stay-extension preview enforces dashboard property scope", async () => {
+  const booking = await createBooking(
+    new Date("2034-01-10T00:00:00.000Z"),
+    new Date("2034-01-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-stay-extension-scope-payment`,
+  });
+  const dashboardBooking = await dashboardService.getBookingById(
+    state.managerId,
+    booking.id,
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.previewStayExtension(
+        state.otherManagerId,
+        booking.id,
+        {
+          expectedVersion: dashboardBooking.version,
+          newCheckOut: new Date("2034-01-13T00:00:00.000Z"),
+        },
+      ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 404 &&
+      error.code === "PROPERTY_NOT_FOUND",
+  );
+});

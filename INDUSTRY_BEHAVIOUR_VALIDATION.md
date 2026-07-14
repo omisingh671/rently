@@ -33,7 +33,7 @@ Validation levels:
 | Dashboard operations | Backend tests cover walk-in booking, assignment, check-in/out, room move, payments, folio, cashier, housekeeping, and maintenance; browser E2E now proves manager login, property scope, walk-in booking, balance payment, automatic room assignment, check-in, checkout, and housekeeping through inspection | Staff workflows must be property-scoped, versioned, audited, and usable as complete journeys | **Critical staff stay lifecycle browser-validated** |
 | Housekeeping | Tests enforce `DIRTY -> CLEANING -> CLEAN -> INSPECTED` and checkout marks rooms dirty | Room readiness must follow an auditable controlled sequence | **Validated** |
 | Late checkout | Tests cover idempotent extra-night folio charging and balance settlement/override | Late departure must be priced, conflict-aware, and auditable | **Safe minimum implemented** |
-| Stay extension | No endpoint updates `checkOut`, rechecks added-night inventory, and prices the revised stay | Extension must atomically revalidate inventory, price added nights, update departure, and audit the change | **Missing** |
+| Stay extension | Preview and commit endpoints now reprice added nights, expose room/unit/maintenance/lock conflicts, and atomically update `checkOut`, folio/debit-note evidence, and a dedicated audit event; dashboard and browser E2E cover the operator journey | Extension must atomically revalidate inventory, price added nights, update departure, and audit the change | **Validated in current working tree** |
 | RBAC and property isolation | Backend tests cover Super Admin, Admin, Manager, guest/dashboard session audiences, and direct-ID property isolation | Cross-property reads and writes must be denied at service and data-access boundaries | **Validated for covered routes** |
 | Browser journey regression | Playwright uses an isolated guarded seed and covers the critical guest booking/payment/document journey, the critical dashboard staff stay lifecycle, duplicate submit, stale version recovery, cross-property denial, deliberate availability failure/retry, and 390px overflow smoke | Critical guest and staff journeys should run deterministically in a guarded test environment | **Local suite validated; hosted CI intentionally omitted** |
 | Dependency failure recovery | No systematic tests for DB timeouts, mail/PDF failure, provider retries, or partial responses | External failures need bounded retries, durable state, operator visibility, and safe replay | **Missing** |
@@ -64,7 +64,7 @@ Validation levels:
    - Return the existing request or a stable `409 REFUND_REQUEST_ALREADY_EXISTS` result on replay.
    - Add a concurrency test proving one active request and one work item.
 
-4. **Implement true stay extension**
+4. **Implement true stay extension - completed in the current working tree**
    - Add preview and commit endpoints using `expectedVersion`.
    - Recheck room/unit bookings, maintenance, and inventory locks for the added dates in a serializable transaction.
    - Price and tax only the added nights, persist the adjustment snapshot, update `checkOut`, and create an operation event.
@@ -94,6 +94,7 @@ Validation levels:
 - Guest cancellation now uses optimistic concurrency and releases inventory locks transactionally.
 - Payment replay has simultaneous-request regression coverage.
 - Guest refund-request creation now uses a serializable booking-version claim; simultaneous requests produce one active request, and a staff-fulfilment race creates no stale work.
+- True stay extension now uses preview fingerprints and serializable booking-version commits, reuses shared inventory conflicts, freezes incremental pricing/tax evidence, and preserves whole-unit and multi-room assignments.
 - Dashboard guidance no longer claims that Stripe/Razorpay automated refunds are currently integrated.
 - Guest token-refund copy now follows the property policy instead of always claiming the token is non-refundable.
 - An isolated Playwright E2E foundation now validates the authenticated guest booking journey through mock payment, invoice/receipt download, and protected booking detail; the manager walk-in lifecycle through payment, automatic assignment, check-in, checkout, and housekeeping inspection; plus 390px public/dashboard overflow smoke.
@@ -104,11 +105,13 @@ Validation levels:
 
 - Isolated schema: `rently_audit_019f5ba6`
 - Playwright: 5/5 passed
-- Backend concurrency: 8/8 passed
-- Backend payment/refund: 57/57 passed
+- Backend concurrency: 12/12 passed
+- Backend payment/refund/operations: 58/58 passed
 - Backend typecheck: passed
 - Backend lint: passed
 - Backend production build: passed
+- Dashboard lint: passed
+- Dashboard production build: passed
 - Normal development database was not seeded or reset.
 
 ## Release Interpretation

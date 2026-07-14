@@ -93,6 +93,22 @@ export interface BookingStayExtensionChargePreviewDTO {
   }>;
 }
 
+export interface BookingStayExtensionPreviewDTO
+  extends BookingStayExtensionChargePreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  newCheckOut: string;
+  discountAmount: string;
+  resultingBalance: string;
+  pricingFingerprint: string;
+  conflicts: Array<{
+    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    targetType: BookingTargetType;
+    targetId: string;
+    targetLabel: string;
+  }>;
+}
+
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
   | "RESERVED"

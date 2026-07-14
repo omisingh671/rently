@@ -230,6 +230,7 @@ enum BookingOperationEventType {
   MAINTENANCE_CONFLICT
   FOLIO_CHARGE
   FOLIO_CHARGE_VOID
+  STAY_EXTENSION
 }
 
 enum MaintenanceStatus {

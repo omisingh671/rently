@@ -1039,14 +1039,14 @@ export const buildRoomMovePricingPreview = async (
   };
 };
 
-export const buildLateCheckoutExtensionPreview = async (
+export const buildStayExtensionChargePreview = async (
   booking: repo.DashboardBookingRecord,
   tx: Prisma.TransactionClient,
-  now = new Date(),
+  requestedCheckOut: Date,
 ): Promise<BookingStayExtensionChargePreviewDTO | null> => {
   const timeZone = booking.property.tenant.timezone;
   const originalCheckOutDate = getLocalIsoDate(booking.checkOut, timeZone);
-  const actualCheckOutDate = getLocalIsoDate(now, timeZone);
+  const actualCheckOutDate = getLocalIsoDate(requestedCheckOut, timeZone);
   const extraNights = dateOnlyDiff(originalCheckOutDate, actualCheckOutDate);
 
   if (extraNights <= 0) {
@@ -1109,3 +1109,9 @@ export const buildLateCheckoutExtensionPreview = async (
     pricingSnapshot,
   };
 };
+
+export const buildLateCheckoutExtensionPreview = (
+  booking: repo.DashboardBookingRecord,
+  tx: Prisma.TransactionClient,
+  now = new Date(),
+) => buildStayExtensionChargePreview(booking, tx, now);

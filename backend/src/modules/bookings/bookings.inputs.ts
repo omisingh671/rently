@@ -117,6 +117,17 @@ export interface PreviewBookingRoomMoveInput {
   roomIds: string[];
 }
 
+export interface PreviewStayExtensionInput {
+  expectedVersion: number;
+  newCheckOut: Date;
+}
+
+export interface CommitStayExtensionInput extends PreviewStayExtensionInput {
+  pricingFingerprint: string;
+  note: string;
+  overrideReason?: string;
+}
+
 export interface CorrectBookingStatusInput {
   expectedVersion: number;
   status: BookingStatus;

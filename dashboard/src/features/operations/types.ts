@@ -295,6 +295,45 @@ export type MoveRoomPayload = PreviewRoomMovePayload & {
   pricingAction: RoomMovePricingAction;
 };
 
+export type StayExtensionPreview = {
+  bookingId: string;
+  bookingVersion: number;
+  originalCheckOutDate: string;
+  newCheckOut: string;
+  extraNights: number;
+  currentAssignment: string;
+  nightlyRate: string;
+  baseAmount: string;
+  discountAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  resultingBalance: string;
+  pricingFingerprint: string;
+  conflicts: Array<{
+    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    targetType: BookingTargetType;
+    targetId: string;
+    targetLabel: string;
+  }>;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+};
+
+export type PreviewStayExtensionPayload = {
+  expectedVersion: number;
+  newCheckOut: string;
+};
+
+export type CommitStayExtensionPayload = PreviewStayExtensionPayload & {
+  pricingFingerprint: string;
+  note: string;
+  overrideReason?: string;
+};
+
 export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {
   status: BookingStatus;
 };
