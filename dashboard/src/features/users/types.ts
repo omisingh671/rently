@@ -70,6 +70,7 @@ export type ManagedUserForcePasswordVariables = {
 };
 
 export type AdminSessionStatus = "active" | "expired";
+export type AdminSessionAudience = "FRONTEND" | "DASHBOARD";
 
 export type AdminSession = {
   id: string;
@@ -77,6 +78,7 @@ export type AdminSession = {
   userFullName: string;
   userEmail: string;
   userRole: ManagedUserRole;
+  audience: AdminSessionAudience;
   ip: string | null;
   userAgent: string | null;
   expiresAt: string;

@@ -16,16 +16,35 @@ import type {
 } from "./availability.inputs.js";
 import type {
   PublicAvailabilityDTO,
-  PublicAvailabilityOptionDTO,
   PublicInventoryLockDTO,
   GalleryImageDTO,
   GalleryImageScope,
   PublicAmenityDTO,
-  AvailabilityOptionItemDTO,
   AvailabilityOptionRoomDTO,
   PublicAvailabilityOptionType,
 } from "./availability.dto.js";
+import type {
+  PublicAvailabilityOptionInternal,
+  PublicInventoryItem,
+} from "./availability.types.js";
 import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.inputs.js";
+import {
+  buildRoomAllocation,
+  buildUnitAllocation,
+  getRoomCapacity,
+  getUnitCapacity,
+} from "./availability.capacity.js";
+import {
+  ensureSpaceAvailable,
+  hasInventoryConflict,
+} from "./availability.conflicts.js";
+import { mapAvailabilityOptionDTO } from "./availability.presenter.js";
+
+export { ensureSpaceAvailable } from "./availability.conflicts.js";
+export type {
+  PublicAvailabilityOptionInternal,
+  PublicInventoryItem,
+} from "./availability.types.js";
 
 const maxBookingTransactionAttempts = 3;
 const inventoryLockTtlMs = 10 * 60 * 1000;
@@ -68,52 +87,6 @@ interface GenerateAvailabilityOptionsConfig {
   pricePrivateRoomsByCapacity?: boolean;
 }
 
-export interface PublicInventoryItem {
-  target: spacesRepo.PublicSpaceTarget;
-  pricingId: string;
-  propertyId: string;
-  propertyLabel: string;
-  unitId: string | null;
-  floor: number | null;
-  capacity: number;
-  guestCount: number;
-  priceGuestCount: number;
-  pricePerNight: number;
-  taxInclusive: boolean;
-  productId: string;
-  productName: string;
-  targetLabel: string;
-  publicLabel: string;
-  propertyImages: string[];
-  images: GalleryImageDTO[];
-  amenities: PublicAmenityDTO[];
-  rooms: AvailabilityOptionRoomDTO[];
-}
-
-export interface PublicAvailabilityOptionInternal {
-  optionId: string;
-  propertyLabel: string;
-  title: string;
-  guestSplit: string;
-  guestSplitParts: number[];
-  optionType: PublicAvailabilityOptionType;
-  requestedGuests: number;
-  totalCapacity: number;
-  spareCapacity: number;
-  itemLabel: string;
-  includedLabel: string;
-  recommendationTags: string[];
-  comfortOption: ComfortOption;
-  nightlyTotal: number;
-  stayTotal: number;
-  nights: number;
-  itemCount: number;
-  propertyId: string;
-  items: PublicInventoryItem[];
-  propertyImages: string[];
-  images: GalleryImageDTO[];
-}
-
 type GallerySource = {
   id: string;
   propertyId: string;
@@ -129,14 +102,6 @@ type AmenityLinkSource = {
     icon: string | null;
   };
 };
-
-const getRoomCapacity = (room: { maxOccupancy: number }) =>
-  Math.max(1, room.maxOccupancy);
-
-const getUnitCapacity = (unit: repo.PublicAvailabilityUnitRecord) =>
-  unit.rooms
-    .filter((room) => room.isActive && room.status === "AVAILABLE")
-    .reduce((total, room) => total + getRoomCapacity(room), 0);
 
 const formatCount = (count: number, singular: string, plural: string) =>
   `${count} ${count === 1 ? singular : plural}`;
@@ -318,59 +283,6 @@ const buildOptionId = (
     .digest("hex")
     .slice(0, 32);
 
-const mapOptionDTO = (
-  option: PublicAvailabilityOptionInternal,
-): PublicAvailabilityOptionDTO => ({
-  optionId: option.optionId,
-  propertyId: option.propertyId,
-  propertyLabel: option.propertyLabel,
-  title: option.title,
-  guestSplit: option.guestSplit,
-  guestSplitParts: option.guestSplitParts,
-  optionType: option.optionType,
-  requestedGuests: option.requestedGuests,
-  totalCapacity: option.totalCapacity,
-  spareCapacity: option.spareCapacity,
-  itemLabel: option.itemLabel,
-  includedLabel: option.includedLabel,
-  recommendationTags: option.recommendationTags,
-  comfortOption: option.comfortOption,
-  nightlyTotal: option.nightlyTotal,
-  stayTotal: option.stayTotal,
-  nights: option.nights,
-  itemCount: option.itemCount,
-  priceBreakup: option.items.map((item) => item.pricePerNight),
-  priceBreakdown: option.items.map((item) => ({
-    label: item.publicLabel,
-    productName: item.productName,
-    targetType: item.target.targetType,
-    guestCount: item.guestCount,
-    capacity: item.capacity,
-    priceGuestCount: item.priceGuestCount,
-    pricePerNight: item.pricePerNight,
-  })),
-  propertyImages: option.propertyImages,
-  images: option.images,
-  items: option.items.map(mapOptionItemDTO),
-});
-
-const mapOptionItemDTO = (
-  item: PublicInventoryItem,
-): AvailabilityOptionItemDTO => ({
-  targetType: item.target.targetType,
-  unitId: null,
-  roomId: null,
-  label: item.publicLabel,
-  productName: item.productName,
-  guestCount: item.guestCount,
-  priceGuestCount: item.priceGuestCount,
-  capacity: item.capacity,
-  pricePerNight: item.pricePerNight,
-  images: item.images,
-  amenities: item.amenities,
-  rooms: item.rooms,
-});
-
 const optionRank = (
   option: PublicAvailabilityOptionInternal,
   requestedGuests: number,
@@ -463,36 +375,6 @@ const curatePublicOptions = (
     .sort((left, right) => sortOptions(left, right, requestedGuests));
 };
 
-const hasInventoryOverlap = async (
-  propertyId: string,
-  target: spacesRepo.PublicSpaceTarget,
-  stay: StayScope,
-  tx?: Prisma.TransactionClient,
-  ignoreLockToken?: string,
-) => {
-  const at = new Date();
-  const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
-    repo.hasOverlappingBooking(target, stay.checkIn, stay.checkOut, tx),
-    repo.hasOverlappingMaintenance(
-      propertyId,
-      target,
-      stay.checkIn,
-      stay.checkOut,
-      tx,
-    ),
-    repo.hasOverlappingInventoryLock(
-      target,
-      stay.checkIn,
-      stay.checkOut,
-      at,
-      tx,
-      ignoreLockToken,
-    ),
-  ]);
-
-  return hasBooking || hasMaintenance || hasLock;
-};
-
 const loadAvailableRooms = async (
   tenantId: string,
   comfortOption: ComfortOption,
@@ -517,7 +399,7 @@ const loadAvailableRooms = async (
     };
 
     if (
-      !(await hasInventoryOverlap(
+      !(await hasInventoryConflict(
         room.unit.propertyId,
         target,
         stay,
@@ -557,7 +439,7 @@ const loadAvailableUnits = async (
 
     if (
       getUnitCapacity(unit) > 0 &&
-      !(await hasInventoryOverlap(
+      !(await hasInventoryConflict(
         unit.propertyId,
         target,
         stay,
@@ -680,6 +562,7 @@ const toPricedRoomItem = async (
     roomId: room.id,
   };
   const pricing = await spacesRepo.findActivePricingForTarget(
+    room.unit.propertyId,
     target,
     new Date(),
     tenantId,
@@ -745,6 +628,7 @@ const toPricedUnitItem = async (
     roomId: null,
   };
   const pricing = await spacesRepo.findActivePricingForTarget(
+    unit.propertyId,
     target,
     new Date(),
     tenantId,
@@ -788,47 +672,6 @@ const toPricedUnitItem = async (
     amenities: mapAmenityLinks(unit.amenities),
     rooms: mapUnitRooms(unit),
   };
-};
-
-const buildRoomAllocation = (
-  rooms: repo.PublicAvailabilityRoomRecord[],
-  guests: number,
-) => {
-  const allocations = [];
-  let remainingGuests = guests;
-
-  for (const room of rooms) {
-    if (remainingGuests <= 0) {
-      break;
-    }
-
-    const guestCount = Math.min(getRoomCapacity(room), remainingGuests);
-    allocations.push({ room, guestCount });
-    remainingGuests -= guestCount;
-  }
-
-  return remainingGuests === 0 ? allocations : null;
-};
-
-const buildUnitAllocation = (
-  units: repo.PublicAvailabilityUnitRecord[],
-  guests: number,
-) => {
-  const allocations = [];
-  let remainingGuests = guests;
-
-  for (const unit of units) {
-    if (remainingGuests <= 0) {
-      break;
-    }
-
-    const capacity = getUnitCapacity(unit);
-    const guestCount = Math.min(capacity, remainingGuests);
-    allocations.push({ unit, guestCount });
-    remainingGuests -= guestCount;
-  }
-
-  return remainingGuests === 0 ? allocations : null;
 };
 
 const toOption = (
@@ -1152,7 +995,7 @@ export const getPublicAvailabilityOptions = async (
     tx,
   );
 
-  return options.map(mapOptionDTO);
+  return options.map(mapAvailabilityOptionDTO);
 };
 
 export const findAvailabilityOptionById = async (
@@ -1173,55 +1016,6 @@ export const findAvailabilityOptionById = async (
     ignoreLockToken,
   );
   return options.find((option) => option.optionId === optionId) ?? null;
-};
-
-export const ensureSpaceAvailable = async (
-  space: spacesRepo.PublicSpaceRecord,
-  checkIn: Date,
-  checkOut: Date,
-  tx?: Prisma.TransactionClient,
-  ignoreLockToken?: string,
-) => {
-  const target = spacesService.getSpaceTarget(space);
-  const unit = space.unit ?? space.room?.unit;
-
-  if (unit && (!unit.isActive || unit.status !== "ACTIVE")) {
-    throw new HttpError(
-      409,
-      "UNIT_DISABLED",
-      "The parent unit for this space is currently disabled or inactive",
-    );
-  }
-
-  const at = now();
-  const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
-    repo.hasOverlappingBooking(target, checkIn, checkOut, tx),
-    repo.hasOverlappingMaintenance(
-      space.propertyId,
-      target,
-      checkIn,
-      checkOut,
-      tx,
-    ),
-    repo.hasOverlappingInventoryLock(
-      target,
-      checkIn,
-      checkOut,
-      at,
-      tx,
-      ignoreLockToken,
-    ),
-  ]);
-
-  if (hasBooking || hasMaintenance || hasLock) {
-    throw new HttpError(
-      409,
-      "SPACE_NOT_AVAILABLE",
-      "Selected space is not available for these dates",
-    );
-  }
-
-  return target;
 };
 
 const getTargetKey = (target: spacesRepo.PublicSpaceTarget) =>

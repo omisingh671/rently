@@ -1,6 +1,12 @@
 import type { PaginatedResult } from "@/common/types/pagination";
 
 export type MaintenanceTargetType = "PROPERTY" | "UNIT" | "ROOM";
+export type MaintenanceStatus =
+  | "SCHEDULED"
+  | "IN_PROGRESS"
+  | "RESOLVED"
+  | "CANCELLED";
+export type MaintenancePriority = "LOW" | "MEDIUM" | "HIGH" | "EMERGENCY";
 
 export type AdminMaintenanceBlock = {
   id: string;
@@ -12,6 +18,13 @@ export type AdminMaintenanceBlock = {
   roomId: string | null;
   roomLabel: string | null;
   reason: string | null;
+  status: MaintenanceStatus;
+  priority: MaintenancePriority;
+  assignedToUserId: string | null;
+  assignedToName: string | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
+  emergencyOverride: boolean;
   startDate: string;
   endDate: string;
   createdByUserId: string;
@@ -29,6 +42,9 @@ export interface CreateMaintenancePayload {
   unitId?: string;
   roomId?: string;
   reason?: string;
+  priority: MaintenancePriority;
+  emergencyOverride?: boolean;
+  emergencyReason?: string;
   startDate: string;
   endDate: string;
 }
@@ -39,6 +55,12 @@ export interface UpdateMaintenancePayload {
   unitId?: string;
   roomId?: string;
   reason?: string;
+  status?: MaintenanceStatus;
+  priority?: MaintenancePriority;
+  assignedToUserId?: string | null;
+  resolutionNote?: string;
+  emergencyOverride?: boolean;
+  emergencyReason?: string;
   startDate?: string;
   endDate?: string;
 }

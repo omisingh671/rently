@@ -214,6 +214,9 @@ export const mapBooking = (
   const paidAmount = getBookingPaidAmount(booking);
   const refundedAmount = getBookingRefundedAmount(booking);
   const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
+  const folioTotal = booking.folioCharges
+    .filter((charge) => charge.status === "ACTIVE")
+    .reduce((sum, charge) => sum.plus(charge.amount), zeroDecimal);
   const taxBreakdown = getDashboardTaxBreakdown(booking.taxBreakdown);
   const nonRefundableAmount = taxBreakdown
     .filter((tax) => tax.isRefundable === false)
@@ -250,7 +253,7 @@ export const mapBooking = (
       ? zeroDecimal
       : maxDecimal(
           zeroDecimal,
-          booking.totalAmount.minus(netPaidAmount),
+          booking.totalAmount.plus(folioTotal).minus(netPaidAmount),
         );
   const refundRequest = getBookingRefundRequest(booking);
   const getPaymentMetadataValue = (
@@ -296,6 +299,13 @@ export const mapBooking = (
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
     status: booking.status,
+    version: booking.version,
+    checkedInAt: booking.checkedInAt ?? null,
+    checkedOutAt: booking.checkedOutAt ?? null,
+    noShowAt: booking.noShowAt ?? null,
+    identityVerifiedAt: booking.identityVerifiedAt ?? null,
+    identityDocumentType: booking.identityDocumentType ?? null,
+    identityDocumentReference: booking.identityDocumentReference ?? null,
     subtotalAmount: booking.subtotalAmount.toString(),
     totalAmount: booking.totalAmount.toString(),
     discountAmount: booking.discountAmount.toString(),
@@ -303,7 +313,7 @@ export const mapBooking = (
     taxAmount: booking.taxAmount.toString(),
     taxBreakdown,
     paymentStatus: getBookingPaymentStatus(
-      booking.totalAmount,
+      booking.totalAmount.plus(folioTotal),
       paidAmount,
       refundedAmount,
     ),
@@ -403,6 +413,31 @@ export const mapBooking = (
       note: event.note ?? null,
       createdAt: event.createdAt,
     })),
+    operationEvents: booking.operationEvents.map((event) => ({
+      id: event.id,
+      eventType: event.eventType,
+      actorUserId: event.actorUserId ?? null,
+      actorName: event.actor?.fullName ?? null,
+      note: event.note ?? null,
+      metadata: event.metadata,
+      createdAt: event.createdAt,
+    })),
+    folioCharges: booking.folioCharges.map((charge) => ({
+      id: charge.id,
+      type: charge.type,
+      status: charge.status,
+      description: charge.description,
+      amount: charge.amount.toString(),
+      note: charge.note ?? null,
+      voidReason: charge.voidReason ?? null,
+      createdByUserId: charge.createdByUserId,
+      createdByName: charge.createdBy.fullName,
+      voidedByUserId: charge.voidedByUserId ?? null,
+      voidedByName: charge.voidedBy?.fullName ?? null,
+      voidedAt: charge.voidedAt ?? null,
+      createdAt: charge.createdAt,
+    })),
+    folioTotal: folioTotal.toString(),
     createdAt: booking.createdAt,
     updatedAt: booking.updatedAt,
   };

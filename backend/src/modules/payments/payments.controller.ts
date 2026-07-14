@@ -16,6 +16,7 @@ export const createManualPayment = async (
   const params = idParamsSchema.parse(req.params);
   const body = createManualPaymentSchema.parse({
     idempotencyKey: getIdempotencyKey(req),
+    checkoutToken: req.body.checkoutToken,
     amount: req.body.amount,
     purpose: req.body.purpose,
     status: req.body.status,
@@ -24,6 +25,9 @@ export const createManualPayment = async (
   const data = await service.createManualPayment({
     ...(req.user?.userId !== undefined && { userId: req.user.userId }),
     bookingId: params.id,
+    ...(body.checkoutToken !== undefined && {
+      checkoutToken: body.checkoutToken,
+    }),
     idempotencyKey: body.idempotencyKey,
     ...(body.amount !== undefined && { amount: body.amount }),
     ...(body.purpose !== undefined && { purpose: body.purpose }),

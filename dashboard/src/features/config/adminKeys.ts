@@ -191,6 +191,16 @@ export const ADMIN_KEYS = {
       ] as const,
   },
 
+  galleries: {
+    all: () => [...ADMIN_KEYS.root, "galleries"] as const,
+
+    list: (params: {
+      propertyId?: string;
+      unitId?: string;
+      roomId?: string;
+    }) => [...ADMIN_KEYS.galleries.all(), "list", params] as const,
+  },
+
   maintenance: {
     all: () => [...ADMIN_KEYS.root, "maintenance"] as const,
 
@@ -264,6 +274,20 @@ export const ADMIN_KEYS = {
           from: params.from,
           to: params.to,
         },
+      ] as const,
+
+    operationsBoard: (propertyId: string, businessDate: string) =>
+      [
+        ...ADMIN_KEYS.operations.byProperty(propertyId),
+        "operations-board",
+        businessDate,
+      ] as const,
+
+    cashierSummary: (propertyId: string, from: string, to: string) =>
+      [
+        ...ADMIN_KEYS.operations.byProperty(propertyId),
+        "cashier-summary",
+        { from, to },
       ] as const,
 
     enquiries: (propertyId: string) =>

@@ -69,6 +69,12 @@ function getAdminPageMeta(pathname: string) {
   if (pathname.includes(ADMIN_ROUTES.ROOM_BOARD))
     return { title: "Room Board", subtitle: "Room availability operations" };
 
+  if (pathname.includes(ADMIN_ROUTES.FRONT_DESK))
+    return {
+      title: "Front Desk",
+      subtitle: "Daily arrivals, cashier, and operations",
+    };
+
   if (pathname.includes(ADMIN_ROUTES.BOOKING_POLICY))
     return {
       title: "Booking Policy",
@@ -127,7 +133,7 @@ export default function AdminLayout() {
         onLogout={handleLogout}
       />
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <AdminHeader
           title={title}
           subtitle={subtitle}

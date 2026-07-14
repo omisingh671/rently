@@ -15,6 +15,7 @@ type BillingSettingsFormState = {
   invoicePrefix: string;
   receiptPrefix: string;
   creditNotePrefix: string;
+  debitNotePrefix: string;
   footerNotes: string;
 };
 
@@ -93,6 +94,7 @@ function BillingSettingsForm({
     invoicePrefix: initialData.invoicePrefix,
     receiptPrefix: initialData.receiptPrefix,
     creditNotePrefix: initialData.creditNotePrefix,
+    debitNotePrefix: initialData.debitNotePrefix,
     footerNotes: initialData.footerNotes ?? "",
   });
 
@@ -117,6 +119,7 @@ function BillingSettingsForm({
       invoicePrefix: form.invoicePrefix.trim(),
       receiptPrefix: form.receiptPrefix.trim(),
       creditNotePrefix: form.creditNotePrefix.trim(),
+      debitNotePrefix: form.debitNotePrefix.trim(),
       footerNotes: normalizeNullable(form.footerNotes),
     });
   };
@@ -164,6 +167,12 @@ function BillingSettingsForm({
           value={form.creditNotePrefix}
           disabled={!canEdit}
           onChange={(value) => updateField("creditNotePrefix", value)}
+        />
+        <Field
+          label="Debit note prefix"
+          value={form.debitNotePrefix}
+          disabled={!canEdit}
+          onChange={(value) => updateField("debitNotePrefix", value)}
         />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">

@@ -14,6 +14,11 @@ enum UserRole {
   GUEST
 }
 
+enum SessionAudience {
+  FRONTEND
+  DASHBOARD
+}
+
 enum PropertyAssignmentRole {
   ADMIN
   MANAGER
@@ -185,6 +190,7 @@ enum BillingDocumentType {
   INVOICE
   RECEIPT
   CREDIT_NOTE
+  DEBIT_NOTE
 }
 
 enum BillingDocumentStatus {
@@ -204,6 +210,52 @@ enum MaintenanceTargetType {
   PROPERTY
   UNIT
   ROOM
+}
+
+enum RoomHousekeepingStatus {
+  DIRTY
+  CLEANING
+  CLEAN
+  INSPECTED
+}
+
+enum BookingOperationEventType {
+  CHECK_IN
+  CHECK_OUT
+  NO_SHOW
+  ROOM_ASSIGNMENT
+  ROOM_MOVE
+  STATUS_CORRECTION
+  BALANCE_OVERRIDE
+  MAINTENANCE_CONFLICT
+  FOLIO_CHARGE
+  FOLIO_CHARGE_VOID
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  EMERGENCY
+}
+
+enum FolioChargeType {
+  INCIDENTAL
+  PENALTY
+  EXTENSION
+  ADJUSTMENT
+}
+
+enum FolioChargeStatus {
+  ACTIVE
+  VOID
 }
 
 /**
@@ -240,6 +292,11 @@ model User {
   createdPropertyAssignments PropertyAssignment[]   @relation("AssignmentCreatedBy")
   createdProperties          Property[]             @relation("PropertyCreatedBy")
   createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
+  assignedMaintenanceBlocks  MaintenanceBlock[]     @relation("MaintenanceAssignedTo")
+  bookingOperationEvents     BookingOperationEvent[]
+  housekeepingEvents         RoomHousekeepingEvent[]
+  createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
+  voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -253,7 +310,8 @@ model User {
 model Session {
   id           String   @id @default(uuid())
   userId       String
-  refreshToken String   @unique
+  refreshToken String   @unique @db.VarChar(512)
+  audience     SessionAudience @default(DASHBOARD)
   ip           String?
   userAgent    String?
   expiresAt    DateTime
@@ -262,6 +320,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([audience])
   @@index([expiresAt])
   @@index([createdAt])
   @@map("sessions")
@@ -347,6 +406,9 @@ model Property {
   enquiries         Enquiry[]
   assignments       PropertyAssignment[]
   maintenanceBlocks MaintenanceBlock[]
+  bookingOperationEvents BookingOperationEvent[]
+  folioCharges      BookingFolioCharge[]
+  housekeepingEvents RoomHousekeepingEvent[]
   taxes             Tax[]
   coupons           Coupon[]
   galleries         Gallery[]
@@ -412,6 +474,7 @@ model Room {
   hasAC        Boolean    @default(false)
   maxOccupancy Int        @default(2)
   status       RoomStatus @default(AVAILABLE)
+  housekeepingStatus RoomHousekeepingStatus @default(INSPECTED)
   isActive     Boolean    @default(true)
 
   createdAt DateTime @default(now())
@@ -422,6 +485,7 @@ model Room {
   amenities         RoomAmenity[]
   pricing           RoomPricing[]
   maintenanceBlocks MaintenanceBlock[]
+  housekeepingEvents RoomHousekeepingEvent[]
   galleries         Gallery[]
 
   @@unique([unitId, number])
@@ -539,6 +603,13 @@ model Booking {
   checkIn            DateTime
   checkOut           DateTime
   status             BookingStatus        @default(PENDING)
+  version            Int                  @default(1)
+  checkedInAt        DateTime?
+  checkedOutAt       DateTime?
+  noShowAt           DateTime?
+  identityVerifiedAt DateTime?
+  identityDocumentType String?             @db.VarChar(50)
+  identityDocumentReference String?        @db.VarChar(100)
   subtotalAmount     Decimal              @default(0)
   taxableAmount      Decimal              @default(0)
   taxAmount          Decimal              @default(0)
@@ -564,6 +635,9 @@ model Booking {
   refunds        PaymentRefund[]
   refundRequests BookingRefundRequest[]
   statusHistory  BookingStatusHistory[]
+  operationEvents BookingOperationEvent[]
+  folioCharges   BookingFolioCharge[]
+  housekeepingEvents RoomHousekeepingEvent[]
   inventoryLocks InventoryLock[]
   billingDocuments BillingDocument[]
 
@@ -573,6 +647,8 @@ model Booking {
   @@index([roomId, checkIn, checkOut])
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
+  @@index([propertyId, checkedInAt])
+  @@index([propertyId, checkedOutAt])
   @@map("bookings")
 }
 
@@ -649,6 +725,56 @@ model BookingStatusHistory {
   @@index([bookingId, createdAt])
   @@index([actorUserId])
   @@map("booking_status_history")
+}
+
+model BookingOperationEvent {
+  id          String                    @id @default(uuid())
+  bookingId   String
+  propertyId  String
+  actorUserId String?
+  eventType   BookingOperationEventType
+  note        String?                   @db.Text
+  metadata    Json?
+  createdAt   DateTime                  @default(now())
+
+  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor    User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([propertyId, eventType, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("booking_operation_events")
+}
+
+model BookingFolioCharge {
+  id              String            @id @default(uuid())
+  bookingId       String
+  propertyId      String
+  createdByUserId String
+  voidedByUserId  String?
+  type            FolioChargeType
+  status          FolioChargeStatus @default(ACTIVE)
+  description     String            @db.VarChar(255)
+  amount          Decimal
+  note            String?           @db.Text
+  metadata        Json?
+  voidReason      String?           @db.Text
+  voidedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  billingDocument BillingDocument?
+
+  @@index([bookingId, status, createdAt])
+  @@index([propertyId, createdAt])
+  @@index([createdByUserId])
+  @@index([voidedByUserId])
+  @@map("booking_folio_charges")
 }
 
 model Payment {
@@ -765,9 +891,11 @@ model BillingSetting {
   invoicePrefix        String @default("INV-")
   receiptPrefix        String @default("RCT-")
   creditNotePrefix     String @default("CN-")
+  debitNotePrefix      String @default("DN-")
   invoiceSequence      Int    @default(0)
   receiptSequence      Int    @default(0)
   creditNoteSequence   Int    @default(0)
+  debitNoteSequence    Int    @default(0)
   footerNotes          String? @db.Text
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -785,6 +913,7 @@ model BillingDocument {
   documentNumber   String
   bookingId        String
   paymentId        String?
+  folioChargeId    String?               @unique
   propertyId       String
   tenantId         String?
   subtotal         Decimal               @default(0)
@@ -812,6 +941,7 @@ model BillingDocument {
 
   booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  folioCharge BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
@@ -820,6 +950,7 @@ model BillingDocument {
   @@index([tenantId])
   @@index([bookingId])
   @@index([paymentId])
+  @@index([folioChargeId])
   @@map("billing_documents")
 }
 
@@ -930,6 +1061,12 @@ model MaintenanceBlock {
   roomId          String?
   targetType      MaintenanceTargetType
   reason          String?
+  status          MaintenanceStatus   @default(SCHEDULED)
+  priority        MaintenancePriority @default(MEDIUM)
+  assignedToUserId String?
+  resolutionNote  String?             @db.Text
+  resolvedAt      DateTime?
+  emergencyOverride Boolean           @default(false)
   startDate       DateTime
   endDate         DateTime
   createdByUserId String
@@ -940,10 +1077,36 @@ model MaintenanceBlock {
   unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
   room      Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
   createdBy User     @relation("MaintenanceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assignedTo User?   @relation("MaintenanceAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([propertyId])
+  @@index([propertyId, status, priority])
+  @@index([assignedToUserId, status])
   @@index([startDate, endDate])
   @@map("maintenance_blocks")
+}
+
+model RoomHousekeepingEvent {
+  id          String                 @id @default(uuid())
+  propertyId  String
+  roomId      String
+  actorUserId String
+  bookingId   String?
+  fromStatus  RoomHousekeepingStatus
+  toStatus    RoomHousekeepingStatus
+  note        String?                @db.Text
+  createdAt   DateTime               @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor    User     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, createdAt])
+  @@index([propertyId, toStatus, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([bookingId])
+  @@map("room_housekeeping_events")
 }
 
 model Tax {

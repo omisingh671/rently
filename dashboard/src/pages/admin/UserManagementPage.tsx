@@ -1,22 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import {
-  FiChevronDown,
-  FiEdit2,
-  FiLogOut,
-  FiMail,
-  FiRefreshCcw,
-  FiShield,
-} from "react-icons/fi";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
+import { FiRefreshCcw } from "react-icons/fi";
 
-import AdminTable from "@/components/admin-table/AdminTable";
-import AdminTableCell from "@/components/admin-table/AdminTableCell";
-import AdminTableContainer from "@/components/admin-table/AdminTableContainer";
-import AdminTableEmpty from "@/components/admin-table/AdminTableEmpty";
-import AdminTableError from "@/components/admin-table/AdminTableError";
-import AdminTableHeader from "@/components/admin-table/AdminTableHeader";
-import AdminTableLoadingOverlay from "@/components/admin-table/AdminTableLoadingOverlay";
-import AdminTableRow from "@/components/admin-table/AdminTableRow";
 import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Pagination from "@/components/common/Pagination";
 import Button from "@/components/ui/Button";
@@ -26,11 +10,15 @@ import { useAdminListState } from "@/hooks/admin/useAdminListState";
 import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import UserForm from "@/features/users/components/UserForm/UserForm";
+import { type PendingActionType } from "@/features/users/components/UserActionsDropdown";
+import EditManagedUserForm, {
+  type EditUserFormState,
+} from "@/features/users/components/EditManagedUserForm";
+import ManagedUsersTable from "@/features/users/components/ManagedUsersTable";
 import { useManagedUsers } from "@/features/users/hooks/useAdminUsers";
 import type {
   AdminUser,
   ManagedUserRole,
-  MutableManagedUserRole,
 } from "@/features/users/types";
 
 type Filters = {
@@ -47,12 +35,8 @@ const roleOptions: ManagedUserRole[] = [
   "GUEST",
 ];
 
-const mutableRoles: MutableManagedUserRole[] = ["ADMIN", "MANAGER", "GUEST"];
-
 const toBool = (value: "" | "true" | "false") =>
   value === "" ? undefined : value === "true";
-
-type PendingActionType = "password" | "reset" | "logout";
 
 type PendingAction = {
   userId: string;
@@ -71,333 +55,6 @@ type ConfirmationAction = {
 
 const getPendingActionKey = ({ userId, type }: PendingAction) =>
   `${userId}:${type}`;
-
-function InlineSpinner() {
-  return (
-    <span className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
-  );
-}
-
-type UserActionsDropdownProps = {
-  user: AdminUser;
-  isPendingAction: (userId: string, type: PendingActionType) => boolean;
-  onEdit: (user: AdminUser) => void;
-  onSendResetLink: (user: AdminUser) => void;
-  onToggleForcePasswordChange: (user: AdminUser) => void;
-  onForceLogout: (user: AdminUser) => void;
-};
-
-function UserActionsDropdown({
-  user,
-  isPendingAction,
-  onEdit,
-  onSendResetLink,
-  onToggleForcePasswordChange,
-  onForceLogout,
-}: UserActionsDropdownProps) {
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{
-    top: number;
-    right: number;
-  } | null>(null);
-  const ref = useRef<HTMLDivElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const isResetPending = isPendingAction(user.id, "reset");
-  const isPasswordPending = isPendingAction(user.id, "password");
-  const isLogoutPending = isPendingAction(user.id, "logout");
-  const isAnyPending = isResetPending || isPasswordPending || isLogoutPending;
-
-  useEffect(() => {
-    const handler = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (
-        ref.current &&
-        !ref.current.contains(target) &&
-        menuRef.current &&
-        !menuRef.current.contains(target)
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const closeMenu = () => setOpen(false);
-
-    window.addEventListener("resize", closeMenu);
-    window.addEventListener("scroll", closeMenu, true);
-    return () => {
-      window.removeEventListener("resize", closeMenu);
-      window.removeEventListener("scroll", closeMenu, true);
-    };
-  }, [open]);
-
-  const toggleOpen = () => {
-    const nextOpen = !open;
-    if (nextOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setMenuPosition({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right,
-      });
-    }
-
-    setOpen(nextOpen);
-  };
-
-  const runAndClose = (callback: () => void) => {
-    setOpen(false);
-    callback();
-  };
-
-  const itemClass =
-    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50";
-
-  return (
-    <div ref={ref} className="inline-flex justify-end">
-      <button
-        ref={buttonRef}
-        type="button"
-        disabled={isAnyPending}
-        onClick={toggleOpen}
-        className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        {isAnyPending ? <InlineSpinner /> : <FiShield />}
-        Actions
-        <FiChevronDown size={14} />
-      </button>
-
-      {open &&
-        menuPosition &&
-        createPortal(
-          <div
-            ref={menuRef}
-            role="menu"
-            style={{ top: menuPosition.top, right: menuPosition.right }}
-          className="fixed z-50 w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
-        >
-            <button
-              type="button"
-              role="menuitem"
-              className={itemClass}
-              onClick={() => runAndClose(() => onEdit(user))}
-            >
-              <FiEdit2 />
-              Edit User
-            </button>
-
-            <button
-              type="button"
-              role="menuitem"
-              disabled={isResetPending}
-              className={itemClass}
-              onClick={() => runAndClose(() => onSendResetLink(user))}
-            >
-              {isResetPending ? <InlineSpinner /> : <FiMail />}
-              Send Reset Link
-            </button>
-
-            <button
-              type="button"
-              role="menuitem"
-              disabled={isPasswordPending}
-              className={itemClass}
-              onClick={() =>
-                runAndClose(() => onToggleForcePasswordChange(user))
-              }
-            >
-              {isPasswordPending ? <InlineSpinner /> : <FiShield />}
-              {user.mustChangePassword
-                ? "Clear Force Change Password"
-                : "Force Change Password"}
-            </button>
-
-            <button
-              type="button"
-              role="menuitem"
-              disabled={isLogoutPending}
-              className={`${itemClass} text-red-700 hover:bg-red-50`}
-              onClick={() => runAndClose(() => onForceLogout(user))}
-            >
-              {isLogoutPending ? <InlineSpinner /> : <FiLogOut />}
-              Force Logout
-            </button>
-          </div>,
-          document.body,
-        )}
-    </div>
-  );
-}
-
-type EditUserFormState = {
-  fullName: string;
-  role: MutableManagedUserRole;
-  isActive: boolean;
-};
-
-type EditManagedUserFormProps = {
-  user: AdminUser;
-  isSelf: boolean;
-  isSubmitting: boolean;
-  onCancel: () => void;
-  onSubmit: (values: EditUserFormState) => Promise<void>;
-};
-
-function EditManagedUserForm({
-  user,
-  isSelf,
-  isSubmitting,
-  onCancel,
-  onSubmit,
-}: EditManagedUserFormProps) {
-  const [values, setValues] = useState<EditUserFormState>({
-    fullName: user.fullName,
-    role: user.role === "SUPER_ADMIN" ? "ADMIN" : user.role,
-    isActive: user.isActive,
-  });
-  const [serverError, setServerError] = useState<string | null>(null);
-  const canEditRole = user.role !== "SUPER_ADMIN" && !isSelf;
-  const canEditStatus = !isSelf;
-
-  useEffect(() => {
-    setValues({
-      fullName: user.fullName,
-      role: user.role === "SUPER_ADMIN" ? "ADMIN" : user.role,
-      isActive: user.isActive,
-    });
-    setServerError(null);
-  }, [user]);
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setServerError(null);
-
-    const fullName = values.fullName.trim();
-    if (fullName.length < 2) {
-      setServerError("Full name must be at least 2 characters.");
-      return;
-    }
-
-    try {
-      await onSubmit({ ...values, fullName });
-    } catch (error) {
-      setServerError(normalizeApiError(error).message);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      {serverError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {serverError}
-        </div>
-      )}
-
-      <div className="space-y-1">
-        <label
-          htmlFor="managed-user-full-name"
-          className="text-sm font-medium text-slate-700"
-        >
-          Full Name
-        </label>
-        <input
-          id="managed-user-full-name"
-          type="text"
-          value={values.fullName}
-          onChange={(event) =>
-            setValues((current) => ({
-              ...current,
-              fullName: event.target.value,
-            }))
-          }
-          className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-        />
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-medium text-slate-700">Email</label>
-        <input
-          type="email"
-          value={user.email}
-          readOnly
-          className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-500"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-1">
-          <label
-            htmlFor="managed-user-role"
-            className="text-sm font-medium text-slate-700"
-          >
-            Role
-          </label>
-          <select
-            id="managed-user-role"
-            value={values.role}
-            disabled={!canEditRole}
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                role: event.target.value as MutableManagedUserRole,
-              }))
-            }
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50 disabled:text-slate-500"
-          >
-            {mutableRoles.map((role) => (
-              <option key={role} value={role}>
-                {formatEnumLabel(role)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label
-            htmlFor="managed-user-status"
-            className="text-sm font-medium text-slate-700"
-          >
-            Status
-          </label>
-          <select
-            id="managed-user-status"
-            value={values.isActive ? "active" : "inactive"}
-            disabled={!canEditStatus}
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                isActive: event.target.value === "active",
-              }))
-            }
-            className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm disabled:bg-slate-50 disabled:text-slate-500"
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : "Save User"}
-        </Button>
-      </div>
-    </form>
-  );
-}
 
 export default function UserManagementPage() {
   const currentUser = useAuthStore((state) => state.user);
@@ -688,86 +345,20 @@ export default function UserManagementPage() {
         </div>
       )}
 
-      <AdminTableContainer>
-        <AdminTableLoadingOverlay visible={isFetching} />
-        {isError && <AdminTableError message="Failed to load users." />}
-
-        <AdminTable>
-          <AdminTableHeader>
-            <tr>
-              <AdminTableCell as="th">#</AdminTableCell>
-              <AdminTableCell as="th">User</AdminTableCell>
-              <AdminTableCell as="th">Role</AdminTableCell>
-              <AdminTableCell as="th">Created</AdminTableCell>
-              <AdminTableCell as="th" align="right">
-                Actions
-              </AdminTableCell>
-              <AdminTableCell as="th" align="right">
-                Status
-              </AdminTableCell>
-            </tr>
-          </AdminTableHeader>
-
-          <tbody className={isFetching ? "opacity-70" : ""}>
-            {isPending && users.length === 0 ? (
-              <AdminTableEmpty colSpan={6} message="Loading users..." />
-            ) : users.length === 0 ? (
-              <AdminTableEmpty colSpan={6} message="No users found." />
-            ) : (
-              users.map((user, index) => {
-                const isSelf = currentUser?.id === user.id;
-
-                return (
-                  <AdminTableRow key={user.id}>
-                    <AdminTableCell className="font-medium text-slate-700">
-                      {(page - 1) * pageSize + index + 1}
-                    </AdminTableCell>
-                    <AdminTableCell>
-                      <div className="font-medium text-slate-900">
-                        {user.fullName}
-                      </div>
-                      <div className="text-sm text-slate-500">{user.email}</div>
-                    </AdminTableCell>
-                    <AdminTableCell>
-                      <span className="text-sm font-medium text-slate-700">
-                        {formatEnumLabel(user.role)}
-                      </span>
-                    </AdminTableCell>
-                    <AdminTableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </AdminTableCell>
-                    <AdminTableCell align="right">
-                      <UserActionsDropdown
-                        user={user}
-                        isPendingAction={isPendingAction}
-                        onEdit={setEditingUser}
-                        onSendResetLink={requestPasswordReset}
-                        onToggleForcePasswordChange={requestForcePasswordChange}
-                        onForceLogout={requestForceLogout}
-                      />
-                    </AdminTableCell>
-                    <AdminTableCell align="right">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          user.isActive
-                            ? "bg-green-50 text-green-700"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {isSelf
-                          ? "Current User"
-                          : user.isActive
-                            ? "Active"
-                            : "Inactive"}
-                      </span>
-                    </AdminTableCell>
-                  </AdminTableRow>
-                );
-              })
-            )}
-          </tbody>
-        </AdminTable>
-      </AdminTableContainer>
+      <ManagedUsersTable
+        users={users}
+        currentUserId={currentUser?.id}
+        page={page}
+        pageSize={pageSize}
+        isPending={isPending}
+        isFetching={isFetching}
+        isError={isError}
+        isPendingAction={isPendingAction}
+        onEdit={setEditingUser}
+        onSendResetLink={requestPasswordReset}
+        onToggleForcePasswordChange={requestForcePasswordChange}
+        onForceLogout={requestForceLogout}
+      />
 
       {visiblePagination && (
         <div className="flex flex-col gap-4 rounded-lg border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -822,6 +413,7 @@ export default function UserManagementPage() {
       >
         {editingUser && (
           <EditManagedUserForm
+            key={editingUser.id}
             user={editingUser}
             isSelf={currentUser?.id === editingUser.id}
             isSubmitting={isSavingEdit}

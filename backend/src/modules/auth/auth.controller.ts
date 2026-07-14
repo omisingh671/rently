@@ -18,6 +18,10 @@ import type {
   RegisterUserInput,
   ChangePasswordInput,
 } from "./auth.inputs.js";
+import {
+  getRefreshCookieName,
+  parseAppClient,
+} from "./auth-client.js";
 
 const cookieOptions = {
   httpOnly: true,
@@ -56,6 +60,7 @@ export const register = async (req: AuthRequest, res: Response) => {
  */
 export const login = async (req: AuthRequest, res: Response) => {
   const body = loginSchema.parse(req.body);
+  const audience = parseAppClient(req.headers["x-app-client"]);
 
   const input: LoginUserInput = {
     email: body.email,
@@ -64,12 +69,13 @@ export const login = async (req: AuthRequest, res: Response) => {
 
   const { auth, refreshToken } = await service.loginUser(
     input,
+    audience,
     req.ip,
     req.headers["user-agent"],
   );
 
   res
-    .cookie("refreshToken", refreshToken, cookieOptions)
+    .cookie(getRefreshCookieName(audience), refreshToken, cookieOptions)
     .json({ success: true, data: auth });
 };
 
@@ -77,18 +83,20 @@ export const login = async (req: AuthRequest, res: Response) => {
  * REFRESH
  */
 export const refresh = async (req: AuthRequest, res: Response) => {
-  const refreshToken = req.cookies?.refreshToken;
+  const audience = parseAppClient(req.headers["x-app-client"]);
+  const refreshToken = req.cookies?.[getRefreshCookieName(audience)];
   if (!refreshToken) {
     throw new HttpError(401, "UNAUTHORIZED", "Missing refresh token");
   }
 
   const { auth, refreshToken: nextRefreshToken } = await service.refreshSession(
     refreshToken,
+    audience,
     req.ip,
     req.headers["user-agent"],
   );
   res
-    .cookie("refreshToken", nextRefreshToken, cookieOptions)
+    .cookie(getRefreshCookieName(audience), nextRefreshToken, cookieOptions)
     .json({ success: true, data: auth });
 };
 
@@ -96,17 +104,23 @@ export const refresh = async (req: AuthRequest, res: Response) => {
  * LOGOUT
  */
 export const logout = async (req: AuthRequest, res: Response) => {
-  const refreshToken = req.cookies?.refreshToken;
+  const audience = parseAppClient(req.headers["x-app-client"]);
+  const cookieName = getRefreshCookieName(audience);
+  const refreshToken = req.cookies?.[cookieName];
   if (refreshToken) {
     await service.logoutUser(refreshToken);
   }
 
-  res.clearCookie("refreshToken", cookieOptions).status(204).send();
+  res.clearCookie(cookieName, cookieOptions).status(204).send();
 };
 
 export const logoutAll = async (req: AuthRequest, res: Response) => {
+  const audience = parseAppClient(req.headers["x-app-client"]);
   await service.revokeUserSessions(req.user!.userId);
-  res.clearCookie("refreshToken", cookieOptions).status(204).send();
+  res
+    .clearCookie(getRefreshCookieName(audience), cookieOptions)
+    .status(204)
+    .send();
 };
 
 /**
@@ -147,6 +161,7 @@ export const resetPassword = async (req: AuthRequest, res: Response) => {
  */
 export const changePassword = async (req: AuthRequest, res: Response) => {
   const body = changePasswordSchema.parse(req.body);
+  const audience = parseAppClient(req.headers["x-app-client"]);
 
   const input: ChangePasswordInput = {
     userId: req.user!.userId,
@@ -154,7 +169,10 @@ export const changePassword = async (req: AuthRequest, res: Response) => {
     newPassword: body.newPassword,
   };
 
-  await service.changePassword(input, req.cookies?.refreshToken);
+  await service.changePassword(
+    input,
+    req.cookies?.[getRefreshCookieName(audience)],
+  );
 
   return res.status(204).send();
 };

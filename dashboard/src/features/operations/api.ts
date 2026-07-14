@@ -7,6 +7,9 @@ import type {
   AdminQuote,
   BookingListResponse,
   BookingStatus,
+  CashierSummaryResponse,
+  CheckInBookingPayload,
+  CheckOutBookingPayload,
   CheckManualBookingAvailabilityPayload,
   CreateManualBookingPayload,
   EnquiryListResponse,
@@ -17,7 +20,15 @@ import type {
   QuoteListResponse,
   UpdateRefundRequestPayload,
   RoomBoardResponse,
+  OperationsBoardResponse,
+  CorrectBookingStatusPayload,
+  CreateFolioChargePayload,
+  RoomHousekeepingStatus,
+  VersionedBookingNotePayload,
   UpdateBookingPayload,
+  MoveRoomPayload,
+  PreviewRoomMovePayload,
+  RoomMovePreview,
 } from "./types";
 
 type PageParams = {
@@ -133,21 +144,146 @@ export const updateRefundRequestApi = async (
 
 export const checkInBookingApi = async (
   bookingId: string,
-  payload: Omit<UpdateBookingPayload, "status">,
-): Promise<AdminBooking> =>
-  updateBookingStatusApi(bookingId, {
-    ...payload,
-    status: "CHECKED_IN",
-  });
+  payload: CheckInBookingPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingCheckInById(bookingId),
+    payload,
+  );
+  return data.data;
+};
 
 export const checkOutBookingApi = async (
   bookingId: string,
-  payload: Omit<UpdateBookingPayload, "status">,
-): Promise<AdminBooking> =>
-  updateBookingStatusApi(bookingId, {
-    ...payload,
-    status: "CHECKED_OUT",
+  payload: CheckOutBookingPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingCheckOutById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const markBookingNoShowApi = async (
+  bookingId: string,
+  payload: VersionedBookingNotePayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingNoShowById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const moveBookingRoomsApi = async (
+  bookingId: string,
+  payload: MoveRoomPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingRoomMoveById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const previewBookingRoomMoveApi = async (
+  bookingId: string,
+  payload: PreviewRoomMovePayload,
+): Promise<RoomMovePreview> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<RoomMovePreview>>(
+    API_ENDPOINTS.operations.bookingRoomMovePreviewById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const correctBookingStatusApi = async (
+  bookingId: string,
+  payload: CorrectBookingStatusPayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingStatusCorrectionById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const createFolioChargeApi = async (
+  bookingId: string,
+  payload: CreateFolioChargePayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingFolioChargesById(bookingId),
+    payload,
+  );
+  return data.data;
+};
+
+export const voidFolioChargeApi = async (
+  bookingId: string,
+  chargeId: string,
+  payload: VersionedBookingNotePayload,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingFolioChargeById(bookingId, chargeId),
+    { expectedVersion: payload.expectedVersion, reason: payload.note },
+  );
+  return data.data;
+};
+
+export const updateRoomHousekeepingApi = async (
+  propertyId: string,
+  roomId: string,
+  payload: {
+    expectedStatus: RoomHousekeepingStatus;
+    status: RoomHousekeepingStatus;
+    note?: string;
+  },
+): Promise<{
+  roomId: string;
+  status: RoomHousekeepingStatus;
+  updatedAt: string;
+}> => {
+  const { data } = await axiosInstance.patch<
+    ApiSuccessResponse<{
+      roomId: string;
+      status: RoomHousekeepingStatus;
+      updatedAt: string;
+    }>
+  >(
+    API_ENDPOINTS.operations.roomHousekeepingByProperty(propertyId, roomId),
+    payload,
+  );
+  return data.data;
+};
+
+export const getOperationsBoardApi = async (
+  propertyId: string,
+  businessDate: string,
+): Promise<OperationsBoardResponse> => {
+  const { data } = await axiosInstance.get<
+    ApiSuccessResponse<OperationsBoardResponse>
+  >(API_ENDPOINTS.operations.operationsBoardByProperty(propertyId), {
+    params: { businessDate },
   });
+  return data.data;
+};
+
+export const getCashierSummaryApi = async (
+  propertyId: string,
+  params: { from: string; to: string },
+): Promise<CashierSummaryResponse> => {
+  const { data } = await axiosInstance.get<
+    ApiSuccessResponse<CashierSummaryResponse>
+  >(API_ENDPOINTS.operations.cashierSummaryByProperty(propertyId), { params });
+  return {
+    ...data.data,
+    rows: data.data.rows.map((row) => ({
+      ...row,
+      history: Array.isArray(row.history) ? row.history : [],
+    })),
+  };
+};
 
 export const listEnquiriesApi = async (
   propertyId: string,

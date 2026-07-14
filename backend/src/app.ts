@@ -138,6 +138,7 @@ app.use(
       "Content-Type",
       "Authorization",
       "x-app-name",
+      "x-app-client",
       "x-tenant-slug",
       "x-property-slug",
       "Idempotency-Key",
@@ -226,6 +227,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: {
         code: err.code,
         message: err.message,
+        ...(err.details !== undefined && { details: err.details }),
       },
     });
   }

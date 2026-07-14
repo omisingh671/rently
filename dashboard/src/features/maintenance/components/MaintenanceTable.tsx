@@ -75,20 +75,21 @@ export default function MaintenanceTable({
             <AdminTableCell as="th">Target</AdminTableCell>
             <AdminTableCell as="th">Reason</AdminTableCell>
             <AdminTableCell as="th">Dates</AdminTableCell>
+            <AdminTableCell as="th">Workflow</AdminTableCell>
             <AdminTableCell as="th">Created By</AdminTableCell>
             <AdminTableCell as="th">Action</AdminTableCell>
           </tr>
         </AdminTableHeader>
         <tbody className={isFetching ? "opacity-70" : ""}>
           {isInitialLoading ? (
-            <AdminTableEmpty colSpan={6} message="Loading maintenance blocks..." />
+            <AdminTableEmpty colSpan={7} message="Loading maintenance blocks..." />
           ) : isError ? (
             <AdminTableEmpty
-              colSpan={6}
+              colSpan={7}
               message="Failed to load maintenance blocks."
             />
           ) : isEmpty ? (
-            <AdminTableEmpty colSpan={6} message={emptyMessage} />
+            <AdminTableEmpty colSpan={7} message={emptyMessage} />
           ) : (
             safeItems.map((block, index) => {
               const serial = (page - 1) * pageSize + index + 1;
@@ -114,6 +115,12 @@ export default function MaintenanceTable({
                   <AdminTableCell className="whitespace-nowrap">
                     {formatDate(block.startDate)} -{" "}
                     {formatInclusiveEndDate(block.endDate)}
+                  </AdminTableCell>
+                  <AdminTableCell className="whitespace-nowrap">
+                    <div className="flex flex-wrap gap-2">
+                      <StatusBadge status={block.status} />
+                      <StatusBadge status={block.priority} />
+                    </div>
                   </AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">{block.createdByName}</AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">

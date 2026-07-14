@@ -26,6 +26,7 @@ const {
   MdMeetingRoom,
   FiInfo,
   FiActivity,
+  FiCoffee,
 } = ICON_REGISTRY;
 
 interface AdminSidebarProps {
@@ -136,6 +137,12 @@ export default function AdminSidebar({
           />
 
           <p className={sectionLabel}>Operations</p>
+
+          <SidebarLink
+            to={adminPath(ADMIN_ROUTES.FRONT_DESK)}
+            icon={FiCoffee}
+            label="Front Desk"
+          />
 
           <SidebarLink
             to={adminPath(ADMIN_ROUTES.BOOKINGS)}

@@ -1,0 +1,93 @@
+name: Critical E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: rently_e2e
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      E2E_DATABASE_NAME: rently_e2e
+      DATABASE_URL: mysql://root:root@127.0.0.1:3306/rently_e2e
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 3306
+      DATABASE_USER: root
+      DATABASE_PASSWORD: root
+      DATABASE_NAME: rently_e2e
+      API_PREFIX: /api/v1
+      NODE_ENV: test
+      JWT_ACCESS_SECRET: e2e-access-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: e2e-refresh-secret-at-least-32-characters
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      MAIL_USER: e2e@rently.test
+      MAIL_APP_PASS: e2e-mail-password-placeholder
+      MAIL_FROM: e2e@rently.test
+      FRONTEND_URL: http://127.0.0.1:4173
+      DASHBOARD_URL: http://127.0.0.1:4174
+      RATE_LIMIT_ENABLED: "false"
+      STORAGE_PROVIDER: local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            dashboard/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Install Chromium
+        working-directory: backend
+        run: npx playwright install --with-deps chromium
+
+      - name: Apply database migrations
+        working-directory: backend
+        run: npx prisma migrate deploy
+
+      - name: Run critical E2E suite
+        working-directory: backend
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            backend/playwright-report
+            backend/test-results
+          if-no-files-found: ignore
+          retention-days: 7

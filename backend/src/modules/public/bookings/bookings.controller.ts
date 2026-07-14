@@ -10,6 +10,7 @@ import {
   createBookingSchema,
   createBookingQuoteSchema,
   bookingCheckoutQuoteSchema,
+  publicBookingAccessQuerySchema,
   updateBookingCheckoutSchema,
   cancelBookingSchema,
   createRefundRequestSchema,
@@ -116,10 +117,12 @@ export const listBookings = async (req: AuthRequest, res: Response) => {
 
 export const getBookingById = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
-  const data =
-    req.user?.userId !== undefined
-      ? await service.getBookingById(req.user.userId, params.id)
-      : await service.getBookingByIdPublic(params.id);
+  const query = publicBookingAccessQuerySchema.parse(req.query);
+  const data = await service.getBookingByIdForPublicAccess(
+    req.user?.userId,
+    params.id,
+    query.checkoutToken,
+  );
   res.json({ success: true, data });
 };
 

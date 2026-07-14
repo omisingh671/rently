@@ -46,6 +46,9 @@ export default function UnitsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<AdminUnit | null>(null);
   const shouldOpenCreate = searchParams.get("action") === "create";
+  const isCreateModalOpen =
+    shouldOpenCreate && Boolean(filters.propertyId) && editingUnit === null;
+  const isUnitModalOpen = isModalOpen || isCreateModalOpen;
 
   const {
     properties,
@@ -75,20 +78,6 @@ export default function UnitsPage() {
   useEffect(() => {
     setPage(1);
   }, [filters.propertyId, filters.status, filters.isActive, setPage]);
-
-  useEffect(() => {
-    if (!shouldOpenCreate || isModalOpen || !filters.propertyId) {
-      return;
-    }
-
-    setEditingUnit(null);
-    setIsModalOpen(true);
-    setSearchParams((current) => {
-      const next = new URLSearchParams(current);
-      next.delete("action");
-      return next;
-    }, { replace: true });
-  }, [filters.propertyId, isModalOpen, setSearchParams, shouldOpenCreate]);
 
   const {
     data,
@@ -144,6 +133,13 @@ export default function UnitsPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingUnit(null);
+    if (shouldOpenCreate) {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete("action");
+        return next;
+      }, { replace: true });
+    }
   };
 
   return (
@@ -208,7 +204,7 @@ export default function UnitsPage() {
 
       {/* Modal */}
       <Modal
-        isOpen={isModalOpen}
+        isOpen={isUnitModalOpen}
         onClose={handleCloseModal}
         disableBackdropClose
         disableEscapeClose

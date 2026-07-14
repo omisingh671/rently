@@ -12,6 +12,7 @@ import type {
   PaymentPurpose,
   PaymentRefundStatus,
   PaymentStatus,
+  RoomHousekeepingStatus,
   RoomStatus,
   TaxType,
   UnitStatus,
@@ -43,6 +44,55 @@ export interface DashboardManualBookingAvailabilityDTO {
   items: DashboardManualBookingAvailabilityItemDTO[];
 }
 
+export interface BookingRoomMovePreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  effectiveDate: string;
+  affectedNights: number;
+  currentAssignment: string;
+  destinationAssignment: string;
+  currentNightlyRate: string;
+  destinationNightlyRate: string;
+  baseDifference: string;
+  taxDifference: string;
+  totalAdjustment: string;
+  pricingFingerprint: string;
+  pricingRequired: boolean;
+  allowedPricingActions: Array<
+    "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE"
+  >;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+}
+
+export interface BookingStayExtensionChargePreviewDTO {
+  extraNights: number;
+  effectiveDate: string;
+  originalCheckOutDate: string;
+  actualCheckOutDate: string;
+  currentAssignment: string;
+  nightlyRate: string;
+  baseAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+  pricingSnapshot: Array<{
+    itemId: string;
+    roomId: string;
+    pricingId: string;
+    nightlyRate: string;
+  }>;
+}
+
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
   | "RESERVED"
@@ -60,6 +110,7 @@ export interface DashboardRoomBoardRoomDTO {
   hasAC: boolean;
   maxOccupancy: number;
   inventoryStatus: RoomStatus;
+  housekeepingStatus: RoomHousekeepingStatus;
   isActive: boolean;
   boardStatus: DashboardRoomBoardStatus;
   reason: string | null;
@@ -125,6 +176,13 @@ export interface DashboardBookingDTO {
   checkIn: Date;
   checkOut: Date;
   status: BookingStatus;
+  version: number;
+  checkedInAt: Date | null;
+  checkedOutAt: Date | null;
+  noShowAt: Date | null;
+  identityVerifiedAt: Date | null;
+  identityDocumentType: string | null;
+  identityDocumentReference: string | null;
   subtotalAmount: string;
   totalAmount: string;
   discountAmount: string;
@@ -234,6 +292,31 @@ export interface DashboardBookingDTO {
     note: string | null;
     createdAt: Date;
   }>;
+  operationEvents: Array<{
+    id: string;
+    eventType: string;
+    actorUserId: string | null;
+    actorName: string | null;
+    note: string | null;
+    metadata: unknown;
+    createdAt: Date;
+  }>;
+  folioCharges: Array<{
+    id: string;
+    type: string;
+    status: string;
+    description: string;
+    amount: string;
+    note: string | null;
+    voidReason: string | null;
+    createdByUserId: string;
+    createdByName: string;
+    voidedByUserId: string | null;
+    voidedByName: string | null;
+    voidedAt: Date | null;
+    createdAt: Date;
+  }>;
+  folioTotal: string;
   createdAt: Date;
   updatedAt: Date;
 }

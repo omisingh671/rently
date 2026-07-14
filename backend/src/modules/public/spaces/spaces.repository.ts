@@ -203,6 +203,7 @@ export const upsertDefaultBookingPolicyByPropertyId = (
   });
 
 export const findActivePricingForTarget = (
+  propertyId: string,
   target: PublicSpaceTarget,
   now: Date,
   tenantId: string | undefined,
@@ -214,7 +215,10 @@ export const findActivePricingForTarget = (
   client(tx)
     .roomPricing.findMany({
       where: {
-        ...activePricingBaseWhere(now, tenantId, stay, scope),
+        ...activePricingBaseWhere(now, tenantId, stay, {
+          ...scope,
+          propertyId,
+        }),
         product: {
           is: {
             occupancy: pricing.guestCount,
@@ -251,4 +255,3 @@ export const findActivePricingForTarget = (
 
       return ranked[0] ?? null;
     });
-

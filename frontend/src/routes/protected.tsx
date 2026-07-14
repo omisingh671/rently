@@ -44,7 +44,7 @@ const resolveAuthRedirect = (
  * - NEVER redirects while auth is resolving
  **/
 export function RequireAuth() {
-  const { status } = useAuthStore();
+  const { status, user } = useAuthStore();
   const location = useLocation();
 
   if (status === "loading") {
@@ -53,6 +53,10 @@ export function RequireAuth() {
 
   if (status === "unauthenticated") {
     return <Navigate to={ROUTES.LOGIN} state={{ from: location }} replace />;
+  }
+
+  if (!user || user.role !== "GUEST") {
+    return <Navigate to={ROUTES.LOGIN} replace />;
   }
 
   return <Outlet />;
@@ -70,7 +74,7 @@ export function RequireGuest() {
     return null;
   }
 
-  if (status === "authenticated" && user) {
+  if (status === "authenticated" && user?.role === "GUEST") {
     const redirect = resolveAuthRedirect(location.state);
 
     return (

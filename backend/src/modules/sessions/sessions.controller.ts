@@ -3,6 +3,14 @@ import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import * as service from "./sessions.service.js";
 import { listSessionsQuerySchema, idParamsSchema } from "./sessions.schema.js";
+import { getRefreshCookieName } from "@/modules/auth/auth-client.js";
+
+const getCurrentRefreshToken = (req: AuthRequest) => {
+  const audience = req.user?.audience;
+  return audience
+    ? req.cookies?.[getRefreshCookieName(audience)]
+    : undefined;
+};
 
 const getUserId = (req: AuthRequest) => {
   const userId = req.user?.userId;
@@ -24,7 +32,7 @@ export const listSessions = async (req: AuthRequest, res: Response) => {
       ...(query.role !== undefined && { role: query.role }),
       ...(query.status !== undefined && { status: query.status }),
     },
-    req.cookies?.refreshToken,
+    getCurrentRefreshToken(req),
   );
   res.json({ success: true, data });
 };
@@ -34,7 +42,7 @@ export const revokeSession = async (req: AuthRequest, res: Response) => {
   await service.revokeSession(
     getUserId(req),
     params.id,
-    req.cookies?.refreshToken,
+    getCurrentRefreshToken(req),
   );
   res.status(204).send();
 };

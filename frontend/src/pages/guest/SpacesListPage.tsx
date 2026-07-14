@@ -3,9 +3,6 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   FiCalendar,
-  FiSearch,
-  FiUsers,
-  FiWind,
   FiGrid,
   FiList,
 } from "react-icons/fi";
@@ -15,7 +12,6 @@ import { IS_PROPERTY_SPECIFIC_MODE } from "@/configs/appConfig";
 import { ROUTES } from "@/configs/routePaths";
 import { checkAvailability } from "@/features/availability/api";
 import type {
-  AvailabilityOptionGroup,
   AvailabilityOption,
   AvailabilityResult,
   ComfortFilter,
@@ -31,21 +27,27 @@ import {
 } from "@/features/bookings/bookingCheckoutDraft";
 import { usePublicTenantConfig } from "@/features/public-config/hooks";
 import type { PublicPropertySummary } from "@/features/public-config/types";
+import AvailabilityFiltersPanel from "@/features/availability/components/AvailabilityFiltersPanel";
+import AvailabilityResultsState from "@/features/availability/components/AvailabilityResultsState";
+import {
+  formatAvailabilityPrice,
+  getComfortVariants,
+  getSelectedComfort,
+  getSelectedOption,
+  groupAvailabilityOptions,
+  groupVisibleOptionsForDisplay,
+  maxVisibleOptionCount,
+  mergeAvailabilityResults,
+} from "@/features/availability/availabilityPresentation";
 
 import { OptionGridCard } from "@/components/ui/OptionGridCard";
 import { OptionStackCard } from "@/components/ui/OptionStackCard";
-
-const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
-  { value: "ALL", label: "All" },
-  { value: "AC", label: "AC" },
-  { value: "NON_AC", label: "Non-AC" },
-];
 
 type LayoutMode = "grid" | "stack";
 
 const layoutPreferenceKey = "rently:availability-layout";
 const initialVisibleOptionCount = 6;
-const maxVisibleOptionCount = 12;
+const emptyAvailabilityOptions: AvailabilityOption[] = [];
 
 const getInitialLayoutMode = (): LayoutMode => {
   if (typeof window === "undefined") return "grid";
@@ -68,13 +70,6 @@ const getInitialComfort = (searchParams: URLSearchParams): ComfortFilter => {
   return "ALL";
 };
 
-const formatPrice = (price: number) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(price);
-
 const isValidDateRange = (from: string, to: string) =>
   Boolean(from && to) && new Date(to) > new Date(from);
 
@@ -91,224 +86,6 @@ const distanceSquared = (
     (property.latitude - latitude) ** 2 + (property.longitude - longitude) ** 2
   );
 };
-
-const mergeAvailabilityResults = (
-  results: AvailabilityResult[],
-): AvailabilityResult => {
-  const optionsById = new Map<string, AvailabilityOption>();
-
-  for (const result of results) {
-    for (const option of result.options) {
-      optionsById.set(option.optionId, option);
-    }
-  }
-
-  const options = [...optionsById.values()]
-    .sort(
-      (left, right) =>
-        left.spareCapacity - right.spareCapacity ||
-        left.nightlyTotal - right.nightlyTotal ||
-        left.itemCount - right.itemCount ||
-        left.stayTotal - right.stayTotal,
-    );
-
-  return {
-    available: options.length > 0,
-    options,
-  };
-};
-
-const comfortOrder: Record<ComfortOption, number> = {
-  NON_AC: 0,
-  AC: 1,
-};
-
-const comfortLabels: Record<ComfortOption, string> = {
-  AC: "AC",
-  NON_AC: "Non-AC",
-};
-
-const getTargetMix = (option: AvailabilityOption) =>
-  option.items
-    .map((item) => `${item.targetType}:${item.priceGuestCount}:${item.guestCount}`)
-    .join("+");
-
-const getDisplayTitle = (option: AvailabilityOption) => option.title;
-
-const getAvailabilityGroupKey = (option: AvailabilityOption) =>
-  [
-    option.propertyId,
-    getDisplayTitle(option),
-    option.optionType,
-    option.itemLabel,
-    option.includedLabel,
-    option.items.map((item) => item.priceGuestCount).join("+"),
-    option.guestSplit,
-    option.itemCount,
-    getTargetMix(option),
-  ].join("|");
-
-const sortOptions = (left: AvailabilityOption, right: AvailabilityOption) =>
-  left.spareCapacity - right.spareCapacity ||
-  left.nightlyTotal - right.nightlyTotal ||
-  left.itemCount - right.itemCount ||
-  left.stayTotal - right.stayTotal ||
-  comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption];
-
-const sortGroups = (
-  left: AvailabilityOptionGroup,
-  right: AvailabilityOptionGroup,
-) => sortOptions(left.variants[0]!, right.variants[0]!);
-
-const groupAvailabilityOptions = (
-  options: AvailabilityOption[],
-): AvailabilityOptionGroup[] => {
-  const groupsByKey = new Map<string, AvailabilityOptionGroup>();
-
-  for (const option of options) {
-    const groupId = getAvailabilityGroupKey(option);
-    const displayTitle = getDisplayTitle(option);
-    const existingGroup = groupsByKey.get(groupId);
-
-    if (!existingGroup) {
-      groupsByKey.set(groupId, {
-        groupId,
-        displayTitle,
-        variants: [option],
-      });
-      continue;
-    }
-
-    const existingVariantIndex = existingGroup.variants.findIndex(
-      (variant) => variant.comfortOption === option.comfortOption,
-    );
-
-    if (existingVariantIndex === -1) {
-      existingGroup.variants.push(option);
-      existingGroup.variants.sort(sortOptions);
-      continue;
-    }
-
-    const existingVariant = existingGroup.variants[existingVariantIndex];
-    if (existingVariant && option.stayTotal < existingVariant.stayTotal) {
-      existingGroup.variants[existingVariantIndex] = option;
-      existingGroup.variants.sort(sortOptions);
-    }
-  }
-
-  return [...groupsByKey.values()].sort(sortGroups).slice(0, maxVisibleOptionCount);
-};
-
-const getDefaultComfort = (
-  group: AvailabilityOptionGroup,
-  comfort: ComfortFilter,
-): ComfortOption => {
-  if (
-    comfort !== "ALL" &&
-    group.variants.some((variant) => variant.comfortOption === comfort)
-  ) {
-    return comfort;
-  }
-
-  return [...group.variants].sort(
-    (left, right) =>
-      left.stayTotal - right.stayTotal ||
-      comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption],
-  )[0]!.comfortOption;
-};
-
-const getSelectedComfort = (
-  group: AvailabilityOptionGroup,
-  comfort: ComfortFilter,
-  selectedComfortByGroup: Record<string, ComfortOption>,
-) => {
-  const selectedComfort = selectedComfortByGroup[group.groupId];
-
-  if (
-    selectedComfort &&
-    group.variants.some(
-      (variant) => variant.comfortOption === selectedComfort,
-    )
-  ) {
-    return selectedComfort;
-  }
-
-  return getDefaultComfort(group, comfort);
-};
-
-const getSelectedOption = (
-  group: AvailabilityOptionGroup,
-  selectedComfort: ComfortOption,
-): AvailabilityOption => {
-  const option =
-    group.variants.find((variant) => variant.comfortOption === selectedComfort) ??
-    group.variants[0]!;
-
-  return {
-    ...option,
-    title: group.displayTitle,
-  };
-};
-
-const getPrimaryOption = (group: AvailabilityOptionGroup) => group.variants[0]!;
-
-const getOptionSectionTitle = (option: AvailabilityOption) =>
-  option.spareCapacity > 0 ? "More spacious private options" : "Best matches";
-
-const groupVisibleOptionsForDisplay = (
-  groups: AvailabilityOptionGroup[],
-): Array<{ id: string; title: string; groups: AvailabilityOptionGroup[] }> => {
-  const propertyIds = new Set(
-    groups.map((group) => getPrimaryOption(group).propertyId),
-  );
-
-  if (propertyIds.size > 1) {
-    const byProperty = new Map<string, AvailabilityOptionGroup[]>();
-
-    for (const group of groups) {
-      const option = getPrimaryOption(group);
-      const propertyGroups = byProperty.get(option.propertyLabel) ?? [];
-      propertyGroups.push(group);
-      byProperty.set(option.propertyLabel, propertyGroups);
-    }
-
-    return [...byProperty.entries()].map(([title, propertyGroups]) => ({
-      id: title,
-      title,
-      groups: propertyGroups,
-    }));
-  }
-
-  const bySection = new Map<string, AvailabilityOptionGroup[]>();
-
-  for (const group of groups) {
-    const option = getPrimaryOption(group);
-    const title = getOptionSectionTitle(option);
-    const sectionGroups = bySection.get(title) ?? [];
-    sectionGroups.push(group);
-    bySection.set(title, sectionGroups);
-  }
-
-  return ["Best matches", "More spacious private options"]
-    .map((title) => ({
-      id: title,
-      title,
-      groups: bySection.get(title) ?? [],
-    }))
-    .filter((section) => section.groups.length > 0);
-};
-
-const getComfortVariants = (group: AvailabilityOptionGroup) =>
-  group.variants
-    .map((variant) => ({
-      comfortOption: variant.comfortOption,
-      label: comfortLabels[variant.comfortOption],
-      priceLabel: formatPrice(variant.nightlyTotal),
-    }))
-    .sort(
-      (left, right) =>
-        comfortOrder[left.comfortOption] - comfortOrder[right.comfortOption],
-    );
 
 export default function SpacesListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -494,7 +271,7 @@ export default function SpacesListPage() {
     }
   };
 
-  const options = availabilityQuery.data?.options ?? [];
+  const options = availabilityQuery.data?.options ?? emptyAvailabilityOptions;
   const optionGroups = useMemo(
     () => groupAvailabilityOptions(options),
     [options],
@@ -560,166 +337,21 @@ export default function SpacesListPage() {
 
           {/* Filters Part */}
           <div className="p-6">
-            <div className="flex flex-col lg:flex-row lg:items-end gap-4 w-full">
-              {/* Left Side: Filter Fields + Clear Button */}
-              <div
-                className={`flex-1 grid gap-4 items-end sm:grid-cols-2 ${
-                  !IS_PROPERTY_SPECIFIC_MODE
-                    ? "lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_1.2fr_auto]"
-                    : "lg:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto]"
-                }`}
-              >
-                {!IS_PROPERTY_SPECIFIC_MODE && (
-                  <label className="block sm:col-span-2 lg:col-span-1">
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      City
-                    </span>
-                    <select
-                      value={city}
-                      onChange={(event) =>
-                        updateSearchParam("city", event.target.value)
-                      }
-                      className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                    >
-                      <option value="">All cities</option>
-                      {cityOptions.map((cityOption) => (
-                        <option key={cityOption} value={cityOption}>
-                          {cityOption}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    From
-                  </span>
-                  <input
-                    type="date"
-                    value={from}
-                    onChange={(event) =>
-                      updateSearchParam("from", event.target.value)
-                    }
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    To
-                  </span>
-                  <input
-                    type="date"
-                    value={to}
-                    min={from || undefined}
-                    onChange={(event) =>
-                      updateSearchParam("to", event.target.value)
-                    }
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <FiUsers className="h-3 w-3" />
-                    Guests
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={guests}
-                    onChange={(event) =>
-                      updateSearchParam("guests", event.target.value)
-                    }
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <FiWind className="h-3 w-3" />
-                    Comfort
-                  </span>
-                  <select
-                    value={comfort}
-                    onChange={(event) =>
-                      updateSearchParam("comfort", event.target.value)
-                    }
-                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  >
-                    {comfortOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {searchParams.toString() && (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="hidden lg:inline-flex h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400 w-full"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {/* Mobile Buttons: Clear + Check side-by-side */}
-              <div className="w-full lg:hidden flex gap-3 mt-2">
-                {searchParams.toString() ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="flex-1 h-11 inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:border-slate-400"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        !canCheckAvailability || availabilityQuery.isFetching
-                      }
-                      onClick={() => void availabilityQuery.refetch()}
-                      className="flex-1 h-11 inline-flex items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <FiSearch />
-                      {availabilityQuery.isFetching ? "Checking..." : "Check"}
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={
-                      !canCheckAvailability || availabilityQuery.isFetching
-                    }
-                    onClick={() => void availabilityQuery.refetch()}
-                    className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-4 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <FiSearch />
-                    {availabilityQuery.isFetching ? "Checking..." : "Check"}
-                  </button>
-                )}
-              </div>
-
-              {/* Right Side: Check Button (Desktop) */}
-              <div className="hidden lg:block w-full lg:w-auto">
-                <button
-                  type="button"
-                  disabled={
-                    !canCheckAvailability || availabilityQuery.isFetching
-                  }
-                  onClick={() => void availabilityQuery.refetch()}
-                  className="inline-flex h-11 w-full lg:w-auto items-center justify-center gap-2 rounded-lg bg-[rgb(var(--primary)/1)] px-6 text-sm font-semibold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <FiSearch />
-                  {availabilityQuery.isFetching ? "Checking..." : "Check"}
-                </button>
-              </div>
-            </div>
+            <AvailabilityFiltersPanel
+              showCityFilter={!IS_PROPERTY_SPECIFIC_MODE}
+              cityOptions={cityOptions}
+              city={city}
+              from={from}
+              to={to}
+              guests={guests}
+              comfort={comfort}
+              hasActiveFilters={Boolean(searchParams.toString())}
+              canCheckAvailability={canCheckAvailability}
+              isChecking={availabilityQuery.isFetching}
+              onFilterChange={updateSearchParam}
+              onClear={clearFilters}
+              onCheck={() => void availabilityQuery.refetch()}
+            />
 
             {canShowAvailabilitySummary && (
               <div className="mt-6 flex items-center justify-between gap-4 border-t border-slate-200 pt-5">
@@ -755,44 +387,17 @@ export default function SpacesListPage() {
           </div>
         </div>
 
-        {bookingError && (
-          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {bookingError}
-          </div>
-        )}
+        <AvailabilityResultsState
+          bookingError={bookingError}
+          canCheckAvailability={canCheckAvailability}
+          isFetching={availabilityQuery.isFetching}
+          errorMessage={
+            availabilityQuery.isError ? availabilityQuery.error.message : null
+          }
+          hasOptions={options.length > 0}
+        />
 
-        {!canCheckAvailability ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Select stay dates
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              Enter check-in, check-out, and guest count to see booking options.
-            </p>
-          </div>
-        ) : availabilityQuery.isFetching ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-muted">
-            Checking availability for your stay...
-          </div>
-        ) : availabilityQuery.isError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-            <h2 className="text-lg font-semibold text-red-900">
-              Unable to check availability
-            </h2>
-            <p className="mt-2 text-sm text-red-700">
-              {availabilityQuery.error.message}
-            </p>
-          </div>
-        ) : options.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-            <h2 className="text-lg font-semibold text-slate-900">
-              No booking options available
-            </h2>
-            <p className="mt-2 text-sm text-muted">
-              Try different dates, guest count, or comfort selection.
-            </p>
-          </div>
-        ) : (
+        {canShowAvailabilitySummary && (
           <div className="space-y-6">
             <div className="space-y-6">
               {visibleSections.map((section) => (
@@ -804,7 +409,7 @@ export default function SpacesListPage() {
                   <div
                     className={
                       layoutMode === "grid"
-                        ? "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr))]"
+                        ? "grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]"
                         : "flex flex-col gap-4"
                     }
                   >
@@ -834,7 +439,7 @@ export default function SpacesListPage() {
                           }
                           onBook={bookOption}
                           isBooking={false}
-                          formatPrice={formatPrice}
+                          formatPrice={formatAvailabilityPrice}
                         />
                       ) : (
                         <OptionStackCard
@@ -850,7 +455,7 @@ export default function SpacesListPage() {
                           }
                           onBook={bookOption}
                           isBooking={false}
-                          formatPrice={formatPrice}
+                          formatPrice={formatAvailabilityPrice}
                         />
                       );
                     })}

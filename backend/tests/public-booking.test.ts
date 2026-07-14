@@ -23,6 +23,7 @@ import {
   AdvancePaymentType,
   DiscountType,
   MaintenanceTargetType,
+  MaintenanceStatus,
   PricingTier,
   PropertyStatus,
   RateType,
@@ -377,41 +378,43 @@ before(async () => {
 });
 
 after(async () => {
-  if (state !== undefined) {
-    await prisma.property.deleteMany({
-      where: { id: state.propertyId },
-    });
+  try {
+    if (state !== undefined) {
+      await prisma.property.deleteMany({
+        where: { tenantId: state.tenantId },
+      });
 
-    await prisma.user.deleteMany({
-      where: {
-        OR: [
-          {
-            id: {
-              in: [state.guestOneId, state.guestTwoId, state.superAdminId],
+      await prisma.user.deleteMany({
+        where: {
+          OR: [
+            {
+              id: {
+                in: [state.guestOneId, state.guestTwoId, state.superAdminId],
+              },
             },
-          },
-          {
-            email: {
-              contains: testId,
+            {
+              email: {
+                contains: testId,
+              },
             },
-          },
-        ],
-      },
-    });
+          ],
+        },
+      });
 
-    await prisma.tenant.deleteMany({
-      where: { id: state.tenantId },
-    });
+      await prisma.tenant.deleteMany({
+        where: { id: state.tenantId },
+      });
+    }
+  } finally {
+    await prisma.$disconnect();
   }
-
-  await prisma.$disconnect();
 });
 
 const createScopedBookableProperty = async (input: {
   slug: string;
   name: string;
   city: string;
-  price: number;
+  price?: number;
 }) => {
   const property = await prisma.property.create({
     data: {
@@ -452,22 +455,25 @@ const createScopedBookableProperty = async (input: {
       category: RoomProductCategory.NIGHTLY,
     },
   });
-  const pricing = await prisma.roomPricing.create({
-    data: {
-      propertyId: property.id,
-      roomId: room.id,
-      unitId: unit.id,
-      productId: product.id,
-      rateType: RateType.NIGHTLY,
-      pricingTier: PricingTier.STANDARD,
-      minNights: 1,
-      taxInclusive: false,
-      price: input.price,
-      validFrom: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  });
+  const pricing =
+    input.price === undefined
+      ? null
+      : await prisma.roomPricing.create({
+          data: {
+            propertyId: property.id,
+            roomId: room.id,
+            unitId: unit.id,
+            productId: product.id,
+            rateType: RateType.NIGHTLY,
+            pricingTier: PricingTier.STANDARD,
+            minNights: 1,
+            taxInclusive: false,
+            price: input.price,
+            validFrom: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        });
 
-  return { property, pricing };
+  return { property, pricing, unit, room, product };
 };
 
 test("public tenant resolution requires explicit active tenant identity", async () => {
@@ -637,6 +643,7 @@ test("public property slug scopes config, spaces, availability, quotes, and enqu
       [...new Set(citySpaces.map((space) => space.propertyId))],
       [property.id],
     );
+    assert.ok(pricing);
     assert.equal(pricing.propertyId, property.id);
   } finally {
     await prisma.property.deleteMany({ where: { id: property.id } });
@@ -849,6 +856,47 @@ test("public availability respects pricing stay limits and validity windows", as
       validTo: null,
     },
   });
+});
+
+test("public availability excludes unpriced properties in city-scoped results", async () => {
+  const city = `${testId} Pricing Coverage City`;
+  const unpriced = await createScopedBookableProperty({
+    slug: `${testId}-unpriced-city`,
+    name: `${testId} Unpriced City Property`,
+    city,
+  });
+  const priced = await createScopedBookableProperty({
+    slug: `${testId}-priced-city`,
+    name: `${testId} Priced City Property`,
+    city,
+    price: 3100,
+  });
+
+  try {
+    const availability = await publicService.checkAvailability(
+      {
+        checkIn: new Date("2032-01-10T00:00:00.000Z"),
+        checkOut: new Date("2032-01-11T00:00:00.000Z"),
+        guests: 2,
+        comfortOption: ComfortOption.AC,
+        city,
+      },
+      { tenantSlug: state.tenantSlug },
+    );
+
+    const propertyIds = new Set(
+      availability.options.map((option) => option.propertyId),
+    );
+
+    assert.equal(availability.available, true);
+    assert.equal(propertyIds.has(priced.property.id), true);
+    assert.equal(propertyIds.has(unpriced.property.id), false);
+    assert.deepEqual([...propertyIds], [priced.property.id]);
+  } finally {
+    await prisma.property.deleteMany({
+      where: { id: { in: [unpriced.property.id, priced.property.id] } },
+    });
+  }
 });
 
 test("public availability returns limited public-safe booking options", async () => {
@@ -2021,7 +2069,7 @@ test("public availability exposes package options and metadata for guest counts 
 });
 
 test("city availability labels properties and internal options never mix properties", async () => {
-  const city = `${testId} Shared City`;
+  const city = `${testId} Option Isolation City`;
   const first = await createScopedBookableProperty({
     slug: `${testId}-shared-city-a`,
     name: `${testId} Shared City A`,
@@ -2818,6 +2866,70 @@ test("public booking checkout edit accepts matching guest edit token", async () 
 
   assert.equal(updated.guestName, "Guest Token Updated");
   assert.equal(updated.guestContactNumber, "+91-9000000001");
+});
+
+test("public booking detail requires owner auth or checkout token", async () => {
+  const payload = {
+    bookingType: "SINGLE_TARGET",
+    spaceId: state.pricingThreeId,
+    from: new Date("2030-02-10T00:00:00.000Z"),
+    to: new Date("2030-02-12T00:00:00.000Z"),
+    guests: 2,
+    comfortOption: ComfortOption.AC,
+  } as const;
+  const lock = await publicService.createInventoryLock(undefined, payload, {
+    tenantSlug: state.tenantSlug,
+  });
+  const booking = await publicService.createBooking(
+    undefined,
+    {
+      ...payload,
+      inventoryLockToken: lock.lockToken,
+      guestDetails: {
+        name: "Anonymous Detail Guest",
+        email: `${testId}-anonymous-detail@sucasa.test`,
+        contactNumber: "+91-9000000002",
+      },
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.getBookingByIdForPublicAccess(
+        undefined,
+        booking.id,
+        undefined,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "BOOKING_ACCESS_FORBIDDEN");
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      publicService.getBookingByIdForPublicAccess(
+        state.guestTwoId,
+        booking.id,
+        undefined,
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "BOOKING_ACCESS_FORBIDDEN");
+      return true;
+    },
+  );
+
+  const tokenResult = await publicService.getBookingByIdForPublicAccess(
+    undefined,
+    booking.id,
+    lock.lockToken,
+  );
+  assert.equal(tokenResult.id, booking.id);
 });
 
 test("public booking checkout edit rejects paid booking", async () => {
@@ -3682,6 +3794,50 @@ test("maintenance overlap blocks booking and checkout locks", async () => {
       ),
     assertBookingConflict,
   );
+
+  await prisma.maintenanceBlock.update({
+    where: { id: block.id },
+    data: { status: MaintenanceStatus.RESOLVED },
+  });
+
+  const resolvedLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  assert.equal(resolvedLock.lockToken.length > 0, true);
+  await prisma.inventoryLock.deleteMany({
+    where: { lockToken: resolvedLock.lockToken },
+  });
+
+  await prisma.maintenanceBlock.update({
+    where: { id: block.id },
+    data: { status: MaintenanceStatus.CANCELLED },
+  });
+
+  const cancelledLock = await publicService.createInventoryLock(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: checkIn,
+      to: checkOut,
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  assert.equal(cancelledLock.lockToken.length > 0, true);
+  await prisma.inventoryLock.deleteMany({
+    where: { lockToken: cancelledLock.lockToken },
+  });
 
   await prisma.maintenanceBlock.delete({ where: { id: block.id } });
 });

@@ -198,17 +198,37 @@ export const updateRefundRequestById = (
 
 export const updateBookingCancellationById = (
   id: string,
-  data: Prisma.BookingUpdateInput,
+  userId: string,
+  expectedVersion: number,
+  data: Prisma.BookingUpdateManyMutationInput,
   history: Prisma.BookingStatusHistoryCreateInput,
+  releasedAt: Date,
 ) =>
   prisma.$transaction(async (tx) => {
-    await tx.booking.update({
-      where: { id },
-      data,
+    const result = await tx.booking.updateMany({
+      where: {
+        id,
+        userId,
+        version: expectedVersion,
+        status: { in: [BookingStatus.PENDING, BookingStatus.CONFIRMED] },
+      },
+      data: {
+        ...data,
+        version: { increment: 1 },
+      },
     });
+
+    if (result.count !== 1) {
+      return null;
+    }
 
     await tx.bookingStatusHistory.create({
       data: history,
+    });
+
+    await tx.inventoryLock.updateMany({
+      where: { bookingId: id, releasedAt: null },
+      data: { releasedAt },
     });
 
     return tx.booking.findUniqueOrThrow({

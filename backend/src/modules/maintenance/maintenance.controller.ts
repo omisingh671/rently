@@ -60,6 +60,16 @@ export const createMaintenanceBlock = async (
       ...(body.unitId !== undefined && { unitId: body.unitId }),
       ...(body.roomId !== undefined && { roomId: body.roomId }),
       ...(body.reason !== undefined && { reason: body.reason }),
+      priority: body.priority,
+      ...(body.assignedToUserId !== undefined && {
+        assignedToUserId: body.assignedToUserId,
+      }),
+      ...(body.emergencyOverride !== undefined && {
+        emergencyOverride: body.emergencyOverride,
+      }),
+      ...(body.emergencyReason !== undefined && {
+        emergencyReason: body.emergencyReason,
+      }),
       startDate: body.startDate,
       endDate: body.endDate,
     },
@@ -78,6 +88,20 @@ export const updateMaintenanceBlock = async (
     ...(body.unitId !== undefined && { unitId: body.unitId }),
     ...(body.roomId !== undefined && { roomId: body.roomId }),
     ...(body.reason !== undefined && { reason: body.reason }),
+    ...(body.status !== undefined && { status: body.status }),
+    ...(body.priority !== undefined && { priority: body.priority }),
+    ...(body.assignedToUserId !== undefined && {
+      assignedToUserId: body.assignedToUserId,
+    }),
+    ...(body.resolutionNote !== undefined && {
+      resolutionNote: body.resolutionNote,
+    }),
+    ...(body.emergencyOverride !== undefined && {
+      emergencyOverride: body.emergencyOverride,
+    }),
+    ...(body.emergencyReason !== undefined && {
+      emergencyReason: body.emergencyReason,
+    }),
     ...(body.startDate !== undefined && { startDate: body.startDate }),
     ...(body.endDate !== undefined && { endDate: body.endDate }),
   });

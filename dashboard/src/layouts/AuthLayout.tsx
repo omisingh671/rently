@@ -27,8 +27,13 @@ export default function AuthLayout() {
           {/* Brand */}
           <div className="mt-10 mb-8">
             <h1 className="text-3xl font-serif font-semibold leading-tight text-slate-100">
-              Home Away From <span className="text-amber-400">Home</span>
+              <span className="text-amber-400">Rently</span>
             </h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/80">
+              A unified hospitality operations platform for managing
+              properties, reservations, guests, pricing, payments, and daily
+              hotel workflows.
+            </p>
           </div>
 
           {/* Auth card */}
@@ -65,17 +70,18 @@ export default function AuthLayout() {
 
             <div className="mt-auto mb-auto max-w-lg">
               <h1 className="text-5xl xl:text-6xl font-serif font-semibold leading-tight text-slate-100">
-                Home Away From <span className="text-amber-400">Home</span>
+                <span className="text-amber-400">Rently</span>
               </h1>
 
               <p className="mt-6 text-lg text-white/80 leading-relaxed">
-                Experience the warmth of home with the sophistication of a
-                five-star stay.
+                A unified hospitality operations platform for managing
+                properties, reservations, guests, pricing, payments, and daily
+                hotel workflows.
               </p>
             </div>
 
             <div className="text-xs tracking-[0.2em] text-white/60">
-              SUCASA HOMES
+              HOSPITALITY OPERATIONS
             </div>
           </div>
         </div>

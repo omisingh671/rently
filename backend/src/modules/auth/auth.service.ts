@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { env } from "@/config/env.js";
 import { Prisma } from "@/generated/prisma/client.js";
+import type { SessionAudience } from "@/generated/prisma/enums.js";
 
 import {
   signAccessToken,
@@ -13,6 +14,7 @@ import { sendResetPasswordEmail } from "./email/resetPassword.email.js";
 import { HttpError } from "@/common/errors/http-error.js";
 
 import * as repo from "./auth.repository.js";
+import { assertRoleAllowedForAudience } from "./auth-client.js";
 
 import type {
   LoginUserInput,
@@ -70,19 +72,34 @@ const clearFailedLogin = (email: string) => {
 const createRefreshSession = async (
   userId: string,
   refreshToken: string,
+  audience: SessionAudience,
   expiresAt: Date,
   ip?: string,
   userAgent?: string,
 ) => {
   try {
-    await repo.createSession(userId, refreshToken, expiresAt, ip, userAgent);
+    await repo.createSession(
+      userId,
+      refreshToken,
+      audience,
+      expiresAt,
+      ip,
+      userAgent,
+    );
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
       await repo.deleteSessionByToken(refreshToken);
-      await repo.createSession(userId, refreshToken, expiresAt, ip, userAgent);
+      await repo.createSession(
+        userId,
+        refreshToken,
+        audience,
+        expiresAt,
+        ip,
+        userAgent,
+      );
       return;
     }
 
@@ -95,6 +112,7 @@ const createRefreshSession = async (
  **/
 export const loginUser = async (
   input: LoginUserInput,
+  audience: SessionAudience,
   ip?: string,
   userAgent?: string,
 ): Promise<{ auth: AuthResponseDTO; refreshToken: string }> => {
@@ -126,17 +144,20 @@ export const loginUser = async (
   }
 
   clearFailedLogin(email);
+  assertRoleAllowedForAudience(user.role, audience);
 
   const accessToken = signAccessToken({
     sub: user.id,
     role: user.role,
+    audience,
   });
 
-  const refreshToken = signRefreshToken({ sub: user.id });
+  const refreshToken = signRefreshToken({ sub: user.id, audience });
 
   await createRefreshSession(
     user.id,
     refreshToken,
+    audience,
     new Date(Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000),
     ip,
     userAgent,
@@ -187,12 +208,16 @@ export const registerUser = async (input: RegisterUserInput): Promise<void> => {
  **/
 export const refreshSession = async (
   refreshToken: string,
+  audience: SessionAudience,
   ip?: string,
   userAgent?: string,
 ): Promise<{ auth: AuthResponseDTO; refreshToken: string }> => {
   const payload = verifyRefreshToken(refreshToken);
+  if (payload.audience !== audience) {
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token audience");
+  }
 
-  const session = await repo.findSessionByToken(refreshToken);
+  const session = await repo.findSessionByToken(refreshToken, audience);
   if (!session || session.userId !== payload.sub) {
     throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
   }
@@ -211,12 +236,14 @@ export const refreshSession = async (
     await repo.deleteSessionsForUser(user.id);
     throw new HttpError(403, "USER_DISABLED", "User account is disabled");
   }
+  assertRoleAllowedForAudience(user.role, audience);
 
   const accessToken = signAccessToken({
     sub: user.id,
     role: user.role,
+    audience,
   });
-  const nextRefreshToken = signRefreshToken({ sub: user.id });
+  const nextRefreshToken = signRefreshToken({ sub: user.id, audience });
   const nextRefreshExpiresAt = new Date(
     Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000,
   );
@@ -224,6 +251,7 @@ export const refreshSession = async (
   try {
     await repo.rotateSessionToken(
       refreshToken,
+      audience,
       nextRefreshToken,
       nextRefreshExpiresAt,
       ip,
@@ -237,6 +265,7 @@ export const refreshSession = async (
       await repo.deleteSessionByToken(nextRefreshToken);
       await repo.rotateSessionToken(
         refreshToken,
+        audience,
         nextRefreshToken,
         nextRefreshExpiresAt,
         ip,

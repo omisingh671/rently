@@ -9,6 +9,7 @@ export interface CreateManualPaymentInput {
   userId?: string;
   actorUserId?: string;
   bookingId: string;
+  checkoutToken?: string;
   idempotencyKey: string;
   amount?: number;
   purpose?: PaymentPurpose;

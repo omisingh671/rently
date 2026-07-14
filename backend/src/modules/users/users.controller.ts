@@ -3,6 +3,7 @@ import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { UserRole } from "@/generated/prisma/enums.js";
 import type { IdParams } from "@/common/types/params.js";
+import { getRefreshCookieName } from "@/modules/auth/auth-client.js";
 
 import * as service from "./users.service.js";
 import {
@@ -207,11 +208,13 @@ export const updateForcePasswordChange = async (req: AuthRequest, res: Response)
 
 export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
+  const audience = req.user?.audience;
   await service.revokeUserSessions(
     getUserId(req),
     params.id,
-    req.cookies?.refreshToken,
+    audience
+      ? req.cookies?.[getRefreshCookieName(audience)]
+      : undefined,
   );
   res.status(204).send();
 };
-

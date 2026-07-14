@@ -8,6 +8,7 @@ type PublicEnv = {
   propertySlug: string | null;
   supportEmail: string | null;
   supportPhone: string | null;
+  mockPaymentsEnabled: boolean;
   apiBaseUrl: string;
   apiPrefix: string;
 };
@@ -24,6 +25,15 @@ const readRequiredEnv = (key: string): string => {
   }
 
   return value;
+};
+
+const readBooleanEnv = (key: string, defaultValue = false): boolean => {
+  const value = readEnv(key);
+  if (value === undefined) return defaultValue;
+  if (value === "true") return true;
+  if (value === "false") return false;
+
+  throw new Error(`${key} must be either true or false`);
 };
 
 const stripTrailingSlash = (value: string): string =>
@@ -60,6 +70,8 @@ export const publicEnv: PublicEnv = {
   propertySlug: readEnv("VITE_PROPERTY_SLUG") ?? null,
   supportEmail: readEnv("VITE_SUPPORT_EMAIL") ?? null,
   supportPhone: readEnv("VITE_SUPPORT_PHONE") ?? null,
+  mockPaymentsEnabled:
+    import.meta.env.DEV && readBooleanEnv("VITE_ENABLE_MOCK_PAYMENTS"),
   apiBaseUrl: normalizeApiBaseUrl(
     readEnv("VITE_API_BASE_URL") ??
       readEnv("VITE_API_BASE") ??

@@ -9,7 +9,7 @@ const dashboardBookingRoomAssignmentInclude = {
   unit: true,
 } satisfies Prisma.RoomInclude;
 
-const dashboardBookingInclude = {
+export const dashboardBookingInclude = {
   property: {
     include: {
       tenant: true,
@@ -49,6 +49,23 @@ const dashboardBookingInclude = {
   statusHistory: {
     include: {
       actor: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  operationEvents: {
+    include: {
+      actor: true,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  },
+  folioCharges: {
+    include: {
+      createdBy: true,
+      voidedBy: true,
     },
     orderBy: {
       createdAt: "asc",
@@ -232,6 +249,29 @@ export const findBookingById = (id: string) =>
     where: { id },
     include: dashboardBookingInclude,
   });
+
+export const runBookingTransaction = async <T>(
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+) => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(callback, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034" &&
+        attempt < 2
+      ) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Booking transaction retry limit reached");
+};
 
 export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =>
   prisma.booking.update({

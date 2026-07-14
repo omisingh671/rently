@@ -15,6 +15,13 @@ export const toMaintenanceBlockResponseDto = (
     ? `${block.room.number} (${block.room.name})`
     : null,
   reason: block.reason ?? null,
+  status: block.status,
+  priority: block.priority,
+  assignedToUserId: block.assignedToUserId ?? null,
+  assignedToName: block.assignedTo?.fullName ?? null,
+  resolutionNote: block.resolutionNote ?? null,
+  resolvedAt: block.resolvedAt ?? null,
+  emergencyOverride: block.emergencyOverride,
   startDate: block.startDate,
   endDate: block.endDate,
   createdByUserId: block.createdByUserId,

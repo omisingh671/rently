@@ -135,8 +135,30 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/refunds`,
     bookingRefundRequestById: (bookingId: string, requestId: string) =>
       `/bookings/${bookingId}/refund-requests/${requestId}`,
+    bookingCheckInById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-in`,
+    bookingCheckOutById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-out`,
+    bookingNoShowById: (bookingId: string) =>
+      `/bookings/${bookingId}/no-show`,
+    bookingRoomMoveById: (bookingId: string) =>
+      `/bookings/${bookingId}/room-move`,
+    bookingRoomMovePreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/room-move/preview`,
+    bookingStatusCorrectionById: (bookingId: string) =>
+      `/bookings/${bookingId}/status-correction`,
+    bookingFolioChargesById: (bookingId: string) =>
+      `/bookings/${bookingId}/folio-charges`,
+    bookingFolioChargeById: (bookingId: string, chargeId: string) =>
+      `/bookings/${bookingId}/folio-charges/${chargeId}/void`,
     roomBoardByProperty: (propertyId: string) =>
       `/properties/${propertyId}/room-board`,
+    roomHousekeepingByProperty: (propertyId: string, roomId: string) =>
+      `/properties/${propertyId}/rooms/${roomId}/housekeeping`,
+    operationsBoardByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/operations/board`,
+    cashierSummaryByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/operations/cashier-summary`,
     bookingAvailabilityByProperty: (propertyId: string) =>
       `/properties/${propertyId}/bookings/availability`,
     enquiriesByProperty: (propertyId: string) =>

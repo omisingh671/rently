@@ -18,6 +18,7 @@ import Button from "@/components/ui/Button";
 import { ROUTES } from "@/configs/routePaths";
 import {
   clearBookingCheckoutDraftForBooking,
+  getBookingBillingCheckoutToken,
   getBookingCheckoutDraft,
 } from "@/features/bookings/bookingCheckoutDraft";
 import { useBooking } from "@/features/bookings/hooks";
@@ -168,7 +169,9 @@ function BookingSummary({ booking }: { booking: Booking }) {
               <span className="text-slate-700">{formatPrice(booking.remainingPayAtCheckIn)}</span>
             </div>
             <div className="mt-3 pt-3 border-t border-indigo-100/50 text-[11px] text-indigo-400 font-semibold italic">
-              * Token amount is non-refundable
+              * {booking.policy.tokenRefundable
+                ? "Token refund eligibility follows the property policy"
+                : "Token amount is non-refundable under the property policy"}
             </div>
           </div>
         )}
@@ -178,8 +181,10 @@ function BookingSummary({ booking }: { booking: Booking }) {
 }
 export default function BookingPaymentPage() {
   const { id } = useParams();
-  const bookingQuery = useBooking(id);
   const checkoutDraft = useMemo(() => getBookingCheckoutDraft(), []);
+  const checkoutToken =
+    id !== undefined ? getBookingBillingCheckoutToken(id, checkoutDraft) : undefined;
+  const bookingQuery = useBooking(id, true, checkoutToken);
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
@@ -187,11 +192,6 @@ export default function BookingPaymentPage() {
   const isConfirmed =
     loadedBooking !== undefined &&
     ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(loadedBooking.status);
-  const checkoutToken =
-    loadedBooking !== undefined &&
-    checkoutDraft?.createdBookingId === loadedBooking.id
-      ? checkoutDraft.payload.inventoryLockToken
-      : undefined;
   const billingDocumentsQuery = useBookingBillingDocuments(
     loadedBooking?.id,
     checkoutToken,

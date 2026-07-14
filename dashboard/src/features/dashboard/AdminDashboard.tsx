@@ -38,6 +38,8 @@ export default function AdminDashboard() {
   const propertyId = selectedPropertyId;
   const from = todayStr();
   const to = tomorrowStr();
+  const role = context?.user.role ?? user?.role;
+  const isManager = role === "MANAGER";
 
   const boardQuery = useQuery({
     queryKey: propertyId
@@ -106,11 +108,9 @@ export default function AdminDashboard() {
         page: 1,
         limit: DASHBOARD_SIGNAL_LIMIT,
       }),
-    enabled: Boolean(propertyId),
+    enabled: Boolean(propertyId) && !isManager,
   });
 
-  const role = context?.user.role ?? user?.role;
-  const isManager = role === "MANAGER";
   const dashboardBookings = bookingsQuery.data?.items ?? [];
   const recentBookings = dashboardBookings.slice(0, RECENT_BOOKINGS_LIMIT);
   const stats = getDashboardStats(boardQuery.data, dashboardBookings, from);
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
         bookingsQuery.isPending ||
         enquiriesQuery.isPending ||
         quotesQuery.isPending ||
-        ratesQuery.isPending),
+        (!isManager && ratesQuery.isPending)),
   );
 
   const noPropertyMessage = isManager

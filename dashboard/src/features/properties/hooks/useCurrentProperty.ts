@@ -47,11 +47,11 @@ export const useCurrentProperty = () => {
   ]);
 
   const effectivePropertyId =
-    selectedPropertyId !== null
-      ? selectedPropertyId
-      : isSelectionReady
-        ? properties[0]?.id
-        : undefined;
+    isSelectionReady
+      ? (properties.some((property) => property.id === selectedPropertyId)
+        ? selectedPropertyId
+        : properties[0]?.id)
+      : undefined;
 
   const selectedProperty =
     properties.find((property) => property.id === effectivePropertyId) ?? null;

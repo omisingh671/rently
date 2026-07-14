@@ -85,6 +85,10 @@ export const bookingCheckoutQuoteSchema = z.object({
   editToken: z.string().uuid().optional(),
 });
 
+export const publicBookingAccessQuerySchema = z.object({
+  checkoutToken: z.string().uuid().optional(),
+});
+
 export const updateBookingCheckoutSchema = bookingCheckoutQuoteSchema.extend({
   guestDetails: bookingGuestDetailsSchema,
 });

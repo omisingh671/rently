@@ -1,14 +1,17 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { env } from "@/config/env.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import type { SessionAudience } from "@/generated/prisma/enums.js";
 
 export interface AccessTokenPayload {
   sub: string;
   role: string;
+  audience: SessionAudience;
 }
 
 export interface RefreshTokenPayload {
   sub: string;
+  audience: SessionAudience;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {
@@ -25,7 +28,8 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
       typeof decoded !== "object" ||
       decoded === null ||
       !("sub" in decoded) ||
-      !("role" in decoded)
+      !("role" in decoded) ||
+      !("audience" in decoded)
     ) {
       throw new HttpError(401, "UNAUTHORIZED", "Invalid access token");
     }
@@ -35,6 +39,7 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
     return {
       sub: payload.sub,
       role: payload.role,
+      audience: payload.audience,
     };
   } catch (err) {
     if (
@@ -65,14 +70,15 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
     if (
       typeof decoded !== "object" ||
       decoded === null ||
-      !("sub" in decoded)
+      !("sub" in decoded) ||
+      !("audience" in decoded)
     ) {
       throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
     }
 
     const payload = decoded as JwtPayload & RefreshTokenPayload;
 
-    return { sub: payload.sub };
+    return { sub: payload.sub, audience: payload.audience };
   } catch (err) {
     if (
       err instanceof jwt.TokenExpiredError ||

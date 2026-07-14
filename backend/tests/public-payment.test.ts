@@ -28,13 +28,25 @@ import * as publicService from "@/modules/public/bookings/bookings.service.js";
 import { createInventoryLock } from "@/modules/public/availability/availability.service.js";
 import * as paymentsService from "@/modules/payments/payments.service.js";
 import * as dashboardService from "@/modules/bookings/bookings.service.js";
+import * as maintenanceService from "@/modules/maintenance/maintenance.service.js";
 import { billingService } from "@/modules/billing/index.js";
 
 const testId = `payment-${Date.now()}`;
 const passwordHash = "not-used-by-service-tests";
 
-const utcDateOnly = (date: Date) =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+const propertyDateOnly = (date: Date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string) =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  return new Date(
+    Date.UTC(value("year"), value("month") - 1, value("day")),
+  );
+};
 
 const addUtcDays = (date: Date, days: number) => {
   const nextDate = new Date(date);
@@ -101,6 +113,53 @@ const createBooking = (
     },
     { tenantSlug: state.tenantSlug },
   );
+
+const moveBookingWithPreview = async (
+  actorUserId: string,
+  bookingId: string,
+  input: {
+    expectedVersion: number;
+    roomIds: string[];
+    note: string;
+    pricingAction?: "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE";
+  },
+) => {
+  const preview = await dashboardService.previewBookingRoomMove(
+    actorUserId,
+    bookingId,
+    {
+      expectedVersion: input.expectedVersion,
+      roomIds: input.roomIds,
+    },
+  );
+  return dashboardService.moveBookingRooms(actorUserId, bookingId, {
+    ...input,
+    pricingAction: input.pricingAction ?? "COMPLIMENTARY_UPGRADE",
+    pricingFingerprint: preview.pricingFingerprint,
+    expectedAdjustmentAmount: Number(preview.totalAdjustment),
+  });
+};
+
+const clearBookingAssignment = async (bookingId: string) => {
+  await prisma.booking.update({
+    where: { id: bookingId },
+    data: {
+      roomId: null,
+      unitId: null,
+      targetLabel: "Unassigned",
+      items: {
+        updateMany: {
+          where: {},
+          data: {
+            roomId: null,
+            unitId: null,
+            targetLabel: "Unassigned",
+          },
+        },
+      },
+    },
+  });
+};
 
 before(async () => {
   const superAdmin = await prisma.user.create({
@@ -342,6 +401,34 @@ before(async () => {
   if (!pricing || !pricingTwo) {
     throw new Error("Payment test pricing invariant failed");
   }
+  await prisma.roomPricing.createMany({
+    data: [
+      {
+        propertyId: property.id,
+        roomId: assignmentRoom.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: property.id,
+        roomId: assignmentRoomTwo.id,
+        unitId: unit.id,
+        productId: product.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 3500,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
+  });
 
   state = {
     superAdminId: superAdmin.id,
@@ -619,10 +706,29 @@ test("anonymous checkout token can read only its booking documents", async () =>
     },
     { tenantSlug: state.tenantSlug },
   );
-  await paymentsService.createManualPayment({
+  await assert.rejects(
+    () =>
+      paymentsService.createManualPayment({
+        bookingId: booking.id,
+        idempotencyKey: `${testId}-anonymous-token-docs-denied`,
+      }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 403 &&
+      error.code === "PAYMENT_ACCESS_FORBIDDEN",
+  );
+
+  const payment = await paymentsService.createManualPayment({
     bookingId: booking.id,
+    checkoutToken: lock.lockToken,
     idempotencyKey: `${testId}-anonymous-token-docs`,
   });
+  const idempotentPayment = await paymentsService.createManualPayment({
+    bookingId: booking.id,
+    checkoutToken: lock.lockToken,
+    idempotencyKey: `${testId}-anonymous-token-docs`,
+  });
+  assert.equal(idempotentPayment.payment.id, payment.payment.id);
 
   const documents = await billingService.listPublicBookingDocuments(
     booking.id,
@@ -980,8 +1086,8 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
     {
       bookingType: "SINGLE_TARGET",
       spaceId: state.pricingId,
-      from: new Date("2027-11-10T00:00:00.000Z"),
-      to: new Date("2027-11-12T00:00:00.000Z"),
+      from: new Date("2027-11-20T00:00:00.000Z"),
+      to: new Date("2027-11-22T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -993,8 +1099,8 @@ test("dashboard availability check marks booked spaces unavailable", async () =>
     state.propertyId,
     {
       spaceIds: [state.pricingId, state.pricingTwoId],
-      from: new Date("2027-10-10T00:00:00.000Z"),
-      to: new Date("2027-10-12T00:00:00.000Z"),
+      from: new Date("2027-11-20T00:00:00.000Z"),
+      to: new Date("2027-11-22T00:00:00.000Z"),
       guests: 2,
       comfortOption: ComfortOption.AC,
     },
@@ -1102,6 +1208,61 @@ test("dashboard records remaining balance payment and marks booking paid", async
   });
   assert.equal(invoice.paid.toString(), "5600");
   assert.equal(invoice.balance.toString(), "0");
+});
+
+test("dashboard records balance payment including folio charges", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingTwoId,
+      from: new Date("2027-08-20T00:00:00.000Z"),
+      to: new Date("2027-08-22T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-folio-token`,
+  });
+
+  const updatedBooking = await dashboardService.getBookingById(state.superAdminId, booking.id);
+
+  const charged = await dashboardService.createBookingFolioCharge(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: updatedBooking.version,
+      type: "INCIDENTAL",
+      description: "Minibar",
+      amount: 100,
+      note: "Minibar charge.",
+    },
+  );
+
+  assert.equal(charged.balanceAmount, "5690");
+
+  const paid = await dashboardService.recordBookingBalancePayment(
+    state.managerId,
+    booking.id,
+    {
+      amount: 5690,
+      method: PaymentMethod.CASH,
+      note: "Collected at reception",
+      idempotencyKey: `${testId}-folio-balance-payment`,
+    },
+  );
+
+  assert.equal(paid.paymentStatus, "PAID");
+  assert.equal(paid.paidAmount, "5700");
+  assert.equal(paid.balanceAmount, "0");
+  assert.equal(paid.payments.length, 2);
+  assert.equal(paid.payments[1]?.purpose, PaymentPurpose.BALANCE);
+  assert.equal(paid.payments[1]?.amount, "5690");
 });
 
 test("dashboard records offline payment proof metadata", async () => {
@@ -1869,6 +2030,7 @@ test("dashboard can reassign a single-room booking", async () => {
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   const updated = await dashboardService.updateBooking(
     state.superAdminId,
@@ -1881,6 +2043,765 @@ test("dashboard can reassign a single-room booking", async () => {
   assert.equal(updated.items.length, 1);
   assert.equal(updated.items[0]?.roomId, state.assignmentRoomId);
   assert.equal(updated.roomId, state.assignmentRoomId);
+});
+
+test("dashboard generic room update cannot bypass priced room move", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2027-10-04T00:00:00.000Z"),
+      to: new Date("2027-10-06T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        roomIds: [state.assignmentRoomId],
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "PRICED_ROOM_MOVE_REQUIRED");
+      return true;
+    },
+  );
+});
+
+test("room move preview prices destination room by selected room capacity override", async () => {
+  const [currentUnit, destinationUnit] = await Promise.all([
+    prisma.unit.create({
+      data: {
+        propertyId: state.propertyId,
+        unitNumber: `${testId}-100`,
+        floor: 1,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+    prisma.unit.create({
+      data: {
+        propertyId: state.propertyId,
+        unitNumber: `${testId}-200`,
+        floor: 2,
+        status: UnitStatus.ACTIVE,
+      },
+    }),
+  ]);
+  const [currentRoom, destinationRoom] = await Promise.all([
+    prisma.room.create({
+      data: {
+        unitId: currentUnit.id,
+        name: "Single Occupancy Room",
+        number: `${testId}-100-A`,
+        hasAC: true,
+        maxOccupancy: 1,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+    prisma.room.create({
+      data: {
+        unitId: destinationUnit.id,
+        name: "Deluxe Room",
+        number: `${testId}-200-A`,
+        hasAC: true,
+        maxOccupancy: 3,
+        status: RoomStatus.AVAILABLE,
+      },
+    }),
+  ]);
+  const [singleAcProduct, tripleAcProduct, tripleNonAcProduct] =
+    await Promise.all([
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Single AC`,
+          occupancy: 1,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Triple AC`,
+          occupancy: 3,
+          hasAC: true,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+      prisma.roomProduct.create({
+        data: {
+          propertyId: state.propertyId,
+          name: `${testId} Override Triple Non AC`,
+          occupancy: 3,
+          hasAC: false,
+          category: RoomProductCategory.NIGHTLY,
+        },
+      }),
+    ]);
+  const currentPricing = await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      roomId: currentRoom.id,
+      unitId: currentUnit.id,
+      productId: singleAcProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 1750,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.roomPricing.createMany({
+    data: [
+      {
+        propertyId: state.propertyId,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2400,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        unitId: destinationUnit.id,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2700,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        roomId: destinationRoom.id,
+        unitId: destinationUnit.id,
+        productId: tripleNonAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2600,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+      {
+        propertyId: state.propertyId,
+        roomId: destinationRoom.id,
+        unitId: destinationUnit.id,
+        productId: tripleAcProduct.id,
+        rateType: RateType.NIGHTLY,
+        pricingTier: PricingTier.STANDARD,
+        minNights: 1,
+        taxInclusive: false,
+        price: 2850,
+        validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ],
+  });
+
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: currentPricing.id,
+      from: new Date("2036-01-05T00:00:00.000Z"),
+      to: new Date("2036-01-06T00:00:00.000Z"),
+      guests: 1,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+
+  const preview = await dashboardService.previewBookingRoomMove(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destinationRoom.id],
+    },
+  );
+
+  assert.equal(preview.currentNightlyRate, "1750");
+  assert.equal(preview.destinationNightlyRate, "2850");
+  assert.equal(preview.baseDifference, "1100");
+  assert.equal(preview.totalAdjustment, "1100");
+
+  await assert.rejects(
+    () =>
+      dashboardService.moveBookingRooms(state.superAdminId, booking.id, {
+        expectedVersion: 1,
+        roomIds: [destinationRoom.id],
+        note: "Stale frontend attempted zero adjustment.",
+        pricingAction: "CHARGE_DIFFERENCE",
+        pricingFingerprint: preview.pricingFingerprint,
+        expectedAdjustmentAmount: 0,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "PRICING_CHANGED");
+      return true;
+    },
+  );
+
+  const moved = await dashboardService.moveBookingRooms(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destinationRoom.id],
+      note: "Guest accepted paid move to 200-A.",
+      pricingAction: "CHARGE_DIFFERENCE",
+      pricingFingerprint: preview.pricingFingerprint,
+      expectedAdjustmentAmount: 1100,
+    },
+  );
+
+  assert.equal(moved.folioTotal, "1100");
+  const charge = await prisma.bookingFolioCharge.findFirstOrThrow({
+    where: { bookingId: booking.id, type: "ADJUSTMENT" },
+  });
+  assert.equal(charge.amount.toString(), "1100");
+});
+
+test("priced room move charges upgrade difference and creates debit note", async () => {
+  const booking = await createBooking(
+    new Date("2036-01-10T00:00:00.000Z"),
+    new Date("2036-01-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-priced-move-full-payment`,
+    amount: booking.totalPrice,
+    purpose: PaymentPurpose.FULL_PAYMENT,
+  });
+
+  const tax = await prisma.tax.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} room move tax`,
+      rate: 10,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+  try {
+    const preview = await dashboardService.previewBookingRoomMove(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 1,
+        roomIds: [state.assignmentRoomId],
+      },
+    );
+    assert.equal(preview.affectedNights, 2);
+    assert.equal(preview.currentNightlyRate, "3000");
+    assert.equal(preview.destinationNightlyRate, "3500");
+    assert.equal(preview.baseDifference, "1000");
+    assert.equal(preview.taxDifference, "100");
+    assert.equal(preview.totalAdjustment, "1100");
+    assert.deepEqual(preview.allowedPricingActions, [
+      "CHARGE_DIFFERENCE",
+      "COMPLIMENTARY_UPGRADE",
+    ]);
+
+    const moved = await dashboardService.moveBookingRooms(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 1,
+        roomIds: [state.assignmentRoomId],
+        note: "Guest accepted paid upgrade.",
+        pricingAction: "CHARGE_DIFFERENCE",
+        pricingFingerprint: preview.pricingFingerprint,
+        expectedAdjustmentAmount: 1100,
+      },
+    );
+
+    assert.equal(moved.folioTotal, "1100");
+    const charge = await prisma.bookingFolioCharge.findFirstOrThrow({
+      where: { bookingId: booking.id, type: "ADJUSTMENT" },
+    });
+    assert.equal(charge.amount.toString(), "1100");
+    const debitNote = await prisma.billingDocument.findUniqueOrThrow({
+      where: { documentKey: `DEBIT_NOTE:${charge.id}` },
+    });
+    assert.equal(debitNote.type, "DEBIT_NOTE");
+    assert.equal(debitNote.tax.toString(), "100");
+    assert.equal(debitNote.total.toString(), "1100");
+  } finally {
+    await prisma.tax.delete({ where: { id: tax.id } });
+  }
+});
+
+test("lower-priced room move creates no charge, credit, or refund", async () => {
+  const booking = await createBooking(
+    new Date("2036-01-20T00:00:00.000Z"),
+    new Date("2036-01-22T00:00:00.000Z"),
+  );
+  const destination = await prisma.roomPricing.findUniqueOrThrow({
+    where: { id: state.pricingTwoId },
+    select: { roomId: true },
+  });
+  assert.ok(destination.roomId);
+
+  const preview = await dashboardService.previewBookingRoomMove(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destination.roomId],
+    },
+  );
+  assert.equal(preview.currentNightlyRate, "3000");
+  assert.equal(preview.destinationNightlyRate, "2800");
+  assert.equal(preview.totalAdjustment, "0");
+
+  const moved = await dashboardService.moveBookingRooms(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [destination.roomId],
+      note: "Operational relocation to a lower-priced room.",
+      pricingAction: "CHARGE_DIFFERENCE",
+      pricingFingerprint: preview.pricingFingerprint,
+      expectedAdjustmentAmount: 0,
+    },
+  );
+
+  const persistedBooking = await prisma.booking.findUniqueOrThrow({
+    where: { id: booking.id },
+    select: { totalAmount: true },
+  });
+  assert.equal(persistedBooking.totalAmount.toString(), String(booking.totalPrice));
+  assert.equal(moved.folioTotal, "0");
+  assert.equal(
+    await prisma.bookingFolioCharge.count({ where: { bookingId: booking.id } }),
+    0,
+  );
+  assert.equal(
+    await prisma.paymentRefund.count({ where: { bookingId: booking.id } }),
+    0,
+  );
+});
+
+test("manager cannot waive paid room move, but admin can with audit metadata", async () => {
+  const booking = await createBooking(
+    new Date("2036-02-10T00:00:00.000Z"),
+    new Date("2036-02-12T00:00:00.000Z"),
+  );
+  const preview = await dashboardService.previewBookingRoomMove(
+    state.managerId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [state.assignmentRoomId],
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.moveBookingRooms(state.managerId, booking.id, {
+        expectedVersion: 1,
+        roomIds: [state.assignmentRoomId],
+        note: "Manager attempted complimentary upgrade.",
+        pricingAction: "COMPLIMENTARY_UPGRADE",
+        pricingFingerprint: preview.pricingFingerprint,
+        expectedAdjustmentAmount: Number(preview.totalAdjustment),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 403);
+      assert.equal(error.code, "ROOM_MOVE_WAIVER_RESTRICTED");
+      return true;
+    },
+  );
+
+  const moved = await dashboardService.moveBookingRooms(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [state.assignmentRoomId],
+      note: "Admin approved complimentary loyalty upgrade.",
+      pricingAction: "COMPLIMENTARY_UPGRADE",
+      pricingFingerprint: preview.pricingFingerprint,
+      expectedAdjustmentAmount: Number(preview.totalAdjustment),
+    },
+  );
+
+  assert.equal(moved.folioTotal, "0");
+  const event = moved.operationEvents.find(
+    (item) => item.eventType === "ROOM_MOVE",
+  );
+  assert.ok(event);
+  assert.deepEqual(
+    (event.metadata as { waivedAmount?: string }).waivedAmount,
+    preview.totalAdjustment,
+  );
+});
+
+test("checked-in room move prices only the remaining property-local nights", async () => {
+  const booking = await createBooking(
+    new Date("2036-02-20T00:00:00.000Z"),
+    new Date("2036-02-22T00:00:00.000Z"),
+  );
+  const today = propertyDateOnly(new Date());
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      status: BookingStatus.CHECKED_IN,
+      checkIn: addUtcDays(today, -1),
+      checkOut: addUtcDays(today, 1),
+    },
+  });
+
+  try {
+    const preview = await dashboardService.previewBookingRoomMove(
+      state.managerId,
+      booking.id,
+      {
+        expectedVersion: 1,
+        roomIds: [state.assignmentRoomId],
+      },
+    );
+
+    assert.equal(preview.effectiveDate, today.toISOString().slice(0, 10));
+    assert.equal(preview.affectedNights, 1);
+    assert.equal(preview.baseDifference, "500");
+  } finally {
+    await prisma.booking.delete({ where: { id: booking.id } });
+  }
+});
+
+test("priced room move rejects a stale pricing fingerprint without side effects", async () => {
+  const booking = await createBooking(
+    new Date("2036-03-10T00:00:00.000Z"),
+    new Date("2036-03-12T00:00:00.000Z"),
+  );
+  const preview = await dashboardService.previewBookingRoomMove(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [state.assignmentRoomId],
+    },
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.moveBookingRooms(state.superAdminId, booking.id, {
+        expectedVersion: 1,
+        roomIds: [state.assignmentRoomId],
+        note: "Stale price attempt.",
+        pricingAction: "CHARGE_DIFFERENCE",
+        pricingFingerprint: `${preview.pricingFingerprint}-stale`,
+        expectedAdjustmentAmount: Number(preview.totalAdjustment),
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "PRICING_CHANGED");
+      return true;
+    },
+  );
+  assert.equal(
+    await prisma.bookingFolioCharge.count({ where: { bookingId: booking.id } }),
+    0,
+  );
+});
+
+test("dashboard moves a whole-unit booking without reducing it to one room", async () => {
+  const booking = await createBooking(
+    new Date("2035-09-10T00:00:00.000Z"),
+    new Date("2035-09-12T00:00:00.000Z"),
+  );
+  const currentRoom = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  const currentUnitRooms = await prisma.room.findMany({
+    where: { unitId: currentRoom.unitId },
+  });
+  const currentUnitProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Current Whole Unit`,
+      occupancy: currentUnitRooms.reduce(
+        (total, room) => total + room.maxOccupancy,
+        0,
+      ),
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: currentRoom.unitId,
+      productId: currentUnitProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 3200,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      targetType: "UNIT",
+      unitId: currentRoom.unitId,
+      roomId: null,
+      targetLabel: "Whole test unit",
+      items: {
+        updateMany: {
+          where: {},
+          data: {
+            targetType: "UNIT",
+            unitId: currentRoom.unitId,
+            roomId: null,
+            targetLabel: "Whole test unit",
+          },
+        },
+      },
+    },
+  });
+
+  const destinationUnit = await prisma.unit.create({
+    data: {
+      propertyId: state.propertyId,
+      unitNumber: `${testId}-unit-move`,
+      floor: 3,
+      status: UnitStatus.ACTIVE,
+      rooms: {
+        create: ["A", "B", "C"].map((suffix) => ({
+          name: `Unit move room ${suffix}`,
+          number: `${testId}-${suffix}`,
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        })),
+      },
+    },
+    include: { rooms: true },
+  });
+  const destinationRoomIds = destinationUnit.rooms.map((room) => room.id);
+  const destinationProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Whole Unit`,
+      occupancy: 6,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: destinationUnit.id,
+      productId: destinationProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 3600,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.moveBookingRooms(state.superAdminId, booking.id, {
+        expectedVersion: 1,
+        roomIds: destinationRoomIds.slice(0, 1),
+        note: "Incomplete unit move.",
+        pricingAction: "CHARGE_DIFFERENCE",
+        pricingFingerprint: "not-reached",
+        expectedAdjustmentAmount: 0,
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "UNIT_ASSIGNMENT_INCOMPLETE");
+      return true;
+    },
+  );
+
+  const moved = await moveBookingWithPreview(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: destinationRoomIds,
+      note: "Moved the complete unit allocation.",
+    },
+  );
+
+  assert.equal(moved.targetType, "UNIT");
+  assert.equal(moved.unitId, destinationUnit.id);
+  assert.equal(moved.roomId, null);
+  assert.equal(moved.items[0]?.targetType, "UNIT");
+  assert.equal(moved.items[0]?.unitId, destinationUnit.id);
+  assert.equal(moved.items[0]?.roomId, null);
+});
+
+test("dashboard checks in a whole-unit booking without reducing it to one room", async () => {
+  const checkIn = propertyDateOnly(new Date());
+  const destinationUnit = await prisma.unit.create({
+    data: {
+      propertyId: state.propertyId,
+      unitNumber: `${testId}-unit-checkin`,
+      floor: 7,
+      status: UnitStatus.ACTIVE,
+      rooms: {
+        create: ["A", "B", "C"].map((suffix) => ({
+          name: `Unit check-in room ${suffix}`,
+          number: `${testId}-checkin-${suffix}`,
+          hasAC: true,
+          maxOccupancy: 2,
+          status: RoomStatus.AVAILABLE,
+        })),
+      },
+    },
+    include: { rooms: true },
+  });
+  const destinationRoomIds = destinationUnit.rooms.map((room) => room.id);
+  const destinationProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Check-in Whole Unit`,
+      occupancy: 6,
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: destinationUnit.id,
+      productId: destinationProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 4200,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+
+  const booking = await createBooking(
+    new Date("2035-10-10T00:00:00.000Z"),
+    new Date("2035-10-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-unit-checkin-token`,
+  });
+
+  const currentRoom = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  const currentUnitRooms = await prisma.room.findMany({
+    where: { unitId: currentRoom.unitId },
+  });
+  const currentUnitProduct = await prisma.roomProduct.create({
+    data: {
+      propertyId: state.propertyId,
+      name: `${testId} Check-in Current Whole Unit`,
+      occupancy: currentUnitRooms.reduce(
+        (total, room) => total + room.maxOccupancy,
+        0,
+      ),
+      hasAC: true,
+      category: RoomProductCategory.NIGHTLY,
+    },
+  });
+  await prisma.roomPricing.create({
+    data: {
+      propertyId: state.propertyId,
+      unitId: currentRoom.unitId,
+      productId: currentUnitProduct.id,
+      rateType: RateType.NIGHTLY,
+      pricingTier: PricingTier.STANDARD,
+      minNights: 1,
+      taxInclusive: false,
+      price: 3200,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      targetType: "UNIT",
+      unitId: currentRoom.unitId,
+      roomId: null,
+      targetLabel: "Whole test unit",
+      items: {
+        updateMany: {
+          where: {},
+          data: {
+            targetType: "UNIT",
+            unitId: currentRoom.unitId,
+            roomId: null,
+            targetLabel: "Whole test unit",
+          },
+        },
+      },
+    },
+  });
+
+  const moved = await moveBookingWithPreview(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: destinationRoomIds,
+      note: "Moved the complete unit allocation before check-in.",
+    },
+  );
+  assert.equal(moved.targetType, "UNIT");
+  assert.equal(moved.unitId, destinationUnit.id);
+  assert.equal(moved.roomId, null);
+  assert.equal(moved.items[0]?.targetType, "UNIT");
+  assert.equal(moved.items[0]?.unitId, destinationUnit.id);
+  assert.equal(moved.items[0]?.roomId, null);
+
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      checkIn,
+      checkOut: addUtcDays(checkIn, 1),
+    },
+  });
+
+  const checkedIn = await dashboardService.checkInBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: moved.version,
+      identityVerified: true,
+      allowBalanceDueCheckIn: true,
+      note: "Front desk checked in the whole unit.",
+    },
+  );
+
+  assert.equal(checkedIn.status, BookingStatus.CHECKED_IN);
+  assert.equal(checkedIn.targetType, "UNIT");
+  assert.equal(checkedIn.unitId, destinationUnit.id);
+  assert.equal(checkedIn.roomId, null);
+  assert.equal(checkedIn.items[0]?.targetType, "UNIT");
+  assert.equal(checkedIn.items[0]?.unitId, destinationUnit.id);
+  assert.equal(checkedIn.items[0]?.roomId, null);
 });
 
 test("dashboard can reassign all rooms on a multi-room booking", async () => {
@@ -1896,6 +2817,7 @@ test("dashboard can reassign all rooms on a multi-room booking", async () => {
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   const updated = await dashboardService.updateBooking(
     state.superAdminId,
@@ -1924,6 +2846,7 @@ test("dashboard multi-room reassignment requires exact unique room count", async
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   await assert.rejects(
     () =>
@@ -1984,6 +2907,7 @@ test("dashboard room reassignment rejects wrong property and unavailable rooms",
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   await assert.rejects(
     () =>
@@ -2058,6 +2982,7 @@ test("dashboard room reassignment rejects overlapping bookings", async () => {
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   await assert.rejects(
     () =>
@@ -2074,7 +2999,7 @@ test("dashboard room reassignment rejects overlapping bookings", async () => {
 });
 
 test("dashboard booking status updates append audit history and notes", async () => {
-  const checkIn = utcDateOnly(new Date());
+  const checkIn = propertyDateOnly(new Date());
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -2137,7 +3062,7 @@ test("dashboard booking status updates append audit history and notes", async ()
 });
 
 test("dashboard booking status update rejects check-in before check-in date", async () => {
-  const checkIn = addUtcDays(utcDateOnly(new Date()), 30);
+  const checkIn = addUtcDays(propertyDateOnly(new Date()), 30);
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -2178,7 +3103,7 @@ test("dashboard booking status update rejects check-in before check-in date", as
 });
 
 test("dashboard booking status update allows checkout before checkout date", async () => {
-  const checkIn = utcDateOnly(new Date());
+  const checkIn = propertyDateOnly(new Date());
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -2196,6 +3121,8 @@ test("dashboard booking status update allows checkout before checkout date", asy
     userId: state.guestId,
     bookingId: booking.id,
     idempotencyKey: `${testId}-early-check-out-payment`,
+    amount: booking.totalPrice,
+    purpose: PaymentPurpose.FULL_PAYMENT,
   });
 
   const checkedIn = await dashboardService.updateBooking(
@@ -2246,6 +3173,7 @@ test("dashboard booking status update rejects invalid lifecycle jumps", async ()
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   await assert.rejects(
     () =>
@@ -2298,7 +3226,7 @@ test("simulated failed payment leaves booking pending and creates failed payment
 });
 
 test("dashboard booking status update rejects check-in after check-in date has passed", async () => {
-  const checkIn = addUtcDays(utcDateOnly(new Date()), -4);
+  const checkIn = addUtcDays(propertyDateOnly(new Date()), -4);
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -2339,7 +3267,7 @@ test("dashboard booking status update rejects check-in after check-in date has p
 });
 
 test("dashboard booking status update rejects room assignment after check-in date has passed", async () => {
-  const checkIn = addUtcDays(utcDateOnly(new Date()), -8);
+  const checkIn = addUtcDays(propertyDateOnly(new Date()), -8);
   const booking = await publicService.createBooking(
     state.guestId,
     {
@@ -2352,6 +3280,7 @@ test("dashboard booking status update rejects room assignment after check-in dat
     },
     { tenantSlug: state.tenantSlug },
   );
+  await clearBookingAssignment(booking.id);
 
   await assert.rejects(
     () =>
@@ -2369,4 +3298,590 @@ test("dashboard booking status update rejects room assignment after check-in dat
       return true;
     },
   );
+});
+
+test("late checkout posts one extension charge and requires payment before checkout", async () => {
+  const today = propertyDateOnly(new Date());
+  const booking = await createBooking(
+    new Date("2031-02-10T00:00:00.000Z"),
+    new Date("2031-02-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-late-checkout-full-payment`,
+    amount: booking.totalPrice,
+    purpose: PaymentPurpose.FULL_PAYMENT,
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      status: BookingStatus.CHECKED_IN,
+      checkIn: addUtcDays(today, -3),
+      checkOut: addUtcDays(today, -1),
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateBooking(state.superAdminId, booking.id, {
+        status: BookingStatus.CHECKED_OUT,
+        note: "Guest checked out after scheduled departure.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "CHECK_OUT_BALANCE_DUE");
+      return true;
+    },
+  );
+
+  const firstCharges = await prisma.bookingFolioCharge.findMany({
+    where: { bookingId: booking.id, type: "EXTENSION", status: "ACTIVE" },
+  });
+  assert.equal(firstCharges.length, 1);
+  assert.equal(firstCharges[0]?.amount.toString(), "3000");
+
+  await assert.rejects(
+    () =>
+      dashboardService.checkOutBooking(state.superAdminId, booking.id, {
+        expectedVersion: 1,
+        note: "Retry checkout before extension payment.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.statusCode, 409);
+      assert.equal(error.code, "CHECK_OUT_BALANCE_DUE");
+      return true;
+    },
+  );
+
+  assert.equal(
+    await prisma.bookingFolioCharge.count({
+      where: { bookingId: booking.id, type: "EXTENSION", status: "ACTIVE" },
+    }),
+    1,
+  );
+
+  await dashboardService.recordBookingBalancePayment(
+    state.superAdminId,
+    booking.id,
+    {
+      amount: 3000,
+      method: PaymentMethod.CASH,
+      idempotencyKey: `${testId}-late-checkout-extension-payment`,
+      note: "Collected late checkout extension balance.",
+    },
+  );
+
+  const checkedOut = await dashboardService.checkOutBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      note: "Late checkout extension was paid.",
+    },
+  );
+  assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+  assert.equal(checkedOut.balanceAmount, "0");
+});
+
+test("admin can audit-waive late checkout balance with extension charge recorded", async () => {
+  const today = propertyDateOnly(new Date());
+  const booking = await createBooking(
+    new Date("2031-03-10T00:00:00.000Z"),
+    new Date("2031-03-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-late-checkout-waiver-full-payment`,
+    amount: booking.totalPrice,
+    purpose: PaymentPurpose.FULL_PAYMENT,
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      status: BookingStatus.CHECKED_IN,
+      checkIn: addUtcDays(today, -3),
+      checkOut: addUtcDays(today, -1),
+    },
+  });
+
+  const checkedOut = await dashboardService.checkOutBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      allowBalanceDueCheckout: true,
+      note: "Admin approved late checkout balance waiver.",
+    },
+  );
+
+  assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+  assert.equal(checkedOut.folioTotal, "3000");
+  assert.equal(checkedOut.balanceAmount, "3000");
+  const extensionCharge = await prisma.bookingFolioCharge.findFirstOrThrow({
+    where: { bookingId: booking.id, type: "EXTENSION", status: "ACTIVE" },
+  });
+  const overrideEvent = checkedOut.operationEvents.find(
+    (event) => event.eventType === "BALANCE_OVERRIDE",
+  );
+  assert.ok(overrideEvent);
+  assert.equal(
+    (overrideEvent.metadata as { extensionChargeId?: string }).extensionChargeId,
+    extensionCharge.id,
+  );
+});
+
+test("hotel operations lifecycle is versioned, audited, and marks rooms dirty", async () => {
+  const checkIn = propertyDateOnly(new Date());
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2031-01-10T00:00:00.000Z"),
+      to: new Date("2031-01-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-hotel-operations-token`,
+  });
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      checkIn,
+      checkOut: addUtcDays(checkIn, 1),
+    },
+  });
+
+  const assigned = await moveBookingWithPreview(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 1,
+      roomIds: [state.assignmentRoomId],
+      note: "Assigned inspected room for arrival.",
+    },
+  );
+  assert.equal(assigned.version, 2);
+
+  const checkedIn = await dashboardService.checkInBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 2,
+      identityVerified: true,
+      identityDocumentType: "PASSPORT",
+      identityDocumentReference: "****1234",
+      allowBalanceDueCheckIn: true,
+      note: "Front desk verified identity and approved balance at checkout.",
+    },
+  );
+  assert.equal(checkedIn.status, BookingStatus.CHECKED_IN);
+  assert.equal(checkedIn.version, 3);
+  assert.ok(checkedIn.checkedInAt);
+  assert.equal(checkedIn.identityDocumentReference, "****1234");
+  assert.ok(
+    checkedIn.operationEvents.some((event) => event.eventType === "CHECK_IN"),
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.checkOutBooking(state.superAdminId, booking.id, {
+        expectedVersion: 2,
+        allowBalanceDueCheckout: true,
+        note: "Stale checkout attempt.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "BOOKING_VERSION_CONFLICT");
+      return true;
+    },
+  );
+
+  const charged = await dashboardService.createBookingFolioCharge(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 3,
+      type: "INCIDENTAL",
+      description: "Minibar",
+      amount: 250,
+      note: "Minibar charge posted by front desk.",
+    },
+  );
+  assert.equal(charged.version, 4);
+  assert.equal(charged.folioTotal, "250");
+  assert.equal(
+    Number(charged.balanceAmount),
+    Number(checkedIn.balanceAmount) + 250,
+  );
+
+  await assert.rejects(
+    () =>
+      dashboardService.checkOutBooking(state.managerId, booking.id, {
+        expectedVersion: 4,
+        allowBalanceDueCheckout: true,
+        note: "Manager attempted balance override.",
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "CHECK_OUT_BALANCE_DUE");
+      return true;
+    },
+  );
+
+  const checkedOut = await dashboardService.checkOutBooking(
+    state.superAdminId,
+    booking.id,
+    {
+      expectedVersion: 4,
+      allowBalanceDueCheckout: true,
+      note: "Approved corporate balance for later settlement.",
+    },
+  );
+  assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+  assert.equal(checkedOut.version, 5);
+  assert.ok(checkedOut.checkedOutAt);
+
+  const room = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  assert.equal(room.housekeepingStatus, "DIRTY");
+
+  const concurrentCharges = await Promise.allSettled([
+    dashboardService.createBookingFolioCharge(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 5,
+        type: "ADJUSTMENT",
+        description: "Concurrent adjustment A",
+        amount: 10,
+      },
+    ),
+    dashboardService.createBookingFolioCharge(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 5,
+        type: "ADJUSTMENT",
+        description: "Concurrent adjustment B",
+        amount: 20,
+      },
+    ),
+  ]);
+  assert.equal(
+    concurrentCharges.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  const rejected = concurrentCharges.find(
+    (result) => result.status === "rejected",
+  );
+  assert.ok(rejected?.status === "rejected");
+  assert.ok(rejected.reason instanceof HttpError);
+  assert.equal(rejected.reason.code, "BOOKING_VERSION_CONFLICT");
+});
+
+test("cashier summary shows other managers and respects the property business date", async () => {
+  const cashierManager = await prisma.user.create({
+    data: {
+      fullName: "Payment Test Cashier Manager",
+      email: `${testId}-cashier-manager@sucasa.test`,
+      passwordHash,
+      role: UserRole.MANAGER,
+      createdByUserId: state.superAdminId,
+    },
+  });
+  await prisma.propertyAssignment.create({
+    data: {
+      propertyId: state.propertyId,
+      userId: cashierManager.id,
+      role: PropertyAssignmentRole.MANAGER,
+      assignedByUserId: state.superAdminId,
+    },
+  });
+
+  const booking = await createBooking(
+    new Date("2037-03-10T00:00:00.000Z"),
+    new Date("2037-03-12T00:00:00.000Z"),
+  );
+  const includedManagerPayment = await prisma.payment.create({
+    data: {
+      bookingId: booking.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentStatus.SUCCEEDED,
+      purpose: PaymentPurpose.BALANCE,
+      method: PaymentMethod.CASH,
+      amount: 1000,
+      currency: "INR",
+      idempotencyKey: `${testId}-cashier-manager-payment`,
+      receivedByUserId: state.managerId,
+      paidAt: new Date("2037-03-09T18:30:00.000Z"),
+    },
+  });
+  await prisma.payment.createMany({
+    data: [
+      {
+        bookingId: booking.id,
+        propertyId: state.propertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.CASH,
+        amount: 700,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-before-boundary`,
+        receivedByUserId: state.managerId,
+        paidAt: new Date("2037-03-09T18:29:59.000Z"),
+      },
+      {
+        bookingId: booking.id,
+        propertyId: state.propertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.UPI_MANUAL,
+        amount: 500,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-other-manager-payment`,
+        receivedByUserId: cashierManager.id,
+        paidAt: new Date("2037-03-10T18:29:59.000Z"),
+      },
+      {
+        bookingId: booking.id,
+        propertyId: state.otherPropertyId,
+        userId: state.guestId,
+        provider: "MANUAL",
+        status: PaymentStatus.SUCCEEDED,
+        purpose: PaymentPurpose.BALANCE,
+        method: PaymentMethod.CASH,
+        amount: 999,
+        currency: "INR",
+        idempotencyKey: `${testId}-cashier-other-property`,
+        receivedByUserId: cashierManager.id,
+        paidAt: new Date("2037-03-10T10:00:00.000Z"),
+      },
+    ],
+  });
+  await prisma.paymentRefund.create({
+    data: {
+      bookingId: booking.id,
+      paymentId: includedManagerPayment.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: PaymentMethod.CASH,
+      amount: 100,
+      currency: "INR",
+      reason: "Cash returned by the second manager",
+      idempotencyKey: `${testId}-cashier-refund`,
+      metadata: {
+        recordedByUserId: cashierManager.id,
+        source: "DASHBOARD_MANUAL_REFUND",
+      },
+      processedAt: new Date("2037-03-10T12:00:00.000Z"),
+    },
+  });
+  await prisma.paymentRefund.create({
+    data: {
+      bookingId: booking.id,
+      paymentId: includedManagerPayment.id,
+      propertyId: state.propertyId,
+      userId: state.guestId,
+      provider: "MANUAL",
+      status: PaymentRefundStatus.SUCCEEDED,
+      method: PaymentMethod.UPI_MANUAL,
+      amount: 50,
+      currency: "INR",
+      reason: "Legacy refund without processor metadata",
+      idempotencyKey: `${testId}-cashier-legacy-refund`,
+      processedAt: new Date("2037-03-10T13:00:00.000Z"),
+    },
+  });
+
+  const summary = await dashboardService.getCashierSummary(
+    state.managerId,
+    state.propertyId,
+    new Date("2037-03-10T00:00:00.000Z"),
+    new Date("2037-03-11T00:00:00.000Z"),
+  );
+
+  assert.equal(summary.from, "2037-03-09T18:30:00.000Z");
+  assert.equal(summary.to, "2037-03-10T18:30:00.000Z");
+  assert.equal(summary.rows.length, 2);
+
+  const managerRow = summary.rows.find(
+    (row) => row.receivedByUserId === state.managerId,
+  );
+  const cashierRow = summary.rows.find(
+    (row) => row.receivedByUserId === cashierManager.id,
+  );
+  assert.ok(managerRow);
+  assert.ok(cashierRow);
+  assert.equal(managerRow.collected, 1000);
+  assert.equal(managerRow.refunds, 50);
+  assert.equal(managerRow.netCollected, 950);
+  assert.equal(managerRow.expectedCash, 1000);
+  assert.deepEqual(
+    managerRow.history.map((item) => item.type),
+    ["REFUND", "PAYMENT"],
+  );
+  assert.equal(cashierRow.collected, 500);
+  assert.equal(cashierRow.refunds, 100);
+  assert.equal(cashierRow.netCollected, 400);
+  assert.equal(cashierRow.expectedCash, -100);
+  assert.deepEqual(
+    cashierRow.history.map((item) => item.type),
+    ["PAYMENT", "REFUND"],
+  );
+  assert.equal(
+    summary.rows.reduce((total, row) => total + row.collected, 0),
+    1500,
+  );
+  assert.equal(
+    summary.rows.reduce((total, row) => total + row.refunds, 0),
+    150,
+  );
+});
+
+test("housekeeping requires the dirty-cleaning-clean-inspected sequence", async () => {
+  const dirty = await prisma.room.findUniqueOrThrow({
+    where: { id: state.assignmentRoomId },
+  });
+  assert.equal(dirty.housekeepingStatus, "DIRTY");
+
+  const cleaning = await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "DIRTY",
+      status: "CLEANING",
+      note: "Housekeeping started.",
+    },
+  );
+  assert.equal(cleaning.status, "CLEANING");
+
+  await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "CLEANING",
+      status: "CLEAN",
+      note: "Cleaning completed.",
+    },
+  );
+  const inspected = await dashboardService.updateRoomHousekeeping(
+    state.managerId,
+    state.propertyId,
+    state.assignmentRoomId,
+    {
+      expectedStatus: "CLEAN",
+      status: "INSPECTED",
+      note: "Supervisor inspection passed.",
+    },
+  );
+  assert.equal(inspected.status, "INSPECTED");
+
+  await assert.rejects(
+    () =>
+      dashboardService.updateRoomHousekeeping(
+        state.managerId,
+        state.propertyId,
+        state.assignmentRoomId,
+        {
+          expectedStatus: "DIRTY",
+          status: "CLEANING",
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "HOUSEKEEPING_STATUS_CONFLICT");
+      return true;
+    },
+  );
+});
+
+test("maintenance conflicts require an audited admin emergency override", async () => {
+  const booking = await publicService.createBooking(
+    state.guestId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.pricingId,
+      from: new Date("2032-04-10T00:00:00.000Z"),
+      to: new Date("2032-04-12T00:00:00.000Z"),
+      guests: 2,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-maintenance-conflict-token`,
+  });
+  const pricing = await prisma.roomPricing.findUniqueOrThrow({
+    where: { id: state.pricingId },
+  });
+  assert.ok(pricing.roomId);
+
+  await assert.rejects(
+    () =>
+      maintenanceService.createMaintenanceBlock(
+        state.superAdminId,
+        state.propertyId,
+        {
+          targetType: MaintenanceTargetType.ROOM,
+          roomId: pricing.roomId!,
+          priority: "HIGH",
+          reason: "Planned electrical work",
+          startDate: new Date("2032-04-10T00:00:00.000Z"),
+          endDate: new Date("2032-04-11T00:00:00.000Z"),
+        },
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof HttpError);
+      assert.equal(error.code, "MAINTENANCE_BOOKING_CONFLICT");
+      assert.ok(Array.isArray(error.details));
+      return true;
+    },
+  );
+
+  const block = await maintenanceService.createMaintenanceBlock(
+    state.superAdminId,
+    state.propertyId,
+    {
+      targetType: MaintenanceTargetType.ROOM,
+      roomId: pricing.roomId,
+      priority: "EMERGENCY",
+      reason: "Emergency electrical isolation",
+      emergencyOverride: true,
+      emergencyReason: "Safety risk requires immediate relocation.",
+      startDate: new Date("2032-04-10T00:00:00.000Z"),
+      endDate: new Date("2032-04-11T00:00:00.000Z"),
+    },
+  );
+  assert.equal(block.emergencyOverride, true);
+
+  const audited = await prisma.bookingOperationEvent.findFirst({
+    where: {
+      bookingId: booking.id,
+      eventType: "MAINTENANCE_CONFLICT",
+    },
+  });
+  assert.equal(audited?.note, "Safety risk requires immediate relocation.");
 });

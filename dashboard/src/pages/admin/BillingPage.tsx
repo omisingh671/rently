@@ -15,6 +15,7 @@ const documentTypes: Array<"" | BillingDocumentType> = [
   "INVOICE",
   "RECEIPT",
   "CREDIT_NOTE",
+  "DEBIT_NOTE",
 ];
 const documentStatuses: Array<"" | BillingDocumentStatus> = [
   "",

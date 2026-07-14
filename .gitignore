@@ -26,6 +26,8 @@ pnpm-debug.log*
 # Test and coverage output
 coverage/
 *.lcov
+playwright-report/
+test-results/
 
 # TypeScript and tooling caches
 *.tsbuildinfo

@@ -14,6 +14,7 @@ FROM public.ecr.aws/docker/library/node:22-bookworm-slim AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=4000
 
 COPY package*.json ./
 RUN npm ci --omit=dev

@@ -16,6 +16,7 @@ const client = (tx?: Prisma.TransactionClient): BillingDbClient => tx ?? prisma;
 export const billingDocumentInclude = {
   booking: true,
   payment: true,
+  folioCharge: true,
   property: {
     include: {
       tenant: true,
@@ -40,6 +41,10 @@ const billingBookingInclude = {
     orderBy: {
       createdAt: "asc",
     },
+  },
+  folioCharges: {
+    where: { status: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
   },
   coupon: true,
 } satisfies Prisma.BookingInclude;
@@ -225,6 +230,7 @@ export const updateSetting = (
     invoicePrefix?: string;
     receiptPrefix?: string;
     creditNotePrefix?: string;
+    debitNotePrefix?: string;
     footerNotes?: string | null;
   },
 ) =>
@@ -249,26 +255,34 @@ export const nextDocumentNumber = async (
         ? { invoiceSequence: { increment: 1 } }
         : type === BillingDocumentType.RECEIPT
           ? { receiptSequence: { increment: 1 } }
-          : { creditNoteSequence: { increment: 1 } },
+          : type === BillingDocumentType.DEBIT_NOTE
+            ? { debitNoteSequence: { increment: 1 } }
+            : { creditNoteSequence: { increment: 1 } },
     create:
       type === BillingDocumentType.INVOICE
         ? { propertyId, invoiceSequence: 1 }
         : type === BillingDocumentType.RECEIPT
           ? { propertyId, receiptSequence: 1 }
-          : { propertyId, creditNoteSequence: 1 },
+          : type === BillingDocumentType.DEBIT_NOTE
+            ? { propertyId, debitNoteSequence: 1 }
+            : { propertyId, creditNoteSequence: 1 },
   });
   const sequence =
     type === BillingDocumentType.INVOICE
       ? setting.invoiceSequence
       : type === BillingDocumentType.RECEIPT
         ? setting.receiptSequence
-        : setting.creditNoteSequence;
+        : type === BillingDocumentType.DEBIT_NOTE
+          ? setting.debitNoteSequence
+          : setting.creditNoteSequence;
   const prefix =
     type === BillingDocumentType.INVOICE
       ? setting.invoicePrefix
       : type === BillingDocumentType.RECEIPT
         ? setting.receiptPrefix
-        : setting.creditNotePrefix;
+        : type === BillingDocumentType.DEBIT_NOTE
+          ? setting.debitNotePrefix
+          : setting.creditNotePrefix;
 
   return `${prefix}${String(sequence).padStart(6, "0")}`;
 };

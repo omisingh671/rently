@@ -7,6 +7,7 @@ import type {
   RoomBoardUnit,
 } from "@/features/operations/types";
 import type { AdminRoomPricing } from "@/features/pricing/types";
+import { countRoomsWithoutActivePricing } from "./pricingCoverage";
 
 export const DASHBOARD_BOOKINGS_LIMIT = 100;
 export const RECENT_BOOKINGS_LIMIT = 6;
@@ -223,22 +224,10 @@ export const getNeedsAttention = ({
 }) => {
   const activeRates = rates.filter((rate) => isActivePricing(rate, today));
   const allRooms = getAllRooms(board);
-  const pricedRoomIds = new Set(
-    activeRates
-      .map((rate) => rate.roomId)
-      .filter((roomId): roomId is string => Boolean(roomId)),
+  const roomsWithoutActivePricing = countRoomsWithoutActivePricing(
+    allRooms,
+    activeRates,
   );
-  const pricedUnitIds = new Set(
-    activeRates
-      .map((rate) => rate.unitId)
-      .filter((unitId): unitId is string => Boolean(unitId)),
-  );
-  const roomsWithoutActivePricing = allRooms.filter(
-    (room) =>
-      room.isActive &&
-      !pricedRoomIds.has(room.roomId) &&
-      !pricedUnitIds.has(room.unitId),
-  ).length;
   const disabledUnitsWithEnabledRooms =
     board?.units.filter(
       (unit) => !unit.isActive && unit.rooms.some((room) => room.isActive),

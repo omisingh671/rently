@@ -1,59 +1,30 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 
 const {
   FiCalendar,
-  FiCheckCircle,
-  FiClock,
-  FiGrid,
   FiPlus,
   FiSearch,
-  FiSlash,
   FiTool,
-  FiUsers,
   FiWind,
 } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
-import StatusBadge from "@/components/common/StatusBadge";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
-import { getRoomBoardApi } from "@/features/operations/api";
+import {
+  getRoomBoardApi,
+  updateRoomHousekeepingApi,
+} from "@/features/operations/api";
 import type {
   RoomBoardRoom,
   RoomBoardStatus,
-  RoomBoardUnit,
+  RoomHousekeepingStatus,
 } from "@/features/operations/types";
+import RoomBoardUnitSection from "@/features/operations/components/RoomBoardUnitSection";
+import RoomBoardSummaryCards from "@/features/operations/components/RoomBoardSummaryCards";
 import { useAuthStore } from "@/stores/authStore";
-import {
-  STATUS_BG_COLORS,
-  STATUS_BORDER_DARK_COLORS,
-  STATUS_INNER_BORDER_COLORS,
-  STATUS_TEXT_COLORS,
-} from "@/configs/theme";
-
-const boardStatuses: Array<{ value: RoomBoardStatus | ""; label: string }> = [
-  { value: "", label: "All statuses" },
-  { value: "AVAILABLE", label: "Available" },
-  { value: "RESERVED", label: "Reserved" },
-  { value: "OCCUPIED", label: "Occupied" },
-  { value: "MAINTENANCE", label: "Maintenance" },
-  { value: "INACTIVE", label: "Inactive" },
-];
-
-const summaryStatuses = boardStatuses.filter(
-  (item): item is { value: RoomBoardStatus; label: string } =>
-    item.value !== "",
-);
-
-const statusActiveRingColors: Record<RoomBoardStatus, string> = {
-  AVAILABLE: "ring-emerald-200/70",
-  RESERVED: "ring-amber-200/70",
-  OCCUPIED: "ring-indigo-200/70",
-  MAINTENANCE: "ring-rose-200/70",
-  INACTIVE: "ring-slate-200/80",
-};
 
 const toDateInput = (date: Date) => {
   const year = date.getFullYear();
@@ -75,12 +46,6 @@ const formatDate = (value: string) =>
     year: "numeric",
   }).format(new Date(value));
 
-const formatInclusiveEndDate = (value: string) => {
-  const date = new Date(value);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return formatDate(date.toISOString());
-};
-
 const roomMatchesSearch = (room: RoomBoardRoom, query: string) => {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
@@ -96,6 +61,7 @@ const roomMatchesSearch = (room: RoomBoardRoom, query: string) => {
 };
 
 export default function RoomBoardPage() {
+  const queryClient = useQueryClient();
   const { hasAnyRole } = useAuthStore();
   const canManageMaintenance = hasAnyRole(["SUPER_ADMIN", "ADMIN"]);
 
@@ -104,6 +70,7 @@ export default function RoomBoardPage() {
   const [to, setTo] = useState(toDateInput(addDays(today, 1)));
   const [status, setStatus] = useState<RoomBoardStatus | "">("");
   const [search, setSearch] = useState("");
+  const [housekeepingError, setHousekeepingError] = useState("");
 
   const {
     properties,
@@ -127,6 +94,38 @@ export default function RoomBoardPage() {
     ),
     retry: false,
   });
+  const housekeepingMutation = useMutation({
+    mutationFn: ({
+      room,
+      status: nextStatus,
+    }: {
+      room: RoomBoardRoom;
+      status: RoomHousekeepingStatus;
+    }) => {
+      if (!selectedPropertyId) throw new Error("PropertyId required");
+      return updateRoomHousekeepingApi(selectedPropertyId, room.roomId, {
+        expectedStatus: room.housekeepingStatus,
+        status: nextStatus,
+      });
+    },
+    onSuccess: async () => {
+      setHousekeepingError("");
+      if (!selectedPropertyId) return;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ADMIN_KEYS.operations.roomBoards(selectedPropertyId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ADMIN_KEYS.operations.byProperty(selectedPropertyId),
+        }),
+      ]);
+    },
+    onError: (error) => {
+      setHousekeepingError(
+        error instanceof Error ? error.message : "Housekeeping update failed",
+      );
+    },
+  });
 
   const filteredUnits = useMemo(() => {
     const units = boardQuery.data?.units ?? [];
@@ -143,8 +142,8 @@ export default function RoomBoardPage() {
   }, [boardQuery.data?.units, search, status]);
 
   const totalRooms = boardQuery.data
-    ? summaryStatuses.reduce(
-        (sum, item) => sum + boardQuery.data.summary[item.value],
+    ? Object.values(boardQuery.data.summary).reduce(
+        (sum, count) => sum + count,
         0,
       )
     : 0;
@@ -324,93 +323,18 @@ export default function RoomBoardPage() {
         </div>
 
         <div className="border-t border-slate-100 bg-white rounded-b-xl px-5 py-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-            <button
-              type="button"
-              onClick={() => {
-                setStatus("");
-                setSearch("");
-              }}
-              className={`flex items-center justify-between rounded-lg border px-5 py-4 text-left transition-all duration-200 active:translate-y-0 ${
-                status === ""
-                  ? "border-slate-800 bg-slate-800 text-white shadow-md ring-2 ring-slate-200"
-                  : "border-slate-200 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <span
-                  className={`block text-[10px] font-bold uppercase tracking-wider ${status === "" ? "text-slate-300" : "text-slate-500"}`}
-                >
-                  Total
-                </span>
-                <span className="mt-0.5 block text-2xl font-bold leading-tight">
-                  {totalRooms}
-                </span>
-              </div>
-              <FiGrid
-                className={status === "" ? "text-white/40" : "text-slate-200"}
-                size={32}
-              />
-            </button>
-            {summaryStatuses.map((item) => {
-              const count = boardQuery.data?.summary[item.value] ?? 0;
-              const bgClass = STATUS_BG_COLORS[item.value] || "bg-white";
-              const borderClass =
-                STATUS_BORDER_DARK_COLORS[item.value] || "border-slate-200";
-              const textClass =
-                STATUS_TEXT_COLORS[item.value] || "text-slate-700";
-              const ringClass = statusActiveRingColors[item.value];
-              const isActive = status === item.value;
-
-              const activeStyles: Record<RoomBoardStatus, string> = {
-                AVAILABLE:
-                  "bg-emerald-600 border-emerald-600 text-white shadow-emerald-200/50",
-                RESERVED:
-                  "bg-amber-600 border-amber-600 text-white shadow-amber-200/50",
-                OCCUPIED:
-                  "bg-indigo-600 border-indigo-600 text-white shadow-indigo-200/50",
-                MAINTENANCE:
-                  "bg-rose-600 border-rose-600 text-white shadow-rose-200/50",
-                INACTIVE:
-                  "bg-slate-700 border-slate-700 text-white shadow-slate-200/50",
-              };
-
-              const statusIconMap: Record<RoomBoardStatus, React.ReactNode> = {
-                AVAILABLE: <FiCheckCircle size={32} />,
-                RESERVED: <FiClock size={32} />,
-                OCCUPIED: <FiUsers size={32} />,
-                MAINTENANCE: <FiTool size={32} />,
-                INACTIVE: <FiSlash size={32} />,
-              };
-
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setStatus(isActive ? "" : item.value)}
-                  className={`flex items-center justify-between rounded-lg border px-5 py-4 text-left transition-all duration-200 active:translate-y-0 ${
-                    isActive
-                      ? `${activeStyles[item.value]} shadow-lg ring-2 ${ringClass}`
-                      : `${bgClass} ${borderClass} ${textClass} hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md`
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <span
-                      className={`block truncate text-[10px] font-bold uppercase tracking-wider ${isActive ? "text-white/80" : ""}`}
-                    >
-                      {item.label}
-                    </span>
-                    <span className="mt-0.5 block text-2xl font-bold leading-tight">
-                      {count}
-                    </span>
-                  </div>
-                  <span className={isActive ? "text-white/40" : "opacity-10"}>
-                    {statusIconMap[item.value]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <RoomBoardSummaryCards
+            summary={boardQuery.data?.summary}
+            totalRooms={totalRooms}
+            selectedStatus={status}
+            onShowAll={() => {
+              setStatus("");
+              setSearch("");
+            }}
+            onToggleStatus={(nextStatus) =>
+              setStatus(status === nextStatus ? "" : nextStatus)
+            }
+          />
         </div>
       </section>
 
@@ -437,119 +361,27 @@ export default function RoomBoardPage() {
           message="No rooms match the selected filters."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <>
+          {housekeepingError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {housekeepingError}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {filteredUnits.map((unit) => (
-            <UnitSection key={unit.unitId} unit={unit} />
+            <RoomBoardUnitSection
+              key={unit.unitId}
+              unit={unit}
+              isUpdating={housekeepingMutation.isPending}
+              onHousekeepingChange={(room, nextStatus) =>
+                housekeepingMutation.mutate({ room, status: nextStatus })
+              }
+            />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
-  );
-}
-
-function UnitSection({ unit }: { unit: RoomBoardUnit }) {
-  return (
-    <section className="rounded-lg border border-slate-300 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-t-lg border-b border-slate-300 bg-slate-100 px-5 py-4">
-        <div>
-          <h3 className="text-base font-bold text-slate-900">
-            Unit {unit.unitNumber}
-          </h3>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-700">
-            <span className="font-semibold">Floor {unit.floor}</span>
-            <span>•</span>
-            {!unit.isActive ? (
-              <StatusBadge
-                status="DISABLED"
-                variantMap={{ DISABLED: "bg-rose-100 text-rose-700" }}
-              />
-            ) : (
-              <StatusBadge status={unit.status} />
-            )}
-          </div>
-        </div>
-        <div className="text-sm font-bold text-slate-700">
-          {unit.rooms.length} Room{unit.rooms.length === 1 ? "" : "s"}
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-4 p-5">
-        {unit.rooms.map((room) => (
-          <RoomTile key={room.roomId} room={room} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function RoomTile({ room }: { room: RoomBoardRoom }) {
-  const tone =
-    STATUS_BG_COLORS[room.boardStatus] || "bg-white border-slate-200";
-  const innerBorder =
-    STATUS_INNER_BORDER_COLORS[room.boardStatus] || "border-slate-200";
-  const textTheme = STATUS_TEXT_COLORS[room.boardStatus] || "text-slate-700";
-
-  return (
-    <article
-      className={`flex flex-1 min-w-62.5 min-h-40 flex-col justify-between rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${tone}`}
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <div className="text-lg font-bold text-slate-900">
-            {room.roomNumber}
-          </div>
-          <div
-            className={`mt-1 flex items-center gap-1.5 text-xs font-semibold ${textTheme}`}
-          >
-            <span>{room.roomName}</span>
-            <span>•</span>
-            <span>{room.hasAC ? "AC" : "Non-AC"}</span>
-            <span>•</span>
-            <span>Cap: {room.maxOccupancy}</span>
-          </div>
-        </div>
-        <StatusBadge status={room.boardStatus} />
-      </div>
-
-      <div className="mt-auto space-y-2 text-xs">
-        {room.booking && (
-          <div
-            className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}
-          >
-            <div className="flex items-center gap-2 font-bold">
-              <FiUsers className="shrink-0" /> {room.booking.guestName}
-            </div>
-            <div className="mt-2 font-bold">Ref: {room.booking.bookingRef}</div>
-            <div className="mt-2 flex items-center gap-1.5 font-bold">
-              <FiClock className="shrink-0" />
-              {formatDate(room.booking.checkIn)} to{" "}
-              {formatDate(room.booking.checkOut)}
-            </div>
-          </div>
-        )}
-        {room.maintenance && (
-          <div
-            className={`rounded-lg border bg-transparent p-3 ${innerBorder} ${textTheme}`}
-          >
-            <div className="flex items-center gap-2 font-bold">
-              <FiTool className="shrink-0" /> {room.maintenance.reason}
-            </div>
-            <div className="mt-2 flex items-center gap-1.5 font-bold">
-              <FiCalendar className="shrink-0" />
-              {formatDate(room.maintenance.startDate)} to{" "}
-              {formatInclusiveEndDate(room.maintenance.endDate)}
-            </div>
-          </div>
-        )}
-        {!room.booking && !room.maintenance && (
-          <div
-            className={`flex items-center gap-2 rounded-lg border bg-transparent p-3 font-bold ${innerBorder} ${textTheme}`}
-          >
-            <FiCheckCircle className="shrink-0" />
-            {room.reason ?? "Ready"}
-          </div>
-        )}
-      </div>
-    </article>
   );
 }
 

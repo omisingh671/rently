@@ -37,6 +37,16 @@ export const findBookingForPayment = (
           tenant: true,
         },
       },
+      folioCharges: {
+        where: {
+          status: "ACTIVE",
+        },
+      },
+      payments: {
+        include: {
+          refunds: true,
+        },
+      },
     },
   });
 
@@ -47,6 +57,19 @@ export const findPaymentByIdempotencyKey = (
   client(tx).payment.findUnique({
     where: { idempotencyKey },
     include: paymentInclude,
+  });
+
+export const findReleasedInventoryLockByBookingToken = (
+  bookingId: string,
+  lockToken: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).inventoryLock.findFirst({
+    where: {
+      bookingId,
+      lockToken,
+      releasedAt: { not: null },
+    },
   });
 
 export const sumSucceededPaymentsByBooking = async (
@@ -210,3 +233,7 @@ export const runPaymentTransaction = <T>(
     maxWait: 5_000,
     timeout: 10_000,
   });
+
+export type BookingForPaymentRecord = NonNullable<
+  Awaited<ReturnType<typeof findBookingForPayment>>
+>;

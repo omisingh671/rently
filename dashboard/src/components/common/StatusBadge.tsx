@@ -21,7 +21,7 @@ export default function StatusBadge({ status, variantMap, className }: Props) {
   return (
     <span
       className={clsx(
-        "rounded px-2 py-1 text-xs font-medium",
+        "rounded px-2 py-1 text-xs font-medium whitespace-nowrap inline-block",
         styles,
         className,
       )}

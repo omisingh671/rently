@@ -6,14 +6,14 @@ import type {
 } from "axios";
 
 import {
-  APP_NAME,
   TENANT_SLUG,
   API_PREFIX,
   API_BASE_URL,
   AXIOS_WITH_CREDENTIALS,
   REQUEST_HEADER_AUTH_KEY,
   TOKEN_TYPE,
-  APP_HEADER_CLIENT_NAME_KEY,
+  APP_CLIENT_HEADER_KEY,
+  APP_CLIENT,
   TENANT_HEADER_SLUG_KEY,
   PROPERTY_HEADER_SLUG_KEY,
   PROPERTY_SLUG,
@@ -41,12 +41,18 @@ interface ApiEnvelope<T> {
 export const axiosRaw: AxiosInstance = axios.create({
   baseURL: `${API_BASE_URL}${API_PREFIX}`,
   withCredentials: AXIOS_WITH_CREDENTIALS,
+  headers: {
+    [APP_CLIENT_HEADER_KEY]: APP_CLIENT,
+  },
 });
 
 /** Main axios instance **/
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: `${API_BASE_URL}${API_PREFIX}`,
   withCredentials: AXIOS_WITH_CREDENTIALS,
+  headers: {
+    [APP_CLIENT_HEADER_KEY]: APP_CLIENT,
+  },
 });
 
 /** Read token from store **/
@@ -64,7 +70,7 @@ axiosInstance.interceptors.request.use(
     }
 
     if (config.headers) {
-      config.headers[APP_HEADER_CLIENT_NAME_KEY] = APP_NAME;
+      config.headers[APP_CLIENT_HEADER_KEY] = APP_CLIENT;
       config.headers[TENANT_HEADER_SLUG_KEY] = TENANT_SLUG;
       if (PROPERTY_SLUG !== null) {
         config.headers[PROPERTY_HEADER_SLUG_KEY] = PROPERTY_SLUG;

@@ -14,6 +14,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { ROUTES } from "@/configs/routePaths";
 import { normalizeApiError } from "@/utils/errors";
+import { getCancellationRefundLabel } from "../bookingDisplay";
 import { useCancelBooking, useCancellationPreview } from "../hooks";
 import type { Booking, BookingPolicyPreview } from "../types";
 
@@ -72,34 +73,6 @@ const getBookingItemLabel = (
   }
 
   return item.targetLabel.replace(/^Booking option - /, "");
-};
-
-const getCancellationRefundLabel = (booking: Booking) => {
-  if (booking.paidAmount <= 0) {
-    return "No payment made";
-  }
-
-  if (booking.refundRequest?.status === "REQUESTED") {
-    return "Refund request pending";
-  }
-
-  if (booking.refundRequest?.status === "IN_REVIEW") {
-    return "Refund in review";
-  }
-
-  if (booking.refundRequest?.status === "FULFILLED") {
-    return `Refunded ${formatPrice(booking.refundedAmount)}`;
-  }
-
-  if (booking.refundRequest?.status === "REJECTED") {
-    return "Refund rejected";
-  }
-
-  if (booking.refundableAmount > 0) {
-    return `Refund pending ${formatPrice(booking.refundableAmount)}`;
-  }
-
-  return `Refunded ${formatPrice(booking.refundedAmount)}`;
 };
 
 export default function BookingsList({ bookings }: BookingsListProps) {

@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 
 import { HttpError } from "@/common/errors/http-error.js";
 import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { requirePasswordChangeComplete } from "@/common/middleware/password-change.middleware.js";
+import { signAccessToken } from "@/common/utils/jwt.js";
 import { hashPassword } from "@/common/utils/password.js";
 import { prisma } from "@/db/prisma.js";
 import {
   AdvancePaymentType,
   PropertyAssignmentRole,
   PropertyStatus,
+  SessionAudience,
   UserRole,
 } from "@/generated/prisma/client.js";
 import * as authService from "@/modules/auth/auth.service.js";
@@ -311,6 +315,37 @@ test("MANAGER can access operations modules only", async () => {
     403,
     "FORBIDDEN",
   );
+});
+
+test("MANAGER operations routes are not blocked by earlier admin-only routers", async () => {
+  await import("dotenv/config");
+  const { app } = await import("@/app.js");
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  try {
+    const address = server.address() as AddressInfo;
+    const token = signAccessToken({
+      sub: state.managerId,
+      role: UserRole.MANAGER,
+      audience: SessionAudience.DASHBOARD,
+    });
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/v1/properties/${state.propertyAId}/bookings?page=1&limit=10`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-App-Client": "dashboard",
+        },
+      },
+    );
+
+    assert.equal(response.status, 200);
+  } finally {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  }
 });
 
 test("amenity catalog is global and managed by SUPER_ADMIN only", async () => {
@@ -625,6 +660,88 @@ test("SUPER_ADMIN can trigger reset tokens and manage forced password change", a
     where: { id: forceUser.id },
   });
   assert.equal(reloaded.mustChangePassword, false);
+});
+
+test("auth sessions enforce frontend and dashboard audiences", async () => {
+  const password = "Audience@12345";
+  const passwordHashForLogin = await hashPassword(password);
+  const [guest, staff] = await Promise.all([
+    prisma.user.create({
+      data: {
+        fullName: "RBAC Audience Guest",
+        email: `${testId}-audience-guest@sucasa.test`,
+        passwordHash: passwordHashForLogin,
+        role: UserRole.GUEST,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        fullName: "RBAC Audience Admin",
+        email: `${testId}-audience-admin@sucasa.test`,
+        passwordHash: passwordHashForLogin,
+        role: UserRole.ADMIN,
+        createdByUserId: state.superAdminId,
+      },
+    }),
+  ]);
+
+  await assertHttpError(
+    () =>
+      authService.loginUser(
+        { email: guest.email, password },
+        SessionAudience.DASHBOARD,
+      ),
+    403,
+    "APP_ROLE_FORBIDDEN",
+  );
+  await assertHttpError(
+    () =>
+      authService.loginUser(
+        { email: staff.email, password },
+        SessionAudience.FRONTEND,
+      ),
+    403,
+    "APP_ROLE_FORBIDDEN",
+  );
+
+  const guestLogin = await authService.loginUser(
+    { email: guest.email, password },
+    SessionAudience.FRONTEND,
+  );
+  const staffLogin = await authService.loginUser(
+    { email: staff.email, password },
+    SessionAudience.DASHBOARD,
+  );
+
+  assert.equal(
+    await prisma.session.count({
+      where: { userId: guest.id, audience: SessionAudience.FRONTEND },
+    }),
+    1,
+  );
+  assert.equal(
+    await prisma.session.count({
+      where: { userId: staff.id, audience: SessionAudience.DASHBOARD },
+    }),
+    1,
+  );
+
+  await assertHttpError(
+    () =>
+      authService.refreshSession(
+        guestLogin.refreshToken,
+        SessionAudience.DASHBOARD,
+      ),
+    401,
+    "UNAUTHORIZED",
+  );
+
+  const refreshedGuest = await authService.refreshSession(
+    guestLogin.refreshToken,
+    SessionAudience.FRONTEND,
+  );
+  assert.equal(refreshedGuest.auth.user.role, UserRole.GUEST);
+  assert.equal(staffLogin.auth.user.role, UserRole.ADMIN);
 });
 
 test("SUPER_ADMIN session management preserves current self session", async () => {

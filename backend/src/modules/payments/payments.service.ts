@@ -4,10 +4,12 @@ import {
   PaymentMethod,
   PaymentProvider,
   PaymentPurpose,
+  PaymentRefundStatus,
   PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { env } from "@/config/env.js";
 import { billingService } from "@/modules/billing/index.js";
 import type {
   CreateManualPaymentDTO,
@@ -99,10 +101,89 @@ const assertSameIdempotentPayment = (
   }
 };
 
+const assertPublicPaymentAccess = async (
+  bookingId: string,
+  input: CreateManualPaymentInput,
+  tx: Prisma.TransactionClient,
+) => {
+  if (input.actorUserId !== undefined || input.userId !== undefined) {
+    return;
+  }
+
+  if (input.checkoutToken === undefined) {
+    throw new HttpError(
+      403,
+      "PAYMENT_ACCESS_FORBIDDEN",
+      "A valid checkout token is required to pay for this booking",
+    );
+  }
+
+  const lock = await repo.findReleasedInventoryLockByBookingToken(
+    bookingId,
+    input.checkoutToken,
+    tx,
+  );
+  if (!lock) {
+    throw new HttpError(
+      403,
+      "PAYMENT_ACCESS_FORBIDDEN",
+      "A valid checkout token is required to pay for this booking",
+    );
+  }
+};
+
+const getBookingBalanceInfo = (
+  booking: repo.BookingForPaymentRecord,
+) => {
+  const folioTotal = booking.folioCharges
+    .filter((charge) => charge.status === "ACTIVE")
+    .reduce((sum, charge) => sum.plus(charge.amount), zeroDecimal);
+
+  const paidAmount = booking.payments
+    .filter((payment) => payment.status === PaymentStatus.SUCCEEDED)
+    .reduce((sum, payment) => sum.plus(payment.amount), zeroDecimal);
+
+  const refundedAmount = booking.payments.reduce(
+    (sum, payment) =>
+      sum.plus(
+        payment.refunds
+          .filter(
+            (refund) =>
+              refund.status === PaymentRefundStatus.PENDING ||
+              refund.status === PaymentRefundStatus.SUCCEEDED,
+          )
+          .reduce((total, refund) => total.plus(refund.amount), zeroDecimal),
+      ),
+    zeroDecimal,
+  );
+
+  const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
+  const balanceAmount = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(folioTotal).minus(netPaidAmount),
+  );
+
+  return {
+    folioTotal,
+    paidAmount,
+    refundedAmount,
+    netPaidAmount,
+    balanceAmount,
+  };
+};
+
 export const createManualPayment = async (
   input: CreateManualPaymentInput,
-): Promise<CreateManualPaymentDTO> =>
-  repo.runPaymentTransaction(async (tx) => {
+): Promise<CreateManualPaymentDTO> => {
+  if (input.status !== undefined && env.NODE_ENV === "production") {
+    throw new HttpError(
+      403,
+      "PAYMENT_STATUS_NOT_ALLOWED",
+      "Manual payment status simulation is not available in production",
+    );
+  }
+
+  return repo.runPaymentTransaction(async (tx) => {
     const purpose = input.purpose ?? PaymentPurpose.TOKEN;
     const method = input.method ?? PaymentMethod.MANUAL;
     const existingPayment = await repo.findPaymentByIdempotencyKey(
@@ -112,14 +193,16 @@ export const createManualPayment = async (
 
     if (existingPayment) {
       assertSameIdempotentPayment(existingPayment, input);
-      const paidAmount = await repo.sumSucceededPaymentsByBooking(
+      await assertPublicPaymentAccess(existingPayment.bookingId, input, tx);
+      const bookingForExisting = await repo.findBookingForPayment(
         existingPayment.bookingId,
+        undefined,
         tx,
       );
-      const balanceAmount = maxDecimal(
-        zeroDecimal,
-        existingPayment.booking.totalAmount.minus(paidAmount),
-      );
+      if (!bookingForExisting) {
+        throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+      }
+      const { paidAmount, balanceAmount } = getBookingBalanceInfo(bookingForExisting);
       if (existingPayment.status === PaymentStatus.SUCCEEDED) {
         if (balanceAmount.equals(zeroDecimal)) {
           await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
@@ -128,6 +211,8 @@ export const createManualPayment = async (
       }
       return mapManualPaymentResult(existingPayment, paidAmount, balanceAmount);
     }
+
+    await assertPublicPaymentAccess(input.bookingId, input, tx);
 
     const booking = await repo.findBookingForPayment(
       input.bookingId,
@@ -163,11 +248,12 @@ export const createManualPayment = async (
       );
     }
 
-    const paidBefore = await repo.sumSucceededPaymentsByBooking(
-      booking.id,
-      tx,
-    );
-    const balanceBefore = booking.totalAmount.minus(paidBefore);
+    const {
+      folioTotal,
+      paidAmount: paidBefore,
+      netPaidAmount: netPaidBefore,
+      balanceAmount: balanceBefore,
+    } = getBookingBalanceInfo(booking);
 
     if (balanceBefore.lessThanOrEqualTo(0)) {
       throw new HttpError(
@@ -258,12 +344,13 @@ export const createManualPayment = async (
     }
 
     const paidAfter = paidBefore.plus(amount);
+    const netPaidAfter = netPaidBefore.plus(amount);
     const balanceAfter = maxDecimal(
       zeroDecimal,
-      booking.totalAmount.minus(paidAfter),
+      booking.totalAmount.plus(folioTotal).minus(netPaidAfter),
     );
     const nextPaymentStatus = resolveBookingPaymentStatus(
-      booking.totalAmount,
+      booking.totalAmount.plus(folioTotal),
       paidAfter,
     );
 
@@ -326,3 +413,4 @@ export const createManualPayment = async (
 
     return mapManualPaymentResult(payment, paidAfter, balanceAfter);
   });
+};

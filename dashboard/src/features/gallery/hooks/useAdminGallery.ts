@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import { fetchGalleries, createGallery, deleteGallery } from "../api";
 import type { CreateGalleryPayload } from "../types";
-
-const QUERY_KEY = ["admin", "galleries"] as const;
 
 export function useAdminGallery(filters: {
   propertyId?: string;
@@ -12,21 +11,21 @@ export function useAdminGallery(filters: {
   const queryClient = useQueryClient();
 
   const galleriesQuery = useQuery({
-    queryKey: [...QUERY_KEY, filters],
+    queryKey: ADMIN_KEYS.galleries.list(filters),
     queryFn: () => fetchGalleries(filters),
   });
 
   const uploadAndCreateMutation = useMutation({
     mutationFn: (payload: CreateGalleryPayload) => createGallery(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.galleries.all() });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (galleryId: string) => deleteGallery(galleryId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.galleries.all() });
     },
   });
 
