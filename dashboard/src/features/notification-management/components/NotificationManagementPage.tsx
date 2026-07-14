@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useActiveProperties } from "@/features/properties/hooks/useActiveProperties";
+import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
 import { useNotificationManagement } from "../hooks";
 import type { NotificationEventKey, NotificationOverrideState } from "../types";
 import { NotificationActivityPanels } from "./NotificationActivityPanels";
@@ -7,8 +7,10 @@ import { NotificationSettingsMatrix } from "./NotificationSettingsMatrix";
 
 export default function NotificationManagementPage() {
   const [mode, setMode] = useState<"global" | "property">("global");
-  const [propertyId, setPropertyId] = useState("");
-  const properties = useActiveProperties();
+  const {
+    selectedProperty,
+    selectedPropertyId: propertyId,
+  } = useCurrentProperty();
   const management = useNotificationManagement(mode === "property" && propertyId ? propertyId : undefined);
   const saving = management.globalMutation.isPending || management.overrideMutation.isPending;
   const hasError = management.settings.isError || management.audits.isError || management.deliveries.isError;
@@ -52,33 +54,22 @@ export default function NotificationManagementPage() {
         ))}
       </section>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex rounded-lg bg-slate-100 p-1">
-          {(["global", "property"] as const).map((value) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setMode(value)}
-              className={`rounded-md px-4 py-2 text-sm font-semibold capitalize ${mode === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
-            >
-              {value === "global" ? "Global Defaults" : "Property Overrides"}
-            </button>
-          ))}
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex rounded-lg bg-slate-100 p-1">
+            {(["global", "property"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setMode(value)}
+                className={`rounded-md px-4 py-2 text-sm font-semibold capitalize ${mode === value ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}
+              >
+                {value === "global" ? "Global Defaults" : "Property Overrides"}
+              </button>
+            ))}
+          </div>
         </div>
-        {mode === "property" && (
-          <label className="min-w-64 text-sm font-medium text-slate-700">
-            Property
-            <select
-              value={propertyId}
-              onChange={(event) => setPropertyId(event.target.value)}
-              className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              <option value="">Select a property</option>
-              {(properties.data ?? []).map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
-            </select>
-          </label>
-        )}
-      </div>
+      </section>
 
       {management.settings.isLoading ? (
         <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Loading notification settings…</div>
@@ -88,6 +79,7 @@ export default function NotificationManagementPage() {
         <NotificationSettingsMatrix
           data={management.settings.data}
           mode={mode}
+          propertyName={selectedProperty?.name}
           disabled={saving}
           onGlobalChange={updateGlobal}
           onOverrideChange={updateOverride}
