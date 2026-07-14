@@ -27,7 +27,7 @@ Validation levels:
 | Pricing, coupon, tax, and policy snapshots | Backend tests cover server-side quotes, coupon-before-tax, GST slabs, and frozen booking/policy snapshots | Historical financial values must not change when future configuration changes | **Validated** |
 | Manual payment and refund ledger | Tests cover partial/full payment, overpayment protection, refund limits, idempotency, and property scope | Financial writes must be immutable, scoped, reconcilable, and idempotent | **Validated for manual operation** |
 | Simultaneous payment replay | Concurrency test proves one financial record for the same idempotency key | Retried or simultaneous requests must not duplicate money movement | **Validated** |
-| Guest refund request | Sequential tests cover eligibility, review, rejection, fulfilment, and active-request detection | At most one active refund request may exist for a booking | **Concurrency gap** |
+| Guest refund request | A serializable booking-version claim now covers eligibility, refundable balance, active-request detection, and creation; concurrency tests prove simultaneous requests create one active request and a staff-fulfilment race creates no stale work | At most one active refund request may exist for a booking | **Validated in current working tree** |
 | Invoice and receipt generation | Backend tests cover frozen snapshots, access control, idempotency, and concurrent invoice numbering | Fiscal documents must be immutable, uniquely numbered, and access-controlled | **Validated at application level** |
 | Online gateway capture/refund | Backend explicitly returns `REFUND_PROVIDER_NOT_CONFIGURED`; UI copy now describes manual-only capability | Signed provider orders/webhooks, event idempotency, reconciliation, and original-source refunds | **Missing; blocks live online payments** |
 | Dashboard operations | Backend tests cover walk-in booking, assignment, check-in/out, room move, payments, folio, cashier, housekeeping, and maintenance; browser E2E now proves manager login, property scope, walk-in booking, balance payment, automatic room assignment, check-in, checkout, and housekeeping through inspection | Staff workflows must be property-scoped, versioned, audited, and usable as complete journeys | **Critical staff stay lifecycle browser-validated** |
@@ -35,7 +35,7 @@ Validation levels:
 | Late checkout | Tests cover idempotent extra-night folio charging and balance settlement/override | Late departure must be priced, conflict-aware, and auditable | **Safe minimum implemented** |
 | Stay extension | No endpoint updates `checkOut`, rechecks added-night inventory, and prices the revised stay | Extension must atomically revalidate inventory, price added nights, update departure, and audit the change | **Missing** |
 | RBAC and property isolation | Backend tests cover Super Admin, Admin, Manager, guest/dashboard session audiences, and direct-ID property isolation | Cross-property reads and writes must be denied at service and data-access boundaries | **Validated for covered routes** |
-| Browser journey regression | Playwright uses an isolated guarded seed and covers the critical guest booking/payment/document journey, the critical dashboard staff stay lifecycle, duplicate submit, stale version recovery, cross-property denial, deliberate availability failure/retry, and 390px overflow smoke; GitHub Actions wiring is included | Critical guest and staff journeys should run deterministically in CI | **Local suite validated; first hosted CI run pending** |
+| Browser journey regression | Playwright uses an isolated guarded seed and covers the critical guest booking/payment/document journey, the critical dashboard staff stay lifecycle, duplicate submit, stale version recovery, cross-property denial, deliberate availability failure/retry, and 390px overflow smoke | Critical guest and staff journeys should run deterministically in a guarded test environment | **Local suite validated; hosted CI intentionally omitted** |
 | Dependency failure recovery | No systematic tests for DB timeouts, mail/PDF failure, provider retries, or partial responses | External failures need bounded retries, durable state, operator visibility, and safe replay | **Missing** |
 | Load and query performance | No k6/Artillery profile or measured query-plan baseline | Search and write paths need measured capacity and slow-query evidence before scale claims | **Missing** |
 
@@ -58,7 +58,7 @@ Validation levels:
 
 ### P1 - Required for unattended operational safety
 
-3. **Serialize active refund-request creation**
+3. **Serialize active refund-request creation - completed in the current working tree**
    - Move eligibility, refundable-balance calculation, active-request detection, and creation into one transaction.
    - Use a booking version/CAS or another durable serialization key so two simultaneous requests cannot both commit.
    - Return the existing request or a stable `409 REFUND_REQUEST_ALREADY_EXISTS` result on replay.
@@ -93,17 +93,19 @@ Validation levels:
 - Booking and maintenance creation now share an atomic serializable conflict boundary.
 - Guest cancellation now uses optimistic concurrency and releases inventory locks transactionally.
 - Payment replay has simultaneous-request regression coverage.
+- Guest refund-request creation now uses a serializable booking-version claim; simultaneous requests produce one active request, and a staff-fulfilment race creates no stale work.
 - Dashboard guidance no longer claims that Stripe/Razorpay automated refunds are currently integrated.
 - Guest token-refund copy now follows the property policy instead of always claiming the token is non-refundable.
 - An isolated Playwright E2E foundation now validates the authenticated guest booking journey through mock payment, invoice/receipt download, and protected booking detail; the manager walk-in lifecycle through payment, automatic assignment, check-in, checkout, and housekeeping inspection; plus 390px public/dashboard overflow smoke.
 - Checkout form submission now has an immediate guard that prevents synchronous double-clicks from issuing duplicate booking-create requests.
 - Negative browser coverage now validates cross-property anti-enumeration, stale-version recovery, and deliberate API failure/retry behavior.
-- GitHub Actions now provisions isolated MySQL, applies migrations, runs Chromium E2E, and uploads failure artifacts.
 
 ## Latest Validation
 
 - Isolated schema: `rently_audit_019f5ba6`
 - Playwright: 5/5 passed
+- Backend concurrency: 8/8 passed
+- Backend payment/refund: 57/57 passed
 - Backend typecheck: passed
 - Backend lint: passed
 - Backend production build: passed

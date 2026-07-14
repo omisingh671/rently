@@ -4,9 +4,11 @@ import { after, before, test } from "node:test";
 import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
+  BookingRefundRequestStatus,
   ComfortOption,
   MaintenancePriority,
   MaintenanceTargetType,
+  PaymentMethod,
   PricingTier,
   PropertyAssignmentRole,
   PropertyStatus,
@@ -469,5 +471,138 @@ test("simultaneous payment replay creates one financial record", async () => {
   assert.equal(
     (await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } })).status,
     "CONFIRMED",
+  );
+});
+
+test("simultaneous guest refund requests create one active request", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: { tokenRefundable: true },
+  });
+  const booking = await publicBooking(
+    state.guestOneId,
+    state.roomOnePricingId,
+    range(26),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-request-payment`,
+  });
+  await publicBookings.cancelBooking(
+    state.guestOneId,
+    booking.id,
+    "Concurrency refund request setup",
+  );
+
+  const results = await Promise.allSettled([
+    publicBookings.createRefundRequest(
+      state.guestOneId,
+      booking.id,
+      "First simultaneous refund request",
+    ),
+    publicBookings.createRefundRequest(
+      state.guestOneId,
+      booking.id,
+      "Second simultaneous refund request",
+    ),
+  ]);
+
+  assertOneWinner(results);
+  const rejected = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  assert.ok(rejected?.reason instanceof HttpError);
+  assert.equal(rejected.reason.code, "REFUND_REQUEST_ALREADY_EXISTS");
+  assert.equal(
+    await prisma.bookingRefundRequest.count({
+      where: {
+        bookingId: booking.id,
+        status: {
+          in: [
+            BookingRefundRequestStatus.REQUESTED,
+            BookingRefundRequestStatus.IN_REVIEW,
+          ],
+        },
+      },
+    }),
+    1,
+  );
+});
+
+test("guest request racing staff fulfilment creates no stale refund work", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: { tokenRefundable: true },
+  });
+  const booking = await publicBooking(
+    state.guestTwoId,
+    state.roomTwoPricingId,
+    range(30),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestTwoId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-fulfilment-payment`,
+  });
+  await publicBookings.cancelBooking(
+    state.guestTwoId,
+    booking.id,
+    "Concurrency refund fulfilment setup",
+  );
+  const requested = await publicBookings.createRefundRequest(
+    state.guestTwoId,
+    booking.id,
+    "Original refund request",
+  );
+  const requestId = requested.refundRequest?.id;
+  assert.ok(requestId);
+
+  const inReview = await dashboardBookings.updateRefundRequest(
+    state.superAdminId,
+    booking.id,
+    requestId,
+    { status: BookingRefundRequestStatus.IN_REVIEW },
+  );
+  const payment = inReview.payments[0];
+  const refundableAmount = Number(inReview.refundableAmount);
+  assert.ok(payment);
+  assert.ok(refundableAmount > 0);
+
+  const results = await Promise.allSettled([
+    dashboardBookings.recordBookingRefund(state.superAdminId, booking.id, {
+      paymentId: payment.id,
+      amount: refundableAmount,
+      method: PaymentMethod.MANUAL,
+      reason: "Concurrency fulfilment",
+      refundRequestId: requestId,
+      idempotencyKey: `${testId}-refund-fulfilment`,
+    }),
+    publicBookings.createRefundRequest(
+      state.guestTwoId,
+      booking.id,
+      "Concurrent replacement request",
+    ),
+  ]);
+
+  assert.equal(results[0]?.status, "fulfilled");
+  assert.equal(results[1]?.status, "rejected");
+  assert.equal(
+    await prisma.bookingRefundRequest.count({ where: { bookingId: booking.id } }),
+    1,
+  );
+  assert.equal(
+    await prisma.bookingRefundRequest.count({
+      where: {
+        bookingId: booking.id,
+        status: {
+          in: [
+            BookingRefundRequestStatus.REQUESTED,
+            BookingRefundRequestStatus.IN_REVIEW,
+          ],
+        },
+      },
+    }),
+    0,
   );
 });

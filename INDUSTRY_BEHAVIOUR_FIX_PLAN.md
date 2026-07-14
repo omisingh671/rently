@@ -21,7 +21,7 @@ Close the remaining correctness, operational, browser-regression, failure-recove
 Priority: **P0**  
 Goal: prove the critical guest and staff workflows through the real frontend/dashboard routes.
 
-Status: **Completed locally; first hosted CI run pending**
+Status: **Completed for local execution**
 
 Completed foundation:
 
@@ -32,11 +32,10 @@ Completed foundation:
 - cross-property anti-enumeration denial, duplicate-submit protection, stale-version recovery, and API-failure retry journeys
 - 390px public availability and dashboard login overflow smoke
 - failure screenshots, video, traces, and reports ignored as generated artifacts
-- GitHub Actions workflow with isolated MySQL, migrations, Chromium, E2E execution, and failure-artifact upload
 
 Remaining in this phase:
 
-- observe the first hosted GitHub Actions run after these changes are pushed
+- none; hosted CI execution is intentionally out of scope
 
 ### Implementation
 
@@ -76,13 +75,14 @@ Remaining in this phase:
 
 ### Completion Criteria
 
-- One command can seed and execute deterministic guest and dashboard E2E tests locally and in CI.
+- One command can seed and execute deterministic guest and dashboard E2E tests locally.
 - Failures retain screenshots/traces as generated artifacts, not tracked source files.
 
 ## Phase 2 - Atomic Guest Refund Requests
 
 Priority: **P0**  
 Goal: guarantee at most one active refund request per booking under simultaneous submissions.
+Status: **Completed**
 
 ### Implementation
 
