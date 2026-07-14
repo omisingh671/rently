@@ -294,10 +294,10 @@ export function SystemGuideOperationsSection() {
           Payments & Idempotency Rules
         </h3>
         <p className="text-sm text-slate-600">
-          Payments are mapped to booking records using unique
-          transaction IDs. In the database, the `Payment` table enforces
-          a unique constraint on <code>idempotencyKey</code> to prevent
-          duplicate payment attempts from credit/debit gateways.
+          Payments are mapped to booking records using unique idempotency
+          keys. The database constraint prevents duplicate financial records.
+          Manual payment recording is available today; online gateway capture
+          requires a separately configured provider adapter and webhook flow.
         </p>
 
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
@@ -309,10 +309,10 @@ export function SystemGuideOperationsSection() {
   id: "pay_987xab31",
   bookingId: "book_3310aa82",
   amount: 240.00,
-  currency: "USD",
-  status: "PAID",
-  idempotencyKey: "razorpay_order_4418_payment_99",
-  providerPaymentId: "ch_110aB3x",
+  currency: "INR",
+  status: "SUCCEEDED",
+  idempotencyKey: "frontdesk_booking_3310_payment_1",
+  providerPaymentId: null,
   paidAt: "2026-05-26T17:00:00Z"
 }`}
           </pre>
@@ -358,7 +358,7 @@ export function SystemGuideOperationsSection() {
             <div className="space-y-2 mt-2">
               <div className="p-2 bg-white border border-slate-200 rounded">
                 <span className="font-semibold text-slate-900 block">1. Online Gateway Refund</span>
-                <span className="text-[11px] text-slate-500">Automated refunds processed back to the customer's card or banking source via integrated gateways (e.g. Stripe, Razorpay). Runs securely inside database transactions.</span>
+                <span className="text-[11px] text-slate-500">Requires a configured Stripe/Razorpay adapter and provider reconciliation. Automated gateway refunds are not enabled in the current deployment.</span>
               </div>
               <div className="p-2 bg-white border border-slate-200 rounded">
                 <span className="font-semibold text-slate-900 block">2. Manual Offline Refund</span>
@@ -431,4 +431,3 @@ export function SystemGuideOperationsSection() {
     </div>
   );
 }
-

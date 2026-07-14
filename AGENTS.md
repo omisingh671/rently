@@ -88,6 +88,21 @@ Codex should:
 
 ---
 
+## Large File Rules
+
+When a touched source file is already large or mixes several responsibilities:
+
+1. Inspect the relevant section and its direct dependencies before editing; do not read or refactor the entire file by default.
+2. Treat 500+ lines as a review signal, not an automatic refactor requirement.
+3. Avoid adding a substantial new responsibility to a large file when an existing feature-local module, component, hook, service, repository, mapper, or validator is the clear owner.
+4. Extract only cohesive, low-coupling boundaries that preserve public APIs, validation order, transaction behavior, query keys, mutation invalidation, and UI behavior.
+5. Do not combine a feature change with broad file splitting. Use a separate, approved refactor slice when extraction is large or high risk.
+6. Keep orchestration in pages/services and move focused presentation, pure calculations, mapping, validation, or persistence concerns to the appropriate existing layer.
+7. After extraction, run targeted checks for the affected package and verify that no circular dependency, duplicate abstraction, or architecture-boundary violation was introduced.
+8. If safe extraction would increase coupling or churn, make the smallest local change and document why the file was not split.
+
+---
+
 ## Verification / Command Budget
 
 Do not automatically run all commands after every task.

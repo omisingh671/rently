@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
@@ -143,6 +143,7 @@ export default function BookingCheckoutPage() {
     mutateAsync: requestCheckoutQuoteAsync,
   } = checkoutQuoteMutation;
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const submitGuardRef = useRef(false);
   const [couponCode, setCouponCode] = useState("");
   const [hydratedCouponBookingId, setHydratedCouponBookingId] = useState<
     string | null
@@ -277,6 +278,9 @@ export default function BookingCheckoutPage() {
   }
 
   const onSubmit = async (values: GuestInfoSubmitValues) => {
+    if (submitGuardRef.current) return;
+    submitGuardRef.current = true;
+
     const guestDetails = {
       name: values.name,
       email: values.email,
@@ -304,11 +308,16 @@ export default function BookingCheckoutPage() {
         navigate(ROUTES.BOOKING_PAYMENT(editBookingId), { replace: true });
       } catch (error: unknown) {
         setSubmitError(normalizeApiError(error).message);
+      } finally {
+        submitGuardRef.current = false;
       }
       return;
     }
 
-    if (!quotePayload) return;
+    if (!quotePayload) {
+      submitGuardRef.current = false;
+      return;
+    }
 
     const payload: CreateBookingPayload = {
       ...quotePayload,
@@ -325,6 +334,8 @@ export default function BookingCheckoutPage() {
       navigate(ROUTES.BOOKING_PAYMENT(booking.id), { replace: true });
     } catch (error: unknown) {
       setSubmitError(normalizeApiError(error).message);
+    } finally {
+      submitGuardRef.current = false;
     }
   };
 

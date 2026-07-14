@@ -1,6 +1,11 @@
 import { prisma } from "@/db/prisma.js";
-import type { Prisma } from "@/generated/prisma/client.js";
+import { Prisma } from "@/generated/prisma/client.js";
 import type { MaintenanceTargetType } from "@/generated/prisma/enums.js";
+
+type MaintenanceDbClient = typeof prisma | Prisma.TransactionClient;
+
+const client = (tx?: Prisma.TransactionClient): MaintenanceDbClient =>
+  tx ?? prisma;
 
 export const maintenanceBlockInclude = {
   property: true,
@@ -65,8 +70,11 @@ export const findMaintenanceBlockById = (id: string): Promise<MaintenanceBlockRe
     include: maintenanceBlockInclude,
   });
 
-export const createMaintenanceBlock = (data: Prisma.MaintenanceBlockCreateInput): Promise<MaintenanceBlockRecord> =>
-  prisma.maintenanceBlock.create({
+export const createMaintenanceBlock = (
+  data: Prisma.MaintenanceBlockCreateInput,
+  tx?: Prisma.TransactionClient,
+): Promise<MaintenanceBlockRecord> =>
+  client(tx).maintenanceBlock.create({
     data,
     include: maintenanceBlockInclude,
   });
@@ -74,8 +82,9 @@ export const createMaintenanceBlock = (data: Prisma.MaintenanceBlockCreateInput)
 export const updateMaintenanceBlockById = (
   id: string,
   data: Prisma.MaintenanceBlockUpdateInput,
+  tx?: Prisma.TransactionClient,
 ): Promise<MaintenanceBlockRecord> =>
-  prisma.maintenanceBlock.update({
+  client(tx).maintenanceBlock.update({
     where: { id },
     data,
     include: maintenanceBlockInclude,
@@ -108,16 +117,19 @@ export const hasOverlappingRoomMaintenance = (input: {
     })
     .then((count) => count > 0);
 
-export const listConflictingBookings = (input: {
-  propertyId: string;
-  targetType: MaintenanceTargetType;
-  unitId?: string;
-  roomId?: string;
-  startDate: Date;
-  endDate: Date;
-  excludeMaintenanceId?: string;
-}) =>
-  prisma.booking.findMany({
+export const listConflictingBookings = (
+  input: {
+    propertyId: string;
+    targetType: MaintenanceTargetType;
+    unitId?: string;
+    roomId?: string;
+    startDate: Date;
+    endDate: Date;
+    excludeMaintenanceId?: string;
+  },
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).booking.findMany({
     where: {
       propertyId: input.propertyId,
       status: { in: ["CONFIRMED", "CHECKED_IN"] },
@@ -142,3 +154,29 @@ export const listConflictingBookings = (input: {
     },
     orderBy: { checkIn: "asc" },
   });
+
+export const runMaintenanceTransaction = async <T>(
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+) => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(callback, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 10_000,
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034" &&
+        attempt < 2
+      ) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Maintenance transaction retry limit reached");
+};

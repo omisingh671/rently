@@ -1,5 +1,5 @@
 import { HttpError } from "@/common/errors/http-error.js";
-import { prisma } from "@/db/prisma.js";
+import type { Prisma } from "@/generated/prisma/client.js";
 import {
   BookingOperationEventType,
   MaintenancePriority,
@@ -192,8 +192,9 @@ const assertMaintenanceConflictsAllowed = async (
     emergencyOverride?: boolean;
     emergencyReason?: string;
   },
+  tx?: Prisma.TransactionClient,
 ) => {
-  const conflicts = await repo.listConflictingBookings(input);
+  const conflicts = await repo.listConflictingBookings(input, tx);
   if (conflicts.length === 0) {
     return conflicts;
   }
@@ -279,73 +280,68 @@ export const createMaintenanceBlock = async (
   );
 
   const target = await resolveMaintenanceTarget(propertyId, input);
-  const conflicts = await assertMaintenanceConflictsAllowed(actor, {
-    propertyId,
-    targetType: input.targetType,
-    ...(target.unitId !== undefined && { unitId: target.unitId }),
-    ...(target.roomId !== undefined && { roomId: target.roomId }),
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    ...(input.emergencyOverride !== undefined && {
-      emergencyOverride: input.emergencyOverride,
-    }),
-    ...(input.emergencyReason !== undefined && {
-      emergencyReason: input.emergencyReason,
-    }),
-  });
-
-  const block = await repo.createMaintenanceBlock({
-    property: {
-      connect: {
-        id: propertyId,
-      },
-    },
-    createdBy: {
-      connect: {
-        id: actor.id,
-      },
-    },
-    targetType: input.targetType,
-    priority: input.priority,
-    emergencyOverride: input.emergencyOverride === true,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    ...(input.reason !== undefined && { reason: input.reason }),
-    ...(target.unitId !== undefined && {
-      unit: {
-        connect: {
-          id: target.unitId,
-        },
-      },
-    }),
-    ...(target.roomId !== undefined && {
-      room: {
-        connect: {
-          id: target.roomId,
-        },
-      },
-    }),
-    ...(input.assignedToUserId !== undefined && {
-      assignedTo: { connect: { id: input.assignedToUserId } },
-    }),
-  });
-
-  if (conflicts.length > 0) {
-    await prisma.bookingOperationEvent.createMany({
-      data: conflicts.map((booking) => ({
-        bookingId: booking.id,
+  const block = await repo.runMaintenanceTransaction(async (tx) => {
+    const conflicts = await assertMaintenanceConflictsAllowed(
+      actor,
+      {
         propertyId,
-        actorUserId: actor.id,
-        eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
-        note: input.emergencyReason ?? null,
-        metadata: {
-          maintenanceId: block.id,
-          targetType: input.targetType,
-          priority: input.priority,
-        },
-      })),
-    });
-  }
+        targetType: input.targetType,
+        ...(target.unitId !== undefined && { unitId: target.unitId }),
+        ...(target.roomId !== undefined && { roomId: target.roomId }),
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        ...(input.emergencyOverride !== undefined && {
+          emergencyOverride: input.emergencyOverride,
+        }),
+        ...(input.emergencyReason !== undefined && {
+          emergencyReason: input.emergencyReason,
+        }),
+      },
+      tx,
+    );
+
+    const createdBlock = await repo.createMaintenanceBlock(
+      {
+        property: { connect: { id: propertyId } },
+        createdBy: { connect: { id: actor.id } },
+        targetType: input.targetType,
+        priority: input.priority,
+        emergencyOverride: input.emergencyOverride === true,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        ...(input.reason !== undefined && { reason: input.reason }),
+        ...(target.unitId !== undefined && {
+          unit: { connect: { id: target.unitId } },
+        }),
+        ...(target.roomId !== undefined && {
+          room: { connect: { id: target.roomId } },
+        }),
+        ...(input.assignedToUserId !== undefined && {
+          assignedTo: { connect: { id: input.assignedToUserId } },
+        }),
+      },
+      tx,
+    );
+
+    if (conflicts.length > 0) {
+      await tx.bookingOperationEvent.createMany({
+        data: conflicts.map((booking) => ({
+          bookingId: booking.id,
+          propertyId,
+          actorUserId: actor.id,
+          eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
+          note: input.emergencyReason ?? null,
+          metadata: {
+            maintenanceId: createdBlock.id,
+            targetType: input.targetType,
+            priority: input.priority,
+          },
+        })),
+      });
+    }
+
+    return createdBlock;
+  });
 
   return toMaintenanceBlockResponseDto(block);
 };
@@ -393,85 +389,85 @@ export const updateMaintenanceBlock = async (
       input.status !== existingBlock.status &&
       input.status !== MaintenanceStatus.RESOLVED &&
       input.status !== MaintenanceStatus.CANCELLED);
-  const conflicts = conflictRelevantChange
-    ? await assertMaintenanceConflictsAllowed(actor, {
-        propertyId: existingBlock.propertyId,
+  const block = await repo.runMaintenanceTransaction(async (tx) => {
+    const conflicts = conflictRelevantChange
+      ? await assertMaintenanceConflictsAllowed(
+          actor,
+          {
+            propertyId: existingBlock.propertyId,
+            targetType: nextTargetType,
+            ...(target.unitId !== undefined && { unitId: target.unitId }),
+            ...(target.roomId !== undefined && { roomId: target.roomId }),
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
+            ...(input.emergencyOverride !== undefined && {
+              emergencyOverride: input.emergencyOverride,
+            }),
+            ...(input.emergencyReason !== undefined && {
+              emergencyReason: input.emergencyReason,
+            }),
+          },
+          tx,
+        )
+      : [];
+
+    const updatedBlock = await repo.updateMaintenanceBlockById(
+      maintenanceBlockId,
+      {
         targetType: nextTargetType,
-        ...(target.unitId !== undefined && { unitId: target.unitId }),
-        ...(target.roomId !== undefined && { roomId: target.roomId }),
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
+        ...(input.reason !== undefined && { reason: input.reason }),
+        ...(input.status !== undefined && {
+          status: input.status,
+          ...(input.status === MaintenanceStatus.RESOLVED && {
+            resolvedAt: new Date(),
+          }),
+        }),
+        ...(input.priority !== undefined && { priority: input.priority }),
+        ...(input.resolutionNote !== undefined && {
+          resolutionNote: input.resolutionNote,
+        }),
         ...(input.emergencyOverride !== undefined && {
           emergencyOverride: input.emergencyOverride,
         }),
-        ...(input.emergencyReason !== undefined && {
-          emergencyReason: input.emergencyReason,
+        unit:
+          target.unitId !== undefined
+            ? { connect: { id: target.unitId } }
+            : { disconnect: true },
+        room:
+          target.roomId !== undefined
+            ? { connect: { id: target.roomId } }
+            : { disconnect: true },
+        ...(input.assignedToUserId !== undefined && {
+          assignedTo:
+            input.assignedToUserId === null
+              ? { disconnect: true }
+              : { connect: { id: input.assignedToUserId } },
         }),
-      })
-    : [];
+      },
+      tx,
+    );
 
-  const block = await repo.updateMaintenanceBlockById(maintenanceBlockId, {
-    targetType: nextTargetType,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    ...(input.reason !== undefined && { reason: input.reason }),
-    ...(input.status !== undefined && {
-      status: input.status,
-      ...(input.status === MaintenanceStatus.RESOLVED && {
-        resolvedAt: new Date(),
-      }),
-    }),
-    ...(input.priority !== undefined && { priority: input.priority }),
-    ...(input.resolutionNote !== undefined && {
-      resolutionNote: input.resolutionNote,
-    }),
-    ...(input.emergencyOverride !== undefined && {
-      emergencyOverride: input.emergencyOverride,
-    }),
-    unit:
-      target.unitId !== undefined
-        ? {
-            connect: {
-              id: target.unitId,
-            },
-          }
-        : {
-            disconnect: true,
+    if (conflicts.length > 0 && input.emergencyOverride === true) {
+      await tx.bookingOperationEvent.createMany({
+        data: conflicts.map((booking) => ({
+          bookingId: booking.id,
+          propertyId: existingBlock.propertyId,
+          actorUserId: actor.id,
+          eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
+          note: input.emergencyReason ?? null,
+          metadata: {
+            maintenanceId: updatedBlock.id,
+            targetType: nextTargetType,
+            priority: input.priority ?? existingBlock.priority,
           },
-    room:
-      target.roomId !== undefined
-        ? {
-            connect: {
-              id: target.roomId,
-            },
-          }
-        : {
-            disconnect: true,
-          },
-    ...(input.assignedToUserId !== undefined && {
-      assignedTo:
-        input.assignedToUserId === null
-          ? { disconnect: true }
-          : { connect: { id: input.assignedToUserId } },
-    }),
+        })),
+      });
+    }
+
+    return updatedBlock;
   });
-
-  if (conflicts.length > 0 && input.emergencyOverride === true) {
-    await prisma.bookingOperationEvent.createMany({
-      data: conflicts.map((booking) => ({
-        bookingId: booking.id,
-        propertyId: existingBlock.propertyId,
-        actorUserId: actor.id,
-        eventType: BookingOperationEventType.MAINTENANCE_CONFLICT,
-        note: input.emergencyReason ?? null,
-        metadata: {
-          maintenanceId: block.id,
-          targetType: nextTargetType,
-          priority: input.priority ?? existingBlock.priority,
-        },
-      })),
-    });
-  }
 
   return toMaintenanceBlockResponseDto(block);
 };

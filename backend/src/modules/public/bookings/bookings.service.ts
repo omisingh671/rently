@@ -27,7 +27,6 @@ import type {
   PublicBookingQuoteDTO,
 } from "./bookings.dto.js";
 import type { TenantResolutionInput } from "@/modules/public/tenant/tenant.inputs.js";
-import * as availabilityRepo from "@/modules/public/availability/availability.repository.js";
 import {
   assertBookingCheckoutEditable,
   assertPublicBookingAccess,
@@ -1031,6 +1030,8 @@ export const cancelBooking = async (
   const cancellationReason = reason?.trim() || "Cancelled by guest";
   const updatedBooking = await repo.updateBookingCancellationById(
     booking.id,
+    userId,
+    booking.version,
     {
       status: BookingStatus.CANCELLED,
       cancellationReason,
@@ -1051,8 +1052,16 @@ export const cancelBooking = async (
       },
       note: cancellationReason,
     },
+    now(),
   );
-  await availabilityRepo.releaseInventoryLocksByBooking(booking.id, now());
+
+  if (!updatedBooking) {
+    throw new HttpError(
+      409,
+      "BOOKING_VERSION_CONFLICT",
+      "Booking was changed by another request. Reload and try again.",
+    );
+  }
 
   return mapBooking(updatedBooking);
 };

@@ -169,7 +169,9 @@ function BookingSummary({ booking }: { booking: Booking }) {
               <span className="text-slate-700">{formatPrice(booking.remainingPayAtCheckIn)}</span>
             </div>
             <div className="mt-3 pt-3 border-t border-indigo-100/50 text-[11px] text-indigo-400 font-semibold italic">
-              * Token amount is non-refundable
+              * {booking.policy.tokenRefundable
+                ? "Token refund eligibility follows the property policy"
+                : "Token amount is non-refundable under the property policy"}
             </div>
           </div>
         )}

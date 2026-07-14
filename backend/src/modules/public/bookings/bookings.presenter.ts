@@ -95,7 +95,13 @@ export const mapBooking = async (
     netPaidAmount,
     refundableAmount,
     balanceAmount,
-    remainingPayAtCheckIn: balanceAmount,
+    remainingPayAtCheckIn: Math.max(
+      0,
+      balanceAmount -
+        (booking.status === BookingStatus.PENDING
+          ? Number(booking.upfrontAmount)
+          : 0),
+    ),
     policy,
     items,
     internalNotes: booking.internalNotes ?? null,
