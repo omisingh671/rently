@@ -90,12 +90,16 @@ export interface CheckInBookingInput {
   identityDocumentReference?: string;
   allowBalanceDueCheckIn?: boolean;
   note?: string;
+  policyFingerprint?: string;
+  allowPolicyOverride?: boolean;
+  overrideReason?: string;
 }
 
 export interface CheckOutBookingInput {
   expectedVersion: number;
   allowBalanceDueCheckout?: boolean;
   note?: string;
+  policyFingerprint?: string;
 }
 
 export interface NoShowBookingInput {
@@ -109,7 +113,11 @@ export interface MoveBookingRoomInput {
   note: string;
   pricingFingerprint: string;
   expectedAdjustmentAmount: number;
-  pricingAction: "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE";
+  pricingAction:
+    | "CHARGE_DIFFERENCE"
+    | "COMPLIMENTARY_UPGRADE"
+    | "APPLY_CREDIT"
+    | "NO_CREDIT";
 }
 
 export interface PreviewBookingRoomMoveInput {

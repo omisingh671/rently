@@ -2413,7 +2413,9 @@ test("lower-priced room move creates no charge, credit, or refund", async () => 
   );
   assert.equal(preview.currentNightlyRate, "3000");
   assert.equal(preview.destinationNightlyRate, "2800");
-  assert.equal(preview.totalAdjustment, "0");
+  assert.equal(preview.totalAdjustment, "-400");
+  assert.equal(preview.movementType, "DOWNGRADE");
+  assert.equal(preview.downgradeTreatment, "NO_CREDIT");
 
   const moved = await dashboardService.moveBookingRooms(
     state.superAdminId,
@@ -2422,9 +2424,9 @@ test("lower-priced room move creates no charge, credit, or refund", async () => 
       expectedVersion: 1,
       roomIds: [destination.roomId],
       note: "Operational relocation to a lower-priced room.",
-      pricingAction: "CHARGE_DIFFERENCE",
+      pricingAction: "NO_CREDIT",
       pricingFingerprint: preview.pricingFingerprint,
-      expectedAdjustmentAmount: 0,
+      expectedAdjustmentAmount: -400,
     },
   );
 
@@ -2442,6 +2444,266 @@ test("lower-priced room move creates no charge, credit, or refund", async () => 
     await prisma.paymentRefund.count({ where: { bookingId: booking.id } }),
     0,
   );
+});
+
+test("property downgrade policy can apply the frozen price difference as folio credit", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      downgradeRules: {
+        financialTreatment: "CREDIT_DIFFERENCE",
+        overrideRole: "ADMIN",
+      },
+    },
+  });
+  try {
+    const booking = await createBooking(
+      new Date("2040-01-10T00:00:00.000Z"),
+      new Date("2040-01-12T00:00:00.000Z"),
+    );
+    const destination = await prisma.roomPricing.findUniqueOrThrow({
+      where: { id: state.pricingTwoId },
+      select: { roomId: true },
+    });
+    assert.ok(destination.roomId);
+    const preview = await dashboardService.previewBookingRoomMove(
+      state.superAdminId,
+      booking.id,
+      { expectedVersion: 1, roomIds: [destination.roomId] },
+    );
+    assert.equal(preview.totalAdjustment, "-400");
+    assert.deepEqual(preview.allowedPricingActions, ["APPLY_CREDIT"]);
+
+    const moved = await dashboardService.moveBookingRooms(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 1,
+        roomIds: [destination.roomId],
+        note: "Applied the configured downgrade credit.",
+        pricingAction: "APPLY_CREDIT",
+        pricingFingerprint: preview.pricingFingerprint,
+        expectedAdjustmentAmount: -400,
+      },
+    );
+    assert.equal(moved.folioTotal, "-400");
+    const credit = await prisma.bookingFolioCharge.findFirstOrThrow({
+      where: { bookingId: booking.id },
+    });
+    assert.equal(credit.amount.toString(), "-400");
+  } finally {
+    await prisma.propertyBookingPolicy.update({
+      where: { propertyId: state.propertyId },
+      data: {
+        downgradeRules: {
+          financialTreatment: "NO_CREDIT",
+          overrideRole: "ADMIN",
+        },
+      },
+    });
+  }
+});
+
+test("early checkout preview freezes refund review amount and caps manual refund", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      earlyCheckoutRules: {
+        refundUnusedNights: true,
+        refundPercentage: 50,
+        manualReviewRequired: true,
+        overrideRole: "ADMIN",
+      },
+    },
+  });
+  try {
+    const booking = await createBooking(
+      new Date("2041-01-10T00:00:00.000Z"),
+      new Date("2041-01-12T00:00:00.000Z"),
+    );
+    const payment = await paymentsService.createManualPayment({
+      userId: state.guestId,
+      bookingId: booking.id,
+      idempotencyKey: `${testId}-early-checkout-paid`,
+      purpose: PaymentPurpose.FULL_PAYMENT,
+    });
+    const today = propertyDateOnly(new Date());
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: BookingStatus.CHECKED_IN,
+        checkIn: addUtcDays(today, -1),
+        checkOut: addUtcDays(today, 3),
+      },
+    });
+    const preview = await dashboardService.previewCheckOutPolicy(
+      state.superAdminId,
+      booking.id,
+      1,
+    );
+    assert.equal(preview.isEarly, true);
+    assert.equal(preview.unusedNights, 3);
+    assert.equal(preview.refundAmount, "2250");
+
+    const checkedOut = await dashboardService.checkOutBooking(
+      state.superAdminId,
+      booking.id,
+      {
+        expectedVersion: 1,
+        policyFingerprint: preview.policyFingerprint,
+        note: "Guest departed early; send refund for review.",
+      },
+    );
+    assert.equal(checkedOut.status, BookingStatus.CHECKED_OUT);
+    assert.equal(checkedOut.refundRequest?.status, "REQUESTED");
+
+    await assert.rejects(
+      dashboardService.recordBookingRefund(state.superAdminId, booking.id, {
+        paymentId: payment.payment.id,
+        amount: 2251,
+        method: PaymentMethod.CASH,
+        reason: "Exceeds frozen policy amount",
+      }),
+      (error: unknown) =>
+        error instanceof HttpError && error.code === "EARLY_CHECKOUT_REFUND_LIMIT",
+    );
+  } finally {
+    await prisma.propertyBookingPolicy.update({
+      where: { propertyId: state.propertyId },
+      data: {
+        earlyCheckoutRules: {
+          refundUnusedNights: false,
+          refundPercentage: 100,
+          manualReviewRequired: true,
+          overrideRole: "ADMIN",
+        },
+      },
+    });
+  }
+});
+
+test("late checkout uses the configured fixed tariff and freezes its policy", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      lateCheckoutRules: {
+        feeType: "FIXED_AMOUNT",
+        feeValue: 250,
+        graceMinutes: 0,
+        overrideRole: "ADMIN",
+      },
+    },
+  });
+  try {
+    const booking = await createBooking(
+      new Date("2042-01-10T00:00:00.000Z"),
+      new Date("2042-01-12T00:00:00.000Z"),
+    );
+    await paymentsService.createManualPayment({
+      userId: state.guestId,
+      bookingId: booking.id,
+      idempotencyKey: `${testId}-fixed-late-checkout-paid`,
+      purpose: PaymentPurpose.FULL_PAYMENT,
+    });
+    const today = propertyDateOnly(new Date());
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: BookingStatus.CHECKED_IN,
+        checkIn: addUtcDays(today, -3),
+        checkOut: addUtcDays(today, -1),
+      },
+    });
+    const preview = await dashboardService.previewCheckOutPolicy(
+      state.superAdminId,
+      booking.id,
+      1,
+    );
+    assert.equal(preview.lateCheckoutCharge?.totalAmount, "250");
+    assert.equal(preview.lateCheckoutCharge?.tariffType, "FIXED_AMOUNT");
+  } finally {
+    await prisma.propertyBookingPolicy.update({
+      where: { propertyId: state.propertyId },
+      data: {
+        lateCheckoutRules: {
+          feeType: "NIGHTLY_RATE_MULTIPLIER",
+          feeValue: 1,
+          graceMinutes: 0,
+          overrideRole: "ADMIN",
+        },
+      },
+    });
+  }
+});
+
+test("early check-in preview enforces Admin-only policy override", async () => {
+  let testBookingId: string | null = null;
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: {
+      checkInTime: "23:59",
+      earlyCheckInRules: {
+        enabled: false,
+        feeType: "NONE",
+        feeValue: 0,
+        overrideRole: "ADMIN",
+      },
+    },
+  });
+  try {
+    const booking = await createBooking(
+      new Date("2043-01-10T00:00:00.000Z"),
+      new Date("2043-01-12T00:00:00.000Z"),
+    );
+    testBookingId = booking.id;
+    await paymentsService.createManualPayment({
+      userId: state.guestId,
+      bookingId: booking.id,
+      idempotencyKey: `${testId}-early-checkin-token`,
+    });
+    const today = propertyDateOnly(new Date());
+    await prisma.booking.update({
+      where: { id: booking.id },
+      data: { checkIn: today, checkOut: addUtcDays(today, 1) },
+    });
+    const preview = await dashboardService.previewCheckInPolicy(
+      state.managerId,
+      booking.id,
+      1,
+    );
+    assert.equal(preview.isEarly, true);
+    assert.equal(preview.allowed, false);
+
+    await assert.rejects(
+      dashboardService.checkInBooking(state.managerId, booking.id, {
+        expectedVersion: 1,
+        identityVerified: true,
+        policyFingerprint: preview.policyFingerprint,
+        allowPolicyOverride: true,
+        overrideReason: "Manager attempted policy override.",
+        allowBalanceDueCheckIn: true,
+        note: "Manager attempted policy override.",
+      }),
+      (error: unknown) =>
+        error instanceof HttpError && error.code === "POLICY_OVERRIDE_RESTRICTED",
+    );
+  } finally {
+    if (testBookingId) {
+      await prisma.booking.delete({ where: { id: testBookingId } });
+    }
+    await prisma.propertyBookingPolicy.update({
+      where: { propertyId: state.propertyId },
+      data: {
+        checkInTime: "12:00",
+        earlyCheckInRules: {
+          enabled: true,
+          feeType: "NONE",
+          feeValue: 0,
+          overrideRole: "ADMIN",
+        },
+      },
+    });
+  }
 });
 
 test("manager cannot waive paid room move, but admin can with audit metadata", async () => {

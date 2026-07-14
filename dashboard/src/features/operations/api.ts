@@ -10,6 +10,8 @@ import type {
   CashierSummaryResponse,
   CheckInBookingPayload,
   CheckOutBookingPayload,
+  CheckInPolicyPreview,
+  CheckOutPolicyPreview,
   CheckManualBookingAvailabilityPayload,
   CreateManualBookingPayload,
   EnquiryListResponse,
@@ -156,6 +158,17 @@ export const checkInBookingApi = async (
   return data.data;
 };
 
+export const previewCheckInPolicyApi = async (
+  bookingId: string,
+  expectedVersion: number,
+): Promise<CheckInPolicyPreview> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<CheckInPolicyPreview>>(
+    API_ENDPOINTS.operations.bookingCheckInPreviewById(bookingId),
+    { expectedVersion },
+  );
+  return data.data;
+};
+
 export const checkOutBookingApi = async (
   bookingId: string,
   payload: CheckOutBookingPayload,
@@ -163,6 +176,17 @@ export const checkOutBookingApi = async (
   const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
     API_ENDPOINTS.operations.bookingCheckOutById(bookingId),
     payload,
+  );
+  return data.data;
+};
+
+export const previewCheckOutPolicyApi = async (
+  bookingId: string,
+  expectedVersion: number,
+): Promise<CheckOutPolicyPreview> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<CheckOutPolicyPreview>>(
+    API_ENDPOINTS.operations.bookingCheckOutPreviewById(bookingId),
+    { expectedVersion },
   );
   return data.data;
 };

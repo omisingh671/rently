@@ -24,7 +24,12 @@ import {
 } from "../bookingDisplay";
 import { useAdminBooking } from "../hooks/useAdminOperations";
 import { useBookingActionState } from "../hooks/useBookingActionState";
-import type { AdminBooking, StayExtensionPreview } from "../types";
+import type {
+  AdminBooking,
+  CheckInPolicyPreview,
+  CheckOutPolicyPreview,
+  StayExtensionPreview,
+} from "../types";
 import {
   FiAlertTriangle,
   FiArrowLeft,
@@ -69,6 +74,10 @@ export default function BookingDetailsPage() {
   const [extensionPreview, setExtensionPreview] =
     useState<StayExtensionPreview | null>(null);
   const [extensionError, setExtensionError] = useState("");
+  const [checkInPolicyPreview, setCheckInPolicyPreview] =
+    useState<CheckInPolicyPreview | null>(null);
+  const [checkOutPolicyPreview, setCheckOutPolicyPreview] =
+    useState<CheckOutPolicyPreview | null>(null);
 
   const {
     data: booking,
@@ -79,6 +88,8 @@ export default function BookingDetailsPage() {
     updateBooking,
     checkInBooking,
     checkOutBooking,
+    previewCheckInPolicy,
+    previewCheckOutPolicy,
     markNoShow,
     moveRooms,
     previewRoomMove,
@@ -187,6 +198,33 @@ export default function BookingDetailsPage() {
   } = useBookingActionState({ booking, rooms });
 
   useEffect(() => {
+    if (!booking || (pendingAction?.type !== "checkIn" && pendingAction?.type !== "checkOut")) {
+      return;
+    }
+    let active = true;
+    const preview =
+      pendingAction.type === "checkIn"
+        ? previewCheckInPolicy(booking.version).then((value) => {
+            if (active) setCheckInPolicyPreview(value);
+          })
+        : previewCheckOutPolicy(booking.version).then((value) => {
+            if (active) setCheckOutPolicyPreview(value);
+          });
+    void preview.catch((previewError: unknown) => {
+      if (active) setActionError(normalizeApiError(previewError).message);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    booking,
+    pendingAction?.type,
+    previewCheckInPolicy,
+    previewCheckOutPolicy,
+    setActionError,
+  ]);
+
+  useEffect(() => {
     if (
       pendingAction?.type !== "assignRoom" ||
       !booking ||
@@ -206,6 +244,9 @@ export default function BookingDetailsPage() {
         .then((preview) => {
           if (active) {
             setRoomMovePreview(preview);
+            setRoomMovePricingAction(
+              preview.allowedPricingActions[0] ?? "NO_CREDIT",
+            );
             setActionError("");
           }
         })
@@ -228,6 +269,7 @@ export default function BookingDetailsPage() {
     previewRoomMove,
     setActionError,
     setRoomMovePreview,
+    setRoomMovePricingAction,
   ]);
 
   const submitAction = async (event: FormEvent<HTMLFormElement>) => {
@@ -370,6 +412,13 @@ export default function BookingDetailsPage() {
             allowBalanceDueCheckIn: true,
           }),
           ...(note.trim() && { note: note.trim() }),
+          ...(checkInPolicyPreview && {
+            policyFingerprint: checkInPolicyPreview.policyFingerprint,
+          }),
+          ...(!checkInPolicyPreview?.allowed && canUseAdminCorrection && {
+            allowPolicyOverride: true,
+            overrideReason: note.trim(),
+          }),
         });
       } else if (pendingAction.type === "checkOut") {
         if (pendingAction.requiresNote && !note.trim()) {
@@ -382,6 +431,9 @@ export default function BookingDetailsPage() {
             allowBalanceDueCheckout: true,
           }),
           ...(note.trim() && { note: note.trim() }),
+          ...(checkOutPolicyPreview && {
+            policyFingerprint: checkOutPolicyPreview.policyFingerprint,
+          }),
         });
       } else if (pendingAction.type === "noShow") {
         await markNoShow({
@@ -943,6 +995,8 @@ export default function BookingDetailsPage() {
         isSubmitting={isMutating || isPreviewingRoomMove}
         errorMessage={actionError}
         roomMovePreview={roomMovePreview}
+        checkInPolicyPreview={checkInPolicyPreview}
+        checkOutPolicyPreview={checkOutPolicyPreview}
         roomMovePricingAction={roomMovePricingAction}
         onRoomMovePricingActionChange={setRoomMovePricingAction}
         onNoteChange={setNote}

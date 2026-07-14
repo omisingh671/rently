@@ -18,6 +18,8 @@ import type {
   BookingRoomMovePreviewDTO,
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
+import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
+import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
 import {
   getLocalDateValue,
   isAdminOverrideRole,
@@ -103,7 +105,8 @@ export const assertComplimentaryUpgradeAllowed = (
   pricingPreview: BookingRoomMovePreviewDTO,
 ) => {
   if (
-    input.pricingAction !== "COMPLIMENTARY_UPGRADE" ||
+    (input.pricingAction !== "COMPLIMENTARY_UPGRADE" &&
+      input.pricingAction !== "NO_CREDIT") ||
     !pricingPreview.pricingRequired
   ) {
     return;
@@ -113,13 +116,13 @@ export const assertComplimentaryUpgradeAllowed = (
     throw new HttpError(
       403,
       "ROOM_MOVE_WAIVER_RESTRICTED",
-      "Only Admin or Super Admin can waive a higher-priced room move",
+      "Only Admin or Super Admin can waive a room-move price difference",
     );
   }
 
   requireAuditNote(
     input.note,
-    "Audit note is required to waive a higher-priced room move",
+    "Audit note is required to waive a room-move price difference",
   );
 };
 
@@ -961,28 +964,33 @@ export const buildRoomMovePricingPreview = async (
 
     const oldRate = moneyDecimal(target.item.pricePerNight);
     const newRate = moneyDecimal(destinationPricing.price);
-    const positiveNightlyDifference = Prisma.Decimal.max(
-      new Prisma.Decimal(0),
-      newRate.minus(oldRate),
-    );
+    const nightlyDifference = newRate.minus(oldRate);
     const lineDifference = moneyDecimal(
-      positiveNightlyDifference.times(affectedNights),
+      nightlyDifference.times(affectedNights),
     );
     currentNightlyRate = currentNightlyRate.plus(oldRate);
     destinationNightlyRate = destinationNightlyRate.plus(newRate);
     baseDifference = baseDifference.plus(lineDifference);
 
-    if (lineDifference.greaterThan(0)) {
+    if (!lineDifference.equals(0)) {
       const lineTax = await getTaxAmountForLine(tx, {
         booking,
         targetType: target.targetType,
         effectiveDate,
         nightlyRate: newRate,
-        taxableAmount: lineDifference,
+        taxableAmount: lineDifference.abs(),
         taxInclusive: destinationPricing.taxInclusive,
       });
-      taxBreakdown.push(...lineTax.taxBreakdown);
-      taxDifference = taxDifference.plus(lineTax.exclusiveTaxAmount);
+      const direction = lineDifference.lessThan(0) ? -1 : 1;
+      taxBreakdown.push(
+        ...lineTax.taxBreakdown.map((tax) => ({
+          ...tax,
+          amount: new Prisma.Decimal(tax.amount).times(direction).toString(),
+        })),
+      );
+      taxDifference = taxDifference.plus(
+        lineTax.exclusiveTaxAmount.times(direction),
+      );
     }
     pricingSnapshot.push({
       itemId: target.item.id,
@@ -1002,6 +1010,12 @@ export const buildRoomMovePricingPreview = async (
     : orderedRooms
         .map((room) => `Unit ${room.unit.unitNumber} / Room ${room.number}`)
         .join(", ");
+  const policy = await tx.propertyBookingPolicy.upsert({
+    where: { propertyId: booking.propertyId },
+    create: { propertyId: booking.propertyId, ...defaultBookingPolicyCreateData },
+    update: {},
+  });
+  const policySnapshot = buildStayPolicySnapshot(policy);
   const fingerprintPayload = {
     bookingId: booking.id,
     bookingVersion: booking.version,
@@ -1013,10 +1027,27 @@ export const buildRoomMovePricingPreview = async (
     taxDifference: taxDifference.toString(),
     totalAdjustment: totalAdjustment.toString(),
     taxBreakdown,
+    downgradePolicy: policySnapshot.downgrade,
   };
   const pricingFingerprint = createHash("sha256")
     .update(JSON.stringify(fingerprintPayload))
     .digest("hex");
+
+  const movementType = totalAdjustment.greaterThan(0)
+    ? "UPGRADE"
+    : totalAdjustment.lessThan(0)
+      ? "DOWNGRADE"
+      : "SAME_RATE";
+  const allowedPricingActions: BookingRoomMovePreviewDTO["allowedPricingActions"] =
+    movementType === "UPGRADE"
+      ? ["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]
+      : movementType === "DOWNGRADE"
+        ? policySnapshot.downgrade.financialTreatment === "CREDIT_DIFFERENCE"
+          ? ["APPLY_CREDIT"]
+          : policySnapshot.downgrade.financialTreatment === "WAIVER"
+            ? ["APPLY_CREDIT", "NO_CREDIT"]
+            : ["NO_CREDIT"]
+        : ["NO_CREDIT"];
 
   return {
     bookingId: booking.id,
@@ -1031,10 +1062,11 @@ export const buildRoomMovePricingPreview = async (
     taxDifference: taxDifference.toString(),
     totalAdjustment: totalAdjustment.toString(),
     pricingFingerprint,
-    pricingRequired: totalAdjustment.greaterThan(0),
-    allowedPricingActions: totalAdjustment.greaterThan(0)
-      ? ["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]
-      : ["CHARGE_DIFFERENCE"],
+    pricingRequired: !totalAdjustment.equals(0),
+    allowedPricingActions,
+    movementType,
+    downgradeTreatment: policySnapshot.downgrade.financialTreatment,
+    policySnapshot,
     taxBreakdown,
   };
 };

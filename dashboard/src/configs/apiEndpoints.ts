@@ -142,8 +142,12 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/refund-requests/${requestId}`,
     bookingCheckInById: (bookingId: string) =>
       `/bookings/${bookingId}/check-in`,
+    bookingCheckInPreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-in/preview`,
     bookingCheckOutById: (bookingId: string) =>
       `/bookings/${bookingId}/check-out`,
+    bookingCheckOutPreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-out/preview`,
     bookingNoShowById: (bookingId: string) =>
       `/bookings/${bookingId}/no-show`,
     bookingRoomMoveById: (bookingId: string) =>

@@ -235,6 +235,31 @@ export default function BookingPolicyForm({
       <div className="grid gap-5 lg:grid-cols-2">
         <section className={cardClassName}>
           <SectionHeader
+            title="Early Check-in Rules"
+            description="Control same-day arrival before the configured check-in time. Fee waivers require Admin or Super Admin approval."
+          />
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <ToggleRow
+              title="Allow early check-in"
+              description="Allows same-day arrival before the property check-in time."
+              checked={form.earlyCheckInEnabled}
+              readOnly={readOnly}
+              onChange={(checked) => updateField("earlyCheckInEnabled", checked)}
+            />
+            <FieldPanel label="Fee type" description="No fee or a fixed early-arrival charge.">
+              <select className={inputClassName} disabled={readOnly} value={form.earlyCheckInFeeType} onChange={(event) => updateField("earlyCheckInFeeType", event.target.value as BookingPolicyFormState["earlyCheckInFeeType"])}>
+                <option value="NONE">No fee</option>
+                <option value="FIXED_AMOUNT">Fixed amount</option>
+              </select>
+            </FieldPanel>
+            <FieldPanel label="Fixed fee" description="Applied only when fixed amount is selected.">
+              <input className={inputClassName} type="number" min="0" disabled={readOnly || form.earlyCheckInFeeType === "NONE"} value={form.earlyCheckInFeeValue} onChange={(event) => updateField("earlyCheckInFeeValue", event.target.value)} />
+            </FieldPanel>
+          </div>
+        </section>
+
+        <section className={cardClassName}>
+          <SectionHeader
             title="Cancellation Rules"
             description="Define when guests are allowed to request cancellation."
           />
@@ -248,6 +273,12 @@ export default function BookingPolicyForm({
                 updateField("guestCancellationAllowed", checked)
               }
             />
+            <FieldPanel
+              label="Unused-night refund percentage"
+              description="Percentage of eligible unused-night value presented for manual refund review."
+            >
+              <input className={inputClassName} type="number" min="0" max="100" disabled={readOnly || !form.refundUnusedNights} value={form.earlyCheckoutRefundPercentage} onChange={(event) => updateField("earlyCheckoutRefundPercentage", event.target.value)} />
+            </FieldPanel>
             <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="text-sm font-semibold text-slate-800">
                 Eligible booking statuses
@@ -279,6 +310,41 @@ export default function BookingPolicyForm({
               readOnly={readOnly}
               onChange={(checked) => updateField("beforeCheckInOnly", checked)}
             />
+          </div>
+        </section>
+
+        <section className={cardClassName}>
+          <SectionHeader
+            title="Late Checkout Tariff"
+            description="Configure the server-owned charge when departure crosses the property checkout date."
+          />
+          <div className="mt-4 grid gap-4 lg:grid-cols-3">
+            <FieldPanel label="Tariff type" description="Charge a rate multiplier or fixed amount per extra night.">
+              <select className={inputClassName} disabled={readOnly} value={form.lateCheckoutFeeType} onChange={(event) => updateField("lateCheckoutFeeType", event.target.value as BookingPolicyFormState["lateCheckoutFeeType"])}>
+                <option value="NIGHTLY_RATE_MULTIPLIER">Nightly-rate multiplier</option>
+                <option value="FIXED_AMOUNT">Fixed amount</option>
+              </select>
+            </FieldPanel>
+            <FieldPanel label="Tariff value" description="Multiplier or fixed amount, depending on tariff type.">
+              <input className={inputClassName} type="number" min="0" step="0.01" disabled={readOnly} value={form.lateCheckoutFeeValue} onChange={(event) => updateField("lateCheckoutFeeValue", event.target.value)} />
+            </FieldPanel>
+            <FieldPanel label="Grace period (minutes)" description="Same-day late checkout charges begin after this grace period.">
+              <input className={inputClassName} type="number" min="0" max="1440" disabled={readOnly} value={form.lateCheckoutGraceMinutes} onChange={(event) => updateField("lateCheckoutGraceMinutes", event.target.value)} />
+            </FieldPanel>
+          </div>
+        </section>
+
+        <section className={cardClassName}>
+          <SectionHeader
+            title="Room Downgrade Policy"
+            description="Define the financial outcome shown before a lower-priced room move commits."
+          />
+          <div className="mt-4 max-w-xl">
+            <select className={inputClassName} disabled={readOnly} value={form.downgradeFinancialTreatment} onChange={(event) => updateField("downgradeFinancialTreatment", event.target.value as BookingPolicyFormState["downgradeFinancialTreatment"])}>
+              <option value="NO_CREDIT">No credit</option>
+              <option value="CREDIT_DIFFERENCE">Credit price difference</option>
+              <option value="WAIVER">Admin decides with audit reason</option>
+            </select>
           </div>
         </section>
 

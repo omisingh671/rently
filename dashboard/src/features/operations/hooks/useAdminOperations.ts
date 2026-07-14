@@ -4,6 +4,8 @@ import {
   checkManualBookingAvailabilityApi,
   checkInBookingApi,
   checkOutBookingApi,
+  previewCheckInPolicyApi,
+  previewCheckOutPolicyApi,
   correctBookingStatusApi,
   createFolioChargeApi,
   createManualBookingApi,
@@ -298,6 +300,20 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     },
   });
 
+  const previewCheckInPolicy = useMutation({
+    mutationFn: (expectedVersion: number) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return previewCheckInPolicyApi(bookingId, expectedVersion);
+    },
+  });
+
+  const previewCheckOutPolicy = useMutation({
+    mutationFn: (expectedVersion: number) => {
+      if (!bookingId) throw new Error("BookingId required");
+      return previewCheckOutPolicyApi(bookingId, expectedVersion);
+    },
+  });
+
   const previewStayExtension = useMutation({
     mutationFn: (payload: PreviewStayExtensionPayload) => {
       if (!bookingId) throw new Error("BookingId required");
@@ -390,6 +406,8 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     updateBooking: updateBooking.mutateAsync,
     checkInBooking: checkInBooking.mutateAsync,
     checkOutBooking: checkOutBooking.mutateAsync,
+    previewCheckInPolicy: previewCheckInPolicy.mutateAsync,
+    previewCheckOutPolicy: previewCheckOutPolicy.mutateAsync,
     markNoShow: markNoShow.mutateAsync,
     moveRooms: moveRooms.mutateAsync,
     previewRoomMove: previewRoomMove.mutateAsync,

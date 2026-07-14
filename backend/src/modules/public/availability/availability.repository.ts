@@ -208,6 +208,71 @@ export const listAvailabilityUnits = (
     ],
   });
 
+export const listAvailabilityConflicts = (
+  propertyIds: string[],
+  checkIn: Date,
+  checkOut: Date,
+  at: Date,
+  tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
+) =>
+  Promise.all([
+    client(tx).bookingItem.findMany({
+      where: {
+        booking: {
+          propertyId: { in: propertyIds },
+          status: {
+            notIn: [
+              BookingStatus.CANCELLED,
+              BookingStatus.CHECKED_OUT,
+              BookingStatus.NO_SHOW,
+            ],
+          },
+          checkIn: { lt: checkOut },
+          checkOut: { gt: checkIn },
+        },
+      },
+      select: {
+        targetType: true,
+        unitId: true,
+        roomId: true,
+        booking: { select: { propertyId: true } },
+      },
+    }),
+    client(tx).maintenanceBlock.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        status: { notIn: [MaintenanceStatus.RESOLVED, MaintenanceStatus.CANCELLED] },
+        startDate: { lt: checkOut },
+        endDate: { gt: checkIn },
+      },
+      select: {
+        propertyId: true,
+        targetType: true,
+        unitId: true,
+        roomId: true,
+      },
+    }),
+    client(tx).inventoryLock.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        releasedAt: null,
+        expiresAt: { gt: at },
+        checkIn: { lt: checkOut },
+        checkOut: { gt: checkIn },
+        ...(ignoreLockToken !== undefined && {
+          NOT: { lockToken: ignoreLockToken },
+        }),
+      },
+      select: {
+        propertyId: true,
+        targetType: true,
+        unitId: true,
+        roomId: true,
+      },
+    }),
+  ]);
+
 const targetOverlapWhere = (target: PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM
     ? {

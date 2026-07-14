@@ -70,6 +70,10 @@ import {
   findOrCreateWalkInGuest,
   getStayNights,
 } from "./bookings.walk-in.js";
+import {
+  buildCheckInPolicyPreview,
+  buildCheckOutPolicyPreview,
+} from "./bookings.stay-policy.js";
 
 import type {
   CheckDashboardManualBookingAvailabilityInput,
@@ -314,9 +318,25 @@ export const checkInBooking = async (
     return checkInBookingInTransaction(tx, {
       bookingId,
       actorUserId: actor.id,
+      actorRole: actor.role,
       checkIn: input,
       ...(assignment !== undefined && { assignment }),
     });
+  });
+};
+
+export const previewCheckInPolicy = async (
+  userId: string,
+  bookingId: string,
+  expectedVersion: number,
+) => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, expectedVersion);
+    return buildCheckInPolicyPreview(tx, booking);
   });
 };
 
@@ -341,6 +361,21 @@ export const checkOutBooking = async (
       extensionChargeId: extension.extensionChargeId,
       extraNights: extension.extensionPreview?.extraNights ?? 0,
     });
+  });
+};
+
+export const previewCheckOutPolicy = async (
+  userId: string,
+  bookingId: string,
+  expectedVersion: number,
+) => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, expectedVersion);
+    return buildCheckOutPolicyPreview(tx, booking);
   });
 };
 

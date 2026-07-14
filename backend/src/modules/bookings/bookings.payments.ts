@@ -25,6 +25,7 @@ import {
   getActiveRefundRequest,
   getBookingBalanceAmount,
   getBookingRefundableAmount,
+  getBookingRefundedAmount,
   getPaymentRefundableAmount,
   getRefundPaymentStatus,
 } from "./bookings.financials.js";
@@ -93,16 +94,42 @@ export const recordBookingRefundForBooking = async (
 ) => {
   if (
     booking.status !== BookingStatus.CANCELLED &&
-    booking.status !== BookingStatus.NO_SHOW
+    booking.status !== BookingStatus.NO_SHOW &&
+    booking.status !== BookingStatus.CHECKED_OUT
   ) {
     throw new HttpError(
       409,
       "BOOKING_REFUND_NOT_ALLOWED",
-      "Refunds can be recorded only for cancelled or no-show bookings",
+      "Refunds can be recorded only for cancelled, no-show, or policy-approved early-checkout bookings",
     );
   }
 
   const amount = new Prisma.Decimal(input.amount);
+  if (booking.status === BookingStatus.CHECKED_OUT) {
+    const checkoutEvent = [...booking.operationEvents]
+      .reverse()
+      .find((event) => event.eventType === "CHECK_OUT");
+    const metadata =
+      checkoutEvent?.metadata !== null &&
+      typeof checkoutEvent?.metadata === "object" &&
+      !Array.isArray(checkoutEvent.metadata)
+        ? checkoutEvent.metadata
+        : {};
+    const approvedAmount = new Prisma.Decimal(
+      typeof metadata.refundAmount === "string" ? metadata.refundAmount : 0,
+    );
+    const remainingApproved = Prisma.Decimal.max(
+      0,
+      approvedAmount.minus(getBookingRefundedAmount(booking)),
+    );
+    if (approvedAmount.lessThanOrEqualTo(0) || amount.greaterThan(remainingApproved)) {
+      throw new HttpError(
+        422,
+        "EARLY_CHECKOUT_REFUND_LIMIT",
+        "Refund exceeds the frozen early-checkout policy amount",
+      );
+    }
+  }
   const payment = booking.payments.find((item) => item.id === input.paymentId);
 
   if (!payment || payment.bookingId !== booking.id) {

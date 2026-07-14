@@ -255,3 +255,23 @@ export const findActivePricingForTarget = (
 
       return ranked[0] ?? null;
     });
+
+export const listActivePricingCandidates = (
+  now: Date,
+  tenantId: string,
+  comfortOption: ComfortOption,
+  stay: StayPricingScope,
+  tx?: Prisma.TransactionClient,
+  scope: PublicPropertyScope = {},
+) =>
+  client(tx).roomPricing.findMany({
+    where: {
+      ...activePricingBaseWhere(now, tenantId, stay, scope),
+      product: {
+        is: {
+          hasAC: comfortOption === ComfortOption.AC,
+        },
+      },
+    },
+    include: publicSpaceInclude,
+  });

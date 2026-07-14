@@ -113,6 +113,9 @@ export const moveBookingRoomsInTransaction = async (
       baseDifference: pricingPreview.baseDifference,
       taxDifference: pricingPreview.taxDifference,
       totalAdjustment: pricingPreview.totalAdjustment,
+      movementType: pricingPreview.movementType,
+      downgradeTreatment: pricingPreview.downgradeTreatment,
+      policySnapshot: pricingPreview.policySnapshot,
       waivedAmount:
         input.roomMove.pricingAction === "COMPLIMENTARY_UPGRADE"
           ? pricingPreview.totalAdjustment

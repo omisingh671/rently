@@ -27,6 +27,7 @@ import {
   voidBookingFolioChargeSchema,
   previewStayExtensionSchema,
   commitStayExtensionSchema,
+  previewBookingLifecyclePolicySchema,
 } from "./bookings.schema.js";
 
 const getUserId = (req: AuthRequest) => {
@@ -153,7 +154,27 @@ export const checkInBooking = async (req: AuthRequest, res: Response) => {
       allowBalanceDueCheckIn: body.allowBalanceDueCheckIn,
     }),
     ...(body.note !== undefined && { note: body.note }),
+    ...(body.policyFingerprint !== undefined && {
+      policyFingerprint: body.policyFingerprint,
+    }),
+    ...(body.allowPolicyOverride !== undefined && {
+      allowPolicyOverride: body.allowPolicyOverride,
+    }),
+    ...(body.overrideReason !== undefined && {
+      overrideReason: body.overrideReason,
+    }),
   });
+  res.json({ success: true, data });
+};
+
+export const previewCheckInPolicy = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = previewBookingLifecyclePolicySchema.parse(req.body);
+  const data = await service.previewCheckInPolicy(
+    getUserId(req),
+    params.id,
+    body.expectedVersion,
+  );
   res.json({ success: true, data });
 };
 
@@ -166,7 +187,21 @@ export const checkOutBooking = async (req: AuthRequest, res: Response) => {
       allowBalanceDueCheckout: body.allowBalanceDueCheckout,
     }),
     ...(body.note !== undefined && { note: body.note }),
+    ...(body.policyFingerprint !== undefined && {
+      policyFingerprint: body.policyFingerprint,
+    }),
   });
+  res.json({ success: true, data });
+};
+
+export const previewCheckOutPolicy = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = previewBookingLifecyclePolicySchema.parse(req.body);
+  const data = await service.previewCheckOutPolicy(
+    getUserId(req),
+    params.id,
+    body.expectedVersion,
+  );
   res.json({ success: true, data });
 };
 

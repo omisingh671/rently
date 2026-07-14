@@ -1,7 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 import {
   BookingTargetType,
-  ComfortOption,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { env } from "@/config/env.js";
@@ -35,10 +34,7 @@ import {
   getRoomCapacity,
   getUnitCapacity,
 } from "./availability.capacity.js";
-import {
-  ensureSpaceAvailable,
-  hasInventoryConflict,
-} from "./availability.conflicts.js";
+import { ensureSpaceAvailable } from "./availability.conflicts.js";
 import { mapAvailabilityOptionDTO } from "./availability.presenter.js";
 
 export { ensureSpaceAvailable } from "./availability.conflicts.js";
@@ -374,83 +370,88 @@ const curatePublicOptions = (
     .sort((left, right) => sortOptions(left, right, requestedGuests));
 };
 
-const loadAvailableRooms = async (
-  tenantId: string,
-  comfortOption: ComfortOption,
+const conflictKey = (propertyId: string, targetId: string) =>
+  `${propertyId}:${targetId}`;
+
+const filterAvailableInventory = async (
+  rooms: repo.PublicAvailabilityRoomRecord[],
+  units: repo.PublicAvailabilityUnitRecord[],
   stay: StayScope,
-  scope: spacesRepo.PublicPropertyScope = {},
   tx?: Prisma.TransactionClient,
   ignoreLockToken?: string,
 ) => {
-  const rooms = await repo.listAvailabilityRooms(
-    tenantId,
-    comfortOption,
-    scope,
-    tx,
+  const propertyIds = Array.from(
+    new Set([
+      ...rooms.map((room) => room.unit.propertyId),
+      ...units.map((unit) => unit.propertyId),
+    ]),
   );
-  const availableRooms = [];
+  if (propertyIds.length === 0) return { rooms: [], units: [] };
 
-  for (const room of rooms) {
-    const target = {
-      targetType: BookingTargetType.ROOM,
-      unitId: room.unitId,
-      roomId: room.id,
-    };
-
-    if (
-      !(await hasInventoryConflict(
-        room.unit.propertyId,
-        target,
-        stay,
-        tx,
-        ignoreLockToken,
-      ))
-    ) {
-      availableRooms.push(room);
+  const [bookingItems, maintenanceBlocks, inventoryLocks] =
+    await repo.listAvailabilityConflicts(
+      propertyIds,
+      stay.checkIn,
+      stay.checkOut,
+      now(),
+      tx,
+      ignoreLockToken,
+    );
+  const blockedProperties = new Set<string>();
+  const blockedRooms = new Set<string>();
+  const blockedUnitsForRoom = new Set<string>();
+  const blockedUnitsForUnit = new Set<string>();
+  const addTargetConflict = (input: {
+    propertyId: string;
+    targetType: string;
+    unitId: string | null;
+    roomId: string | null;
+  }) => {
+    if (input.targetType === "PROPERTY") {
+      blockedProperties.add(input.propertyId);
+      return;
     }
-  }
-
-  return availableRooms;
-};
-
-const loadAvailableUnits = async (
-  tenantId: string,
-  comfortOption: ComfortOption,
-  stay: StayScope,
-  scope: spacesRepo.PublicPropertyScope = {},
-  tx?: Prisma.TransactionClient,
-  ignoreLockToken?: string,
-) => {
-  const units = await repo.listAvailabilityUnits(
-    tenantId,
-    comfortOption,
-    scope,
-    tx,
-  );
-  const availableUnits = [];
-
-  for (const unit of units) {
-    const target = {
-      targetType: BookingTargetType.UNIT,
-      unitId: unit.id,
-      roomId: null,
-    };
-
-    if (
-      getUnitCapacity(unit) > 0 &&
-      !(await hasInventoryConflict(
-        unit.propertyId,
-        target,
-        stay,
-        tx,
-        ignoreLockToken,
-      ))
-    ) {
-      availableUnits.push(unit);
+    if (input.targetType === BookingTargetType.UNIT && input.unitId) {
+      const key = conflictKey(input.propertyId, input.unitId);
+      blockedUnitsForRoom.add(key);
+      blockedUnitsForUnit.add(key);
+      return;
     }
-  }
+    if (input.roomId) {
+      blockedRooms.add(conflictKey(input.propertyId, input.roomId));
+    }
+    if (input.unitId) {
+      blockedUnitsForUnit.add(conflictKey(input.propertyId, input.unitId));
+    }
+  };
 
-  return availableUnits;
+  for (const item of bookingItems) {
+    addTargetConflict({
+      propertyId: item.booking.propertyId,
+      targetType: item.targetType,
+      unitId: item.unitId,
+      roomId: item.roomId,
+    });
+  }
+  for (const block of maintenanceBlocks) addTargetConflict(block);
+  for (const lock of inventoryLocks) addTargetConflict(lock);
+
+  return {
+    rooms: rooms.filter((room) => {
+      const propertyId = room.unit.propertyId;
+      return (
+        !blockedProperties.has(propertyId) &&
+        !blockedUnitsForRoom.has(conflictKey(propertyId, room.unitId)) &&
+        !blockedRooms.has(conflictKey(propertyId, room.id))
+      );
+    }),
+    units: units.filter(
+      (unit) =>
+        getUnitCapacity(unit) > 0 &&
+        !blockedProperties.has(unit.propertyId) &&
+        !blockedUnitsForUnit.has(conflictKey(unit.propertyId, unit.id)),
+    ),
+  };
 };
 
 const getGalleryScope = (gallery: GallerySource): GalleryImageScope => {
@@ -544,34 +545,55 @@ const mapUnitRooms = (
     ),
   }));
 
+const selectPricingCandidate = (
+  candidates: spacesRepo.PublicSpaceRecord[],
+  propertyId: string,
+  target: spacesRepo.PublicSpaceTarget,
+  guestCount: number,
+) =>
+  candidates
+    .filter((candidate) => {
+      if (
+        candidate.propertyId !== propertyId ||
+        candidate.product.occupancy !== guestCount
+      ) {
+        return false;
+      }
+      if (target.targetType === BookingTargetType.ROOM) {
+        return (
+          candidate.roomId === target.roomId ||
+          (candidate.roomId === null && candidate.unitId === target.unitId) ||
+          (candidate.roomId === null && candidate.unitId === null)
+        );
+      }
+      return (
+        (candidate.roomId === null && candidate.unitId === target.unitId) ||
+        (candidate.roomId === null && candidate.unitId === null)
+      );
+    })
+    .sort((left, right) => {
+      const rank = (candidate: spacesRepo.PublicSpaceRecord) =>
+        candidate.roomId !== null ? 0 : candidate.unitId !== null ? 1 : 2;
+      return rank(left) - rank(right) || Number(left.price) - Number(right.price);
+    })[0] ?? null;
+
 const toPricedRoomItem = async (
   room: repo.PublicAvailabilityRoomRecord,
   guestCount: number,
   priceGuestCount: number,
   _index: number,
-  tenantId: string,
-  comfortOption: ComfortOption,
-  stay: StayScope,
-  tx?: Prisma.TransactionClient,
-  scope: spacesRepo.PublicPropertyScope = {},
+  pricingCandidates: spacesRepo.PublicSpaceRecord[],
 ): Promise<PublicInventoryItem | null> => {
   const target = {
     targetType: BookingTargetType.ROOM,
     unitId: room.unitId,
     roomId: room.id,
   };
-  const pricing = await spacesRepo.findActivePricingForTarget(
+  const pricing = selectPricingCandidate(
+    pricingCandidates,
     room.unit.propertyId,
     target,
-    new Date(),
-    tenantId,
-    {
-      guestCount: priceGuestCount,
-      comfortOption,
-    },
-    stay,
-    tx,
-    scope,
+    priceGuestCount,
   );
 
   if (!pricing) {
@@ -614,11 +636,7 @@ const toPricedUnitItem = async (
   unit: repo.PublicAvailabilityUnitRecord,
   guestCount: number,
   _index: number,
-  tenantId: string,
-  comfortOption: ComfortOption,
-  stay: StayScope,
-  tx?: Prisma.TransactionClient,
-  scope: spacesRepo.PublicPropertyScope = {},
+  pricingCandidates: spacesRepo.PublicSpaceRecord[],
 ): Promise<PublicInventoryItem | null> => {
   const capacity = getUnitCapacity(unit);
   const target = {
@@ -626,18 +644,11 @@ const toPricedUnitItem = async (
     unitId: unit.id,
     roomId: null,
   };
-  const pricing = await spacesRepo.findActivePricingForTarget(
+  const pricing = selectPricingCandidate(
+    pricingCandidates,
     unit.propertyId,
     target,
-    new Date(),
-    tenantId,
-    {
-      guestCount: capacity,
-      comfortOption,
-    },
-    stay,
-    tx,
-    scope,
+    capacity,
   );
 
   if (!pricing) {
@@ -766,24 +777,35 @@ export const generateAvailabilityOptions = async (
     checkOut: input.checkOut,
     nights,
   };
-  const [rooms, units] = await Promise.all([
-    loadAvailableRooms(
+  const [candidateRooms, candidateUnits, pricingCandidates] = await Promise.all([
+    repo.listAvailabilityRooms(
       tenantId,
       input.comfortOption,
-      stay,
       scope,
       tx,
-      ignoreLockToken,
     ),
-    loadAvailableUnits(
+    repo.listAvailabilityUnits(
+      tenantId,
+      input.comfortOption,
+      scope,
+      tx,
+    ),
+    spacesRepo.listActivePricingCandidates(
+      now(),
       tenantId,
       input.comfortOption,
       stay,
-      scope,
       tx,
-      ignoreLockToken,
+      scope,
     ),
   ]);
+  const { rooms, units } = await filterAvailableInventory(
+    candidateRooms,
+    candidateUnits,
+    stay,
+    tx,
+    ignoreLockToken,
+  );
   const options: PublicAvailabilityOptionInternal[] = [];
 
   const groupRoomsByProperty = new Map<
@@ -820,11 +842,7 @@ export const generateAvailabilityOptions = async (
           unit,
           input.guests,
           0,
-          tenantId,
-          input.comfortOption,
-          stay,
-          tx,
-          scope,
+          pricingCandidates,
       ),
     ]);
   }
@@ -847,11 +865,7 @@ export const generateAvailabilityOptions = async (
             allocation.unit,
             allocation.guestCount,
             index,
-            tenantId,
-            input.comfortOption,
-            stay,
-            tx,
-            scope,
+            pricingCandidates,
           ),
         ),
       );
@@ -891,11 +905,7 @@ export const generateAvailabilityOptions = async (
               firstRoomAllocation.guestCount,
               firstRoomAllocation.guestCount,
               0,
-              tenantId,
-              input.comfortOption,
-              stay,
-              tx,
-              scope,
+              pricingCandidates,
             ),
         ]);
       }
@@ -915,11 +925,7 @@ export const generateAvailabilityOptions = async (
                 ? getRoomCapacity(allocation.room)
                 : allocation.guestCount,
               index,
-              tenantId,
-              input.comfortOption,
-              stay,
-              tx,
-              scope,
+              pricingCandidates,
             );
         }),
       );
@@ -954,11 +960,7 @@ export const generateAvailabilityOptions = async (
           unit,
           getUnitCapacity(unit),
           0,
-          tenantId,
-          input.comfortOption,
-          stay,
-          tx,
-          scope,
+          pricingCandidates,
         ),
       ...remainingRoomAllocation.map((allocation, index) => () =>
         toPricedRoomItem(
@@ -966,11 +968,7 @@ export const generateAvailabilityOptions = async (
           allocation.guestCount,
           allocation.guestCount,
           index,
-          tenantId,
-          input.comfortOption,
-          stay,
-          tx,
-          scope,
+          pricingCandidates,
         ),
       ),
     ]);

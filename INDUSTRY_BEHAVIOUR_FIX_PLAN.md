@@ -228,6 +228,16 @@ Implemented ownership:
 Priority: **P2**  
 Goal: make early-arrival, early-departure, late-departure, and downgrade financial behaviour explicit and server-owned.
 
+Status: **Completed in the current working tree**
+
+Implemented ownership:
+
+- `PropertyBookingPolicy` owns validated early check-in, early checkout, late checkout, and downgrade rules with backward-compatible defaults.
+- Booking check-in/check-out previews own timezone-aware fee, refund-review, and override results before commit.
+- Check-in, check-out, late-checkout, and room-move commits freeze the applicable policy fingerprint and adjustment evidence.
+- Room downgrade commits explicitly support configured credit, no-credit, and authorized waiver outcomes.
+- Dashboard confirmation flows show the server-owned result and collect the required override/waiver reason.
+
 ### Implementation
 
 1. Define property-level policy fields for:
@@ -262,6 +272,17 @@ Goal: make early-arrival, early-departure, late-departure, and downgrade financi
 
 Priority: **P2**  
 Goal: establish measured capacity instead of assuming scalability from architecture.
+
+Status: **Completed for the recorded local baseline**
+
+Implemented ownership:
+
+- A guarded dependency-free harness owns isolated smoke and scheduled/baseline workloads, endpoint percentiles, throughput, error rates, MySQL connection telemetry, slow-query digests, and query plans.
+- The deterministic seed owns 2-property/200-booking smoke data and 5-property/400-room/5,000-booking baseline data.
+- Inventory-lock race scenarios assert one booking winner and zero unreleased locks.
+- Measured availability and operations-board N+1 paths were replaced with bounded conflict/pricing loads and the existing batch booking presenter.
+- Generated reports are ignored under `backend/load-results/`; the reproducible commands and recorded baseline live in `backend/scripts/load/README.md`.
+- No hosted GitHub Actions workflow was added; `load:scheduled` is operator-controlled.
 
 ### Implementation
 

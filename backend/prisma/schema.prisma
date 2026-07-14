@@ -468,7 +468,10 @@ model PropertyBookingPolicy {
   checkOutTime        String             @default("11:00")
   cancellationRules   Json
   refundRules         Json
+  earlyCheckInRules   Json?
   earlyCheckoutRules  Json
+  lateCheckoutRules   Json?
+  downgradeRules      Json?
   noShowRules         Json
   guestPolicyText     String             @db.Text
   createdAt           DateTime           @default(now())
