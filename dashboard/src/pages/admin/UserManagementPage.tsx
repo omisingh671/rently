@@ -15,6 +15,7 @@ import EditManagedUserForm, {
   type EditUserFormState,
 } from "@/features/users/components/EditManagedUserForm";
 import ManagedUsersTable from "@/features/users/components/ManagedUsersTable";
+import EmailDeliveryFailuresPanel from "@/features/email-deliveries/components/EmailDeliveryFailuresPanel";
 import { useManagedUsers } from "@/features/users/hooks/useAdminUsers";
 import type {
   AdminUser,
@@ -251,6 +252,8 @@ export default function UserManagementPage() {
 
   return (
     <div className="space-y-6">
+      {currentUser?.role === "SUPER_ADMIN" && <EmailDeliveryFailuresPanel />}
+
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">

@@ -87,6 +87,18 @@ export const downloadDashboardDocument = async (
   await streamPdf(res, document);
 };
 
+export const retryDashboardDocumentPdf = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = billingDocumentIdParamsSchema.parse(req.params);
+  const data = await service.retryDashboardDocumentPdf(
+    getUserId(req),
+    params.id,
+  );
+  res.json({ success: true, data });
+};
+
 export const voidDashboardDocument = async (
   req: AuthRequest,
   res: Response,

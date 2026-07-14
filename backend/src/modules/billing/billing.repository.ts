@@ -307,6 +307,75 @@ export const updateDocument = (
     include: billingDocumentInclude,
   });
 
+export const claimDocumentRender = (
+  documentId: string,
+  correlationId: string,
+  staleBefore: Date,
+) =>
+  prisma.billingDocument.updateMany({
+    where: {
+      id: documentId,
+      OR: [
+        {
+          pdfStatus: { in: ["PENDING", "FAILED"] },
+          pdfAttemptCount: { lt: prisma.billingDocument.fields.pdfMaxAttempts },
+        },
+        {
+          pdfStatus: "PROCESSING",
+          pdfProcessingStartedAt: { lt: staleBefore },
+        },
+      ],
+    },
+    data: {
+      pdfStatus: "PROCESSING",
+      pdfAttemptCount: { increment: 1 },
+      pdfLastError: null,
+      pdfCorrelationId: correlationId,
+      pdfProcessingStartedAt: new Date(),
+    },
+  });
+
+export const markDocumentRenderSucceeded = (
+  documentId: string,
+  pdfUrl: string,
+) =>
+  prisma.billingDocument.update({
+    where: { id: documentId },
+    data: {
+      pdfUrl,
+      pdfStatus: "SUCCEEDED",
+      pdfLastError: null,
+      pdfProcessingStartedAt: null,
+      pdfRenderedAt: new Date(),
+    },
+    include: billingDocumentInclude,
+  });
+
+export const markDocumentRenderFailed = (
+  documentId: string,
+  errorMessage: string,
+) =>
+  prisma.billingDocument.update({
+    where: { id: documentId },
+    data: {
+      pdfStatus: "FAILED",
+      pdfLastError: errorMessage.slice(0, 4000),
+      pdfProcessingStartedAt: null,
+    },
+    include: billingDocumentInclude,
+  });
+
+export const resetDocumentRenderForRetry = (documentId: string) =>
+  prisma.billingDocument.updateMany({
+    where: { id: documentId, pdfStatus: "FAILED" },
+    data: {
+      pdfStatus: "PENDING",
+      pdfAttemptCount: 0,
+      pdfLastError: null,
+      pdfProcessingStartedAt: null,
+    },
+  });
+
 export const sumSucceededPaymentsByBooking = async (
   bookingId: string,
   tx?: Prisma.TransactionClient,

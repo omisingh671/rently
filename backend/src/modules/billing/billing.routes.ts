@@ -20,6 +20,10 @@ router.get(
   "/billing-documents/:id/download",
   controller.downloadDashboardDocument,
 );
+router.post(
+  "/billing-documents/:id/pdf/retry",
+  controller.retryDashboardDocumentPdf,
+);
 router.get("/billing-documents/:id", controller.getDashboardDocument);
 router.patch("/billing-documents/:id/void", controller.voidDashboardDocument);
 

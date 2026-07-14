@@ -65,6 +65,11 @@ export const API_ENDPOINTS = {
     deleteExpired: "/sessions/expired",
   },
 
+  emailDeliveries: {
+    list: "/email-deliveries",
+    retry: (deliveryId: string) => `/email-deliveries/${deliveryId}/retry`,
+  },
+
   propertyAssignments: {
     list: "/property-assignments",
     create: "/property-assignments",
@@ -180,6 +185,8 @@ export const API_ENDPOINTS = {
     receipt: "/billing-documents/receipts",
     download: (documentId: string) =>
       `/billing-documents/${documentId}/download`,
+    retryPdf: (documentId: string) =>
+      `/billing-documents/${documentId}/pdf/retry`,
     voidById: (documentId: string) =>
       `/billing-documents/${documentId}/void`,
     settingsByProperty: (propertyId: string) =>

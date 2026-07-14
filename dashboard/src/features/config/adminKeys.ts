@@ -191,6 +191,10 @@ export const ADMIN_KEYS = {
       ] as const,
   },
 
+  emailDeliveries: {
+    all: () => [...ADMIN_KEYS.root, "email-deliveries"] as const,
+  },
+
   galleries: {
     all: () => [...ADMIN_KEYS.root, "galleries"] as const,
 

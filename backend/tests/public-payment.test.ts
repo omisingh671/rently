@@ -547,6 +547,55 @@ test("manual payment confirms a pending booking", async () => {
   );
 });
 
+test("PDF render failure preserves the document and supports a safe retry", async () => {
+  const booking = await createBooking(
+    new Date("2034-03-10T00:00:00.000Z"),
+    new Date("2034-03-12T00:00:00.000Z"),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-pdf-recovery`,
+    purpose: PaymentPurpose.FULL_PAYMENT,
+  });
+  const rawDocument = await prisma.billingDocument.findFirstOrThrow({
+    where: { bookingId: booking.id, type: BillingDocumentType.INVOICE },
+  });
+  const document = await billingService.getDashboardDocument(
+    state.superAdminId,
+    rawDocument.id,
+  );
+
+  await assert.rejects(
+    billingService.renderDocumentPdf(document, {
+      render: async () => {
+        throw new Error("Chromium unavailable");
+      },
+    }),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === "PDF_RENDER_UNAVAILABLE",
+  );
+
+  const failed = await prisma.billingDocument.findUniqueOrThrow({
+    where: { id: document.id },
+  });
+  assert.equal(failed.status, "ISSUED");
+  assert.equal(failed.pdfStatus, "FAILED");
+  assert.match(failed.pdfLastError ?? "", /Chromium unavailable/);
+
+  const retried = await billingService.retryDashboardDocumentPdf(
+    state.superAdminId,
+    document.id,
+    {
+      render: async () => Buffer.from("test-pdf"),
+      upload: async () => "/uploads/billing-documents/test-pdf.pdf",
+    },
+  );
+  assert.equal(retried.pdfStatus, "SUCCEEDED");
+  assert.equal(retried.pdfUrl, "/uploads/billing-documents/test-pdf.pdf");
+  assert.equal(retried.status, "ISSUED");
+});
+
 test("manual balance payment can clear confirmed booking balance", async () => {
   const booking = await createBooking(
     new Date("2027-03-14T00:00:00.000Z"),

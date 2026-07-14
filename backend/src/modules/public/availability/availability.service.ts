@@ -6,6 +6,7 @@ import {
 } from "@/generated/prisma/client.js";
 import { env } from "@/config/env.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { isTransientDatabaseError } from "@/common/retry/retry-policy.js";
 import * as repo from "./availability.repository.js";
 import * as spacesRepo from "@/modules/public/spaces/spaces.repository.js";
 import * as tenantService from "@/modules/public/tenant/tenant.service.js";
@@ -60,9 +61,7 @@ const getNights = (checkIn: Date, checkOut: Date) => {
   return Math.max(1, nights);
 };
 
-const isRetryableBookingTransactionError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  (error.code === "P2034" || error.code === "P2002");
+const isRetryableBookingTransactionError = isTransientDatabaseError;
 
 const getOptionPropertyScope = (
   baseScope: spacesRepo.PublicPropertyScope,

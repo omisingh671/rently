@@ -36,7 +36,7 @@ Validation levels:
 | Stay extension | Preview and commit endpoints now reprice added nights, expose room/unit/maintenance/lock conflicts, and atomically update `checkOut`, folio/debit-note evidence, and a dedicated audit event; dashboard and browser E2E cover the operator journey | Extension must atomically revalidate inventory, price added nights, update departure, and audit the change | **Validated in current working tree** |
 | RBAC and property isolation | Backend tests cover Super Admin, Admin, Manager, guest/dashboard session audiences, and direct-ID property isolation | Cross-property reads and writes must be denied at service and data-access boundaries | **Validated for covered routes** |
 | Browser journey regression | Playwright uses an isolated guarded seed and covers the critical guest booking/payment/document journey, the critical dashboard staff stay lifecycle, duplicate submit, stale version recovery, cross-property denial, deliberate availability failure/retry, and 390px overflow smoke | Critical guest and staff journeys should run deterministically in a guarded test environment | **Local suite validated; hosted CI intentionally omitted** |
-| Dependency failure recovery | No systematic tests for DB timeouts, mail/PDF failure, provider retries, or partial responses | External failures need bounded retries, durable state, operator visibility, and safe replay | **Missing** |
+| Dependency failure recovery | Focused tests cover bounded retry exhaustion, transaction rollback without partial state, durable PDF failure/retry, durable mail failure/retry, and replay without duplicate sends; correlation IDs, structured error context, and operator controls are implemented | External failures need bounded retries, durable state, operator visibility, and safe replay | **Validated for current manual-payment/document/email paths** |
 | Load and query performance | No k6/Artillery profile or measured query-plan baseline | Search and write paths need measured capacity and slow-query evidence before scale claims | **Missing** |
 
 ## Required Fixes
@@ -70,10 +70,10 @@ Validation levels:
    - Price and tax only the added nights, persist the adjustment snapshot, update `checkOut`, and create an operation event.
    - Require payment or an audited authorized override before commit, according to property policy.
 
-5. **Add failure-recovery tests and operational visibility**
-   - Test transaction retry exhaustion, DB timeout, duplicate webhook, delayed webhook, PDF failure, and mail failure.
+5. **Add failure-recovery tests and operational visibility - completed for current manual-payment scope**
+   - Test transaction retry exhaustion, DB timeout, PDF failure, and mail failure. Provider webhook failure tests remain with the intentionally excluded real-gateway work.
    - Persist retryable work where an external side effect cannot safely complete inside the request.
-   - Add structured logs, correlation IDs, retry counts, and alerts for failed financial/document jobs.
+   - Add structured logs, correlation IDs, retry counts, and operator-visible failed document/email work.
 
 ### P2 - Required before scale claims
 
@@ -100,13 +100,17 @@ Validation levels:
 - An isolated Playwright E2E foundation now validates the authenticated guest booking journey through mock payment, invoice/receipt download, and protected booking detail; the manager walk-in lifecycle through payment, automatic assignment, check-in, checkout, and housekeeping inspection; plus 390px public/dashboard overflow smoke.
 - Checkout form submission now has an immediate guard that prevents synchronous double-clicks from issuing duplicate booking-create requests.
 - Negative browser coverage now validates cross-property anti-enumeration, stale-version recovery, and deliberate API failure/retry behavior.
+- Correlation IDs and structured operation context now cover request failures, while shared retry classification limits automatic retries to transient database/network failures.
+- Billing PDF generation now has durable status, attempt/error evidence, stored output, safe replay, and an operator retry action without changing the issued financial document.
+- Password-reset mail now uses durable delivery jobs, deterministic message identity, SMTP outside the token transaction, and a Super Admin failure/retry panel.
 
 ## Latest Validation
 
 - Isolated schema: `rently_audit_019f5ba6`
 - Playwright: 5/5 passed
 - Backend concurrency: 12/12 passed
-- Backend payment/refund/operations: 58/58 passed
+- Backend recovery: 3/3 passed
+- Backend payment/refund/operations: 59/59 passed
 - Backend typecheck: passed
 - Backend lint: passed
 - Backend production build: passed
@@ -116,4 +120,4 @@ Validation levels:
 
 ## Release Interpretation
 
-Rently currently has a strong backend foundation for manual-payment hotel operations. It should be treated as **manual-payment production candidate**, subject to browser E2E and failure-recovery completion. It is **not ready for live online payments** until the provider, webhook, reconciliation, refund, and provider-failure paths are implemented and tested.
+Rently currently has a strong backend foundation for manual-payment hotel operations. It should be treated as a **manual-payment production candidate**, subject to environment-specific migration, SMTP/storage configuration, monitoring, and deployment verification. It is **not ready for live online payments** until the provider, webhook, reconciliation, refund, and provider-failure paths are implemented and tested.

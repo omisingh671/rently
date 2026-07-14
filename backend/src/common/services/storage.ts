@@ -3,6 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -17,6 +18,13 @@ export interface StorageProvider {
    * @returns The public URL of the uploaded asset.
    */
   uploadFile(file: Express.Multer.File, folder: string): Promise<string>;
+  uploadBuffer(
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    folder: string,
+  ): Promise<string>;
+  downloadFile(fileUrl: string): Promise<Buffer>;
 
   /**
    * Deletes a file given its public URL.
@@ -35,6 +43,15 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
+    return this.uploadBuffer(file.buffer, file.originalname, file.mimetype, folder);
+  }
+
+  async uploadBuffer(
+    buffer: Buffer,
+    originalName: string,
+    _mimeType: string,
+    folder: string,
+  ): Promise<string> {
     // Sanitize folder name
     const sanitizedFolder = folder.replace(/[^a-zA-Z0-9\-_]/g, "");
     const targetDir = path.join(this.baseDir, sanitizedFolder);
@@ -43,12 +60,12 @@ export class LocalStorageProvider implements StorageProvider {
     await fs.mkdir(targetDir, { recursive: true });
 
     // Generate unique file name
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(originalName);
     const uniqueName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
     const targetPath = path.join(targetDir, uniqueName);
 
     // Save the file
-    await fs.writeFile(targetPath, file.buffer);
+    await fs.writeFile(targetPath, buffer);
 
     // Return the URL path
     return `${this.baseUrl}/${sanitizedFolder}/${uniqueName}`;
@@ -74,6 +91,16 @@ export class LocalStorageProvider implements StorageProvider {
       }
     }
   }
+
+  async downloadFile(fileUrl: string): Promise<Buffer> {
+    if (!fileUrl.startsWith(this.baseUrl)) {
+      throw new Error("Storage URL is outside the configured local base URL");
+    }
+    const relativePath = fileUrl
+      .substring(this.baseUrl.length)
+      .replace(/^[/\\]+/, "");
+    return fs.readFile(path.join(this.baseDir, relativePath));
+  }
 }
 
 export class S3StorageProvider implements StorageProvider {
@@ -95,8 +122,17 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
+    return this.uploadBuffer(file.buffer, file.originalname, file.mimetype, folder);
+  }
+
+  async uploadBuffer(
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    folder: string,
+  ): Promise<string> {
     const sanitizedFolder = sanitizeFolder(folder);
-    const ext = path.extname(file.originalname);
+    const ext = path.extname(originalName);
     const uniqueName = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}${ext}`;
     const key = [this.keyPrefix, sanitizedFolder, uniqueName]
       .filter(Boolean)
@@ -106,8 +142,8 @@ export class S3StorageProvider implements StorageProvider {
       new PutObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype || undefined,
+        Body: buffer,
+        ContentType: mimeType || undefined,
       }),
     );
 
@@ -126,6 +162,16 @@ export class S3StorageProvider implements StorageProvider {
         Key: key,
       }),
     );
+  }
+
+  async downloadFile(fileUrl: string): Promise<Buffer> {
+    const key = this.resolveKey(fileUrl);
+    if (!key) throw new Error("Storage URL does not belong to the configured bucket");
+    const result = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+    if (!result.Body) throw new Error("Stored file has no body");
+    return Buffer.from(await result.Body.transformToByteArray());
   }
 
   private resolveKey(fileUrl: string): string | null {

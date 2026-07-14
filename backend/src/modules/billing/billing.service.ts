@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { HttpError } from "@/common/errors/http-error.js";
+import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
 import {
   BillingDocumentStatus,
   BillingDocumentType,
@@ -18,6 +19,9 @@ import type {
 } from "./billing.inputs.js";
 import * as repo from "./billing.repository.js";
 import { buildBillingDocumentHtml } from "./billing.pdf-template.js";
+import { storageProvider } from "@/common/services/storage.js";
+import { getCorrelationId } from "@/common/observability/request-context.js";
+import { logError } from "@/common/observability/logger.js";
 import {
   buildBookingSnapshot,
   buildGuestSnapshot,
@@ -43,26 +47,20 @@ const documentKeyForDebitNote = (folioChargeId: string) =>
   `DEBIT_NOTE:${folioChargeId}`;
 const maxBillingTransactionAttempts = 3;
 
-const isRetryableBillingError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
-
 const runBillingTransactionWithRetry = async <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
-) => {
-  for (let attempt = 1; attempt <= maxBillingTransactionAttempts; attempt += 1) {
-    try {
-      return await repo.runBillingTransaction(callback);
-    } catch (error) {
-      if (attempt < maxBillingTransactionAttempts && isRetryableBillingError(error)) {
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  return repo.runBillingTransaction(callback);
-};
+) =>
+  runWithBoundedRetry({
+    operation: () => repo.runBillingTransaction(callback),
+    isRetryable: isTransientDatabaseError,
+    maxAttempts: maxBillingTransactionAttempts,
+    mapExhaustedError: () =>
+      new HttpError(
+        503,
+        "BILLING_DATABASE_UNAVAILABLE",
+        "Billing service is temporarily unavailable. Retry shortly.",
+      ),
+  });
 
 const mapDocument = (
   document: repo.BillingDocumentRecord,
@@ -93,6 +91,12 @@ const mapDocument = (
   lineItems: document.lineItems,
   notes: document.notes ?? null,
   pdfUrl: document.pdfUrl ?? null,
+  pdfStatus: document.pdfStatus,
+  pdfAttemptCount: document.pdfAttemptCount,
+  pdfMaxAttempts: document.pdfMaxAttempts,
+  pdfLastError: document.pdfLastError ?? null,
+  pdfCorrelationId: document.pdfCorrelationId ?? null,
+  pdfRenderedAt: document.pdfRenderedAt?.toISOString() ?? null,
   issuedAt: document.issuedAt?.toISOString() ?? null,
   voidedAt: document.voidedAt?.toISOString() ?? null,
   voidReason: document.voidReason ?? null,
@@ -612,34 +616,104 @@ export const getPublicDocument = async (
   return mapDocument(document);
 };
 
-export const renderDocumentPdf = async (document: BillingDocumentDTO) => {
+const renderDocumentPdfBuffer = async (document: BillingDocumentDTO) => {
   const setting = mapSetting(await repo.getOrCreateSetting(document.propertyId));
   const html = buildBillingDocumentHtml(document, setting);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle" });
+    return await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
+    });
+  } finally {
+    await browser.close();
+  }
+};
+
+export const renderDocumentPdf = async (
+  document: BillingDocumentDTO,
+  dependencies: {
+    render?: (document: BillingDocumentDTO) => Promise<Buffer>;
+    upload?: (buffer: Buffer, document: BillingDocumentDTO) => Promise<string>;
+  } = {},
+) => {
+  if (document.pdfStatus === "SUCCEEDED" && document.pdfUrl) {
+    try {
+      return await storageProvider.downloadFile(document.pdfUrl);
+    } catch (error) {
+      await repo.markDocumentRenderFailed(document.id, "Stored PDF is unavailable");
+      logError("Stored billing PDF could not be read", error, {
+        operation: "billing.pdf.read",
+        documentId: document.id,
+      });
+    }
+  }
+
+  const correlationId = getCorrelationId();
+  const claimed = await repo.claimDocumentRender(
+    document.id,
+    correlationId,
+    new Date(Date.now() - 5 * 60 * 1000),
+  );
+  if (claimed.count !== 1) {
+    const current = await repo.findDocumentById(document.id);
+    if (current?.pdfStatus === "SUCCEEDED" && current.pdfUrl) {
+      return storageProvider.downloadFile(current.pdfUrl);
+    }
+    throw new HttpError(
+      current?.pdfStatus === "PROCESSING" ? 409 : 503,
+      current?.pdfStatus === "PROCESSING"
+        ? "PDF_RENDER_IN_PROGRESS"
+        : "PDF_RENDER_RETRY_REQUIRED",
+      current?.pdfStatus === "PROCESSING"
+        ? "PDF generation is already in progress"
+        : "PDF generation failed and requires an operator retry",
+      { correlationId: current?.pdfCorrelationId ?? correlationId },
+    );
+  }
 
   try {
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle" });
-      return await page.pdf({
-        format: "A4",
-        printBackground: true,
-        margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      });
-    } finally {
-      await browser.close();
-    }
+    const pdf = await (dependencies.render ?? renderDocumentPdfBuffer)(document);
+    const pdfUrl = await (
+      dependencies.upload ??
+      ((buffer, item) =>
+        storageProvider.uploadBuffer(
+          buffer,
+          `${item.documentNumber}.pdf`,
+          "application/pdf",
+          "billing-documents",
+        ))
+    )(pdf, document);
+    await repo.markDocumentRenderSucceeded(document.id, pdfUrl);
+    return pdf;
   } catch (error) {
-    console.error("Billing PDF render failed", {
+    const message = error instanceof Error ? error.message : "Unknown PDF failure";
+    await repo.markDocumentRenderFailed(document.id, message);
+    logError("Billing PDF render failed", error, {
+      operation: "billing.pdf.render",
       documentId: document.id,
       documentNumber: document.documentNumber,
-      error,
+      correlationId,
     });
-
     throw new HttpError(
       503,
       "PDF_RENDER_UNAVAILABLE",
       "PDF rendering is unavailable",
+      { correlationId },
     );
   }
+};
+
+export const retryDashboardDocumentPdf = async (
+  userId: string,
+  documentId: string,
+  dependencies: Parameters<typeof renderDocumentPdf>[1] = {},
+) => {
+  const document = await getDashboardDocument(userId, documentId);
+  await repo.resetDocumentRenderForRetry(document.id);
+  await renderDocumentPdf(document, dependencies);
+  return getDashboardDocument(userId, documentId);
 };

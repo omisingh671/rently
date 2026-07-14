@@ -10,7 +10,7 @@ import {
 } from "@/common/utils/jwt.js";
 
 import { verifyPassword, hashPassword } from "@/common/utils/password.js";
-import { sendResetPasswordEmail } from "./email/resetPassword.email.js";
+import { queuePasswordResetEmail } from "@/modules/email-deliveries/email-deliveries.service.js";
 import { HttpError } from "@/common/errors/http-error.js";
 
 import * as repo from "./auth.repository.js";
@@ -26,7 +26,6 @@ import type {
 
 import type { AuthResponseDTO } from "./auth.dto.js";
 
-const RESET_TOKEN_TTL_MINUTES = 15;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 
@@ -329,16 +328,7 @@ export const forgotPassword = async (
   const user = await repo.findUserByEmail(input.email);
   if (!user) return;
 
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  await repo.createPasswordResetToken({
-    userId: user.id,
-    tokenHash,
-    expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000),
-  });
-
-  await sendResetPasswordEmail(user.email, rawToken);
+  await queuePasswordResetEmail(user).catch(() => undefined);
 };
 
 /**

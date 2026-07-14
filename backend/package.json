@@ -25,6 +25,7 @@
     "test:booking": "tsx tests/public-booking.test.ts",
     "test:payment": "tsx tests/public-payment.test.ts",
     "test:concurrency": "tsx tests/production-concurrency.test.ts",
+    "test:recovery": "tsx tests/failure-recovery.test.ts",
     "test:reporting": "tsx tests/reporting-analytics.test.ts",
     "build:scripts": "tsc -p tsconfig.scripts.json"
   },

@@ -184,6 +184,16 @@ Status: **Completed**
 Priority: **P1**  
 Goal: make recoverable failures safe, observable, and replayable.
 
+Status: **Completed**
+
+Implemented ownership:
+
+- Request middleware owns correlation IDs and returns the same ID in response headers/error DTOs; the structured logger carries request and operation context.
+- Booking, payment, billing, maintenance, and availability repositories/services own bounded transient-database retry. Validation, RBAC, optimistic-version, uniqueness, and business-rule failures are not generic retry candidates.
+- `BillingDocument` owns durable PDF generation status, attempts, correlation/error evidence, stored output, and the property-scoped dashboard retry route.
+- `EmailDeliveryJob` owns password-reset delivery status, attempts, deterministic message identity, error evidence, and the Super Admin list/retry route. Reset-token persistence commits before SMTP, while SMTP remains outside the transaction.
+- The dashboard Billing and User Management screens expose failed work and recoverable retry actions.
+
 ### Implementation
 
 1. Standardize correlation IDs and structured error context for booking, payment, refund, billing-document, email, and maintenance operations.
