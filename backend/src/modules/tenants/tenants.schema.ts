@@ -34,7 +34,6 @@ export const createTenantSchema = z.object({
   primaryDomain: nullableOptionalString(190),
   status: z.nativeEnum(TenantStatus).optional(),
   brandName: z.string().trim().min(1).max(120),
-  logoUrl: nullableOptionalString(500),
   primaryColor: colorSchema.optional(),
   secondaryColor: colorSchema.optional(),
   supportEmail: nullableOptionalString(190),

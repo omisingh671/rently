@@ -6,6 +6,8 @@ import {
   fetchActiveTenants,
   fetchAdminTenants,
   updateTenant,
+  uploadTenantLogo,
+  removeTenantLogo,
 } from "../api";
 import type { AdminTenant, TenantStatus } from "../types";
 
@@ -47,12 +49,33 @@ export function useAdminTenants(page: number, limit: number, filters: Filters) {
     },
   });
 
+  const uploadLogoMutation = useMutation({
+    mutationFn: ({ tenantId, file }: { tenantId: string; file: File }) =>
+      uploadTenantLogo(tenantId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.tenants.all() });
+    },
+  });
+
+  const removeLogoMutation = useMutation({
+    mutationFn: removeTenantLogo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ADMIN_KEYS.tenants.all() });
+    },
+  });
+
   return {
     ...listQuery,
     createTenant: createMutation.mutate,
+    createTenantAsync: createMutation.mutateAsync,
     isCreating: createMutation.isPending,
     updateTenant: updateMutation.mutate,
+    updateTenantAsync: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
+    uploadTenantLogo: uploadLogoMutation.mutateAsync,
+    isUploadingLogo: uploadLogoMutation.isPending,
+    removeTenantLogo: removeLogoMutation.mutateAsync,
+    isRemovingLogo: removeLogoMutation.isPending,
   };
 }
 

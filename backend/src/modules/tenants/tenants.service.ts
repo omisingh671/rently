@@ -1,4 +1,6 @@
 import { HttpError } from "@/common/errors/http-error.js";
+import { logError } from "@/common/observability/logger.js";
+import { storageProvider } from "@/common/services/storage.js";
 import { Prisma, UserRole, type Tenant } from "@/generated/prisma/client.js";
 import * as repo from "./tenants.repository.js";
 import { getActor } from "@/common/services/scoping.service.js";
@@ -156,7 +158,6 @@ export const createTenant = async (
       }),
       ...(input.status !== undefined && { status: input.status }),
       brandName: input.brandName,
-      ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
       ...(input.primaryColor !== undefined && {
         primaryColor: input.primaryColor,
       }),
@@ -212,7 +213,6 @@ export const updateTenant = async (
       }),
       ...(input.status !== undefined && { status: input.status }),
       ...(input.brandName !== undefined && { brandName: input.brandName }),
-      ...(input.logoUrl !== undefined && { logoUrl: input.logoUrl }),
       ...(input.primaryColor !== undefined && {
         primaryColor: input.primaryColor,
       }),
@@ -246,4 +246,62 @@ export const updateTenant = async (
 
     throw error;
   }
+};
+
+const deleteStoredLogo = async (logoUrl: string, tenantId: string) => {
+  try {
+    await storageProvider.deleteFile(logoUrl);
+  } catch (error) {
+    logError("Failed to delete tenant logo from storage", error, {
+      tenantId,
+      logoUrl,
+    });
+  }
+};
+
+export const uploadTenantLogo = async (
+  userId: string,
+  tenantId: string,
+  file: Express.Multer.File,
+): Promise<TenantDTO> => {
+  const actor = await getActor(userId);
+  if (actor.role !== UserRole.SUPER_ADMIN) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  const tenant = await ensureTenantExists(tenantId);
+  const logoUrl = await storageProvider.uploadFile(file, `tenant-${tenant.id}`);
+
+  let updatedTenant: Tenant;
+  try {
+    updatedTenant = await repo.updateTenantById(tenant.id, { logoUrl });
+  } catch (error) {
+    await deleteStoredLogo(logoUrl, tenant.id);
+    throw error;
+  }
+
+  if (tenant.logoUrl && tenant.logoUrl !== logoUrl) {
+    await deleteStoredLogo(tenant.logoUrl, tenant.id);
+  }
+
+  return mapTenant(updatedTenant);
+};
+
+export const removeTenantLogo = async (
+  userId: string,
+  tenantId: string,
+): Promise<TenantDTO> => {
+  const actor = await getActor(userId);
+  if (actor.role !== UserRole.SUPER_ADMIN) {
+    throw new HttpError(403, "FORBIDDEN", "Access denied");
+  }
+
+  const tenant = await ensureTenantExists(tenantId);
+  const updatedTenant = await repo.updateTenantById(tenant.id, { logoUrl: null });
+
+  if (tenant.logoUrl) {
+    await deleteStoredLogo(tenant.logoUrl, tenant.id);
+  }
+
+  return mapTenant(updatedTenant);
 };

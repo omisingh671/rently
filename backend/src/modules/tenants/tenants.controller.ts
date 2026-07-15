@@ -49,8 +49,6 @@ export const createTenant = async (req: AuthRequest, res: Response) => {
       body.primaryDomain !== null && { primaryDomain: body.primaryDomain }),
     ...(body.status !== undefined && { status: body.status }),
     brandName: body.brandName,
-    ...(body.logoUrl !== undefined &&
-      body.logoUrl !== null && { logoUrl: body.logoUrl }),
     ...(body.primaryColor !== undefined && { primaryColor: body.primaryColor }),
     ...(body.secondaryColor !== undefined && {
       secondaryColor: body.secondaryColor,
@@ -78,7 +76,6 @@ export const updateTenant = async (req: AuthRequest, res: Response) => {
     }),
     ...(body.status !== undefined && { status: body.status }),
     ...(body.brandName !== undefined && { brandName: body.brandName }),
-    ...(body.logoUrl !== undefined && { logoUrl: body.logoUrl }),
     ...(body.primaryColor !== undefined && { primaryColor: body.primaryColor }),
     ...(body.secondaryColor !== undefined && {
       secondaryColor: body.secondaryColor,
@@ -90,5 +87,25 @@ export const updateTenant = async (req: AuthRequest, res: Response) => {
     }),
     ...(body.timezone !== undefined && { timezone: body.timezone }),
   });
+  res.json({ success: true, data });
+};
+
+export const uploadTenantLogo = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  if (!req.file) {
+    throw new HttpError(400, "LOGO_FILE_REQUIRED", "A tenant logo file is required");
+  }
+
+  const data = await service.uploadTenantLogo(
+    getUserId(req),
+    params.id,
+    req.file,
+  );
+  res.json({ success: true, data });
+};
+
+export const removeTenantLogo = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.removeTenantLogo(getUserId(req), params.id);
   res.json({ success: true, data });
 };

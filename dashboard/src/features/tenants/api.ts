@@ -36,13 +36,44 @@ export const fetchActiveTenants = async (): Promise<AdminTenant[]> => {
 
 export const createTenant = async (
   payload: TenantFormPayload,
-): Promise<void> => {
-  await axiosInstance.post(API_ENDPOINTS.tenants.create, payload);
+): Promise<AdminTenant> => {
+  const res = await axiosInstance.post<ApiSuccessResponse<AdminTenant>>(
+    API_ENDPOINTS.tenants.create,
+    payload,
+  );
+  return res.data.data;
 };
 
 export const updateTenant = async ({
   tenantId,
   payload,
-}: TenantUpdateVariables): Promise<void> => {
-  await axiosInstance.patch(API_ENDPOINTS.tenants.updateById(tenantId), payload);
+}: TenantUpdateVariables): Promise<AdminTenant> => {
+  const res = await axiosInstance.patch<ApiSuccessResponse<AdminTenant>>(
+    API_ENDPOINTS.tenants.updateById(tenantId),
+    payload,
+  );
+  return res.data.data;
+};
+
+export const uploadTenantLogo = async (
+  tenantId: string,
+  file: File,
+): Promise<AdminTenant> => {
+  const formData = new FormData();
+  formData.append("logo", file);
+
+  const res = await axiosInstance.post<ApiSuccessResponse<AdminTenant>>(
+    API_ENDPOINTS.tenants.logo(tenantId),
+    formData,
+  );
+  return res.data.data;
+};
+
+export const removeTenantLogo = async (
+  tenantId: string,
+): Promise<AdminTenant> => {
+  const res = await axiosInstance.delete<ApiSuccessResponse<AdminTenant>>(
+    API_ENDPOINTS.tenants.logo(tenantId),
+  );
+  return res.data.data;
 };

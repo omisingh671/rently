@@ -521,6 +521,23 @@ test("public tenant resolution requires explicit active tenant identity", async 
     tenantSlug: state.tenantSlug,
   });
   assert.equal(config.id, state.tenantId);
+  assert.equal(config.logoUrl, null);
+
+  await prisma.tenant.update({
+    where: { id: state.tenantId },
+    data: { logoUrl: "https://cdn.example.test/tenant-logo.webp" },
+  });
+  const brandedConfig = await publicService.getTenantConfig({
+    tenantSlug: state.tenantSlug,
+  });
+  assert.equal(
+    brandedConfig.logoUrl,
+    "https://cdn.example.test/tenant-logo.webp",
+  );
+  await prisma.tenant.update({
+    where: { id: state.tenantId },
+    data: { logoUrl: null },
+  });
 });
 
 test("public property slug scopes config, spaces, availability, quotes, and enquiries", async () => {

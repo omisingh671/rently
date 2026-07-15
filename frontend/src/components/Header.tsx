@@ -9,15 +9,23 @@ import { MAIN_NAV, CTA_NAV } from "@/configs/navConfig";
 
 import { MenuItem } from "@/components/navigation/MenuItem";
 import MobileMenu from "./MobileMenu";
+import TenantLogo from "./TenantLogo";
 
 export type HeaderProps = {
   onLogout: () => Promise<void> | void;
   logoutPending?: boolean;
+  logoUrl?: string | null;
+  brandName?: string;
 };
 
 const logoSrc = "/assets/images/logo-main.png";
 
-export default function Header({ onLogout, logoutPending }: HeaderProps) {
+export default function Header({
+  onLogout,
+  logoutPending,
+  logoUrl,
+  brandName = "Home Away from Home",
+}: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const user = useAuthStore((s) => s.user);
@@ -41,9 +49,10 @@ export default function Header({ onLogout, logoutPending }: HeaderProps) {
 
           <NavLink to={ROUTES.HOME} className="inline-flex items-center gap-3">
             <div className="h-16 rounded-md overflow-hidden">
-              <img
-                src={logoSrc}
-                alt="Home Away from Home"
+              <TenantLogo
+                logoUrl={logoUrl}
+                fallbackSrc={logoSrc}
+                alt={brandName}
                 className="w-full h-full object-contain"
               />
             </div>
@@ -109,6 +118,8 @@ export default function Header({ onLogout, logoutPending }: HeaderProps) {
         onLogout={onLogout}
         logoutPending={logoutPending}
         user={user}
+        logoUrl={logoUrl}
+        brandName={brandName}
       />
     </header>
   );

@@ -21,6 +21,7 @@ import type {
 } from "@/features/tenants/types";
 import { highlightText } from "@/utils/highlightText";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
+import { API_BASE_URL } from "@/configs/appConfig";
 
 type Filters = {
   search: string;
@@ -33,7 +34,6 @@ const emptyForm: TenantFormPayload = {
   primaryDomain: "",
   status: "ACTIVE",
   brandName: "",
-  logoUrl: "",
   primaryColor: "#4f46e5",
   secondaryColor: "#f59e0b",
   supportEmail: "",
@@ -66,7 +66,6 @@ const toPayload = (
     primaryDomain: form.primaryDomain?.trim() || null,
     status: form.status,
     brandName: form.brandName.trim(),
-    logoUrl: form.logoUrl?.trim() || null,
     primaryColor: form.primaryColor,
     secondaryColor: form.secondaryColor,
     supportEmail: form.supportEmail?.trim() || null,
@@ -82,7 +81,6 @@ const formFromTenant = (tenant: AdminTenant): TenantFormPayload => ({
   primaryDomain: tenant.primaryDomain ?? "",
   status: tenant.status,
   brandName: tenant.brandName,
-  logoUrl: tenant.logoUrl ?? "",
   primaryColor: tenant.primaryColor,
   secondaryColor: tenant.secondaryColor,
   supportEmail: tenant.supportEmail ?? "",
@@ -95,6 +93,8 @@ export default function TenantsPage() {
   const [editingTenant, setEditingTenant] = useState<AdminTenant | null>(null);
   const [form, setForm] = useState<TenantFormPayload>(emptyForm);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 
   const {
     page,
@@ -118,16 +118,21 @@ export default function TenantsPage() {
     isPending,
     isFetching,
     isError,
-    createTenant,
+    createTenantAsync,
     isCreating,
-    updateTenant,
+    updateTenantAsync,
     isUpdating,
+    uploadTenantLogo,
+    isUploadingLogo,
+    removeTenantLogo,
+    isRemovingLogo,
   } = useAdminTenants(page, pageSize, {
     search: debouncedSearch,
     status: filters.status,
   });
 
-  const isSubmitting = isCreating || isUpdating;
+  const isSubmitting =
+    isCreating || isUpdating || isUploadingLogo || isRemovingLogo;
   const safeItems = data?.items ?? [];
   const isInitialLoading = isPending && safeItems.length === 0;
   const visiblePagination =
@@ -151,12 +156,22 @@ export default function TenantsPage() {
   const resetForm = () => {
     setEditingTenant(null);
     setForm(emptyForm);
+    setLogoFile(null);
+    setLogoPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
     setServerError(null);
   };
 
   const handleEdit = (tenant: AdminTenant) => {
     setEditingTenant(tenant);
     setForm(formFromTenant(tenant));
+    setLogoFile(null);
+    setLogoPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
     setServerError(null);
   };
 
@@ -167,28 +182,65 @@ export default function TenantsPage() {
     setServerError(message);
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const selectLogo = (file: File | null) => {
+    setLogoFile(file);
+    setLogoPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  };
+
+  const displayLogoUrl = (logoUrl: string | null | undefined) => {
+    if (!logoUrl || logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) {
+      return logoUrl ?? null;
+    }
+
+    return `${API_BASE_URL}${logoUrl}`;
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setServerError(null);
 
     const payload = toPayload(form, { includeSlug: editingTenant !== null });
 
-    if (editingTenant) {
-      updateTenant(
-        { tenantId: editingTenant.id, payload },
-        {
-          onSuccess: resetForm,
-          onError: handleError,
-        },
-      );
-      return;
-    }
+    try {
+      const tenant = editingTenant
+        ? await updateTenantAsync({ tenantId: editingTenant.id, payload })
+        : await createTenantAsync(payload);
 
-    createTenant(payload, {
-      onSuccess: resetForm,
-      onError: handleError,
-    });
+      if (logoFile) {
+        if (!editingTenant) {
+          setEditingTenant(tenant);
+          setForm(formFromTenant(tenant));
+        }
+        await uploadTenantLogo({ tenantId: tenant.id, file: logoFile });
+      }
+
+      resetForm();
+    } catch (error) {
+      handleError(error);
+    }
   };
+
+  const handleRemoveLogo = async () => {
+    if (!editingTenant?.logoUrl) return;
+
+    setServerError(null);
+    try {
+      await removeTenantLogo(editingTenant.id);
+      setEditingTenant({ ...editingTenant, logoUrl: null });
+      setLogoFile(null);
+      setLogoPreviewUrl((current) => {
+        if (current) URL.revokeObjectURL(current);
+        return null;
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  };
+
+  const currentLogoUrl = logoPreviewUrl ?? displayLogoUrl(editingTenant?.logoUrl);
 
   if (isError) {
     return (
@@ -284,6 +336,41 @@ export default function TenantsPage() {
               />
             </label>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {currentLogoUrl ? (
+            <img
+              src={currentLogoUrl}
+              alt="Tenant logo preview"
+              className="h-16 w-28 rounded border border-slate-200 bg-white object-contain p-1"
+            />
+          ) : (
+            <div className="flex h-16 w-28 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-xs text-slate-500">
+              No logo
+            </div>
+          )}
+          <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+            {editingTenant?.logoUrl || logoFile ? "Replace logo" : "Upload logo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="sr-only"
+              onChange={(event) => selectLogo(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <span className="text-xs text-slate-500">PNG, JPEG, or WebP up to 10 MB</span>
+          {editingTenant?.logoUrl && !logoFile && (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={handleRemoveLogo}
+              disabled={isSubmitting}
+            >
+              Remove logo
+            </Button>
+          )}
         </div>
 
         {serverError && (

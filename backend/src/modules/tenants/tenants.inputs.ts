@@ -13,7 +13,6 @@ export interface CreateTenantInput {
   primaryDomain?: string;
   status?: TenantStatus;
   brandName: string;
-  logoUrl?: string;
   primaryColor?: string;
   secondaryColor?: string;
   supportEmail?: string;
@@ -28,7 +27,6 @@ export interface UpdateTenantInput {
   primaryDomain?: string | null;
   status?: TenantStatus;
   brandName?: string;
-  logoUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
   supportEmail?: string | null;

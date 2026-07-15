@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
     create: "/tenants",
     byId: (tenantId: string) => `/tenants/${tenantId}`,
     updateById: (tenantId: string) => `/tenants/${tenantId}`,
+    logo: (tenantId: string) => `/tenants/${tenantId}/logo`,
   },
 
   admins: {
