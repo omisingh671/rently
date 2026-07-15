@@ -1,4 +1,7 @@
-import { BookingRefundRequestStatus } from "@/generated/prisma/client.js";
+import {
+  BookingRefundRequestStatus,
+  Prisma,
+} from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import * as repo from "./bookings.repository.js";
 import {
@@ -12,8 +15,9 @@ import { getBookingPolicyDto } from "./bookings.policy.js";
 
 export const getRefundableAmount = async (
   booking: repo.PublicBookingRecord,
+  tx?: Prisma.TransactionClient,
 ) => {
-  const policy = await getBookingPolicyDto(booking);
+  const policy = await getBookingPolicyDto(booking, tx);
   return Math.max(
     0,
     getPaidAmount(booking) -

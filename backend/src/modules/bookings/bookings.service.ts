@@ -4,11 +4,13 @@ import {
   BookingStatus,
   BookingTargetType,
   UserRole,
+  NotificationEventKey,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { createBookingForUser } from "@/modules/public/bookings/bookings.service.js";
 import { generateAvailabilityOptions } from "@/modules/public/availability/availability.service.js";
 import * as repo from "./bookings.repository.js";
+import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 
 import { buildDashboardRoomBoard } from "./bookings-room-board.mapper.js";
 import { isAdminOverrideRole } from "./bookings.helper.js";
@@ -25,9 +27,14 @@ import {
   correctBookingStatusInTransaction,
   markBookingNoShowInTransaction,
   assertExpectedBookingVersion,
+  findTransactionBooking,
   updateDashboardBookingLifecycle,
 } from "./bookings.lifecycle.js";
 import { moveBookingRoomsInTransaction } from "./bookings.room-move.js";
+import {
+  buildStayExtensionPreview,
+  commitStayExtension,
+} from "./bookings.stay-extension.js";
 import {
   buildCashierSummaryForProperty,
   buildOperationsBoardForProperty,
@@ -65,6 +72,10 @@ import {
   findOrCreateWalkInGuest,
   getStayNights,
 } from "./bookings.walk-in.js";
+import {
+  buildCheckInPolicyPreview,
+  buildCheckOutPolicyPreview,
+} from "./bookings.stay-policy.js";
 
 import type {
   CheckDashboardManualBookingAvailabilityInput,
@@ -77,6 +88,8 @@ import type {
   CreateBookingFolioChargeInput,
   MoveBookingRoomInput,
   PreviewBookingRoomMoveInput,
+  PreviewStayExtensionInput,
+  CommitStayExtensionInput,
   NoShowBookingInput,
   RecordDashboardBookingPaymentInput,
   RecordDashboardBookingRefundInput,
@@ -91,6 +104,7 @@ import type {
   DashboardManualBookingAvailabilityDTO,
   DashboardRoomBoardDTO,
   BookingRoomMovePreviewDTO,
+  BookingStayExtensionPreviewDTO,
 } from "./bookings.dto.js";
 
 export {
@@ -264,7 +278,7 @@ export const updateBooking = async (
     const extension = await postLateCheckoutExtensionCharge(bookingId, actor, {
       ...(input.note !== undefined && { note: input.note }),
     });
-    return repo.runBookingTransaction(async (tx) => {
+    const updated = await repo.runBookingTransaction(async (tx) => {
       return checkOutDashboardBookingUpdateInTransaction(tx, {
         bookingId,
         actor,
@@ -273,9 +287,15 @@ export const updateBooking = async (
         extraNights: extension.extensionPreview?.extraNights ?? 0,
       });
     });
+    await publishBookingNotification({
+      eventKey: NotificationEventKey.BOOKING_CHECKED_OUT,
+      businessEventId: `${bookingId}:${updated.version}:check-out`,
+      bookingId,
+    });
+    return updated;
   }
 
-  return updateDashboardBookingLifecycle({
+  const updated = await updateDashboardBookingLifecycle({
     booking,
     actorUserId: actor.id,
     update: input,
@@ -284,6 +304,23 @@ export const updateBooking = async (
     statusOverride,
     ...(assignment !== undefined && { assignment }),
   });
+  if (statusChanged) {
+    const eventKey = nextStatus === BookingStatus.CANCELLED
+      ? NotificationEventKey.BOOKING_CANCELLED
+      : nextStatus === BookingStatus.CHECKED_IN
+        ? NotificationEventKey.BOOKING_CHECKED_IN
+        : nextStatus === BookingStatus.CHECKED_OUT
+          ? NotificationEventKey.BOOKING_CHECKED_OUT
+          : null;
+    if (eventKey) {
+      await publishBookingNotification({
+        eventKey,
+        businessEventId: `${bookingId}:${updated.version}:${nextStatus}`,
+        bookingId,
+      });
+    }
+  }
+  return updated;
 };
 
 export const checkInBooking = async (
@@ -302,13 +339,35 @@ export const checkInBooking = async (
         })
       : undefined;
 
-  return repo.runBookingTransaction(async (tx) => {
+  const updated = await repo.runBookingTransaction(async (tx) => {
     return checkInBookingInTransaction(tx, {
       bookingId,
       actorUserId: actor.id,
+      actorRole: actor.role,
       checkIn: input,
       ...(assignment !== undefined && { assignment }),
     });
+  });
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CHECKED_IN,
+    businessEventId: `${bookingId}:${updated.version}:check-in`,
+    bookingId,
+  });
+  return updated;
+};
+
+export const previewCheckInPolicy = async (
+  userId: string,
+  bookingId: string,
+  expectedVersion: number,
+) => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, expectedVersion);
+    return buildCheckInPolicyPreview(tx, booking);
   });
 };
 
@@ -325,7 +384,7 @@ export const checkOutBooking = async (
     ...(input.note !== undefined && { note: input.note }),
   });
 
-  return repo.runBookingTransaction(async (tx) => {
+  const updated = await repo.runBookingTransaction(async (tx) => {
     return checkOutBookingInTransaction(tx, {
       bookingId,
       actor,
@@ -333,6 +392,27 @@ export const checkOutBooking = async (
       extensionChargeId: extension.extensionChargeId,
       extraNights: extension.extensionPreview?.extraNights ?? 0,
     });
+  });
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CHECKED_OUT,
+    businessEventId: `${bookingId}:${updated.version}:check-out`,
+    bookingId,
+  });
+  return updated;
+};
+
+export const previewCheckOutPolicy = async (
+  userId: string,
+  bookingId: string,
+  expectedVersion: number,
+) => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+  return repo.runBookingTransaction(async (tx) => {
+    const booking = await findTransactionBooking(tx, bookingId);
+    assertExpectedBookingVersion(booking.version, expectedVersion);
+    return buildCheckOutPolicyPreview(tx, booking);
   });
 };
 
@@ -402,6 +482,42 @@ export const moveBookingRooms = async (
       oldRoomIds,
     });
   });
+};
+
+export const previewStayExtension = async (
+  userId: string,
+  bookingId: string,
+  input: PreviewStayExtensionInput,
+): Promise<BookingStayExtensionPreviewDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction(async (tx) =>
+    buildStayExtensionPreview(
+      tx,
+      await findTransactionBooking(tx, bookingId),
+      input,
+    ),
+  );
+};
+
+export const extendStay = async (
+  userId: string,
+  bookingId: string,
+  input: CommitStayExtensionInput,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  return repo.runBookingTransaction((tx) =>
+    commitStayExtension(tx, {
+      bookingId,
+      actor,
+      extension: input,
+    }),
+  );
 };
 
 export const correctBookingStatus = async (

@@ -21,7 +21,7 @@ Close the remaining correctness, operational, browser-regression, failure-recove
 Priority: **P0**  
 Goal: prove the critical guest and staff workflows through the real frontend/dashboard routes.
 
-Status: **Completed locally; first hosted CI run pending**
+Status: **Completed for local execution**
 
 Completed foundation:
 
@@ -32,11 +32,10 @@ Completed foundation:
 - cross-property anti-enumeration denial, duplicate-submit protection, stale-version recovery, and API-failure retry journeys
 - 390px public availability and dashboard login overflow smoke
 - failure screenshots, video, traces, and reports ignored as generated artifacts
-- GitHub Actions workflow with isolated MySQL, migrations, Chromium, E2E execution, and failure-artifact upload
 
 Remaining in this phase:
 
-- observe the first hosted GitHub Actions run after these changes are pushed
+- none; hosted CI execution is intentionally out of scope
 
 ### Implementation
 
@@ -76,13 +75,14 @@ Remaining in this phase:
 
 ### Completion Criteria
 
-- One command can seed and execute deterministic guest and dashboard E2E tests locally and in CI.
+- One command can seed and execute deterministic guest and dashboard E2E tests locally.
 - Failures retain screenshots/traces as generated artifacts, not tracked source files.
 
 ## Phase 2 - Atomic Guest Refund Requests
 
 Priority: **P0**  
 Goal: guarantee at most one active refund request per booking under simultaneous submissions.
+Status: **Completed**
 
 ### Implementation
 
@@ -122,6 +122,8 @@ Goal: guarantee at most one active refund request per booking under simultaneous
 
 Priority: **P1**  
 Goal: extend a booking departure date without overselling inventory or losing pricing/audit history.
+
+Status: **Completed**
 
 ### Backend Design
 
@@ -182,6 +184,16 @@ Goal: extend a booking departure date without overselling inventory or losing pr
 Priority: **P1**  
 Goal: make recoverable failures safe, observable, and replayable.
 
+Status: **Completed**
+
+Implemented ownership:
+
+- Request middleware owns correlation IDs and returns the same ID in response headers/error DTOs; the structured logger carries request and operation context.
+- Booking, payment, billing, maintenance, and availability repositories/services own bounded transient-database retry. Validation, RBAC, optimistic-version, uniqueness, and business-rule failures are not generic retry candidates.
+- `BillingDocument` owns durable PDF generation status, attempts, correlation/error evidence, stored output, and the property-scoped dashboard retry route.
+- `EmailDeliveryJob` owns password-reset delivery status, attempts, deterministic message identity, error evidence, and the Super Admin list/retry route. Reset-token persistence commits before SMTP, while SMTP remains outside the transaction.
+- The dashboard Billing and User Management screens expose failed work and recoverable retry actions.
+
 ### Implementation
 
 1. Standardize correlation IDs and structured error context for booking, payment, refund, billing-document, email, and maintenance operations.
@@ -215,6 +227,16 @@ Goal: make recoverable failures safe, observable, and replayable.
 
 Priority: **P2**  
 Goal: make early-arrival, early-departure, late-departure, and downgrade financial behaviour explicit and server-owned.
+
+Status: **Completed in the current working tree**
+
+Implemented ownership:
+
+- `PropertyBookingPolicy` owns validated early check-in, early checkout, late checkout, and downgrade rules with backward-compatible defaults.
+- Booking check-in/check-out previews own timezone-aware fee, refund-review, and override results before commit.
+- Check-in, check-out, late-checkout, and room-move commits freeze the applicable policy fingerprint and adjustment evidence.
+- Room downgrade commits explicitly support configured credit, no-credit, and authorized waiver outcomes.
+- Dashboard confirmation flows show the server-owned result and collect the required override/waiver reason.
 
 ### Implementation
 
@@ -250,6 +272,17 @@ Goal: make early-arrival, early-departure, late-departure, and downgrade financi
 
 Priority: **P2**  
 Goal: establish measured capacity instead of assuming scalability from architecture.
+
+Status: **Completed for the recorded local baseline**
+
+Implemented ownership:
+
+- A guarded dependency-free harness owns isolated smoke and scheduled/baseline workloads, endpoint percentiles, throughput, error rates, MySQL connection telemetry, slow-query digests, and query plans.
+- The deterministic seed owns 2-property/200-booking smoke data and 5-property/400-room/5,000-booking baseline data.
+- Inventory-lock race scenarios assert one booking winner and zero unreleased locks.
+- Measured availability and operations-board N+1 paths were replaced with bounded conflict/pricing loads and the existing batch booking presenter.
+- Generated reports are ignored under `backend/load-results/`; the reproducible commands and recorded baseline live in `backend/scripts/load/README.md`.
+- No hosted GitHub Actions workflow was added; `load:scheduled` is operator-controlled.
 
 ### Implementation
 

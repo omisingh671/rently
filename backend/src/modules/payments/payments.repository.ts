@@ -8,6 +8,8 @@ import {
   PaymentStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { HttpError } from "@/common/errors/http-error.js";
+import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
 
 type PaymentsDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -228,10 +230,21 @@ export const releaseInventoryLocksByBooking = (
 export const runPaymentTransaction = <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
 ) =>
-  prisma.$transaction(callback, {
-    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-    maxWait: 5_000,
-    timeout: 10_000,
+  runWithBoundedRetry({
+    operation: () =>
+      prisma.$transaction(callback, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 10_000,
+      }),
+    isRetryable: isTransientDatabaseError,
+    maxAttempts: 3,
+    mapExhaustedError: () =>
+      new HttpError(
+        503,
+        "PAYMENT_DATABASE_UNAVAILABLE",
+        "Payment service is temporarily unavailable. Retry shortly.",
+      ),
   });
 
 export type BookingForPaymentRecord = NonNullable<

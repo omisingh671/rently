@@ -7,6 +7,7 @@ import {
   FiLogIn,
   FiLogOut,
   FiSlash,
+  FiCalendar,
 } from "react-icons/fi";
 import { formatMoney } from "../bookingDisplay";
 import type { AdminBooking } from "../types";
@@ -15,6 +16,7 @@ type BookingStatusPanelProps = {
   booking: AdminBooking;
   canCheckIn: boolean;
   canCheckOut: boolean;
+  canExtendStay: boolean;
   canRecordBalance: boolean;
   canAssignRoom: boolean;
   canUseAdminCorrection: boolean;
@@ -24,6 +26,7 @@ type BookingStatusPanelProps = {
   isMutating: boolean;
   onCheckIn: () => void;
   onCheckOut: () => void;
+  onExtendStay: () => void;
   onRecordPayment: () => void;
   onAssignRoom: () => void;
   onStatusOverride: () => void;
@@ -35,6 +38,7 @@ export function BookingStatusPanel({
   booking,
   canCheckIn,
   canCheckOut,
+  canExtendStay,
   canRecordBalance,
   canAssignRoom,
   canUseAdminCorrection,
@@ -44,6 +48,7 @@ export function BookingStatusPanel({
   isMutating,
   onCheckIn,
   onCheckOut,
+  onExtendStay,
   onRecordPayment,
   onAssignRoom,
   onStatusOverride,
@@ -80,6 +85,16 @@ export function BookingStatusPanel({
             onClick={onCheckOut}
           >
             Check Out
+          </ActionButton>
+        )}
+        {canExtendStay && (
+          <ActionButton
+            theme="indigo"
+            icon={<FiCalendar />}
+            disabled={isMutating}
+            onClick={onExtendStay}
+          >
+            Extend Stay
           </ActionButton>
         )}
         {canRecordBalance && (

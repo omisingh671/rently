@@ -36,10 +36,17 @@ router.post("/properties/:propertyId/bookings", controller.createManualBooking);
 router.get("/bookings/:id", controller.getBookingById);
 router.patch("/bookings/:id", controller.updateBooking);
 router.post("/bookings/:id/check-in", controller.checkInBooking);
+router.post("/bookings/:id/check-in/preview", controller.previewCheckInPolicy);
 router.post("/bookings/:id/check-out", controller.checkOutBooking);
+router.post("/bookings/:id/check-out/preview", controller.previewCheckOutPolicy);
 router.post("/bookings/:id/no-show", controller.markBookingNoShow);
 router.post("/bookings/:id/room-move", controller.moveBookingRooms);
 router.post("/bookings/:id/room-move/preview", controller.previewBookingRoomMove);
+router.post(
+  "/bookings/:id/stay-extension/preview",
+  controller.previewStayExtension,
+);
+router.post("/bookings/:id/stay-extension", controller.extendStay);
 router.post("/bookings/:id/status-correction", controller.correctBookingStatus);
 router.post("/bookings/:id/folio-charges", controller.createBookingFolioCharge);
 router.post(

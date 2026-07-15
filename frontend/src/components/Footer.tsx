@@ -1,9 +1,18 @@
 import { Link } from "react-router-dom";
 import { FOOTER_NAV, CTA_NAV, LEGAL_NAV } from "@/configs/navConfig";
+import TenantLogo from "./TenantLogo";
 
 const logoSrc = "/assets/images/logo-main.png";
 
-export default function Footer() {
+type FooterProps = {
+  logoUrl?: string | null;
+  brandName?: string;
+};
+
+export default function Footer({
+  logoUrl,
+  brandName = "Home Away from Home",
+}: FooterProps) {
   return (
     <footer className="footer footer-border">
       <div className="container py-8 grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
@@ -11,9 +20,10 @@ export default function Footer() {
         <div className="sm:col-span-2 md:col-span-1">
           <div className="flex items-center gap-3">
             <div className="h-16 rounded-md overflow-hidden">
-              <img
-                src={logoSrc}
-                alt="Home Away from Home"
+              <TenantLogo
+                logoUrl={logoUrl}
+                fallbackSrc={logoSrc}
+                alt={brandName}
                 className="w-full h-full object-cover"
               />
             </div>

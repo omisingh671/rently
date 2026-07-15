@@ -56,6 +56,7 @@ export default function BillingPage() {
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
   const [page] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [propertyFilterMode, setPropertyFilterMode] =
     useState<PropertyFilterMode>("current");
   const [filters, setFilters] = useState({
@@ -86,7 +87,15 @@ export default function BillingPage() {
   const documentsQuery = useBillingDocuments(params);
   const error = documentsQuery.error
     ? normalizeApiError(documentsQuery.error).message
-    : null;
+    : actionError;
+  const runAction = async (action: () => Promise<unknown>) => {
+    setActionError(null);
+    try {
+      await action();
+    } catch (caughtError) {
+      setActionError(normalizeApiError(caughtError).message);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -245,6 +254,25 @@ export default function BillingPage() {
                         {formatEnumLabel(document.type)} /{" "}
                         {formatEnumLabel(document.status)}
                       </div>
+                      <div
+                        className={`mt-1 text-xs font-semibold ${
+                          document.pdfStatus === "FAILED"
+                            ? "text-rose-700"
+                            : document.pdfStatus === "SUCCEEDED"
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                        }`}
+                      >
+                        PDF: {formatEnumLabel(document.pdfStatus)}
+                        {document.pdfStatus === "FAILED" &&
+                          document.pdfCorrelationId &&
+                          ` / ${document.pdfCorrelationId}`}
+                      </div>
+                      {document.pdfStatus === "FAILED" && document.pdfLastError && (
+                        <div className="mt-1 max-w-72 text-xs text-rose-600">
+                          {document.pdfLastError}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       {String(booking.bookingRef ?? "-")}
@@ -269,11 +297,28 @@ export default function BillingPage() {
                           variant="secondary"
                           disabled={billingActions.isMutating}
                           onClick={() => {
-                            void billingActions.downloadDocument(document);
+                            void runAction(() =>
+                              billingActions.downloadDocument(document),
+                            );
                           }}
                         >
                           Download
                         </Button>
+                        {document.pdfStatus === "FAILED" && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="warning"
+                            disabled={billingActions.isMutating}
+                            onClick={() => {
+                              void runAction(() =>
+                                billingActions.retryDocumentPdf(document.id),
+                              );
+                            }}
+                          >
+                            Retry PDF
+                          </Button>
+                        )}
                         {canVoid && document.status !== "VOID" && (
                           <Button
                             type="button"
@@ -282,10 +327,12 @@ export default function BillingPage() {
                             outline
                             disabled={billingActions.isMutating}
                             onClick={() => {
-                              void billingActions.voidDocument({
-                                documentId: document.id,
-                                reason: "Voided from dashboard",
-                              });
+                              void runAction(() =>
+                                billingActions.voidDocument({
+                                  documentId: document.id,
+                                  reason: "Voided from dashboard",
+                                }),
+                              );
                             }}
                           >
                             Void

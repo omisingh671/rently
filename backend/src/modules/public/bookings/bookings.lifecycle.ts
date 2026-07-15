@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client.js";
+import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
 import * as repo from "./bookings.repository.js";
 
 const maxBookingTransactionAttempts = 3;
@@ -15,31 +16,18 @@ export const getNights = (checkIn: Date, checkOut: Date) => {
   return Math.max(1, nights);
 };
 
-const isRetryableBookingTransactionError = (error: unknown) =>
-  error instanceof Prisma.PrismaClientKnownRequestError &&
-  (error.code === "P2034" || error.code === "P2002");
-
 export const runBookingTransactionWithRetry = async <Result>(
   operation: () => Promise<Result>,
   options: BookingTransactionRetryOptions = {},
 ): Promise<Result> => {
-  let attempt = 1;
-
-  while (true) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (!isRetryableBookingTransactionError(error)) {
-        throw error;
-      }
-
-      if (attempt >= maxBookingTransactionAttempts) {
-        throw options.mapExhaustedError?.(error) ?? error;
-      }
-
-      attempt += 1;
-    }
-  }
+  return runWithBoundedRetry({
+    operation,
+    isRetryable: isTransientDatabaseError,
+    maxAttempts: maxBookingTransactionAttempts,
+    ...(options.mapExhaustedError !== undefined && {
+      mapExhaustedError: options.mapExhaustedError,
+    }),
+  });
 };
 
 const getBookingYearRange = (date: Date) => {

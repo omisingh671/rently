@@ -250,9 +250,27 @@ test("dashboard booking policy GET does not reset saved values", async () => {
         tokenRefundable: true,
         manualReviewRequired: false,
       },
+      earlyCheckInRules: {
+        enabled: true,
+        feeType: "FIXED_AMOUNT",
+        feeValue: 250,
+        overrideRole: "ADMIN",
+      },
       earlyCheckoutRules: {
         refundUnusedNights: true,
+        refundPercentage: 75,
         manualReviewRequired: false,
+        overrideRole: "ADMIN",
+      },
+      lateCheckoutRules: {
+        feeType: "FIXED_AMOUNT",
+        feeValue: 500,
+        graceMinutes: 30,
+        overrideRole: "ADMIN",
+      },
+      downgradeRules: {
+        financialTreatment: "CREDIT_DIFFERENCE",
+        overrideRole: "ADMIN",
       },
       noShowRules: {
         markAfterCheckInCutoff: false,
@@ -278,6 +296,13 @@ test("dashboard booking policy GET does not reset saved values", async () => {
   assert.deepEqual(reloaded.cancellationRules.allowedStatuses, ["PENDING"]);
   assert.equal(reloaded.refundRules.manualReviewRequired, false);
   assert.equal(reloaded.earlyCheckoutRules.refundUnusedNights, true);
+  assert.equal(reloaded.earlyCheckInRules.feeValue, 250);
+  assert.equal(reloaded.earlyCheckoutRules.refundPercentage, 75);
+  assert.equal(reloaded.lateCheckoutRules.graceMinutes, 30);
+  assert.equal(
+    reloaded.downgradeRules.financialTreatment,
+    "CREDIT_DIFFERENCE",
+  );
   assert.equal(reloaded.noShowRules.markAfterCheckInCutoff, false);
   assert.equal(reloaded.guestPolicyText, "Dashboard edited policy text");
 });
@@ -292,7 +317,28 @@ test("dashboard booking policy validation rejects invalid stay times", () => {
       checkOutTime: "10:15",
       cancellationRules: {},
       refundRules: {},
-      earlyCheckoutRules: {},
+      earlyCheckInRules: {
+        enabled: true,
+        feeType: "NONE",
+        feeValue: 0,
+        overrideRole: "ADMIN",
+      },
+      earlyCheckoutRules: {
+        refundUnusedNights: true,
+        refundPercentage: 101,
+        manualReviewRequired: true,
+        overrideRole: "ADMIN",
+      },
+      lateCheckoutRules: {
+        feeType: "NIGHTLY_RATE_MULTIPLIER",
+        feeValue: 1,
+        graceMinutes: 0,
+        overrideRole: "ADMIN",
+      },
+      downgradeRules: {
+        financialTreatment: "NO_CREDIT",
+        overrideRole: "ADMIN",
+      },
       noShowRules: {},
       guestPolicyText: "Dashboard policy text",
     }),

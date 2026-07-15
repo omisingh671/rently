@@ -48,6 +48,19 @@ test("manager can create a walk-in booking through dashboard operations", async 
   await page.getByRole("button", { name: "Record Payment" }).click();
   await expect(page.getByText("Outstanding Balance Due")).toBeHidden();
 
+  await page.getByRole("button", { name: "Extend Stay" }).click();
+  await expect(page.getByRole("heading", { name: "Extend Stay" })).toBeVisible();
+  await expect(page.getByLabel("New check-out")).toHaveValue(propertyIsoDate(2));
+  await page.getByRole("button", { name: "Preview extension" }).click();
+  await expect(page.getByText("Added nights")).toBeVisible();
+  await expect(page.getByText("1", { exact: true })).toBeVisible();
+  await page.getByLabel("Audit note").fill("Guest extended the stay by one night.");
+  await page.getByRole("button", { name: "Confirm extension" }).click();
+  await expect(page.getByText("Outstanding Balance Due")).toBeVisible();
+  await page.getByRole("button", { name: "Record Balance Payment" }).click();
+  await page.getByRole("button", { name: "Record Payment" }).click();
+  await expect(page.getByText("Outstanding Balance Due")).toBeHidden();
+
   const assignmentRow = page.getByRole("row", { name: /Assigned Room\/Unit/ });
   const assignmentText = (await assignmentRow.textContent()) ?? "";
   const assignedRoomNumber = assignmentText.match(/Room (101[AB])/)?.[1];

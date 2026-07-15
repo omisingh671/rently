@@ -13,7 +13,7 @@ import { getLocalDateValue } from "./bookings.helper.js";
 import { getRefundRecordedByUserId } from "./bookings.financials.js";
 import type { DashboardBookingDTO } from "./bookings.dto.js";
 import * as repo from "./bookings.repository.js";
-import { mapDashboardBooking } from "./bookings.presenter.js";
+import { mapDashboardBookings } from "./bookings.presenter.js";
 
 export const toLocalBusinessDateValue = (date: Date, timeZone: string) =>
   getLocalDateValue(date, timeZone);
@@ -250,9 +250,7 @@ export const buildOperationsBoardForProperty = async (
     }),
   ]);
 
-  const mapped = await Promise.all(
-    bookings.map((booking) => mapDashboardBooking(booking)),
-  );
+  const mapped = await mapDashboardBookings(bookings);
   return buildOperationsBoardPayload({
     propertyId,
     propertyName: property.name,

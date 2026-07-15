@@ -4,6 +4,8 @@ import {
   BookingStatus as BookingStatusValue,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { HttpError } from "@/common/errors/http-error.js";
+import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
 
 const dashboardBookingRoomAssignmentInclude = {
   unit: true,
@@ -252,26 +254,23 @@ export const findBookingById = (id: string) =>
 
 export const runBookingTransaction = async <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
-) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(callback, {
+) =>
+  runWithBoundedRetry({
+    operation: () =>
+      prisma.$transaction(callback, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034" &&
-        attempt < 2
-      ) {
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw new Error("Booking transaction retry limit reached");
-};
+        maxWait: 5_000,
+        timeout: 10_000,
+      }),
+    isRetryable: isTransientDatabaseError,
+    maxAttempts: 3,
+    mapExhaustedError: () =>
+      new HttpError(
+        503,
+        "BOOKING_DATABASE_UNAVAILABLE",
+        "Booking service is temporarily unavailable. Retry shortly.",
+      ),
+  });
 
 export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =>
   prisma.booking.update({

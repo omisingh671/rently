@@ -40,7 +40,10 @@ export interface UpdateBookingPolicyInput {
   checkOutTime: string;
   cancellationRules: Record<string, unknown>;
   refundRules: Record<string, unknown>;
+  earlyCheckInRules?: Record<string, unknown>;
   earlyCheckoutRules: Record<string, unknown>;
+  lateCheckoutRules?: Record<string, unknown>;
+  downgradeRules?: Record<string, unknown>;
   noShowRules: Record<string, unknown>;
   guestPolicyText: string;
 }
@@ -63,7 +66,16 @@ export const updateBookingPolicy = async (
     checkOutTime: input.checkOutTime,
     cancellationRules: input.cancellationRules as Prisma.InputJsonValue,
     refundRules: input.refundRules as Prisma.InputJsonValue,
+    ...(input.earlyCheckInRules !== undefined && {
+      earlyCheckInRules: input.earlyCheckInRules as Prisma.InputJsonValue,
+    }),
     earlyCheckoutRules: input.earlyCheckoutRules as Prisma.InputJsonValue,
+    ...(input.lateCheckoutRules !== undefined && {
+      lateCheckoutRules: input.lateCheckoutRules as Prisma.InputJsonValue,
+    }),
+    ...(input.downgradeRules !== undefined && {
+      downgradeRules: input.downgradeRules as Prisma.InputJsonValue,
+    }),
     noShowRules: input.noShowRules as Prisma.InputJsonValue,
     guestPolicyText: input.guestPolicyText,
   });

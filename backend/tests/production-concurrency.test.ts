@@ -4,9 +4,12 @@ import { after, before, test } from "node:test";
 import { HttpError } from "@/common/errors/http-error.js";
 import { prisma } from "@/db/prisma.js";
 import {
+  BookingRefundRequestStatus,
   ComfortOption,
   MaintenancePriority,
   MaintenanceTargetType,
+  PaymentMethod,
+  PaymentPurpose,
   PricingTier,
   PropertyAssignmentRole,
   PropertyStatus,
@@ -469,5 +472,486 @@ test("simultaneous payment replay creates one financial record", async () => {
   assert.equal(
     (await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } })).status,
     "CONFIRMED",
+  );
+});
+
+test("simultaneous guest refund requests create one active request", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: { tokenRefundable: true },
+  });
+  const booking = await publicBooking(
+    state.guestOneId,
+    state.roomOnePricingId,
+    range(26),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-request-payment`,
+  });
+  await publicBookings.cancelBooking(
+    state.guestOneId,
+    booking.id,
+    "Concurrency refund request setup",
+  );
+
+  const results = await Promise.allSettled([
+    publicBookings.createRefundRequest(
+      state.guestOneId,
+      booking.id,
+      "First simultaneous refund request",
+    ),
+    publicBookings.createRefundRequest(
+      state.guestOneId,
+      booking.id,
+      "Second simultaneous refund request",
+    ),
+  ]);
+
+  assertOneWinner(results);
+  const rejected = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  assert.ok(rejected?.reason instanceof HttpError);
+  assert.equal(rejected.reason.code, "REFUND_REQUEST_ALREADY_EXISTS");
+  assert.equal(
+    await prisma.bookingRefundRequest.count({
+      where: {
+        bookingId: booking.id,
+        status: {
+          in: [
+            BookingRefundRequestStatus.REQUESTED,
+            BookingRefundRequestStatus.IN_REVIEW,
+          ],
+        },
+      },
+    }),
+    1,
+  );
+});
+
+test("guest request racing staff fulfilment creates no stale refund work", async () => {
+  await prisma.propertyBookingPolicy.update({
+    where: { propertyId: state.propertyId },
+    data: { tokenRefundable: true },
+  });
+  const booking = await publicBooking(
+    state.guestTwoId,
+    state.roomTwoPricingId,
+    range(30),
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestTwoId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-refund-fulfilment-payment`,
+  });
+  await publicBookings.cancelBooking(
+    state.guestTwoId,
+    booking.id,
+    "Concurrency refund fulfilment setup",
+  );
+  const requested = await publicBookings.createRefundRequest(
+    state.guestTwoId,
+    booking.id,
+    "Original refund request",
+  );
+  const requestId = requested.refundRequest?.id;
+  assert.ok(requestId);
+
+  const inReview = await dashboardBookings.updateRefundRequest(
+    state.superAdminId,
+    booking.id,
+    requestId,
+    { status: BookingRefundRequestStatus.IN_REVIEW },
+  );
+  const payment = inReview.payments[0];
+  const refundableAmount = Number(inReview.refundableAmount);
+  assert.ok(payment);
+  assert.ok(refundableAmount > 0);
+
+  const results = await Promise.allSettled([
+    dashboardBookings.recordBookingRefund(state.superAdminId, booking.id, {
+      paymentId: payment.id,
+      amount: refundableAmount,
+      method: PaymentMethod.MANUAL,
+      reason: "Concurrency fulfilment",
+      refundRequestId: requestId,
+      idempotencyKey: `${testId}-refund-fulfilment`,
+    }),
+    publicBookings.createRefundRequest(
+      state.guestTwoId,
+      booking.id,
+      "Concurrent replacement request",
+    ),
+  ]);
+
+  assert.equal(results[0]?.status, "fulfilled");
+  assert.equal(results[1]?.status, "rejected");
+  assert.equal(
+    await prisma.bookingRefundRequest.count({ where: { bookingId: booking.id } }),
+    1,
+  );
+  assert.equal(
+    await prisma.bookingRefundRequest.count({
+      where: {
+        bookingId: booking.id,
+        status: {
+          in: [
+            BookingRefundRequestStatus.REQUESTED,
+            BookingRefundRequestStatus.IN_REVIEW,
+          ],
+        },
+      },
+    }),
+    0,
+  );
+});
+
+test("simultaneous stay extensions produce one audited charge", async () => {
+  const dates = range(34);
+  const booking = await publicBooking(
+    state.guestOneId,
+    state.roomOnePricingId,
+    dates,
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-stay-extension-payment`,
+  });
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: booking.id,
+    purpose: PaymentPurpose.BALANCE,
+    idempotencyKey: `${testId}-stay-extension-balance-payment`,
+  });
+  const confirmed = await dashboardBookings.getBookingById(
+    state.managerOneId,
+    booking.id,
+  );
+  const newCheckOut = new Date(Date.UTC(2031, 0, 37));
+  const preview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    booking.id,
+    {
+      expectedVersion: confirmed.version,
+      newCheckOut,
+    },
+  );
+  assert.equal(preview.extraNights, 1);
+  assert.equal(preview.conflicts.length, 0);
+
+  const extension = {
+    expectedVersion: confirmed.version,
+    newCheckOut,
+    pricingFingerprint: preview.pricingFingerprint,
+    note: "Concurrent extension approval",
+  };
+  const results = await Promise.allSettled([
+    dashboardBookings.extendStay(state.managerOneId, booking.id, extension),
+    dashboardBookings.extendStay(state.managerTwoId, booking.id, extension),
+  ]);
+
+  assertOneWinner(results);
+  const stored = await prisma.booking.findUniqueOrThrow({
+    where: { id: booking.id },
+  });
+  assert.equal(stored.checkOut.toISOString(), newCheckOut.toISOString());
+  assert.equal(
+    await prisma.bookingFolioCharge.count({
+      where: {
+        bookingId: booking.id,
+        type: "EXTENSION",
+        status: "ACTIVE",
+      },
+    }),
+    1,
+  );
+  assert.equal(
+    await prisma.bookingOperationEvent.count({
+      where: { bookingId: booking.id, eventType: "STAY_EXTENSION" },
+    }),
+    1,
+  );
+  assert.equal(
+    await prisma.billingDocument.count({
+      where: { bookingId: booking.id, type: "DEBIT_NOTE" },
+    }),
+    1,
+  );
+});
+
+test("stay extension detects parent-unit booking conflicts", async () => {
+  const originalDates = range(38);
+  const original = await publicBooking(
+    state.guestOneId,
+    state.roomOnePricingId,
+    originalDates,
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: original.id,
+    idempotencyKey: `${testId}-stay-extension-conflict-payment`,
+  });
+  await publicBookings.createBooking(
+    state.guestTwoId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.unitPricingId,
+      from: originalDates.to,
+      to: new Date(Date.UTC(2031, 0, 42)),
+      guests: 4,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  const confirmed = await dashboardBookings.getBookingById(
+    state.managerOneId,
+    original.id,
+  );
+  const preview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    original.id,
+    {
+      expectedVersion: confirmed.version,
+      newCheckOut: new Date(Date.UTC(2031, 0, 41)),
+    },
+  );
+
+  assert.ok(preview.conflicts.some((conflict) => conflict.type === "BOOKING"));
+  await assert.rejects(
+    () =>
+      dashboardBookings.extendStay(state.managerOneId, original.id, {
+        expectedVersion: confirmed.version,
+        newCheckOut: new Date(Date.UTC(2031, 0, 41)),
+        pricingFingerprint: preview.pricingFingerprint,
+        note: "Must not oversell parent unit",
+      }),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === "STAY_EXTENSION_CONFLICT",
+  );
+  assert.equal(
+    (
+      await prisma.booking.findUniqueOrThrow({ where: { id: original.id } })
+    ).checkOut.toISOString(),
+    originalDates.to.toISOString(),
+  );
+});
+
+test("stay extension detects maintenance, locks, and stale pricing without side effects", async () => {
+  const dates = range(44);
+  const booking = await publicBooking(
+    state.guestTwoId,
+    state.roomTwoPricingId,
+    dates,
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestTwoId,
+    bookingId: booking.id,
+    idempotencyKey: `${testId}-stay-extension-guard-payment`,
+  });
+  const confirmed = await dashboardBookings.getBookingById(
+    state.managerOneId,
+    booking.id,
+  );
+  const newCheckOut = new Date(dates.to);
+  newCheckOut.setUTCDate(newCheckOut.getUTCDate() + 1);
+  const maintenance = await maintenanceService.createMaintenanceBlock(
+    state.superAdminId,
+    state.propertyId,
+    {
+      targetType: MaintenanceTargetType.ROOM,
+      roomId: state.roomTwoId,
+      priority: MaintenancePriority.HIGH,
+      reason: "Extension maintenance conflict",
+      startDate: dates.to,
+      endDate: newCheckOut,
+    },
+  );
+  const maintenancePreview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    booking.id,
+    {
+      expectedVersion: confirmed.version,
+      newCheckOut,
+    },
+  );
+  assert.ok(
+    maintenancePreview.conflicts.some(
+      (conflict) => conflict.type === "MAINTENANCE",
+    ),
+  );
+  await assert.rejects(
+    () =>
+      dashboardBookings.extendStay(state.managerOneId, booking.id, {
+        expectedVersion: confirmed.version,
+        newCheckOut,
+        pricingFingerprint: maintenancePreview.pricingFingerprint,
+        note: "Maintenance must block manager",
+      }),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === "STAY_EXTENSION_CONFLICT",
+  );
+  await prisma.maintenanceBlock.update({
+    where: { id: maintenance.id },
+    data: { status: "CANCELLED" },
+  });
+
+  const lock = await prisma.inventoryLock.create({
+    data: {
+      lockToken: `${testId}-extension-lock`,
+      propertyId: state.propertyId,
+      targetType: "ROOM",
+      unitId: state.unitId,
+      roomId: state.roomTwoId,
+      checkIn: dates.to,
+      checkOut: newCheckOut,
+      expiresAt: new Date(Date.now() + 60_000),
+      createdByUserId: state.managerOneId,
+    },
+  });
+  const lockPreview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    booking.id,
+    {
+      expectedVersion: confirmed.version,
+      newCheckOut,
+    },
+  );
+  assert.ok(
+    lockPreview.conflicts.some(
+      (conflict) => conflict.type === "INVENTORY_LOCK",
+    ),
+  );
+  await prisma.inventoryLock.update({
+    where: { id: lock.id },
+    data: { releasedAt: new Date() },
+  });
+
+  const clearPreview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    booking.id,
+    {
+      expectedVersion: confirmed.version,
+      newCheckOut,
+    },
+  );
+  assert.equal(clearPreview.conflicts.length, 0);
+  await assert.rejects(
+    () =>
+      dashboardBookings.extendStay(state.managerOneId, booking.id, {
+        expectedVersion: confirmed.version,
+        newCheckOut,
+        pricingFingerprint: "0".repeat(64),
+        note: "Reject stale preview",
+      }),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === "PRICING_CHANGED",
+  );
+  const unchanged = await prisma.booking.findUniqueOrThrow({
+    where: { id: booking.id },
+  });
+  assert.equal(unchanged.checkOut.toISOString(), dates.to.toISOString());
+  assert.equal(
+    await prisma.bookingFolioCharge.count({ where: { bookingId: booking.id } }),
+    0,
+  );
+});
+
+test("stay extension preserves whole-unit and multi-room inventory", async () => {
+  const unitDates = range(50);
+  const unitBooking = await publicBookings.createBooking(
+    state.guestOneId,
+    {
+      bookingType: "SINGLE_TARGET",
+      spaceId: state.unitPricingId,
+      from: unitDates.from,
+      to: unitDates.to,
+      guests: 4,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestOneId,
+    bookingId: unitBooking.id,
+    idempotencyKey: `${testId}-unit-extension-payment`,
+  });
+  const unitBefore = await dashboardBookings.getBookingById(
+    state.managerOneId,
+    unitBooking.id,
+  );
+  const unitNewCheckOut = new Date(unitDates.to);
+  unitNewCheckOut.setUTCDate(unitNewCheckOut.getUTCDate() + 1);
+  const unitPreview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    unitBooking.id,
+    {
+      expectedVersion: unitBefore.version,
+      newCheckOut: unitNewCheckOut,
+    },
+  );
+  const unitExtended = await dashboardBookings.extendStay(
+    state.managerOneId,
+    unitBooking.id,
+    {
+      expectedVersion: unitBefore.version,
+      newCheckOut: unitNewCheckOut,
+      pricingFingerprint: unitPreview.pricingFingerprint,
+      note: "Extend whole unit",
+    },
+  );
+  assert.equal(unitExtended.targetType, "UNIT");
+  assert.equal(unitExtended.unitId, state.unitId);
+  assert.equal(unitExtended.items.length, 1);
+
+  const multiDates = range(54);
+  const multiBooking = await publicBookings.createBooking(
+    state.guestTwoId,
+    {
+      bookingType: "MULTI_ROOM",
+      spaceIds: [state.roomOnePricingId, state.roomTwoPricingId],
+      from: multiDates.from,
+      to: multiDates.to,
+      guests: 4,
+      comfortOption: ComfortOption.AC,
+    },
+    { tenantSlug: state.tenantSlug },
+  );
+  await paymentsService.createManualPayment({
+    userId: state.guestTwoId,
+    bookingId: multiBooking.id,
+    idempotencyKey: `${testId}-multi-extension-payment`,
+  });
+  const multiBefore = await dashboardBookings.getBookingById(
+    state.managerOneId,
+    multiBooking.id,
+  );
+  const originalItemIds = multiBefore.items.map((item) => item.id).sort();
+  const multiNewCheckOut = new Date(multiDates.to);
+  multiNewCheckOut.setUTCDate(multiNewCheckOut.getUTCDate() + 1);
+  const multiPreview = await dashboardBookings.previewStayExtension(
+    state.managerOneId,
+    multiBooking.id,
+    {
+      expectedVersion: multiBefore.version,
+      newCheckOut: multiNewCheckOut,
+    },
+  );
+  const multiExtended = await dashboardBookings.extendStay(
+    state.managerOneId,
+    multiBooking.id,
+    {
+      expectedVersion: multiBefore.version,
+      newCheckOut: multiNewCheckOut,
+      pricingFingerprint: multiPreview.pricingFingerprint,
+      note: "Extend multi-room stay",
+    },
+  );
+  assert.equal(multiExtended.items.length, 2);
+  assert.deepEqual(
+    multiExtended.items.map((item) => item.id).sort(),
+    originalItemIds,
   );
 });

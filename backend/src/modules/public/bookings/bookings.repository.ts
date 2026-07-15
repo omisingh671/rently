@@ -182,9 +182,28 @@ export const updateBookingById = (
 
 export const createBookingRefundRequest = (
   data: Prisma.BookingRefundRequestCreateInput,
+  tx?: Prisma.TransactionClient,
 ) =>
-  prisma.bookingRefundRequest.create({
+  client(tx).bookingRefundRequest.create({
     data,
+  });
+
+export const claimRefundRequestCreation = (
+  id: string,
+  userId: string,
+  expectedVersion: number,
+  tx: Prisma.TransactionClient,
+) =>
+  tx.booking.updateMany({
+    where: {
+      id,
+      userId,
+      version: expectedVersion,
+      status: { in: [BookingStatus.CANCELLED, BookingStatus.NO_SHOW] },
+    },
+    data: {
+      version: { increment: 1 },
+    },
   });
 
 export const updateRefundRequestById = (

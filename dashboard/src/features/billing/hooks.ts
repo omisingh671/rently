@@ -6,6 +6,7 @@ import {
   generateReceiptApi,
   getBillingSettingApi,
   listBillingDocumentsApi,
+  retryBillingDocumentPdfApi,
   updateBillingSettingApi,
   voidBillingDocumentApi,
 } from "./api";
@@ -73,15 +74,22 @@ export const useBillingActions = () => {
     mutationFn: downloadBillingDocumentApi,
   });
 
+  const retryDocumentPdf = useMutation({
+    mutationFn: retryBillingDocumentPdfApi,
+    onSuccess: invalidateBilling,
+  });
+
   return {
     generateInvoice: generateInvoice.mutateAsync,
     generateReceipt: generateReceipt.mutateAsync,
     voidDocument: voidDocument.mutateAsync,
     downloadDocument: downloadDocument.mutateAsync,
+    retryDocumentPdf: retryDocumentPdf.mutateAsync,
     isMutating:
       generateInvoice.isPending ||
       generateReceipt.isPending ||
       voidDocument.isPending ||
+      retryDocumentPdf.isPending ||
       downloadDocument.isPending,
   };
 };

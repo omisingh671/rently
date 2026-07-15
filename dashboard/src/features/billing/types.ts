@@ -34,6 +34,12 @@ export type BillingDocument = {
   lineItems: unknown;
   notes: string | null;
   pdfUrl: string | null;
+  pdfStatus: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+  pdfAttemptCount: number;
+  pdfMaxAttempts: number;
+  pdfLastError: string | null;
+  pdfCorrelationId: string | null;
+  pdfRenderedAt: string | null;
   issuedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;

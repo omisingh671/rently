@@ -12,7 +12,10 @@ export interface DashboardBookingPolicyDTO {
   checkOutTime: string;
   cancellationRules: BookingPolicyRulesDTO;
   refundRules: BookingPolicyRulesDTO;
+  earlyCheckInRules: BookingPolicyRulesDTO;
   earlyCheckoutRules: BookingPolicyRulesDTO;
+  lateCheckoutRules: BookingPolicyRulesDTO;
+  downgradeRules: BookingPolicyRulesDTO;
   noShowRules: BookingPolicyRulesDTO;
   guestPolicyText: string;
   createdAt: Date;

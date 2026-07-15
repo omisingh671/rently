@@ -1,6 +1,8 @@
 import { prisma } from "@/db/prisma.js";
 import { Prisma } from "@/generated/prisma/client.js";
 import type { MaintenanceTargetType } from "@/generated/prisma/enums.js";
+import { HttpError } from "@/common/errors/http-error.js";
+import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
 
 type MaintenanceDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -157,26 +159,20 @@ export const listConflictingBookings = (
 
 export const runMaintenanceTransaction = async <T>(
   callback: (tx: Prisma.TransactionClient) => Promise<T>,
-) => {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await prisma.$transaction(callback, {
+) =>
+  runWithBoundedRetry({
+    operation: () =>
+      prisma.$transaction(callback, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
         maxWait: 5_000,
         timeout: 10_000,
-      });
-    } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2034" &&
-        attempt < 2
-      ) {
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  throw new Error("Maintenance transaction retry limit reached");
-};
+      }),
+    isRetryable: isTransientDatabaseError,
+    maxAttempts: 3,
+    mapExhaustedError: () =>
+      new HttpError(
+        503,
+        "MAINTENANCE_DATABASE_UNAVAILABLE",
+        "Maintenance service is temporarily unavailable. Retry shortly.",
+      ),
+  });

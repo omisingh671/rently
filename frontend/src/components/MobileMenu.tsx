@@ -10,6 +10,7 @@ import { FiX, FiLogOut } from "react-icons/fi";
 import { MenuItem } from "@/components/navigation/MenuItem";
 import { MobileDropdown } from "@/components/navigation/MobileDropdown";
 import { MobileDropdownItem } from "@/components/navigation/MobileDropdownItem";
+import TenantLogo from "@/components/TenantLogo";
 
 import { MAIN_NAV, CTA_NAV, LEGAL_NAV, ACCOUNT_NAV } from "@/configs/navConfig";
 import { ROUTES } from "@/configs/routePaths";
@@ -21,6 +22,8 @@ type MobileMenuProps = {
   onLogout: () => Promise<void> | void;
   logoutPending?: boolean;
   user?: AuthUser | null;
+  logoUrl?: string | null;
+  brandName?: string;
 };
 
 const logoSrc = "/assets/images/logo-mobile.png";
@@ -32,6 +35,8 @@ export default function MobileMenu({
   onLogout,
   logoutPending,
   user,
+  logoUrl,
+  brandName = "Home Away from Home",
 }: MobileMenuProps) {
   useLockBodyScroll(open);
 
@@ -78,9 +83,10 @@ export default function MobileMenu({
               className="flex items-center gap-3"
             >
               <div className="h-16 rounded-md overflow-hidden">
-                <img
-                  src={logoSrc}
-                  alt="Home Away from Home"
+                <TenantLogo
+                  logoUrl={logoUrl}
+                  fallbackSrc={logoSrc}
+                  alt={brandName}
                   className="w-full h-full object-cover"
                 />
               </div>

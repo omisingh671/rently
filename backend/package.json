@@ -25,7 +25,11 @@
     "test:booking": "tsx tests/public-booking.test.ts",
     "test:payment": "tsx tests/public-payment.test.ts",
     "test:concurrency": "tsx tests/production-concurrency.test.ts",
+    "test:recovery": "tsx tests/failure-recovery.test.ts",
     "test:reporting": "tsx tests/reporting-analytics.test.ts",
+    "load:smoke": "tsx scripts/load/run-load.ts smoke",
+    "load:baseline": "tsx scripts/load/run-load.ts baseline",
+    "load:scheduled": "tsx scripts/load/run-load.ts baseline",
     "build:scripts": "tsc -p tsconfig.scripts.json"
   },
   "keywords": [],

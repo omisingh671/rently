@@ -218,6 +218,9 @@ export const checkInBookingSchema = z
     identityDocumentReference: z.string().trim().min(1).max(100).optional(),
     allowBalanceDueCheckIn: z.boolean().optional(),
     note: z.string().trim().max(1000).optional(),
+    policyFingerprint: z.string().trim().length(64).optional(),
+    allowPolicyOverride: z.boolean().optional(),
+    overrideReason: z.string().trim().min(1).max(1000).optional(),
   })
   .refine(
     (data) =>
@@ -235,6 +238,11 @@ export const checkOutBookingSchema = z.object({
   expectedVersion: expectedVersionSchema,
   allowBalanceDueCheckout: z.boolean().optional(),
   note: z.string().trim().max(1000).optional(),
+  policyFingerprint: z.string().trim().length(64).optional(),
+});
+
+export const previewBookingLifecyclePolicySchema = z.object({
+  expectedVersion: expectedVersionSchema,
 });
 
 export const noShowBookingSchema = z.object({
@@ -250,8 +258,31 @@ export const previewBookingRoomMoveSchema = z.object({
 export const moveBookingRoomSchema = previewBookingRoomMoveSchema.extend({
   note: z.string().trim().min(1).max(1000),
   pricingFingerprint: z.string().trim().min(1).max(128),
-  expectedAdjustmentAmount: z.coerce.number().nonnegative(),
-  pricingAction: z.enum(["CHARGE_DIFFERENCE", "COMPLIMENTARY_UPGRADE"]),
+  expectedAdjustmentAmount: z.coerce.number(),
+  pricingAction: z.enum([
+    "CHARGE_DIFFERENCE",
+    "COMPLIMENTARY_UPGRADE",
+    "APPLY_CREDIT",
+    "NO_CREDIT",
+  ]),
+});
+
+export const previewStayExtensionSchema = z.object({
+  expectedVersion: expectedVersionSchema,
+  newCheckOut: z.coerce.date().refine(
+    (date) =>
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0,
+    "New check-out must be a date-only UTC value",
+  ),
+});
+
+export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
+  pricingFingerprint: z.string().trim().length(64),
+  note: z.string().trim().min(1).max(1000),
+  overrideReason: z.string().trim().min(1).max(1000).optional(),
 });
 
 export const correctBookingStatusSchema = z.object({

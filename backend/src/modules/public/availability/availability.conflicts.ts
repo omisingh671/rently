@@ -9,13 +9,18 @@ export interface AvailabilityDateRange {
   checkOut: Date;
 }
 
-export const hasInventoryConflict = async (
+export type InventoryConflictType =
+  | "BOOKING"
+  | "MAINTENANCE"
+  | "INVENTORY_LOCK";
+
+export const getInventoryConflictTypes = async (
   propertyId: string,
   target: spacesRepo.PublicSpaceTarget,
   dateRange: AvailabilityDateRange,
   tx?: Prisma.TransactionClient,
   ignoreLockToken?: string,
-) => {
+): Promise<InventoryConflictType[]> => {
   const at = new Date();
   const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
     repo.hasOverlappingBooking(
@@ -41,7 +46,28 @@ export const hasInventoryConflict = async (
     ),
   ]);
 
-  return hasBooking || hasMaintenance || hasLock;
+  return [
+    ...(hasBooking ? (["BOOKING"] as const) : []),
+    ...(hasMaintenance ? (["MAINTENANCE"] as const) : []),
+    ...(hasLock ? (["INVENTORY_LOCK"] as const) : []),
+  ];
+};
+
+export const hasInventoryConflict = async (
+  propertyId: string,
+  target: spacesRepo.PublicSpaceTarget,
+  dateRange: AvailabilityDateRange,
+  tx?: Prisma.TransactionClient,
+  ignoreLockToken?: string,
+) => {
+  const conflicts = await getInventoryConflictTypes(
+    propertyId,
+    target,
+    dateRange,
+    tx,
+    ignoreLockToken,
+  );
+  return conflicts.length > 0;
 };
 
 export const ensureSpaceAvailable = async (

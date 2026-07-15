@@ -243,12 +243,42 @@ export type CheckInBookingPayload = {
   identityDocumentReference?: string;
   allowBalanceDueCheckIn?: boolean;
   note?: string;
+  policyFingerprint?: string;
+  allowPolicyOverride?: boolean;
+  overrideReason?: string;
 };
 
 export type CheckOutBookingPayload = {
   expectedVersion: number;
   allowBalanceDueCheckout?: boolean;
   note?: string;
+  policyFingerprint?: string;
+};
+
+export type CheckInPolicyPreview = {
+  bookingId: string;
+  bookingVersion: number;
+  isEarly: boolean;
+  allowed: boolean;
+  scheduledCheckInTime: string;
+  feeAmount: string;
+  policyFingerprint: string;
+};
+
+export type CheckOutPolicyPreview = {
+  bookingId: string;
+  bookingVersion: number;
+  isEarly: boolean;
+  unusedNights: number;
+  refundAmount: string;
+  manualReviewRequired: boolean;
+  policyFingerprint: string;
+  lateCheckoutCharge: null | {
+    extraNights: number;
+    totalAmount: string;
+    tariffType: "NIGHTLY_RATE_MULTIPLIER" | "FIXED_AMOUNT";
+    tariffValue: number;
+  };
 };
 
 export type VersionedBookingNotePayload = {
@@ -258,7 +288,9 @@ export type VersionedBookingNotePayload = {
 
 export type RoomMovePricingAction =
   | "CHARGE_DIFFERENCE"
-  | "COMPLIMENTARY_UPGRADE";
+  | "COMPLIMENTARY_UPGRADE"
+  | "APPLY_CREDIT"
+  | "NO_CREDIT";
 
 export type RoomMovePreview = {
   bookingId: string;
@@ -275,6 +307,8 @@ export type RoomMovePreview = {
   pricingFingerprint: string;
   pricingRequired: boolean;
   allowedPricingActions: RoomMovePricingAction[];
+  movementType: "UPGRADE" | "DOWNGRADE" | "SAME_RATE";
+  downgradeTreatment: "NO_CREDIT" | "CREDIT_DIFFERENCE" | "WAIVER";
   taxBreakdown: Array<{
     taxId: string;
     name: string;
@@ -293,6 +327,45 @@ export type MoveRoomPayload = PreviewRoomMovePayload & {
   pricingFingerprint: string;
   expectedAdjustmentAmount: number;
   pricingAction: RoomMovePricingAction;
+};
+
+export type StayExtensionPreview = {
+  bookingId: string;
+  bookingVersion: number;
+  originalCheckOutDate: string;
+  newCheckOut: string;
+  extraNights: number;
+  currentAssignment: string;
+  nightlyRate: string;
+  baseAmount: string;
+  discountAmount: string;
+  taxAmount: string;
+  totalAmount: string;
+  resultingBalance: string;
+  pricingFingerprint: string;
+  conflicts: Array<{
+    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    targetType: BookingTargetType;
+    targetId: string;
+    targetLabel: string;
+  }>;
+  taxBreakdown: Array<{
+    taxId: string;
+    name: string;
+    rate: number;
+    amount: string;
+  }>;
+};
+
+export type PreviewStayExtensionPayload = {
+  expectedVersion: number;
+  newCheckOut: string;
+};
+
+export type CommitStayExtensionPayload = PreviewStayExtensionPayload & {
+  pricingFingerprint: string;
+  note: string;
+  overrideReason?: string;
 };
 
 export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {

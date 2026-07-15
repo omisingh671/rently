@@ -17,6 +17,7 @@ import type {
   TaxType,
   UnitStatus,
 } from "@/generated/prisma/enums.js";
+import type { StayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
 
 export interface DashboardManualBookingAvailabilityItemDTO {
   spaceId: string;
@@ -59,8 +60,14 @@ export interface BookingRoomMovePreviewDTO {
   pricingFingerprint: string;
   pricingRequired: boolean;
   allowedPricingActions: Array<
-    "CHARGE_DIFFERENCE" | "COMPLIMENTARY_UPGRADE"
+    | "CHARGE_DIFFERENCE"
+    | "COMPLIMENTARY_UPGRADE"
+    | "APPLY_CREDIT"
+    | "NO_CREDIT"
   >;
+  movementType: "UPGRADE" | "DOWNGRADE" | "SAME_RATE";
+  downgradeTreatment: "NO_CREDIT" | "CREDIT_DIFFERENCE" | "WAIVER";
+  policySnapshot: StayPolicySnapshot;
   taxBreakdown: Array<{
     taxId: string;
     name: string;
@@ -91,6 +98,48 @@ export interface BookingStayExtensionChargePreviewDTO {
     pricingId: string;
     nightlyRate: string;
   }>;
+  tariffType?: "NIGHTLY_RATE_MULTIPLIER" | "FIXED_AMOUNT";
+  tariffValue?: number;
+  policySnapshot?: StayPolicySnapshot;
+}
+
+export interface BookingStayExtensionPreviewDTO
+  extends BookingStayExtensionChargePreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  newCheckOut: string;
+  discountAmount: string;
+  resultingBalance: string;
+  pricingFingerprint: string;
+  conflicts: Array<{
+    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    targetType: BookingTargetType;
+    targetId: string;
+    targetLabel: string;
+  }>;
+}
+
+export interface BookingCheckInPolicyPreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  isEarly: boolean;
+  allowed: boolean;
+  scheduledCheckInTime: string;
+  feeAmount: string;
+  policyFingerprint: string;
+  policySnapshot: StayPolicySnapshot;
+}
+
+export interface BookingCheckOutPolicyPreviewDTO {
+  bookingId: string;
+  bookingVersion: number;
+  isEarly: boolean;
+  unusedNights: number;
+  refundAmount: string;
+  manualReviewRequired: boolean;
+  lateCheckoutCharge: BookingStayExtensionChargePreviewDTO | null;
+  policyFingerprint: string;
+  policySnapshot: StayPolicySnapshot;
 }
 
 export type DashboardRoomBoardStatus =

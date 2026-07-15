@@ -15,7 +15,6 @@ import type {
   MoveBookingRoomInput,
   VoidBookingFolioChargeInput,
 } from "./bookings.inputs.js";
-import { buildLateCheckoutExtensionPreview } from "./bookings.assignment.js";
 import type { DashboardActor } from "./bookings.access.js";
 import {
   assertExpectedBookingVersion,
@@ -24,6 +23,9 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import * as repo from "./bookings.repository.js";
+import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
+import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import { buildLateCheckoutPolicyPreview } from "./bookings.stay-policy.js";
 
 const getJsonString = (value: Prisma.JsonValue, key: string) => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -103,6 +105,9 @@ export const ensureLateCheckoutExtensionCharge = async (
         totalAmount: input.preview.totalAmount,
         taxBreakdown: input.preview.taxBreakdown,
         pricingSnapshot: input.preview.pricingSnapshot,
+        tariffType: input.preview.tariffType,
+        tariffValue: input.preview.tariffValue,
+        policySnapshot: input.preview.policySnapshot,
       },
     },
   });
@@ -127,7 +132,20 @@ export const postLateCheckoutExtensionCharge = async (
         extensionPreview: null,
       };
     }
-    const extensionPreview = await buildLateCheckoutExtensionPreview(booking, tx);
+    const policy = await tx.propertyBookingPolicy.upsert({
+      where: { propertyId: booking.propertyId },
+      create: {
+        propertyId: booking.propertyId,
+        ...defaultBookingPolicyCreateData,
+      },
+      update: {},
+    });
+    const policySnapshot = buildStayPolicySnapshot(policy);
+    const extensionPreview = await buildLateCheckoutPolicyPreview(
+      tx,
+      booking,
+      policySnapshot,
+    );
     const extensionCharge = await ensureLateCheckoutExtensionCharge(tx, {
       booking,
       actorUserId: actor.id,
@@ -160,7 +178,8 @@ export const createRoomMoveAdjustmentCharge = async (
 ) => {
   if (
     !input.pricingPreview.pricingRequired ||
-    input.roomMove.pricingAction !== "CHARGE_DIFFERENCE"
+    (input.roomMove.pricingAction !== "CHARGE_DIFFERENCE" &&
+      input.roomMove.pricingAction !== "APPLY_CREDIT")
   ) {
     return null;
   }
@@ -171,7 +190,10 @@ export const createRoomMoveAdjustmentCharge = async (
       propertyId: input.booking.propertyId,
       createdByUserId: input.actorUserId,
       type: "ADJUSTMENT",
-      description: `Accommodation upgrade: ${input.pricingPreview.destinationAssignment}`,
+      description:
+        input.roomMove.pricingAction === "APPLY_CREDIT"
+          ? `Accommodation downgrade credit: ${input.pricingPreview.destinationAssignment}`
+          : `Accommodation upgrade: ${input.pricingPreview.destinationAssignment}`,
       amount: input.pricingPreview.totalAdjustment,
       note: input.roomMove.note,
       metadata: {
@@ -193,11 +215,13 @@ export const createRoomMoveAdjustmentCharge = async (
       },
     },
   });
-  await billingService.createDebitNoteForFolioCharge(
-    input.booking.id,
-    charge.id,
-    tx,
-  );
+  if (input.roomMove.pricingAction === "CHARGE_DIFFERENCE") {
+    await billingService.createDebitNoteForFolioCharge(
+      input.booking.id,
+      charge.id,
+      tx,
+    );
+  }
 
   return charge;
 };

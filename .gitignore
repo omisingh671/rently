@@ -8,6 +8,7 @@ node_modules/
 
 # Build output
 dist/
+dist-scripts/
 dist-ssr/
 build/
 out/
@@ -28,6 +29,7 @@ coverage/
 *.lcov
 playwright-report/
 test-results/
+load-results/
 
 # TypeScript and tooling caches
 *.tsbuildinfo

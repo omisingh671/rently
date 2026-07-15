@@ -15,6 +15,8 @@ import { env } from "@/config/env.js";
 import { ZodError } from "zod";
 import { Prisma } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { requestContextMiddleware, getCorrelationId } from "@/common/observability/request-context.js";
+import { logError } from "@/common/observability/logger.js";
 
 // Routers
 import authRouter from "@/modules/auth/auth.routes.js";
@@ -38,6 +40,8 @@ import { taxesRouter } from "@/modules/taxes/index.js";
 import { couponsRouter } from "@/modules/coupons/index.js";
 import { leadsRouter } from "@/modules/leads/index.js";
 import bookingsRouter from "@/modules/bookings/index.js";
+import emailDeliveriesRouter from "@/modules/email-deliveries/email-deliveries.routes.js";
+import { notificationsRouter } from "@/modules/notifications/index.js";
 
 
 const API_PREFIX = env.API_PREFIX;
@@ -116,6 +120,7 @@ const publicBookingRateLimit = buildRateLimit(
 );
 
 export const app = express();
+app.use(requestContextMiddleware);
 
 /**
  * --------------------------------------------------
@@ -198,6 +203,8 @@ app.use(`${API_PREFIX}`, taxesRouter);
 app.use(`${API_PREFIX}`, couponsRouter);
 app.use(`${API_PREFIX}`, leadsRouter);
 app.use(`${API_PREFIX}`, bookingsRouter);
+app.use(`${API_PREFIX}`, emailDeliveriesRouter);
+app.use(`${API_PREFIX}`, notificationsRouter);
 
 
 /**
@@ -220,13 +227,15 @@ app.use((_req: Request, res: Response) => {
  * --------------------------------------------------
  */
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err);
+  const correlationId = getCorrelationId();
+  logError("Request failed", err);
 
   if (err instanceof HttpError) {
     return res.status(err.statusCode).json({
       error: {
         code: err.code,
         message: err.message,
+        correlationId,
         ...(err.details !== undefined && { details: err.details }),
       },
     });
@@ -237,6 +246,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: {
         code: "VALIDATION_ERROR",
         message: "Invalid request data",
+        correlationId,
         details: err.issues.map((issue) => ({
           code: issue.code,
           path: issue.path,
@@ -254,6 +264,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
           err.code === "LIMIT_FILE_SIZE"
             ? "Image file must be 10MB or smaller"
             : "Invalid file upload",
+        correlationId,
       },
     });
   }
@@ -263,6 +274,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       error: {
         code: "DATABASE_ERROR",
         message: "Something went wrong",
+        correlationId,
       },
     });
   }
@@ -271,6 +283,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     error: {
       code: "INTERNAL_SERVER_ERROR",
       message: "Something went wrong",
+      correlationId,
     },
   });
 });

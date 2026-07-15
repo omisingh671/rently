@@ -39,6 +39,7 @@ export const ADMIN_ROUTES = {
   ENQUIRIES: "enquiries",
   QUOTES: "quotes",
   SETTINGS: "settings",
+  NOTIFICATIONS: "notifications",
 
   PROFILE: "profile",
   CHANGE_PASSWORD: "change-password",

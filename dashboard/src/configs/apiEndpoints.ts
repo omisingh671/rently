@@ -33,6 +33,7 @@ export const API_ENDPOINTS = {
     create: "/tenants",
     byId: (tenantId: string) => `/tenants/${tenantId}`,
     updateById: (tenantId: string) => `/tenants/${tenantId}`,
+    logo: (tenantId: string) => `/tenants/${tenantId}/logo`,
   },
 
   admins: {
@@ -63,6 +64,22 @@ export const API_ENDPOINTS = {
     list: "/sessions",
     deleteById: (sessionId: string) => `/sessions/${sessionId}`,
     deleteExpired: "/sessions/expired",
+  },
+
+  emailDeliveries: {
+    list: "/email-deliveries",
+    retry: (deliveryId: string) => `/email-deliveries/${deliveryId}/retry`,
+  },
+
+  notifications: {
+    settings: "/notification-settings",
+    globalSetting: "/notification-settings/global",
+    propertyOverride: (propertyId: string) =>
+      `/properties/${propertyId}/notification-overrides`,
+    audits: "/notification-setting-audits",
+    deliveries: "/notification-deliveries",
+    retryDelivery: (deliveryId: string) =>
+      `/notification-deliveries/${deliveryId}/retry`,
   },
 
   propertyAssignments: {
@@ -137,14 +154,22 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/refund-requests/${requestId}`,
     bookingCheckInById: (bookingId: string) =>
       `/bookings/${bookingId}/check-in`,
+    bookingCheckInPreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-in/preview`,
     bookingCheckOutById: (bookingId: string) =>
       `/bookings/${bookingId}/check-out`,
+    bookingCheckOutPreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/check-out/preview`,
     bookingNoShowById: (bookingId: string) =>
       `/bookings/${bookingId}/no-show`,
     bookingRoomMoveById: (bookingId: string) =>
       `/bookings/${bookingId}/room-move`,
     bookingRoomMovePreviewById: (bookingId: string) =>
       `/bookings/${bookingId}/room-move/preview`,
+    bookingStayExtensionById: (bookingId: string) =>
+      `/bookings/${bookingId}/stay-extension`,
+    bookingStayExtensionPreviewById: (bookingId: string) =>
+      `/bookings/${bookingId}/stay-extension/preview`,
     bookingStatusCorrectionById: (bookingId: string) =>
       `/bookings/${bookingId}/status-correction`,
     bookingFolioChargesById: (bookingId: string) =>
@@ -176,6 +201,8 @@ export const API_ENDPOINTS = {
     receipt: "/billing-documents/receipts",
     download: (documentId: string) =>
       `/billing-documents/${documentId}/download`,
+    retryPdf: (documentId: string) =>
+      `/billing-documents/${documentId}/pdf/retry`,
     voidById: (documentId: string) =>
       `/billing-documents/${documentId}/void`,
     settingsByProperty: (propertyId: string) =>

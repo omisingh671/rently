@@ -1,9 +1,8 @@
-import crypto from "node:crypto";
 import { hashPassword } from "@/common/utils/password.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { UserRole } from "@/generated/prisma/enums.js";
 import { env } from "@/config/env.js";
-import { sendResetPasswordEmail } from "@/modules/auth/email/resetPassword.email.js";
+import { queuePasswordResetEmail } from "@/modules/email-deliveries/email-deliveries.service.js";
 
 import * as repo from "./users.repository.js";
 import type {
@@ -25,7 +24,6 @@ import type {
   UpdateDashboardForcePasswordChangeInput,
 } from "./users.inputs.js";
 
-const RESET_TOKEN_TTL_MINUTES = 60;
 
 interface ListUsersParams {
   page: number;
@@ -455,19 +453,11 @@ export const sendUserPasswordResetEmail = async (
   if (!target) {
     throw new HttpError(404, "USER_NOT_FOUND", "User not found");
   }
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  await repo.deletePasswordResetTokensForUser(target.id);
-  await repo.createPasswordResetToken({
-    userId: target.id,
-    tokenHash,
-    expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000),
-  });
-
-  await sendResetPasswordEmail(target.email, rawToken, {
-    appUrl: env.DASHBOARD_URL ?? env.FRONTEND_URL,
-  });
+  await queuePasswordResetEmail(
+    target,
+    env.DASHBOARD_URL ?? env.FRONTEND_URL,
+    60,
+  );
 };
 
 export const updateForcePasswordChange = async (
@@ -541,5 +531,3 @@ function mapDashboardUser(user: UserEntity): DashboardUserDTO {
     updatedAt: user.updatedAt,
   };
 }
-
-

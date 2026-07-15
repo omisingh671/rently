@@ -74,6 +74,15 @@ export const downloadBillingDocumentApi = async (
   triggerBlobDownload(data, `${document.documentNumber}.pdf`);
 };
 
+export const retryBillingDocumentPdfApi = async (
+  documentId: string,
+): Promise<BillingDocument> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<BillingDocument>>(
+    API_ENDPOINTS.billing.retryPdf(documentId),
+  );
+  return data.data;
+};
+
 export const getBillingSettingApi = async (
   propertyId: string,
 ): Promise<BillingSetting> => {

@@ -1,5 +1,6 @@
 import {
   BookingOperationEventType,
+  BookingRefundRequestStatus,
   BookingStatus,
   Prisma,
   UserRole,
@@ -33,6 +34,10 @@ import {
   mapTransactionBooking,
 } from "./bookings.presenter.js";
 import * as repo from "./bookings.repository.js";
+import {
+  buildCheckInPolicyPreview,
+  buildCheckOutPolicyPreview,
+} from "./bookings.stay-policy.js";
 
 export const assertCheckoutBalanceSettled = (input: {
   booking: repo.DashboardBookingRecord;
@@ -264,11 +269,12 @@ export const checkInBookingInTransaction = async (
   input: {
     bookingId: string;
     actorUserId: string;
+    actorRole: UserRole;
     checkIn: CheckInBookingInput;
     assignment?: BookingRoomAssignmentResolution;
   },
 ) => {
-  const booking = await findTransactionBooking(tx, input.bookingId);
+  let booking = await findTransactionBooking(tx, input.bookingId);
   assertExpectedBookingVersion(
     booking.version,
     input.checkIn.expectedVersion,
@@ -289,6 +295,52 @@ export const checkInBookingInTransaction = async (
   }
   if (today > arrivalDate) {
     requireAuditNote(input.checkIn.note, "Audit note is required for late arrival");
+  }
+
+  const policyPreview = await buildCheckInPolicyPreview(tx, booking);
+  const policyOverride = input.checkIn.allowPolicyOverride === true;
+  if (policyPreview.isEarly && (!policyPreview.allowed || policyPreview.feeAmount !== "0")) {
+    if (!input.checkIn.policyFingerprint) {
+      throw new HttpError(
+        409,
+        "POLICY_PREVIEW_REQUIRED",
+        "Review the early check-in policy before confirming",
+      );
+    }
+    if (input.checkIn.policyFingerprint !== policyPreview.policyFingerprint) {
+      throw new HttpError(
+        409,
+        "POLICY_CHANGED",
+        "The property policy changed. Review the latest result.",
+      );
+    }
+  }
+  if (policyPreview.isEarly && !policyPreview.allowed && !policyOverride) {
+    throw new HttpError(409, "EARLY_CHECK_IN_NOT_ALLOWED", "Early check-in is disabled by property policy");
+  }
+  if (policyOverride) {
+    if (!isAdminOverrideRole(input.actorRole)) {
+      throw new HttpError(403, "POLICY_OVERRIDE_RESTRICTED", "Only Admin or Super Admin can override stay policy");
+    }
+    requireAuditNote(input.checkIn.overrideReason, "Policy override reason is required");
+  }
+  if (policyPreview.isEarly && policyPreview.feeAmount !== "0" && !policyOverride) {
+    await tx.bookingFolioCharge.create({
+      data: {
+        bookingId: booking.id,
+        propertyId: booking.propertyId,
+        createdByUserId: input.actorUserId,
+        type: "ADJUSTMENT",
+        description: "Early check-in fee",
+        amount: policyPreview.feeAmount,
+        metadata: {
+          source: "EARLY_CHECK_IN_POLICY",
+          policyFingerprint: policyPreview.policyFingerprint,
+          policySnapshot: policyPreview.policySnapshot,
+        },
+      },
+    });
+    booking = await findTransactionBooking(tx, input.bookingId);
   }
 
   const selectedRoomIds =
@@ -347,6 +399,11 @@ export const checkInBookingInTransaction = async (
       roomIds: selectedRoomIds,
       identityVerified: true,
       lateArrival: today > arrivalDate,
+      earlyCheckIn: policyPreview.isEarly,
+      earlyCheckInFee: policyOverride ? "0" : policyPreview.feeAmount,
+      policyOverride,
+      policyFingerprint: policyPreview.policyFingerprint,
+      policySnapshot: policyPreview.policySnapshot,
     },
   });
   if (balanceAmount.greaterThan(0)) {
@@ -443,6 +500,15 @@ export const checkOutBookingInTransaction = async (
     input.checkOut.expectedVersion,
   );
   assertBookingTransitionAllowed(booking.status, BookingStatus.CHECKED_OUT);
+  const policyPreview = await buildCheckOutPolicyPreview(tx, booking);
+  if (new Prisma.Decimal(policyPreview.refundAmount).greaterThan(0)) {
+    if (!input.checkOut.policyFingerprint) {
+      throw new HttpError(409, "POLICY_PREVIEW_REQUIRED", "Review the early checkout refund before confirming");
+    }
+    if (input.checkOut.policyFingerprint !== policyPreview.policyFingerprint) {
+      throw new HttpError(409, "POLICY_CHANGED", "The property policy changed. Review the latest result.");
+    }
+  }
   const { balanceAmount } = assertCheckoutBalanceSettled({
     booking,
     actor: input.actor,
@@ -484,8 +550,32 @@ export const checkOutBookingInTransaction = async (
       balanceAmount: balanceAmount.toString(),
       extensionChargeId: input.extensionChargeId,
       extraNights: input.extraNights,
+      earlyCheckout: policyPreview.isEarly,
+      unusedNights: policyPreview.unusedNights,
+      refundAmount: policyPreview.refundAmount,
+      refundManualReviewRequired: policyPreview.manualReviewRequired,
+      policyFingerprint: policyPreview.policyFingerprint,
+      policySnapshot: policyPreview.policySnapshot,
     },
   });
+  if (
+    new Prisma.Decimal(policyPreview.refundAmount).greaterThan(0) &&
+    !booking.refundRequests.some(
+      (request) =>
+        request.status === BookingRefundRequestStatus.REQUESTED ||
+        request.status === BookingRefundRequestStatus.IN_REVIEW,
+    )
+  ) {
+    await tx.bookingRefundRequest.create({
+      data: {
+        bookingId: booking.id,
+        propertyId: booking.propertyId,
+        userId: booking.userId,
+        status: BookingRefundRequestStatus.REQUESTED,
+        reason: `Early checkout policy review: ${policyPreview.unusedNights} unused night(s), up to ${policyPreview.refundAmount}`,
+      },
+    });
+  }
   if (balanceAmount.greaterThan(0)) {
     await createOperationEvent(tx, {
       bookingId: input.bookingId,
@@ -518,6 +608,7 @@ export const checkOutDashboardBookingUpdateInTransaction = async (
   },
 ) => {
   const booking = await findTransactionBooking(tx, input.bookingId);
+  const policyPreview = await buildCheckOutPolicyPreview(tx, booking);
   const { balanceAmount } = assertCheckoutBalanceSettled({
     booking,
     actor: input.actor,
@@ -551,8 +642,32 @@ export const checkOutDashboardBookingUpdateInTransaction = async (
       balanceAmount: balanceAmount.toString(),
       extensionChargeId: input.extensionChargeId,
       extraNights: input.extraNights,
+      earlyCheckout: policyPreview.isEarly,
+      unusedNights: policyPreview.unusedNights,
+      refundAmount: policyPreview.refundAmount,
+      refundManualReviewRequired: policyPreview.manualReviewRequired,
+      policyFingerprint: policyPreview.policyFingerprint,
+      policySnapshot: policyPreview.policySnapshot,
     },
   });
+  if (
+    new Prisma.Decimal(policyPreview.refundAmount).greaterThan(0) &&
+    !booking.refundRequests.some(
+      (request) =>
+        request.status === BookingRefundRequestStatus.REQUESTED ||
+        request.status === BookingRefundRequestStatus.IN_REVIEW,
+    )
+  ) {
+    await tx.bookingRefundRequest.create({
+      data: {
+        bookingId: booking.id,
+        propertyId: booking.propertyId,
+        userId: booking.userId,
+        status: BookingRefundRequestStatus.REQUESTED,
+        reason: `Early checkout policy review: ${policyPreview.unusedNights} unused night(s), up to ${policyPreview.refundAmount}`,
+      },
+    });
+  }
   if (balanceAmount.greaterThan(0)) {
     await createOperationEvent(tx, {
       bookingId: input.bookingId,

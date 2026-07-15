@@ -20,6 +20,8 @@ import type {
   PaymentMethod,
   RoomMovePreview,
   RoomMovePricingAction,
+  CheckInPolicyPreview,
+  CheckOutPolicyPreview,
 } from "../types";
 import { FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
 
@@ -52,6 +54,8 @@ type BookingActionModalProps = {
   isSubmitting: boolean;
   errorMessage: string;
   roomMovePreview: RoomMovePreview | null;
+  checkInPolicyPreview: CheckInPolicyPreview | null;
+  checkOutPolicyPreview: CheckOutPolicyPreview | null;
   roomMovePricingAction: RoomMovePricingAction;
   onRoomMovePricingActionChange: (value: RoomMovePricingAction) => void;
   onNoteChange: (value: string) => void;
@@ -88,6 +92,8 @@ export function BookingActionModal({
   isSubmitting,
   errorMessage,
   roomMovePreview,
+  checkInPolicyPreview,
+  checkOutPolicyPreview,
   roomMovePricingAction,
   onRoomMovePricingActionChange,
   onNoteChange,
@@ -179,6 +185,12 @@ export function BookingActionModal({
           )}
 
           {action.type === "checkIn" && (
+            <>
+            {checkInPolicyPreview && checkInPolicyPreview.isEarly && (
+              <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
+                Early check-in before {checkInPolicyPreview.scheduledCheckInTime}: {checkInPolicyPreview.allowed ? `fee ${formatMoney(checkInPolicyPreview.feeAmount)}` : "disabled; Admin override and reason required"}.
+              </div>
+            )}
             <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
               <input
                 type="checkbox"
@@ -198,6 +210,19 @@ export function BookingActionModal({
                 </span>
               </span>
             </label>
+            </>
+          )}
+
+          {action.type === "checkOut" && checkOutPolicyPreview && (
+            <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
+              {checkOutPolicyPreview.isEarly && (
+                <p>Early checkout: {checkOutPolicyPreview.unusedNights} unused night(s), refund for review {formatMoney(checkOutPolicyPreview.refundAmount)}.</p>
+              )}
+              {checkOutPolicyPreview.lateCheckoutCharge && (
+                <p>Late checkout tariff: {formatMoney(checkOutPolicyPreview.lateCheckoutCharge.totalAmount)} ({formatEnumLabel(checkOutPolicyPreview.lateCheckoutCharge.tariffType)}).</p>
+              )}
+              {!checkOutPolicyPreview.isEarly && !checkOutPolicyPreview.lateCheckoutCharge && <p>Standard checkout policy applies with no timing adjustment.</p>}
+            </div>
           )}
 
           {action.type === "recordPayment" && (
@@ -450,9 +475,30 @@ function RoomMovePricingPreview({
             </span>
           </label>
         </div>
+      ) : adjustment < 0 ? (
+        <div className="mt-4 space-y-2 rounded bg-emerald-50 px-3 py-3 text-emerald-800">
+          <p className="font-semibold">
+            Downgrade difference: {formatMoney(String(Math.abs(adjustment)))}
+          </p>
+          <p className="text-xs">
+            Property policy: {formatEnumLabel(preview.downgradeTreatment)}
+          </p>
+          {preview.allowedPricingActions.includes("APPLY_CREDIT") && (
+            <label className="flex items-start gap-2">
+              <input type="radio" checked={pricingAction === "APPLY_CREDIT"} disabled={disabled} onChange={() => onPricingActionChange("APPLY_CREDIT")} />
+              <span>Apply the price difference as a folio credit</span>
+            </label>
+          )}
+          {preview.allowedPricingActions.includes("NO_CREDIT") && (
+            <label className="flex items-start gap-2">
+              <input type="radio" checked={pricingAction === "NO_CREDIT"} disabled={disabled} onChange={() => onPricingActionChange("NO_CREDIT")} />
+              <span>No credit; retain the original booking value with audit note</span>
+            </label>
+          )}
+        </div>
       ) : (
-        <p className="mt-4 rounded bg-emerald-50 px-3 py-2 font-medium text-emerald-700">
-          No additional charge. Lower-priced moves do not create a refund or credit.
+        <p className="mt-4 rounded bg-slate-100 px-3 py-2 font-medium text-slate-700">
+          Same-rate move. No financial adjustment.
         </p>
       )}
     </div>

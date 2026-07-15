@@ -2,6 +2,7 @@ import type {
   BillingDocumentStatus,
   BillingDocumentType,
 } from "@/generated/prisma/enums.js";
+import type { SideEffectJobStatus } from "@/generated/prisma/enums.js";
 
 export interface BillingDocumentDTO {
   id: string;
@@ -30,6 +31,12 @@ export interface BillingDocumentDTO {
   lineItems: unknown;
   notes: string | null;
   pdfUrl: string | null;
+  pdfStatus: SideEffectJobStatus;
+  pdfAttemptCount: number;
+  pdfMaxAttempts: number;
+  pdfLastError: string | null;
+  pdfCorrelationId: string | null;
+  pdfRenderedAt: string | null;
   issuedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;

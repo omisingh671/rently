@@ -6,6 +6,8 @@ import {
   BookingType,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { NotificationEventKey } from "@/generated/prisma/enums.js";
+import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import {
   buildPolicySnapshot,
@@ -69,6 +71,9 @@ import { calculateExistingBookingCheckoutQuote } from "./bookings.checkout-quote
 
 const now = () => new Date();
 const multiRoomTitle = "Multi-room stay";
+const maxRefundRequestClaimAttempts = 3;
+
+class RefundRequestClaimConflictError extends Error {}
 
 interface CreateBookingOptions {
   actorUserId?: string;
@@ -92,7 +97,7 @@ export const createBookingForUser = async (
     getRequiredPropertyId(scope.propertyScope, input.propertyId);
   const nights = getNights(input.from, input.to);
 
-  return runBookingTransactionWithRetry(
+  const created = await runBookingTransactionWithRetry(
     async () => {
       const booking = await repo.runSerializableTransaction(async (tx) => {
         const createdAt = now();
@@ -586,6 +591,12 @@ export const createBookingForUser = async (
         ),
     },
   );
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CREATED,
+    businessEventId: created.id,
+    bookingId: created.id,
+  });
+  return created;
 };
 
 export const getBookingQuote = async (
@@ -1063,7 +1074,13 @@ export const cancelBooking = async (
     );
   }
 
-  return mapBooking(updatedBooking);
+  const result = mapBooking(updatedBooking);
+  await publishBookingNotification({
+    eventKey: NotificationEventKey.BOOKING_CANCELLED,
+    businessEventId: `${updatedBooking.id}:${updatedBooking.version}:cancelled`,
+    bookingId: updatedBooking.id,
+  });
+  return result;
 };
 
 export const createRefundRequest = async (
@@ -1071,65 +1088,101 @@ export const createRefundRequest = async (
   bookingId: string,
   reason: string,
 ): Promise<PublicBookingDTO> => {
-  const booking = await repo.findBookingByUser(bookingId, userId);
-  if (!booking) {
-    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  let claimAttempt = 1;
+
+  while (true) {
+    try {
+      return await runBookingTransactionWithRetry(
+        () =>
+          repo.runSerializableTransaction(async (tx) => {
+            const booking = await repo.findBookingByUser(bookingId, userId, tx);
+            if (!booking) {
+              throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+            }
+
+            if (
+              booking.status !== BookingStatus.CANCELLED &&
+              booking.status !== BookingStatus.NO_SHOW
+            ) {
+              throw new HttpError(
+                409,
+                "REFUND_REQUEST_NOT_ALLOWED",
+                "Refund can be requested only for cancelled or no-show bookings",
+              );
+            }
+
+            if ((await getRefundableAmount(booking, tx)) <= 0) {
+              throw new HttpError(
+                409,
+                "BOOKING_NOT_REFUNDABLE",
+                "This booking does not have a refundable payment balance",
+              );
+            }
+
+            const activeRequest = booking.refundRequests.find((request) =>
+              activeRefundRequestStatuses.includes(request.status),
+            );
+            if (activeRequest) {
+              throw new HttpError(
+                409,
+                "REFUND_REQUEST_ALREADY_EXISTS",
+                "A refund request is already active for this booking",
+              );
+            }
+
+            const claim = await repo.claimRefundRequestCreation(
+              booking.id,
+              userId,
+              booking.version,
+              tx,
+            );
+            if (claim.count !== 1) {
+              throw new RefundRequestClaimConflictError();
+            }
+
+            await repo.createBookingRefundRequest(
+              {
+                booking: { connect: { id: booking.id } },
+                property: { connect: { id: booking.propertyId } },
+                user: { connect: { id: booking.userId } },
+                status: BookingRefundRequestStatus.REQUESTED,
+                reason,
+              },
+              tx,
+            );
+
+            const updatedBooking = await repo.findBookingByUser(
+              bookingId,
+              userId,
+              tx,
+            );
+            if (!updatedBooking) {
+              throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+            }
+
+            return mapBooking(updatedBooking);
+          }),
+        {
+          mapExhaustedError: () =>
+            new HttpError(
+              409,
+              "BOOKING_VERSION_CONFLICT",
+              "Booking was changed by another request. Reload and try again.",
+            ),
+        },
+      );
+    } catch (error) {
+      if (!(error instanceof RefundRequestClaimConflictError)) {
+        throw error;
+      }
+      if (claimAttempt >= maxRefundRequestClaimAttempts) {
+        throw new HttpError(
+          409,
+          "BOOKING_VERSION_CONFLICT",
+          "Booking was changed by another request. Reload and try again.",
+        );
+      }
+      claimAttempt += 1;
+    }
   }
-
-  if (
-    booking.status !== BookingStatus.CANCELLED &&
-    booking.status !== BookingStatus.NO_SHOW
-  ) {
-    throw new HttpError(
-      409,
-      "REFUND_REQUEST_NOT_ALLOWED",
-      "Refund can be requested only for cancelled or no-show bookings",
-    );
-  }
-
-  if ((await getRefundableAmount(booking)) <= 0) {
-    throw new HttpError(
-      409,
-      "BOOKING_NOT_REFUNDABLE",
-      "This booking does not have a refundable payment balance",
-    );
-  }
-
-  const activeRequest = booking.refundRequests.find((request) =>
-    activeRefundRequestStatuses.includes(request.status),
-  );
-  if (activeRequest) {
-    throw new HttpError(
-      409,
-      "REFUND_REQUEST_ALREADY_EXISTS",
-      "A refund request is already active for this booking",
-    );
-  }
-
-  await repo.createBookingRefundRequest({
-    booking: {
-      connect: {
-        id: booking.id,
-      },
-    },
-    property: {
-      connect: {
-        id: booking.propertyId,
-      },
-    },
-    user: {
-      connect: {
-        id: booking.userId,
-      },
-    },
-    status: BookingRefundRequestStatus.REQUESTED,
-    reason,
-  });
-
-  const updatedBooking = await repo.findBookingByUser(bookingId, userId);
-  if (!updatedBooking) {
-    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
-  }
-
-  return mapBooking(updatedBooking);
 };

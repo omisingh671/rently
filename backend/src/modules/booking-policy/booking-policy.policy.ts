@@ -16,7 +16,10 @@ export interface BookingPolicyShape {
   checkOutTime: string;
   cancellationRules: Prisma.JsonValue;
   refundRules: Prisma.JsonValue;
+  earlyCheckInRules: Prisma.JsonValue | null;
   earlyCheckoutRules: Prisma.JsonValue;
+  lateCheckoutRules: Prisma.JsonValue | null;
+  downgradeRules: Prisma.JsonValue | null;
   noShowRules: Prisma.JsonValue;
   guestPolicyText: string;
 }
@@ -30,7 +33,10 @@ export interface BookingPolicySnapshot {
   tokenRefundable: boolean;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
+  earlyCheckInRules: BookingPolicyRules;
   earlyCheckoutRules: BookingPolicyRules;
+  lateCheckoutRules: BookingPolicyRules;
+  downgradeRules: BookingPolicyRules;
   noShowRules: BookingPolicyRules;
   guestPolicyText: string;
 }
@@ -48,7 +54,28 @@ export const defaultRefundRules: BookingPolicyRules = {
 
 export const defaultEarlyCheckoutRules: BookingPolicyRules = {
   refundUnusedNights: false,
+  refundPercentage: 100,
   manualReviewRequired: true,
+  overrideRole: "ADMIN",
+};
+
+export const defaultEarlyCheckInRules: BookingPolicyRules = {
+  enabled: true,
+  feeType: "NONE",
+  feeValue: 0,
+  overrideRole: "ADMIN",
+};
+
+export const defaultLateCheckoutRules: BookingPolicyRules = {
+  feeType: "NIGHTLY_RATE_MULTIPLIER",
+  feeValue: 1,
+  graceMinutes: 0,
+  overrideRole: "ADMIN",
+};
+
+export const defaultDowngradeRules: BookingPolicyRules = {
+  financialTreatment: "NO_CREDIT",
+  overrideRole: "ADMIN",
 };
 
 export const defaultNoShowRules: BookingPolicyRules = {
@@ -73,7 +100,10 @@ export const defaultBookingPolicyCreateData: Omit<
   checkOutTime: "11:00",
   cancellationRules: toInputJson(defaultCancellationRules),
   refundRules: toInputJson(defaultRefundRules),
+  earlyCheckInRules: toInputJson(defaultEarlyCheckInRules),
   earlyCheckoutRules: toInputJson(defaultEarlyCheckoutRules),
+  lateCheckoutRules: toInputJson(defaultLateCheckoutRules),
+  downgradeRules: toInputJson(defaultDowngradeRules),
   noShowRules: toInputJson(defaultNoShowRules),
   guestPolicyText: defaultGuestPolicyText,
 };
@@ -95,7 +125,10 @@ export const buildPolicySnapshot = (
   tokenRefundable: policy.tokenRefundable,
   cancellationRules: toRules(policy.cancellationRules),
   refundRules: toRules(policy.refundRules),
+  earlyCheckInRules: toRules(policy.earlyCheckInRules),
   earlyCheckoutRules: toRules(policy.earlyCheckoutRules),
+  lateCheckoutRules: toRules(policy.lateCheckoutRules),
+  downgradeRules: toRules(policy.downgradeRules),
   noShowRules: toRules(policy.noShowRules),
   guestPolicyText: policy.guestPolicyText,
 });
@@ -139,12 +172,30 @@ export const parsePolicySnapshot = (
       !Array.isArray(candidate.refundRules)
         ? (candidate.refundRules as BookingPolicyRules)
         : {},
+    earlyCheckInRules:
+      candidate.earlyCheckInRules !== null &&
+      typeof candidate.earlyCheckInRules === "object" &&
+      !Array.isArray(candidate.earlyCheckInRules)
+        ? (candidate.earlyCheckInRules as BookingPolicyRules)
+        : defaultEarlyCheckInRules,
     earlyCheckoutRules:
       candidate.earlyCheckoutRules !== null &&
       typeof candidate.earlyCheckoutRules === "object" &&
       !Array.isArray(candidate.earlyCheckoutRules)
         ? (candidate.earlyCheckoutRules as BookingPolicyRules)
         : {},
+    lateCheckoutRules:
+      candidate.lateCheckoutRules !== null &&
+      typeof candidate.lateCheckoutRules === "object" &&
+      !Array.isArray(candidate.lateCheckoutRules)
+        ? (candidate.lateCheckoutRules as BookingPolicyRules)
+        : defaultLateCheckoutRules,
+    downgradeRules:
+      candidate.downgradeRules !== null &&
+      typeof candidate.downgradeRules === "object" &&
+      !Array.isArray(candidate.downgradeRules)
+        ? (candidate.downgradeRules as BookingPolicyRules)
+        : defaultDowngradeRules,
     noShowRules:
       candidate.noShowRules !== null &&
       typeof candidate.noShowRules === "object" &&

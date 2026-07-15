@@ -16,7 +16,9 @@ const knownRefundRuleKeys = new Set(["tokenRefundable", "manualReviewRequired"])
 
 const knownEarlyCheckoutRuleKeys = new Set([
   "refundUnusedNights",
+  "refundPercentage",
   "manualReviewRequired",
+  "overrideRole",
 ]);
 
 const knownNoShowRuleKeys = new Set([
@@ -69,9 +71,17 @@ export const emptyBookingPolicyForm: BookingPolicyForm = {
   refundTokenRefundable: false,
   refundManualReviewRequired: true,
   refundRulesExtra: {},
+  earlyCheckInEnabled: true,
+  earlyCheckInFeeType: "NONE",
+  earlyCheckInFeeValue: "0",
   refundUnusedNights: false,
+  earlyCheckoutRefundPercentage: "100",
   earlyCheckoutManualReviewRequired: true,
   earlyCheckoutRulesExtra: {},
+  lateCheckoutFeeType: "NIGHTLY_RATE_MULTIPLIER",
+  lateCheckoutFeeValue: "1",
+  lateCheckoutGraceMinutes: "0",
+  downgradeFinancialTreatment: "NO_CREDIT",
   markAfterCheckInCutoff: true,
   noShowTokenRefundable: false,
   noShowRulesExtra: {},
@@ -110,10 +120,19 @@ export const mapPolicyToForm = (policy: BookingPolicy): BookingPolicyForm => ({
     true,
   ),
   refundRulesExtra: omitKnownRules(policy.refundRules, knownRefundRuleKeys),
+  earlyCheckInEnabled: pickBoolean(policy.earlyCheckInRules, "enabled", true),
+  earlyCheckInFeeType:
+    policy.earlyCheckInRules.feeType === "FIXED_AMOUNT"
+      ? "FIXED_AMOUNT"
+      : "NONE",
+  earlyCheckInFeeValue: String(Number(policy.earlyCheckInRules.feeValue ?? 0)),
   refundUnusedNights: pickBoolean(
     policy.earlyCheckoutRules,
     "refundUnusedNights",
     false,
+  ),
+  earlyCheckoutRefundPercentage: String(
+    Number(policy.earlyCheckoutRules.refundPercentage ?? 100),
   ),
   earlyCheckoutManualReviewRequired: pickBoolean(
     policy.earlyCheckoutRules,
@@ -124,6 +143,19 @@ export const mapPolicyToForm = (policy: BookingPolicy): BookingPolicyForm => ({
     policy.earlyCheckoutRules,
     knownEarlyCheckoutRuleKeys,
   ),
+  lateCheckoutFeeType:
+    policy.lateCheckoutRules.feeType === "FIXED_AMOUNT"
+      ? "FIXED_AMOUNT"
+      : "NIGHTLY_RATE_MULTIPLIER",
+  lateCheckoutFeeValue: String(Number(policy.lateCheckoutRules.feeValue ?? 1)),
+  lateCheckoutGraceMinutes: String(
+    Number(policy.lateCheckoutRules.graceMinutes ?? 0),
+  ),
+  downgradeFinancialTreatment:
+    policy.downgradeRules.financialTreatment === "CREDIT_DIFFERENCE" ||
+    policy.downgradeRules.financialTreatment === "WAIVER"
+      ? policy.downgradeRules.financialTreatment
+      : "NO_CREDIT",
   markAfterCheckInCutoff: pickBoolean(
     policy.noShowRules,
     "markAfterCheckInCutoff",
@@ -160,10 +192,31 @@ export const mapFormToPayload = (
     tokenRefundable: form.refundTokenRefundable,
     manualReviewRequired: form.refundManualReviewRequired,
   },
+  earlyCheckInRules: {
+    enabled: form.earlyCheckInEnabled,
+    feeType: form.earlyCheckInFeeType,
+    feeValue:
+      form.earlyCheckInFeeType === "NONE"
+        ? 0
+        : Number(form.earlyCheckInFeeValue || 0),
+    overrideRole: "ADMIN",
+  },
   earlyCheckoutRules: {
     ...form.earlyCheckoutRulesExtra,
     refundUnusedNights: form.refundUnusedNights,
+    refundPercentage: Number(form.earlyCheckoutRefundPercentage || 0),
     manualReviewRequired: form.earlyCheckoutManualReviewRequired,
+    overrideRole: "ADMIN",
+  },
+  lateCheckoutRules: {
+    feeType: form.lateCheckoutFeeType,
+    feeValue: Number(form.lateCheckoutFeeValue || 0),
+    graceMinutes: Number(form.lateCheckoutGraceMinutes || 0),
+    overrideRole: "ADMIN",
+  },
+  downgradeRules: {
+    financialTreatment: form.downgradeFinancialTreatment,
+    overrideRole: "ADMIN",
   },
   noShowRules: {
     ...form.noShowRulesExtra,

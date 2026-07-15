@@ -4,7 +4,7 @@ import { mailer } from "@/common/email/mailer.js";
 export async function sendResetPasswordEmail(
   to: string,
   token: string,
-  options: { appUrl?: string } = {},
+  options: { appUrl?: string; messageId?: string } = {},
 ) {
   const appUrl = options.appUrl ?? env.FRONTEND_URL;
   const resetUrl = `${appUrl}/reset-password/${token}`;
@@ -15,6 +15,7 @@ export async function sendResetPasswordEmail(
 
   await mailer.sendMail({
     from: env.MAIL_FROM,
+    ...(options.messageId !== undefined && { messageId: options.messageId }),
     to,
     subject: "Reset your Sucasa password",
     html: `
