@@ -33,6 +33,7 @@ export interface CreateUserPayload {
   password: string;
   countryCode?: string;
   contactNumber?: string;
+  role?: "FRONT_DESK" | "ACCOUNTANT";
 }
 
 export interface UpdateUserVariables {
@@ -40,7 +41,7 @@ export interface UpdateUserVariables {
   payload: UpdateUserPayload;
 }
 
-export type AdminUserScope = "admins" | "managers";
+export type AdminUserScope = "admins" | "managers" | "staff";
 
 export type ManagedUsersFilters = {
   search?: string;

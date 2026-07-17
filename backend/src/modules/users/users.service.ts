@@ -18,6 +18,7 @@ import type {
   CreateUserInput,
   UpdateUserInput,
   CreateDashboardUserInput,
+  CreateDashboardStaffInput,
   UpdateDashboardUserInput,
   UpdateDashboardUserStatusInput,
   UpdateDashboardUserRoleInput,
@@ -88,6 +89,11 @@ const ensureManagerBelongsToAdmin = (
     throw new HttpError(404, "MANAGER_NOT_FOUND", "Manager not found");
   }
 };
+
+type StaffUserRole = Extract<UserRole, "FRONT_DESK" | "ACCOUNTANT">;
+
+const isStaffRole = (role: UserRole): role is StaffUserRole =>
+  role === UserRole.FRONT_DESK || role === UserRole.ACCOUNTANT;
 
 /**
  * Public/General users endpoints
@@ -364,6 +370,78 @@ export const updateManager = async (
   });
 
   return mapDashboardUser(updatedManager as UserEntity);
+};
+
+export const listStaff = async (
+  userId: string,
+  role: StaffUserRole,
+  filters: Omit<ListUsersParams, "page" | "limit" | "role"> & {
+    page: number;
+    limit: number;
+  },
+) => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
+  return listUsers({
+    ...filters,
+    role,
+    ...(actor.role === UserRole.ADMIN && { createdByUserId: actor.id }),
+  });
+};
+
+export const createStaff = async (
+  userId: string,
+  input: CreateDashboardStaffInput,
+): Promise<DashboardUserDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.ADMIN]);
+  const role = input.role as UserRole;
+  if (!isStaffRole(role)) {
+    throw new HttpError(400, "INVALID_STAFF_ROLE", "Invalid staff role");
+  }
+  await ensureUniqueUserEmail(input.email);
+
+  const passwordHash = await hashPassword(input.password);
+  const staff = await repo.createUser({
+    fullName: input.fullName,
+    email: input.email,
+    passwordHash,
+    role,
+    createdBy: { connect: { id: actor.id } },
+    ...(input.countryCode !== undefined &&
+      input.contactNumber !== undefined && {
+        countryCode: input.countryCode,
+        contactNumber: input.contactNumber,
+      }),
+  });
+  return mapDashboardUser(staff as UserEntity);
+};
+
+export const updateStaff = async (
+  userId: string,
+  staffId: string,
+  input: UpdateDashboardUserInput,
+): Promise<DashboardUserDTO> => {
+  const actor = await getActor(userId);
+  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
+  const staff = await repo.findUserById(staffId);
+  if (!staff || !isStaffRole(staff.role)) {
+    throw new HttpError(404, "STAFF_NOT_FOUND", "Staff user not found");
+  }
+  if (actor.role === UserRole.ADMIN && staff.createdByUserId !== actor.id) {
+    throw new HttpError(404, "STAFF_NOT_FOUND", "Staff user not found");
+  }
+
+  const updatedStaff = await repo.updateUserById(staffId, {
+    ...(input.fullName !== undefined && { fullName: input.fullName }),
+    ...(input.isActive !== undefined && { isActive: input.isActive }),
+    ...(input.countryCode !== undefined &&
+      input.contactNumber !== undefined && {
+        countryCode: input.countryCode,
+        contactNumber: input.contactNumber,
+      }),
+  });
+  return mapDashboardUser(updatedStaff as UserEntity);
 };
 
 /**

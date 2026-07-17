@@ -89,11 +89,9 @@ export const updateUserRoleAndAssignments = (
     await tx.propertyAssignment.deleteMany({
       where: {
         userId,
-        ...(role === UserRole.ADMIN
-          ? { role: { not: PropertyAssignmentRole.ADMIN } }
-          : role === UserRole.MANAGER
-            ? { role: { not: PropertyAssignmentRole.MANAGER } }
-            : {}),
+        ...(role !== UserRole.GUEST
+          ? { role: { not: role as PropertyAssignmentRole } }
+          : {}),
       },
     });
 
@@ -154,6 +152,5 @@ export const createPasswordResetToken = (data: {
   prisma.passwordResetToken.create({
     data,
   });
-
 
 

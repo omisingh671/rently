@@ -25,6 +25,10 @@ export interface CreateDashboardUserInput {
   contactNumber?: string;
 }
 
+export interface CreateDashboardStaffInput extends CreateDashboardUserInput {
+  role: "FRONT_DESK" | "ACCOUNTANT";
+}
+
 export interface UpdateDashboardUserInput {
   fullName?: string;
   isActive?: boolean;
@@ -37,7 +41,7 @@ export interface UpdateDashboardUserStatusInput {
 }
 
 export interface UpdateDashboardUserRoleInput {
-  role: "ADMIN" | "MANAGER" | "GUEST";
+  role: "ADMIN" | "MANAGER" | "FRONT_DESK" | "ACCOUNTANT" | "GUEST";
 }
 
 export interface UpdateDashboardForcePasswordChangeInput {

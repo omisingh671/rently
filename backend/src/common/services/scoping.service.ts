@@ -46,12 +46,13 @@ export const getPropertyScope = async (
     };
   }
 
-  const role =
-    actor.role === UserRole.ADMIN
-      ? PropertyAssignmentRole.ADMIN
-      : actor.role === UserRole.MANAGER
-        ? PropertyAssignmentRole.MANAGER
-        : undefined;
+  const roleByUserRole: Partial<Record<UserRole, PropertyAssignmentRole>> = {
+    [UserRole.ADMIN]: PropertyAssignmentRole.ADMIN,
+    [UserRole.MANAGER]: PropertyAssignmentRole.MANAGER,
+    [UserRole.FRONT_DESK]: PropertyAssignmentRole.FRONT_DESK,
+    [UserRole.ACCOUNTANT]: PropertyAssignmentRole.ACCOUNTANT,
+  };
+  const role = roleByUserRole[actor.role];
 
   if (!role) {
     return {

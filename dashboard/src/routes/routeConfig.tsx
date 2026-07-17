@@ -89,7 +89,15 @@ const routes: RouteObject[] = [
         children: [
           {
             element: (
-              <RequireRole roles={["SUPER_ADMIN", "ADMIN", "MANAGER"]} />
+              <RequireRole
+                roles={[
+                  "SUPER_ADMIN",
+                  "ADMIN",
+                  "MANAGER",
+                  "FRONT_DESK",
+                  "ACCOUNTANT",
+                ]}
+              />
             ),
             children: [
               {
@@ -177,6 +185,10 @@ const routes: RouteObject[] = [
                         element: <UsersPage />,
                       },
                       {
+                        path: ADMIN_ROUTES.STAFF,
+                        element: <UsersPage />,
+                      },
+                      {
                         path: adminPath(
                           ADMIN_ROUTES.INVENTORY,
                           ADMIN_ROUTES.INVENTORY_CHILDREN.UNITS,
@@ -218,40 +230,77 @@ const routes: RouteObject[] = [
                     element: <BookingsPage />,
                   },
                   {
-                    path: ADMIN_ROUTES.BOOKING_POLICY,
-                    element: <BookingPolicyPage />,
-                  },
-                  {
                     path: ADMIN_ROUTES.BILLING,
                     element: <BillingPage />,
-                  },
-                  {
-                    path: ADMIN_ROUTES.REPORTS,
-                    element: <ReportsPage />,
                   },
                   {
                     path: ADMIN_ROUTES.BOOKING_DETAIL(":id"),
                     element: <BookingDetailsPage />,
                   },
                   {
-                    path: ADMIN_ROUTES.FRONT_DESK,
-                    element: <FrontDeskPage />,
+                    element: (
+                      <RequireRole
+                        roles={["SUPER_ADMIN", "ADMIN", "MANAGER"]}
+                      />
+                    ),
+                    children: [
+                      {
+                        path: ADMIN_ROUTES.BOOKING_POLICY,
+                        element: <BookingPolicyPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.ENQUIRIES,
+                        element: <EnquiriesPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.QUOTES,
+                        element: <QuotesPage />,
+                      },
+                    ],
                   },
                   {
-                    path: ADMIN_ROUTES.ROOM_BOARD,
-                    element: <RoomBoardPage />,
+                    element: (
+                      <RequireRole
+                        roles={[
+                          "SUPER_ADMIN",
+                          "ADMIN",
+                          "MANAGER",
+                          "ACCOUNTANT",
+                        ]}
+                      />
+                    ),
+                    children: [
+                      {
+                        path: ADMIN_ROUTES.REPORTS,
+                        element: <ReportsPage />,
+                      },
+                    ],
                   },
                   {
-                    path: ADMIN_ROUTES.WALK_IN_BOOKING,
-                    element: <WalkInBookingPage />,
-                  },
-                  {
-                    path: ADMIN_ROUTES.ENQUIRIES,
-                    element: <EnquiriesPage />,
-                  },
-                  {
-                    path: ADMIN_ROUTES.QUOTES,
-                    element: <QuotesPage />,
+                    element: (
+                      <RequireRole
+                        roles={[
+                          "SUPER_ADMIN",
+                          "ADMIN",
+                          "MANAGER",
+                          "FRONT_DESK",
+                        ]}
+                      />
+                    ),
+                    children: [
+                      {
+                        path: ADMIN_ROUTES.FRONT_DESK,
+                        element: <FrontDeskPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.ROOM_BOARD,
+                        element: <RoomBoardPage />,
+                      },
+                      {
+                        path: ADMIN_ROUTES.WALK_IN_BOOKING,
+                        element: <WalkInBookingPage />,
+                      },
+                    ],
                   },
                   {
                     path: ADMIN_ROUTES.SETTINGS,

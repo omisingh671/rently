@@ -6,6 +6,7 @@ export interface AssignmentListFilters {
   propertyIds?: string[];
   propertyId?: string;
   role?: PropertyAssignmentRole;
+  roles?: PropertyAssignmentRole[];
   userId?: string;
 }
 

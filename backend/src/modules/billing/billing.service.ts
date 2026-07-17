@@ -453,19 +453,13 @@ export const createDebitNoteForFolioCharge = async (
   return mapDocument(document);
 };
 
-export const createCreditNoteForVoidedFolioCharge = async (
+export const createCreditNoteForFolioCredit = async (
   bookingId: string,
   folioChargeId: string,
-  reason: string,
   tx: Prisma.TransactionClient,
 ): Promise<BillingDocumentDTO | null> => {
-  const debitNote = await repo.findDocumentByKey(
-    documentKeyForDebitNote(folioChargeId),
-    tx,
-  );
-  if (!debitNote || debitNote.status !== BillingDocumentStatus.ISSUED) {
-    return null;
-  }
+  const invoice = await repo.findDocumentByKey(documentKeyForInvoice(bookingId), tx);
+  if (!invoice) return null;
 
   const documentKey = documentKeyForCreditNote(folioChargeId);
   const existing = await repo.findDocumentByKey(documentKey, tx);
@@ -481,7 +475,29 @@ export const createCreditNoteForVoidedFolioCharge = async (
   if (!charge) {
     throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
   }
+  if (!charge.amount.lessThan(0)) {
+    throw new HttpError(
+      422,
+      "FOLIO_CREDIT_AMOUNT_INVALID",
+      "Credit-note folio adjustment must be negative",
+    );
+  }
 
+  const metadata =
+    charge.metadata !== null &&
+    typeof charge.metadata === "object" &&
+    !Array.isArray(charge.metadata)
+      ? charge.metadata
+      : {};
+  const subtotal = new Prisma.Decimal(
+    typeof metadata.baseDifference === "string"
+      ? metadata.baseDifference
+      : charge.amount,
+  ).abs();
+  const tax = new Prisma.Decimal(
+    typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
+  ).abs();
+  const total = charge.amount.abs();
   const documentNumber = await repo.nextDocumentNumber(
     booking.propertyId,
     BillingDocumentType.CREDIT_NOTE,
@@ -504,30 +520,126 @@ export const createCreditNoteForVoidedFolioCharge = async (
           folioCharge: { connect: { id: charge.id } },
           property: { connect: { id: booking.propertyId } },
           tenant: { connect: { id: booking.property.tenantId } },
-          subtotal: debitNote.subtotal,
-          discount: debitNote.discount,
-          taxable: debitNote.taxable,
-          tax: debitNote.tax,
-          total: debitNote.total,
+          subtotal,
+          discount: zeroDecimal,
+          taxable: subtotal,
+          tax,
+          total,
           paid: zeroDecimal,
           balance,
-          guestSnapshot: toJson(debitNote.guestSnapshot),
-          propertySnapshot: toJson(debitNote.propertySnapshot),
-          tenantSnapshot: toJson(debitNote.tenantSnapshot),
-          bookingSnapshot: toJson(debitNote.bookingSnapshot),
-          priceSnapshot: toJson({
-            reversedDocumentId: debitNote.id,
-            reversedDocumentNumber: debitNote.documentNumber,
-            reason,
-          }),
-          taxSnapshot: toJson(debitNote.taxSnapshot ?? []),
+          guestSnapshot: toJson(buildGuestSnapshot(booking)),
+          propertySnapshot: toJson(buildPropertySnapshot(booking)),
+          tenantSnapshot: toJson(buildTenantSnapshot(booking)),
+          bookingSnapshot: toJson(buildBookingSnapshot(booking)),
+          priceSnapshot: toJson(metadata),
+          taxSnapshot: toJson(metadata.taxBreakdown ?? []),
           lineItems: toJson([
             {
-              description: `Reversal of ${debitNote.documentNumber}: ${charge.description}`,
+              description: charge.description,
+              targetLabel: booking.targetLabel,
               quantity: 1,
-              rate: debitNote.subtotal.toString(),
-              tax: debitNote.tax.toString(),
-              total: debitNote.total.toString(),
+              rate: subtotal.toString(),
+              tax: tax.toString(),
+              total: total.toString(),
+            },
+          ]),
+          notes: charge.note,
+          issuedAt: new Date(),
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
+  return mapDocument(document);
+};
+
+export const createReversalNoteForVoidedFolioCharge = async (
+  bookingId: string,
+  folioChargeId: string,
+  reason: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const [debitNote, creditNote] = await Promise.all([
+    repo.findDocumentByKey(documentKeyForDebitNote(folioChargeId), tx),
+    repo.findDocumentByKey(documentKeyForCreditNote(folioChargeId), tx),
+  ]);
+  const reversedDocument =
+    debitNote?.status === BillingDocumentStatus.ISSUED
+      ? debitNote
+      : creditNote?.status === BillingDocumentStatus.ISSUED
+        ? creditNote
+        : null;
+  if (!reversedDocument) return null;
+
+  const reversalType =
+    reversedDocument.type === BillingDocumentType.DEBIT_NOTE
+      ? BillingDocumentType.CREDIT_NOTE
+      : BillingDocumentType.DEBIT_NOTE;
+  const documentKey =
+    reversalType === BillingDocumentType.CREDIT_NOTE
+      ? documentKeyForCreditNote(folioChargeId)
+      : documentKeyForDebitNote(folioChargeId);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing && existing.id !== reversedDocument.id) return mapDocument(existing);
+
+  const booking = await repo.findBookingById(bookingId, tx);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  const charge = await tx.bookingFolioCharge.findUnique({
+    where: { id: folioChargeId },
+  });
+  if (!charge) {
+    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+  }
+
+  const documentNumber = await repo.nextDocumentNumber(
+    booking.propertyId,
+    reversalType,
+    tx,
+  );
+  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const balance = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
+  );
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: reversalType,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          booking: { connect: { id: booking.id } },
+          folioCharge: { connect: { id: charge.id } },
+          property: { connect: { id: booking.propertyId } },
+          tenant: { connect: { id: booking.property.tenantId } },
+          subtotal: reversedDocument.subtotal,
+          discount: reversedDocument.discount,
+          taxable: reversedDocument.taxable,
+          tax: reversedDocument.tax,
+          total: reversedDocument.total,
+          paid: zeroDecimal,
+          balance,
+          guestSnapshot: toJson(reversedDocument.guestSnapshot),
+          propertySnapshot: toJson(reversedDocument.propertySnapshot),
+          tenantSnapshot: toJson(reversedDocument.tenantSnapshot),
+          bookingSnapshot: toJson(reversedDocument.bookingSnapshot),
+          priceSnapshot: toJson({
+            reversedDocumentId: reversedDocument.id,
+            reversedDocumentNumber: reversedDocument.documentNumber,
+            reason,
+          }),
+          taxSnapshot: toJson(reversedDocument.taxSnapshot ?? []),
+          lineItems: toJson([
+            {
+              description: `Reversal of ${reversedDocument.documentNumber}: ${charge.description}`,
+              quantity: 1,
+              rate: reversedDocument.subtotal.toString(),
+              tax: reversedDocument.tax.toString(),
+              total: reversedDocument.total.toString(),
             },
           ]),
           notes: reason,
@@ -607,7 +719,11 @@ export const voidDashboardDocument = async (
   reason: string | undefined,
 ) => {
   const actor = await ensureActor(userId);
-  if (actor.role !== UserRole.SUPER_ADMIN && actor.role !== UserRole.ADMIN) {
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.ADMIN &&
+    actor.role !== UserRole.ACCOUNTANT
+  ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }
 

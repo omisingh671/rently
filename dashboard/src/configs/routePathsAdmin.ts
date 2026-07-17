@@ -7,6 +7,7 @@ export const ADMIN_ROUTES = {
   SESSIONS: "sessions",
   ADMINS: "admins",
   MANAGERS: "managers",
+  STAFF: "staff",
   PROPERTY_ASSIGNMENTS: "property-assignments",
 
   PROPERTIES: "properties",

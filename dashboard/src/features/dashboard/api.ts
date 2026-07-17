@@ -124,6 +124,52 @@ export type ReportingAnalytics = {
   managers: ManagerActivity[];
 };
 
+export type PropertyDailyClose = {
+  id: string;
+  propertyId: string;
+  businessDate: string;
+  closedByUserId: string;
+  closedByName: string;
+  paymentCount: number;
+  paymentTotal: number;
+  refundCount: number;
+  refundTotal: number;
+  netPaymentTotal: number;
+  bookingsCreated: number;
+  checkIns: number;
+  checkOuts: number;
+  noShows: number;
+  note: string | null;
+  closedAt: string;
+};
+
+export const fetchPropertyDailyCloses = async (params: {
+  propertyId: string;
+  startDate: string;
+  endDate: string;
+}): Promise<PropertyDailyClose[]> => {
+  const res = await axiosInstance.get<ApiSuccessResponse<PropertyDailyClose[]>>(
+    API_ENDPOINTS.dashboard.dailyCloses(params.propertyId),
+    { params: { startDate: params.startDate, endDate: params.endDate } },
+  );
+  return res.data.data;
+};
+
+export const closePropertyBusinessDate = async (input: {
+  propertyId: string;
+  businessDate: string;
+  note?: string;
+}): Promise<PropertyDailyClose> => {
+  const res = await axiosInstance.post<ApiSuccessResponse<PropertyDailyClose>>(
+    API_ENDPOINTS.dashboard.dailyCloses(input.propertyId),
+    {
+      businessDate: input.businessDate,
+      ...(input.note !== undefined && { note: input.note }),
+    },
+  );
+  return res.data.data;
+};
+
 export const fetchDashboardAnalytics = async (params: {
   startDate: string;
   endDate: string;

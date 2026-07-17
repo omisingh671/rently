@@ -29,6 +29,10 @@ router.get("/managers", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), contr
 router.post("/managers", authorize([UserRole.ADMIN]), controller.createManager);
 router.patch("/managers/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.updateManager);
 
+router.get("/staff", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.listStaff);
+router.post("/staff", authorize([UserRole.ADMIN]), controller.createStaff);
+router.patch("/staff/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.updateStaff);
+
 /**
  * Dashboard Operator / User management routes (SUPER_ADMIN only)
  */

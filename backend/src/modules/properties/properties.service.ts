@@ -133,7 +133,9 @@ export const getPropertyById = async (
   if (
     actor.role !== UserRole.SUPER_ADMIN &&
     actor.role !== UserRole.ADMIN &&
-    actor.role !== UserRole.MANAGER
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.FRONT_DESK &&
+    actor.role !== UserRole.ACCOUNTANT
   ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }
@@ -227,7 +229,9 @@ export const listProperties = async (
   if (
     actor.role !== UserRole.SUPER_ADMIN &&
     actor.role !== UserRole.ADMIN &&
-    actor.role !== UserRole.MANAGER
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.FRONT_DESK &&
+    actor.role !== UserRole.ACCOUNTANT
   ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }

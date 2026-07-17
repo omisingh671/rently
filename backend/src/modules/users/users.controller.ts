@@ -11,11 +11,13 @@ import {
   updateUserSchema,
   updateProfileSchema,
   createDashboardUserSchema,
+  createDashboardStaffSchema,
   updateDashboardUserSchema,
   updateUserRoleSchema,
   updateUserStatusSchema,
   updateForcePasswordChangeSchema,
   listUsersQuerySchema,
+  listStaffQuerySchema,
   listAllUsersQuerySchema,
   idParamsSchema,
 } from "./users.schema.js";
@@ -157,6 +159,46 @@ export const updateManager = async (req: AuthRequest, res: Response) => {
     ...(body.isActive !== undefined && { isActive: body.isActive }),
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
     ...(body.contactNumber !== undefined && { contactNumber: body.contactNumber }),
+  });
+  res.json({ success: true, data });
+};
+
+export const listStaff = async (req: AuthRequest, res: Response) => {
+  const query = listStaffQuerySchema.parse(req.query);
+  const data = await service.listStaff(getUserId(req), query.role, {
+    page: query.page,
+    limit: query.limit,
+    ...(query.search !== undefined && { search: query.search }),
+    ...(query.isActive !== undefined && { isActive: query.isActive }),
+  });
+  res.json({ success: true, data });
+};
+
+export const createStaff = async (req: AuthRequest, res: Response) => {
+  const body = createDashboardStaffSchema.parse(req.body);
+  const data = await service.createStaff(getUserId(req), {
+    fullName: body.fullName,
+    email: body.email,
+    password: body.password,
+    role: body.role,
+    ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
+  });
+  res.status(201).json({ success: true, data });
+};
+
+export const updateStaff = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  const body = updateDashboardUserSchema.parse(req.body);
+  const data = await service.updateStaff(getUserId(req), params.id, {
+    ...(body.fullName !== undefined && { fullName: body.fullName }),
+    ...(body.isActive !== undefined && { isActive: body.isActive }),
+    ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
   });
   res.json({ success: true, data });
 };

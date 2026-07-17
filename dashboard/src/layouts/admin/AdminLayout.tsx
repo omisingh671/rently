@@ -113,7 +113,11 @@ export default function AdminLayout() {
         ? "Super Admin"
         : user?.role === "MANAGER"
           ? "Manager"
-          : "Admin",
+          : user?.role === "FRONT_DESK"
+            ? "Front Desk"
+            : user?.role === "ACCOUNTANT"
+              ? "Accountant"
+              : "Admin",
   };
 
   const handleLogout = () => {

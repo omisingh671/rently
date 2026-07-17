@@ -502,7 +502,7 @@ export const reverseBookingLifecycle = async (
   input: ReverseBookingLifecycleInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  if (!isAdminOverrideRole(actor.role)) {
+  if (!isAdminOverrideRole(actor.role) && actor.role !== UserRole.ACCOUNTANT) {
     throw new HttpError(
       403,
       "FORBIDDEN",
@@ -568,7 +568,7 @@ export const voidBookingFolioCharge = async (
     throw new HttpError(
       403,
       "FORBIDDEN",
-      "Only Admin or Super Admin can void folio charges",
+      "Only Admin, Super Admin, or Accountant can void folio charges",
     );
   }
   const initialBooking = await ensureBookingExists(bookingId);
@@ -611,7 +611,13 @@ export const recordBookingBalancePayment = async (
   input: RecordDashboardBookingPaymentInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.FRONT_DESK,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
@@ -631,7 +637,12 @@ export const recordBookingRefund = async (
   input: RecordDashboardBookingRefundInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
@@ -652,7 +663,12 @@ export const updateRefundRequest = async (
   input: UpdateDashboardRefundRequestInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);

@@ -50,6 +50,25 @@ export interface ReportingSummaryDTO {
   totalAssignments: number;
 }
 
+export interface PropertyDailyCloseDTO {
+  id: string;
+  propertyId: string;
+  businessDate: string;
+  closedByUserId: string;
+  closedByName: string;
+  paymentCount: number;
+  paymentTotal: number;
+  refundCount: number;
+  refundTotal: number;
+  netPaymentTotal: number;
+  bookingsCreated: number;
+  checkIns: number;
+  checkOuts: number;
+  noShows: number;
+  note: string | null;
+  closedAt: string;
+}
+
 export interface DailyOccupancyDTO {
   date: string;
   totalRooms: number;

@@ -11,7 +11,6 @@ import {
   TaxTargetType,
   TaxType,
   UnitStatus,
-  UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type {
@@ -468,7 +467,7 @@ export const resolveDashboardBookingUpdateAssignment = async (
   if (
     assignment !== undefined &&
     booking.status === BookingStatus.CHECKED_IN &&
-    actor.role === UserRole.MANAGER
+    !isAdminOverrideRole(actor.role)
   ) {
     requireAuditNote(
       input.note,

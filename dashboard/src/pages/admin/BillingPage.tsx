@@ -55,7 +55,7 @@ export default function BillingPage() {
     useCurrentProperty();
   const billingActions = useBillingActions();
   const canVoid = useAuthStore((state) =>
-    state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]),
   );
   const canEditSettings = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
@@ -302,7 +302,7 @@ export default function BillingPage() {
                         >
                           Download
                         </Button>
-                        {document.pdfStatus === "FAILED" && (
+                        {canVoid && document.pdfStatus === "FAILED" && (
                           <Button
                             type="button"
                             size="sm"

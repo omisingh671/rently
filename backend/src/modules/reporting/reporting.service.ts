@@ -2,6 +2,7 @@ import {
   BookingStatus,
   LeadStatus,
   PropertyAssignmentRole,
+  Prisma,
   UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -24,6 +25,7 @@ import type {
   PropertyPerformanceDTO,
   ManagerActivityDTO,
   ReportingAnalyticsDTO,
+  PropertyDailyCloseDTO,
 } from "./reporting.dto.js";
 
 
@@ -67,6 +69,8 @@ const REPORTING_MODULES: Record<UserRole, string[]> = {
     "quotes",
   ],
   [UserRole.MANAGER]: ["dashboard", "bookings", "enquiries", "quotes"],
+  [UserRole.FRONT_DESK]: ["dashboard", "bookings"],
+  [UserRole.ACCOUNTANT]: ["dashboard", "bookings", "billing", "reports"],
   [UserRole.GUEST]: [],
 };
 
@@ -226,6 +230,167 @@ export const getReportingSummary = async (
   };
 };
 
+const mapDailyClose = (
+  close: repo.PropertyDailyCloseRecord,
+): PropertyDailyCloseDTO => ({
+  id: close.id,
+  propertyId: close.propertyId,
+  businessDate: close.businessDate.toISOString().slice(0, 10),
+  closedByUserId: close.closedByUserId,
+  closedByName: close.closedBy.fullName,
+  paymentCount: close.paymentCount,
+  paymentTotal: Number(close.paymentTotal),
+  refundCount: close.refundCount,
+  refundTotal: Number(close.refundTotal),
+  netPaymentTotal: Number(close.netPaymentTotal),
+  bookingsCreated: close.bookingsCreated,
+  checkIns: close.checkIns,
+  checkOuts: close.checkOuts,
+  noShows: close.noShows,
+  note: close.note,
+  closedAt: close.closedAt.toISOString(),
+});
+
+export const listPropertyDailyCloses = async (
+  userId: string,
+  propertyId: string,
+  startDate: string,
+  endDate: string,
+): Promise<PropertyDailyCloseDTO[]> => {
+  const actor = await getActor(userId);
+  const scope = await getPropertyScope(actor);
+  if (!scope.isGlobal && !scope.propertyIds.includes(propertyId)) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const closes = await repo.listDailyCloses(
+    propertyId,
+    new Date(`${startDate}T00:00:00.000Z`),
+    new Date(`${endDate}T00:00:00.000Z`),
+  );
+  return closes.map(mapDailyClose);
+};
+
+export const closePropertyBusinessDate = async (
+  userId: string,
+  propertyId: string,
+  businessDate: string,
+  note?: string,
+): Promise<PropertyDailyCloseDTO> => {
+  const actor = await getActor(userId);
+  const scope = await getPropertyScope(actor);
+  if (!scope.isGlobal && !scope.propertyIds.includes(propertyId)) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
+  const [property] = await repo.listPropertySummaries([propertyId]);
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const currentBusinessDate = getBusinessDateValue(
+    new Date(),
+    property.tenant.timezone,
+  );
+  if (businessDate >= currentBusinessDate) {
+    throw new HttpError(
+      422,
+      "OPEN_BUSINESS_DATE_CANNOT_BE_CLOSED",
+      "Only a completed business date before today can be closed",
+    );
+  }
+
+  const businessDateValue = new Date(`${businessDate}T00:00:00.000Z`);
+  const existing = await repo.findDailyClose(propertyId, businessDateValue);
+  if (existing) return mapDailyClose(existing);
+
+  const businessDateEnd = new Date(`${businessDate}T23:59:59.999Z`);
+  const unresolvedArrivals = await repo.listUnresolvedArrivalsThrough(
+    propertyId,
+    businessDateEnd,
+  );
+  if (unresolvedArrivals.length > 0) {
+    throw new HttpError(
+      409,
+      "UNRESOLVED_ARRIVALS",
+      "Resolve confirmed arrivals by checking in, cancelling, or marking no-show before daily close",
+      {
+        count: unresolvedArrivals.length,
+        bookings: unresolvedArrivals.slice(0, 20).map((booking) => ({
+          id: booking.id,
+          reference: booking.bookingRef,
+          checkIn: booking.checkIn.toISOString(),
+        })),
+      },
+    );
+  }
+
+  const broadStart = new Date(businessDateValue.getTime() - 86_400_000);
+  const broadEnd = new Date(businessDateEnd.getTime() + 86_400_000);
+  const [payments, refunds, bookings, statusHistory] = await Promise.all([
+    repo.getPaymentsInRange(broadStart, broadEnd, [propertyId]),
+    repo.getRefundsInRange(broadStart, broadEnd, [propertyId]),
+    repo.getBookingsCreatedInRange(broadStart, broadEnd, [propertyId]),
+    repo.getStatusHistoryInRange(broadStart, broadEnd, [propertyId]),
+  ]);
+  const isBusinessDate = (date: Date) =>
+    getBusinessDateValue(date, property.tenant.timezone) === businessDate;
+  const dayPayments = payments.filter(
+    (payment) => payment.paidAt !== null && isBusinessDate(payment.paidAt),
+  );
+  const dayRefunds = refunds.filter(
+    (refund) => refund.processedAt !== null && isBusinessDate(refund.processedAt),
+  );
+  const dayBookings = bookings.filter((booking) => isBusinessDate(booking.createdAt));
+  const dayStatusHistory = statusHistory.filter((history) =>
+    isBusinessDate(history.createdAt),
+  );
+  const paymentTotal = dayPayments.reduce(
+    (total, payment) => total + Number(payment.amount),
+    0,
+  );
+  const refundTotal = dayRefunds.reduce(
+    (total, refund) => total + Number(refund.amount),
+    0,
+  );
+
+  try {
+    return mapDailyClose(
+      await repo.createDailyClose({
+        property: { connect: { id: propertyId } },
+        closedBy: { connect: { id: actor.id } },
+        businessDate: businessDateValue,
+        paymentCount: dayPayments.length,
+        paymentTotal,
+        refundCount: dayRefunds.length,
+        refundTotal,
+        netPaymentTotal: paymentTotal - refundTotal,
+        bookingsCreated: dayBookings.length,
+        checkIns: dayStatusHistory.filter(
+          (history) => history.toStatus === "CHECKED_IN",
+        ).length,
+        checkOuts: dayStatusHistory.filter(
+          (history) => history.toStatus === "CHECKED_OUT",
+        ).length,
+        noShows: dayStatusHistory.filter(
+          (history) => history.toStatus === "NO_SHOW",
+        ).length,
+        ...(note !== undefined && { note }),
+      }),
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const concurrentClose = await repo.findDailyClose(
+        propertyId,
+        businessDateValue,
+      );
+      if (concurrentClose) return mapDailyClose(concurrentClose);
+    }
+    throw error;
+  }
+};
+
 const getDaysArray = (start: Date, end: Date): Date[] => {
   const arr: Date[] = [];
   const dt = new Date(start);
@@ -352,6 +517,44 @@ export const getReportingAnalytics = async (
   const allUsers = await repo.getOperationalUsersByIds([...operationalUserIds]);
 
   const days = getDaysArray(query.startDate, query.endDate);
+  const reportRoomIds = new Set(rooms.map((room) => room.id));
+  const occupiedRoomIdsForDay = (
+    dayEnd: Date,
+    propertyId?: string,
+  ) => {
+    const occupiedRoomIds = new Set<string>();
+    const allocationSnapshotAt = new Date(dayEnd.getTime() - 1);
+    for (const booking of bookingsOverlapping) {
+      if (propertyId !== undefined && booking.propertyId !== propertyId) {
+        continue;
+      }
+      const activeAllocations = booking.roomAllocations.filter(
+        (allocation) =>
+          allocation.effectiveFrom <= allocationSnapshotAt &&
+          (allocation.effectiveTo === null ||
+            allocation.effectiveTo > allocationSnapshotAt),
+      );
+      if (activeAllocations.length > 0) {
+        for (const allocation of activeAllocations) {
+          if (reportRoomIds.has(allocation.roomId)) {
+            occupiedRoomIds.add(allocation.roomId);
+          }
+        }
+        continue;
+      }
+
+      const legacyRoomIds = [
+        booking.roomId,
+        ...booking.items.map((item) => item.roomId),
+      ];
+      for (const roomId of legacyRoomIds) {
+        if (roomId !== null && reportRoomIds.has(roomId)) {
+          occupiedRoomIds.add(roomId);
+        }
+      }
+    }
+    return occupiedRoomIds;
+  };
 
   // 1. Calculate Daily Occupancy
   const occupancy: DailyOccupancyDTO[] = [];
@@ -382,16 +585,9 @@ export const getReportingAnalytics = async (
     const availableNights = Math.max(0, totalRoomsCount - maintenanceRoomsOnDay.size);
 
     // Booked rooms on this day
-    let occupiedNights = 0;
-    for (const b of bookingsOverlapping) {
-      if (b.checkIn < dayEnd && b.checkOut > dayStart) {
-        for (const item of b.items) {
-          if (item.roomId && rooms.some((r) => r.id === item.roomId)) {
-            occupiedNights++;
-          }
-        }
-      }
-    }
+    const occupiedNights = Array.from(
+      occupiedRoomIdsForDay(dayEnd),
+    ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
 
     const actualOccupiedNights = Math.min(occupiedNights, availableNights);
     const occupancyRate = availableNights === 0 ? 0 : Math.round((actualOccupiedNights / availableNights) * 100);
@@ -566,16 +762,9 @@ export const getReportingAnalytics = async (
       const availableOnDay = Math.max(0, propRoomsCount - maintenanceRoomsOnDay.size);
       propAvailableNights += availableOnDay;
 
-      let occupiedOnDay = 0;
-      for (const b of bookingsOverlapping) {
-        if (b.propertyId === propId && b.checkIn < dayEnd && b.checkOut > dayStart) {
-          for (const item of b.items) {
-            if (item.roomId && propRooms.some((r) => r.id === item.roomId)) {
-              occupiedOnDay++;
-            }
-          }
-        }
-      }
+      const occupiedOnDay = Array.from(
+        occupiedRoomIdsForDay(dayEnd, propId),
+      ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
       propOccupiedNights += Math.min(occupiedOnDay, availableOnDay);
     }
 

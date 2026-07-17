@@ -139,11 +139,13 @@ export default function AdminSidebar({
 
           <p className={sectionLabel}>Operations</p>
 
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.FRONT_DESK)}
-            icon={FiCoffee}
-            label="Front Desk"
-          />
+          {admin.role !== "ACCOUNTANT" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.FRONT_DESK)}
+              icon={FiCoffee}
+              label="Front Desk"
+            />
+          )}
 
           <SidebarLink
             to={adminPath(ADMIN_ROUTES.BOOKINGS)}
@@ -151,11 +153,13 @@ export default function AdminSidebar({
             label="Bookings"
           />
 
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
-            icon={FiClipboard}
-            label="Room Board"
-          />
+          {admin.role !== "ACCOUNTANT" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
+              icon={FiClipboard}
+              label="Room Board"
+            />
+          )}
 
           <SidebarLink
             to={adminPath(ADMIN_ROUTES.BILLING)}
@@ -163,25 +167,29 @@ export default function AdminSidebar({
             label="Billing"
           />
 
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.REPORTS)}
-            icon={FiActivity}
-            label="Reports"
-          />
+          {admin.role !== "FRONT_DESK" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.REPORTS)}
+              icon={FiActivity}
+              label="Reports"
+            />
+          )}
 
-          <p className={sectionLabel}>Leads</p>
-
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.ENQUIRIES)}
-            icon={FiMessageSquare}
-            label="Enquiries"
-          />
-
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.QUOTES)}
-            icon={FiFileText}
-            label="Quotes"
-          />
+          {admin.role !== "FRONT_DESK" && admin.role !== "ACCOUNTANT" && (
+            <>
+              <p className={sectionLabel}>Leads</p>
+              <SidebarLink
+                to={adminPath(ADMIN_ROUTES.ENQUIRIES)}
+                icon={FiMessageSquare}
+                label="Enquiries"
+              />
+              <SidebarLink
+                to={adminPath(ADMIN_ROUTES.QUOTES)}
+                icon={FiFileText}
+                label="Quotes"
+              />
+            </>
+          )}
 
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
             <p className={sectionLabel}>Inventory</p>
@@ -278,6 +286,14 @@ export default function AdminSidebar({
             />
           )}
 
+          {admin.role === "ADMIN" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.STAFF)}
+              icon={FiUsers}
+              label="Operational Staff"
+            />
+          )}
+
           {(admin.role === "SUPER_ADMIN" || admin.role === "ADMIN") && (
             <SidebarLink
               to={adminPath(ADMIN_ROUTES.PROPERTY_ASSIGNMENTS)}
@@ -304,11 +320,13 @@ export default function AdminSidebar({
 
           <p className={sectionLabel}>Settings</p>
 
-          <SidebarLink
-            to={adminPath(ADMIN_ROUTES.BOOKING_POLICY)}
-            icon={FiClipboard}
-            label="Booking Policy"
-          />
+          {admin.role !== "FRONT_DESK" && admin.role !== "ACCOUNTANT" && (
+            <SidebarLink
+              to={adminPath(ADMIN_ROUTES.BOOKING_POLICY)}
+              icon={FiClipboard}
+              label="Booking Policy"
+            />
+          )}
 
           <SidebarLink
             to={adminPath(ADMIN_ROUTES.SETTINGS)}

@@ -18,7 +18,11 @@ import type {
 } from "./types";
 
 const scopeEndpoints = (scope: AdminUserScope) =>
-  scope === "admins" ? API_ENDPOINTS.admins : API_ENDPOINTS.managers;
+  scope === "admins"
+    ? API_ENDPOINTS.admins
+    : scope === "managers"
+      ? API_ENDPOINTS.managers
+      : API_ENDPOINTS.staff;
 
 /* ---------------- LIST ---------------- */
 
@@ -29,6 +33,7 @@ export const fetchAdminUsers = async (
   filters: {
     search?: string;
     isActive?: boolean;
+    role?: "FRONT_DESK" | "ACCOUNTANT";
   },
 ): Promise<PaginatedResult<AdminUser>> => {
   const res = await axiosInstance.get<

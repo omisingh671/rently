@@ -29,7 +29,12 @@ const UsersPage = () => {
   const currentUser = useAuthStore((state) => state.user);
   const scope: AdminUserScope = location.pathname.includes(ADMIN_ROUTES.ADMINS)
     ? "admins"
-    : "managers";
+    : location.pathname.includes(ADMIN_ROUTES.STAFF)
+      ? "staff"
+      : "managers";
+  const [staffRole, setStaffRole] = useState<"FRONT_DESK" | "ACCOUNTANT">(
+    "FRONT_DESK",
+  );
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
@@ -62,6 +67,7 @@ const UsersPage = () => {
   } = useAdminUsers(scope, page, pageSize, {
     search: debouncedSearch,
     isActive: filters.isActive,
+    ...(scope === "staff" && { role: staffRole }),
   });
 
   const users = data?.items ?? [];
@@ -70,7 +76,16 @@ const UsersPage = () => {
     pagination && pagination.total > pageSize ? pagination : null;
   const canCreate =
     (scope === "admins" && currentUser?.role === "SUPER_ADMIN") ||
-    (scope === "managers" && currentUser?.role === "ADMIN");
+    (scope === "managers" && currentUser?.role === "ADMIN") ||
+    (scope === "staff" && currentUser?.role === "ADMIN");
+  const scopeLabel =
+    scope === "admins"
+      ? "Admin"
+      : scope === "managers"
+        ? "Manager"
+        : staffRole === "FRONT_DESK"
+          ? "Front Desk Staff"
+          : "Accountant";
 
   return (
     <div className="space-y-6">
@@ -78,9 +93,26 @@ const UsersPage = () => {
         <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-start lg:justify-between">
           <UsersFilters {...filters} onChange={(next) => setFilters(next)} />
 
+          {scope === "staff" && (
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <span className="font-medium">Staff role</span>
+              <select
+                value={staffRole}
+                onChange={(event) => {
+                  setStaffRole(event.target.value as "FRONT_DESK" | "ACCOUNTANT");
+                  setPage(1);
+                }}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2"
+              >
+                <option value="FRONT_DESK">Front Desk</option>
+                <option value="ACCOUNTANT">Accountant</option>
+              </select>
+            </label>
+          )}
+
           {canCreate && (
             <Button onClick={() => setIsCreateOpen(true)}>
-              {scope === "admins" ? "Create Admin" : "Create Manager"}
+              Create {scopeLabel}
             </Button>
           )}
         </div>
@@ -116,10 +148,10 @@ const UsersPage = () => {
         onClose={() => setIsCreateOpen(false)}
         disableBackdropClose
         disableEscapeClose
-        title={scope === "admins" ? "Create Admin" : "Create Manager"}
+        title={`Create ${scopeLabel}`}
       >
         <UserForm
-          submitLabel={scope === "admins" ? "Create Admin" : "Create Manager"}
+          submitLabel={`Create ${scopeLabel}`}
           isSubmitting={isCreating}
           onCancel={() => setIsCreateOpen(false)}
           onSubmit={async (values, setServerError) => {
@@ -132,6 +164,7 @@ const UsersPage = () => {
                   countryCode: "+91",
                   contactNumber: values.contactNumber,
                 }),
+                ...(scope === "staff" && { role: staffRole }),
               });
               setIsCreateOpen(false);
             } catch (error) {
@@ -146,12 +179,12 @@ const UsersPage = () => {
         onClose={() => setEditingUser(null)}
         disableBackdropClose
         disableEscapeClose
-        title={scope === "admins" ? "Edit Admin" : "Edit Manager"}
+        title={`Edit ${scopeLabel}`}
       >
         {editingUser && (
           <UserForm
             mode="edit"
-            submitLabel={scope === "admins" ? "Save Admin" : "Save Manager"}
+            submitLabel={`Save ${scopeLabel}`}
             isSubmitting={isUpdating}
             initialValues={{
               fullName: editingUser.fullName,

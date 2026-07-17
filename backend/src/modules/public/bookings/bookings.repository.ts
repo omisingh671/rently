@@ -1,5 +1,6 @@
 import { prisma } from "@/db/prisma.js";
 import { Prisma, BookingStatus } from "@/generated/prisma/client.js";
+import { closeActiveBookingRoomAllocations } from "@/modules/bookings/bookings.allocations.js";
 
 type PublicDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -249,6 +250,7 @@ export const updateBookingCancellationById = (
       where: { bookingId: id, releasedAt: null },
       data: { releasedAt },
     });
+    await closeActiveBookingRoomAllocations(tx, id, releasedAt);
 
     return tx.booking.findUniqueOrThrow({
       where: { id },

@@ -99,6 +99,26 @@ export const createDashboardUserSchema = contactFieldsRefine(
   }),
 );
 
+export const staffRoleSchema = z.enum([
+  UserRole.FRONT_DESK,
+  UserRole.ACCOUNTANT,
+]);
+
+export const listStaffQuerySchema = listUsersQuerySchema.extend({
+  role: staffRoleSchema,
+});
+
+export const createDashboardStaffSchema = contactFieldsRefine(
+  z.object({
+    fullName: z.string().trim().min(1).max(120),
+    email: z.string().trim().email(),
+    password: z.string().min(8),
+    role: staffRoleSchema,
+    countryCode: countryCodeSchema.optional(),
+    contactNumber: contactNumberSchema.optional(),
+  }),
+);
+
 export const updateDashboardUserSchema = contactFieldsRefine(
   z
     .object({
@@ -117,7 +137,13 @@ export const updateUserStatusSchema = z.object({
 });
 
 export const updateUserRoleSchema = z.object({
-  role: z.enum([UserRole.ADMIN, UserRole.MANAGER, UserRole.GUEST]),
+  role: z.enum([
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.FRONT_DESK,
+    UserRole.ACCOUNTANT,
+    UserRole.GUEST,
+  ]),
 });
 
 export const updateForcePasswordChangeSchema = z.object({

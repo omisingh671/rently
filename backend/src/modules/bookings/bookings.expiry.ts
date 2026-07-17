@@ -6,6 +6,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
+import { closeActiveBookingRoomAllocations } from "./bookings.allocations.js";
 
 const expiryReason = "Automatically cancelled because token payment was not completed before the deadline";
 
@@ -41,6 +42,7 @@ const expireBooking = async (booking: { id: string; version: number }) => {
         where: { bookingId: booking.id, releasedAt: null },
         data: { releasedAt: expiredAt },
       });
+      await closeActiveBookingRoomAllocations(tx, booking.id, expiredAt);
       return true;
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

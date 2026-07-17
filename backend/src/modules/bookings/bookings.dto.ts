@@ -2,6 +2,7 @@ import type {
   BookingPaymentPolicy,
   BookingPaymentStatus,
   BookingRefundRequestStatus,
+  BookingRoomAllocationSource,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -332,6 +333,20 @@ export interface DashboardBookingDTO {
     }>;
     totalAmount: string;
     finalAmount: string;
+  }>;
+  roomAllocationHistory: Array<{
+    id: string;
+    bookingItemId: string | null;
+    roomId: string;
+    unitId: string;
+    unitNumber: string;
+    roomNumber: string;
+    source: BookingRoomAllocationSource;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    actorUserId: string | null;
+    actorName: string | null;
+    createdAt: Date;
   }>;
   statusHistory: Array<{
     id: string;

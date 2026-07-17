@@ -2,10 +2,15 @@ import { prisma } from "@/db/prisma.js";
 import {
   type BookingStatus,
   BookingStatus as BookingStatusValue,
+  BookingRoomAllocationSource,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
+import {
+  closeActiveBookingRoomAllocations,
+  syncCurrentBookingRoomAllocations,
+} from "./bookings.allocations.js";
 
 const dashboardBookingRoomAssignmentInclude = {
   unit: true,
@@ -63,6 +68,13 @@ export const dashboardBookingInclude = {
     orderBy: {
       createdAt: "asc",
     },
+  },
+  roomAllocations: {
+    include: {
+      room: { include: { unit: true } },
+      actor: true,
+    },
+    orderBy: [{ effectiveFrom: "asc" }, { createdAt: "asc" }],
   },
   folioCharges: {
     include: {
@@ -398,6 +410,12 @@ export const updateBookingLifecycleById = (
     itemId: string;
     data: Prisma.BookingItemUpdateInput;
   }>,
+  allocationSync?: {
+    actorUserId: string | null;
+    effectiveFrom: Date;
+    source: BookingRoomAllocationSource;
+  },
+  allocationCloseAt?: Date,
 ) =>
   prisma.$transaction(async (tx) => {
     await tx.booking.update({
@@ -412,12 +430,21 @@ export const updateBookingLifecycleById = (
           data: assignment.data,
         });
       }
+      if (allocationSync !== undefined) {
+        await syncCurrentBookingRoomAllocations(tx, {
+          bookingId: id,
+          ...allocationSync,
+        });
+      }
     }
 
     if (history !== undefined) {
       await tx.bookingStatusHistory.create({
         data: history,
       });
+    }
+    if (allocationCloseAt !== undefined) {
+      await closeActiveBookingRoomAllocations(tx, id, allocationCloseAt);
     }
 
     return tx.booking.findUniqueOrThrow({

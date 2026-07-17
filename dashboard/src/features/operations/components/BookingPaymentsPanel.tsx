@@ -14,6 +14,7 @@ type BookingPaymentsPanelProps = {
   booking: AdminBooking;
   canShowRefunds: boolean;
   canActOnRefundRequest: boolean;
+  canRecordRefund: boolean;
   refundRequestPaymentId?: string;
   receiptByPaymentId: Map<string, BillingDocument>;
   isMutating: boolean;
@@ -30,6 +31,7 @@ export function BookingPaymentsPanel({
   booking,
   canShowRefunds,
   canActOnRefundRequest,
+  canRecordRefund,
   refundRequestPaymentId,
   receiptByPaymentId,
   isMutating,
@@ -291,6 +293,7 @@ export function BookingPaymentsPanel({
                       )}
                       {(booking.status === "CANCELLED" ||
                         booking.status === "NO_SHOW") &&
+                        canRecordRefund &&
                         Number(payment.refundableAmount) > 0 && (
                           <Button
                             type="button"

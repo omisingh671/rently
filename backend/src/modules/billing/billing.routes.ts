@@ -10,29 +10,35 @@ const router = Router();
 router.use(
   authenticate,
   requirePasswordChangeComplete,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
 );
 
-router.get("/billing-documents", controller.listDashboardDocuments);
-router.post("/billing-documents/invoices", controller.generateDashboardInvoice);
-router.post("/billing-documents/receipts", controller.generateDashboardReceipt);
+const billingReadRoles = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK, UserRole.ACCOUNTANT];
+const accountingRoles = [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.ACCOUNTANT];
+
+router.get("/billing-documents", authorize(billingReadRoles), controller.listDashboardDocuments);
+router.post("/billing-documents/invoices", authorize(billingReadRoles), controller.generateDashboardInvoice);
+router.post("/billing-documents/receipts", authorize(billingReadRoles), controller.generateDashboardReceipt);
 router.get(
   "/billing-documents/:id/download",
+  authorize(billingReadRoles),
   controller.downloadDashboardDocument,
 );
 router.post(
   "/billing-documents/:id/pdf/retry",
+  authorize(accountingRoles),
   controller.retryDashboardDocumentPdf,
 );
-router.get("/billing-documents/:id", controller.getDashboardDocument);
-router.patch("/billing-documents/:id/void", controller.voidDashboardDocument);
+router.get("/billing-documents/:id", authorize(billingReadRoles), controller.getDashboardDocument);
+router.patch("/billing-documents/:id/void", authorize(accountingRoles), controller.voidDashboardDocument);
 
 router.get(
   "/properties/:propertyId/billing-settings",
+  authorize(billingReadRoles),
   controller.getDashboardSetting,
 );
 router.patch(
   "/properties/:propertyId/billing-settings",
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
   controller.updateDashboardSetting,
 );
 

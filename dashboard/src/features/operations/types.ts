@@ -188,6 +188,24 @@ export type AdminBooking = {
     totalAmount: string;
     finalAmount: string;
   }>;
+  roomAllocationHistory: Array<{
+    id: string;
+    bookingItemId: string | null;
+    roomId: string;
+    unitId: string;
+    unitNumber: string;
+    roomNumber: string;
+    source:
+      | "BOOKING_CREATED"
+      | "ROOM_ASSIGNED"
+      | "CHECK_IN_ASSIGNED"
+      | "ROOM_MOVE";
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    actorUserId: string | null;
+    actorName: string | null;
+    createdAt: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;

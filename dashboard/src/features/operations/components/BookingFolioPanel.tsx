@@ -10,6 +10,7 @@ import type { AdminBooking, FolioChargeType } from "../types";
 type BookingFolioPanelProps = {
   booking: AdminBooking;
   isMutating: boolean;
+  canVoid: boolean;
   onCreate: (payload: {
     expectedVersion: number;
     type: FolioChargeType;
@@ -23,6 +24,7 @@ type BookingFolioPanelProps = {
 export function BookingFolioPanel({
   booking,
   isMutating,
+  canVoid,
   onCreate,
   onVoid,
 }: BookingFolioPanelProps) {
@@ -165,7 +167,7 @@ export function BookingFolioPanel({
                   {formatMoney(charge.amount)}
                 </span>
                 <StatusBadge status={charge.status} />
-                {charge.status === "ACTIVE" && (
+                {charge.status === "ACTIVE" && canVoid && (
                   <button
                     type="button"
                     disabled={isMutating}

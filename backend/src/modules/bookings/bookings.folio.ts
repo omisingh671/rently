@@ -231,6 +231,12 @@ export const createRoomMoveAdjustmentCharge = async (
       charge.id,
       tx,
     );
+  } else if (input.roomMove.pricingAction === "APPLY_CREDIT") {
+    await billingService.createCreditNoteForFolioCredit(
+      input.booking.id,
+      charge.id,
+      tx,
+    );
   }
 
   return charge;
@@ -333,7 +339,7 @@ export const voidBookingFolioChargeInTransaction = async (
       voidedByUserId: input.actorUserId,
     },
   });
-  const creditNote = await billingService.createCreditNoteForVoidedFolioCharge(
+  const reversalNote = await billingService.createReversalNoteForVoidedFolioCharge(
     booking.id,
     charge.id,
     input.voidCharge.reason,
@@ -354,7 +360,7 @@ export const voidBookingFolioChargeInTransaction = async (
     metadata: {
       chargeId: input.chargeId,
       amount: charge.amount.toString(),
-      creditNoteId: creditNote?.id ?? null,
+      reversalDocumentId: reversalNote?.id ?? null,
     },
   });
 };

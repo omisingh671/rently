@@ -66,6 +66,15 @@ export default function BookingDetailsPage() {
   const canUseAdminCorrection = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
+  const canOperateStay = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "MANAGER", "FRONT_DESK"]),
+  );
+  const canHandleRefunds = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT"]),
+  );
+  const canVoidFolio = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "ACCOUNTANT"]),
+  );
   const [activeSummaryTab, setActiveSummaryTab] = useState<"booking" | "payment">("booking");
   const [isStayExtensionOpen, setIsStayExtensionOpen] = useState(false);
   const [extensionDate, setExtensionDate] = useState("");
@@ -143,7 +152,7 @@ export default function BookingDetailsPage() {
         to: booking.checkOut,
       });
     },
-    enabled: !!booking,
+    enabled: !!booking && canOperateStay,
   });
 
   const rooms = useMemo(
@@ -499,22 +508,27 @@ export default function BookingDetailsPage() {
   };
 
   const canCheckIn =
+    canOperateStay &&
     booking?.status === "CONFIRMED" &&
     booking !== undefined &&
     hasAssignedTarget(booking);
-  const canCheckOut = booking?.status === "CHECKED_IN";
+  const canCheckOut = canOperateStay && booking?.status === "CHECKED_IN";
   const canExtendStay =
+    canOperateStay &&
     booking !== undefined &&
     (booking.status === "CONFIRMED" || booking.status === "CHECKED_IN") &&
     hasAssignedTarget(booking);
   const canAdminCancelAfterCheckIn =
     booking?.status === "CHECKED_IN" && canUseAdminCorrection;
   const canCancel =
-    booking?.status === "PENDING" ||
-    booking?.status === "CONFIRMED" ||
-    canAdminCancelAfterCheckIn;
+    canOperateStay &&
+    (booking?.status === "PENDING" ||
+      booking?.status === "CONFIRMED" ||
+      canAdminCancelAfterCheckIn);
   const canMarkNoShow =
-    booking?.status === "CONFIRMED" && booking.noShowEligible;
+    canOperateStay &&
+    booking?.status === "CONFIRMED" &&
+    booking.noShowEligible;
   const canRecordBalance =
     booking !== undefined &&
     Number(booking.balanceAmount) > 0 &&
@@ -527,6 +541,7 @@ export default function BookingDetailsPage() {
     (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
     (Number(booking.paidAmount) > 0 || booking.refundRequest !== null);
   const canActOnRefundRequest =
+    canHandleRefunds &&
     booking?.refundRequest !== null &&
     booking?.refundRequest !== undefined &&
     (booking.refundRequest.status === "REQUESTED" ||
@@ -536,6 +551,7 @@ export default function BookingDetailsPage() {
     ? booking?.payments.find((payment) => Number(payment.refundableAmount) > 0)
     : undefined;
   const canAssignRoom =
+    canOperateStay &&
     booking !== undefined &&
     booking.status !== "CHECKED_OUT" &&
     booking.status !== "CANCELLED" &&
@@ -774,6 +790,7 @@ export default function BookingDetailsPage() {
           <BookingFolioPanel
             booking={booking}
             isMutating={isMutating}
+            canVoid={canVoidFolio}
             onCreate={createFolioCharge}
             onVoid={(chargeId, reason) =>
               voidFolioCharge({
@@ -786,16 +803,18 @@ export default function BookingDetailsPage() {
             }
           />
 
-          <InternalNotesSection
-            key={booking.id}
-            initialValue={booking.internalNotes ?? ""}
-            isMutating={isMutating}
-            onSave={(value) =>
-              updateBooking({
-                internalNotes: value.trim().length > 0 ? value.trim() : null,
-              })
-            }
-          />
+          {canOperateStay && (
+            <InternalNotesSection
+              key={booking.id}
+              initialValue={booking.internalNotes ?? ""}
+              isMutating={isMutating}
+              onSave={(value) =>
+                updateBooking({
+                  internalNotes: value.trim().length > 0 ? value.trim() : null,
+                })
+              }
+            />
+          )}
 
           <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-base font-semibold text-slate-900">
@@ -911,6 +930,7 @@ export default function BookingDetailsPage() {
             booking={booking}
             canShowRefunds={canShowRefunds}
             canActOnRefundRequest={canActOnRefundRequest}
+            canRecordRefund={canHandleRefunds}
             refundRequestPaymentId={refundRequestPayment?.id}
             receiptByPaymentId={receiptByPaymentId}
             isMutating={isMutating}

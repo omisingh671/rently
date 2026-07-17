@@ -1,11 +1,13 @@
 import {
   BookingPaymentPolicy,
+  BookingRoomAllocationSource,
   BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
   BookingType,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { syncCurrentBookingRoomAllocations } from "@/modules/bookings/bookings.allocations.js";
 import { NotificationEventKey } from "@/generated/prisma/enums.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -257,6 +259,12 @@ export const createBookingForUser = async (
             },
             tx,
           );
+          await syncCurrentBookingRoomAllocations(tx, {
+            bookingId: booking.id,
+            actorUserId: options.actorUserId ?? guestSnapshot.userId,
+            effectiveFrom: booking.checkIn,
+            source: BookingRoomAllocationSource.BOOKING_CREATED,
+          });
 
           if (quote.couponId) {
             await repo.incrementCouponUsage(quote.couponId, tx);
@@ -568,6 +576,12 @@ export const createBookingForUser = async (
           },
           tx,
         );
+        await syncCurrentBookingRoomAllocations(tx, {
+          bookingId: booking.id,
+          actorUserId: options.actorUserId ?? guestSnapshot.userId,
+          effectiveFrom: booking.checkIn,
+          source: BookingRoomAllocationSource.BOOKING_CREATED,
+        });
 
         if (quote.couponId) {
           await repo.incrementCouponUsage(quote.couponId, tx);

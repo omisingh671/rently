@@ -23,6 +23,7 @@ const buildAssignmentWhere = (
     }),
     ...(filters.propertyId !== undefined && { propertyId: filters.propertyId }),
     ...(filters.role !== undefined && { role: filters.role }),
+    ...(filters.roles !== undefined && { role: { in: filters.roles } }),
     ...(filters.userId !== undefined && { userId: filters.userId }),
   } satisfies Prisma.PropertyAssignmentWhereInput;
 };

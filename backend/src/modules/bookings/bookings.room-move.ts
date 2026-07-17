@@ -1,5 +1,6 @@
 import {
   BookingOperationEventType,
+  BookingRoomAllocationSource,
   BookingStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
@@ -22,6 +23,7 @@ import { createRoomMoveAdjustmentCharge } from "./bookings.folio.js";
 import { markRoomsDirtyAfterCheckout } from "./bookings.housekeeping.js";
 import { mapTransactionBooking } from "./bookings.presenter.js";
 import { getVacatedRoomIds } from "./bookings.helper.js";
+import { syncCurrentBookingRoomAllocations } from "./bookings.allocations.js";
 
 export const moveBookingRoomsInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -79,6 +81,12 @@ export const moveBookingRoomsInTransaction = async (
       data: itemAssignment.data,
     });
   }
+  await syncCurrentBookingRoomAllocations(tx, {
+    bookingId: booking.id,
+    actorUserId: input.actor.id,
+    effectiveFrom: new Date(`${pricingPreview.effectiveDate}T00:00:00.000Z`),
+    source: BookingRoomAllocationSource.ROOM_MOVE,
+  });
   await updateVersionedBooking(
     tx,
     input.bookingId,

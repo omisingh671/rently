@@ -1,9 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import {
   fetchDashboardContext,
   fetchDashboardSummary,
   fetchDashboardAnalytics,
+  fetchPropertyDailyCloses,
+  closePropertyBusinessDate,
   type DashboardContext,
   type DashboardSummary,
   type ReportingAnalytics,
@@ -31,3 +33,26 @@ export const useDashboardAnalytics = (params: {
     queryFn: () => fetchDashboardAnalytics(params),
     enabled: Boolean(params.startDate && params.endDate),
   });
+
+export const usePropertyDailyCloses = (params: {
+  propertyId: string;
+  startDate: string;
+  endDate: string;
+}) =>
+  useQuery({
+    queryKey: ADMIN_KEYS.dashboard.dailyCloses(params),
+    queryFn: () => fetchPropertyDailyCloses(params),
+    enabled: Boolean(params.propertyId && params.startDate && params.endDate),
+  });
+
+export const useClosePropertyBusinessDate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: closePropertyBusinessDate,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: [...ADMIN_KEYS.root, "dashboard", "daily-closes"],
+      });
+    },
+  });
+};

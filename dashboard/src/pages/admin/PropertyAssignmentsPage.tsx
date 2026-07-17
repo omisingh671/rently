@@ -29,6 +29,9 @@ type Filters = {
 
 export default function PropertyAssignmentsPage() {
   const currentUser = useAuthStore((state) => state.user);
+  const [staffAssignmentRole, setStaffAssignmentRole] = useState<
+    "MANAGER" | "FRONT_DESK" | "ACCOUNTANT"
+  >("MANAGER");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [assignmentToRemove, setAssignmentToRemove] =
     useState<AdminPropertyAssignment | null>(null);
@@ -42,8 +45,13 @@ export default function PropertyAssignmentsPage() {
   } = useAdminListState<Filters>({ search: "", propertyId: "" });
 
   const assignmentRole: PropertyAssignmentRole =
-    currentUser?.role === "SUPER_ADMIN" ? "ADMIN" : "MANAGER";
-  const userScope = assignmentRole === "ADMIN" ? "admins" : "managers";
+    currentUser?.role === "SUPER_ADMIN" ? "ADMIN" : staffAssignmentRole;
+  const userScope =
+    assignmentRole === "ADMIN"
+      ? "admins"
+      : assignmentRole === "MANAGER"
+        ? "managers"
+        : "staff";
 
   const { data: dashboardContext } = useDashboardContext();
   const { data: propertiesData } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
@@ -58,6 +66,9 @@ export default function PropertyAssignmentsPage() {
   } = useAdminUsers(userScope, 1, ADMIN_OPTION_LIST_LIMIT, {
     search: "",
     isActive: "",
+    ...(userScope === "staff" && {
+      role: assignmentRole as "FRONT_DESK" | "ACCOUNTANT",
+    }),
   });
 
   const propertyMap = new Map<string, AssignmentPropertyOption>();
@@ -111,10 +122,33 @@ export default function PropertyAssignmentsPage() {
           onChange={(next) => setFilters(next)}
         />
 
+        {currentUser?.role === "ADMIN" && (
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <span className="font-medium">Assignment role</span>
+            <select
+              value={staffAssignmentRole}
+              onChange={(event) => {
+                setStaffAssignmentRole(
+                  event.target.value as
+                    | "MANAGER"
+                    | "FRONT_DESK"
+                    | "ACCOUNTANT",
+                );
+                setPage(1);
+              }}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2"
+            >
+              <option value="MANAGER">Manager</option>
+              <option value="FRONT_DESK">Front Desk</option>
+              <option value="ACCOUNTANT">Accountant</option>
+            </select>
+          </label>
+        )}
+
         <Button onClick={() => setIsCreateOpen(true)}>
           {assignmentRole === "ADMIN"
             ? "Assign Property to Admin"
-            : "Assign Manager to Property"}
+            : `Assign ${formatEnumLabel(assignmentRole)} to Property`}
         </Button>
       </div>
 

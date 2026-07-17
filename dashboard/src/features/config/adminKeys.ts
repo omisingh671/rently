@@ -10,6 +10,11 @@ export const ADMIN_KEYS = {
     summary: () => [...ADMIN_KEYS.root, "dashboard", "summary"] as const,
     analytics: (params: { startDate: string; endDate: string; propertyId?: string }) =>
       [...ADMIN_KEYS.root, "dashboard", "analytics", params] as const,
+    dailyCloses: (params: {
+      propertyId: string;
+      startDate: string;
+      endDate: string;
+    }) => [...ADMIN_KEYS.root, "dashboard", "daily-closes", params] as const,
   },
 
   tenants: {
@@ -33,18 +38,19 @@ export const ADMIN_KEYS = {
   /* ------------------------------------------------ */
 
   users: {
-    all: (scope: "admins" | "managers") =>
+      all: (scope: "admins" | "managers" | "staff") =>
       [...ADMIN_KEYS.root, "users", scope] as const,
 
     list: (params: {
-      scope: "admins" | "managers";
+        scope: "admins" | "managers" | "staff";
       page: number;
       limit: number;
       search?: string;
-      isActive?: string;
+        isActive?: string;
+        role?: string;
     }) => [...ADMIN_KEYS.users.all(params.scope), "list", params] as const,
 
-    detail: (scope: "admins" | "managers", id: string) =>
+      detail: (scope: "admins" | "managers" | "staff", id: string) =>
       [...ADMIN_KEYS.users.all(scope), "detail", id] as const,
   },
 
@@ -81,7 +87,7 @@ export const ADMIN_KEYS = {
       page: number;
       limit: number;
       propertyId?: string;
-      role?: "ADMIN" | "MANAGER";
+      role?: "ADMIN" | "MANAGER" | "FRONT_DESK" | "ACCOUNTANT";
     }) => [...ADMIN_KEYS.assignments.all(), "list", params] as const,
   },
 

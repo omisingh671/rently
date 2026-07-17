@@ -8,7 +8,13 @@ import type {
 import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 
-const mutableRoles: MutableManagedUserRole[] = ["ADMIN", "MANAGER", "GUEST"];
+const mutableRoles: MutableManagedUserRole[] = [
+  "ADMIN",
+  "MANAGER",
+  "FRONT_DESK",
+  "ACCOUNTANT",
+  "GUEST",
+];
 
 export interface EditUserFormState {
   fullName: string;

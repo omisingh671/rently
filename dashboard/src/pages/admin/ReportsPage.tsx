@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
-import { useDashboardAnalytics } from "@/features/dashboard/hooks";
+import {
+  useClosePropertyBusinessDate,
+  useDashboardAnalytics,
+  usePropertyDailyCloses,
+} from "@/features/dashboard/hooks";
 import Button from "@/components/ui/Button";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
+import { normalizeApiError } from "@/utils/errors";
 
 // Date helpers
 const getPastDateStr = (daysAgo: number) => {
@@ -42,6 +47,15 @@ export default function ReportsPage() {
   });
 
   const [activeTab, setActiveTab] = useState<TabType>("occupancy");
+  const [dailyCloseDate, setDailyCloseDate] = useState(getPastDateStr(1));
+  const [dailyCloseNote, setDailyCloseNote] = useState("");
+  const [dailyCloseError, setDailyCloseError] = useState("");
+  const dailyClosesQuery = usePropertyDailyCloses({
+    propertyId: selectedPropertyId ?? "",
+    startDate: getPastDateStr(30),
+    endDate: getTodayStr(),
+  });
+  const dailyCloseMutation = useClosePropertyBusinessDate();
 
   // Handle preset clicks
   const handlePresetChange = (preset: "7d" | "30d" | "thisMonth") => {
@@ -89,7 +103,7 @@ export default function ReportsPage() {
         ]);
         break;
       case "revenue":
-        headers = ["Date", "Subtotal (INR)", "Discount (INR)", "Tax (INR)", "Total (INR)", "Paid (INR)", "Refunds (INR)", "Net Revenue (INR)"];
+        headers = ["Date", "Subtotal (INR)", "Discount (INR)", "Tax (INR)", "Total (INR)", "Paid (INR)", "Refunds (INR)", "Net Collections (INR)"];
         rows = analytics.revenue.map((item) => [
           item.date,
           item.subtotal,
@@ -110,7 +124,7 @@ export default function ReportsPage() {
         ]);
         break;
       case "performance":
-        headers = ["Property Name", "Occupancy Rate (%)", "Total Rooms", "Available Nights", "Occupied Nights", "Gross Revenue (INR)", "Net Revenue (INR)", "ADR (INR)", "RevPAR (INR)"];
+        headers = ["Property Name", "Occupancy Rate (%)", "Total Rooms", "Available Nights", "Occupied Nights", "Recognized Stay Revenue (INR)", "Net Collections (INR)", "ADR (INR)", "RevPAR (INR)"];
         rows = analytics.properties.map((item) => [
           item.propertyName,
           item.occupancyRate,
@@ -187,6 +201,100 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+
+      {selectedPropertyId && (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                Daily close
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Lock an immutable cash and operations snapshot after all arrivals
+                for the business date are resolved.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="text-xs font-semibold text-slate-600">
+                Business date
+                <input
+                  type="date"
+                  max={getPastDateStr(1)}
+                  value={dailyCloseDate}
+                  onChange={(event) => setDailyCloseDate(event.target.value)}
+                  className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600">
+                Note (optional)
+                <input
+                  value={dailyCloseNote}
+                  maxLength={500}
+                  onChange={(event) => setDailyCloseNote(event.target.value)}
+                  className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Shift or reconciliation note"
+                />
+              </label>
+              <Button
+                type="button"
+                disabled={!dailyCloseDate || dailyCloseMutation.isPending}
+                onClick={async () => {
+                  try {
+                    setDailyCloseError("");
+                    await dailyCloseMutation.mutateAsync({
+                      propertyId: selectedPropertyId,
+                      businessDate: dailyCloseDate,
+                      ...(dailyCloseNote.trim() && {
+                        note: dailyCloseNote.trim(),
+                      }),
+                    });
+                    setDailyCloseNote("");
+                  } catch (error) {
+                    setDailyCloseError(normalizeApiError(error).message);
+                  }
+                }}
+              >
+                {dailyCloseMutation.isPending ? "Closing..." : "Close day"}
+              </Button>
+            </div>
+          </div>
+
+          {dailyCloseError && (
+            <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {dailyCloseError}
+            </p>
+          )}
+
+          {(dailyClosesQuery.data?.length ?? 0) > 0 && (
+            <div className="mt-4 overflow-x-auto border-t border-slate-200 pt-4">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs uppercase text-slate-500">
+                  <tr>
+                    <th className="py-2 pr-4">Date</th>
+                    <th className="py-2 pr-4">Payments</th>
+                    <th className="py-2 pr-4">Refunds</th>
+                    <th className="py-2 pr-4">Net</th>
+                    <th className="py-2 pr-4">Stay activity</th>
+                    <th className="py-2">Closed by</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dailyClosesQuery.data?.slice(0, 7).map((close) => (
+                    <tr key={close.id}>
+                      <td className="py-2 pr-4 font-medium">{close.businessDate}</td>
+                      <td className="py-2 pr-4">{formatMoney(close.paymentTotal)} ({close.paymentCount})</td>
+                      <td className="py-2 pr-4">{formatMoney(close.refundTotal)} ({close.refundCount})</td>
+                      <td className="py-2 pr-4 font-semibold">{formatMoney(close.netPaymentTotal)}</td>
+                      <td className="py-2 pr-4">{close.checkIns} in / {close.checkOuts} out / {close.noShows} no-show</td>
+                      <td className="py-2">{close.closedByName}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Date preset & range filters */}
       <section className="rounded-lg border border-slate-200 bg-white p-4">
@@ -277,12 +385,12 @@ export default function ReportsPage() {
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Gross Bookings</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Recognized Stay Revenue</p>
             <p className="mt-2 text-3xl font-bold text-slate-800">{formatMoney(summaryMetrics.grossRevenue)}</p>
-            <p className="mt-1 text-xs text-slate-500">Value of reservations created</p>
+            <p className="mt-1 text-xs text-slate-500">Allocated stay value for the selected dates</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Net Revenue</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Net Collections</p>
             <p className="mt-2 text-3xl font-bold text-[#3b82f6]">{formatMoney(summaryMetrics.netRevenue)}</p>
             <p className="mt-1 text-xs text-slate-500">Payments net of processed refunds</p>
           </div>
@@ -407,7 +515,7 @@ export default function ReportsPage() {
                       <th className="px-4 py-3 text-right">Gross Total</th>
                       <th className="px-4 py-3 text-right">Collected</th>
                       <th className="px-4 py-3 text-right">Refunds</th>
-                      <th className="px-4 py-3 text-right text-blue-600">Net Revenue</th>
+                      <th className="px-4 py-3 text-right text-blue-600">Net Collections</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -527,8 +635,8 @@ export default function ReportsPage() {
                         <th className="px-4 py-3 text-center">Rooms</th>
                         <th className="px-4 py-3 text-center">Nights (Avail / Booked)</th>
                         <th className="px-4 py-3 text-right">Occupancy Rate</th>
-                        <th className="px-4 py-3 text-right">Gross Revenue</th>
-                        <th className="px-4 py-3 text-right">Net Revenue</th>
+                        <th className="px-4 py-3 text-right">Recognized Stay Revenue</th>
+                        <th className="px-4 py-3 text-right">Net Collections</th>
                         <th className="px-4 py-3 text-right">ADR</th>
                         <th className="px-4 py-3 text-right">RevPAR</th>
                       </tr>

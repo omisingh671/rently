@@ -1,6 +1,7 @@
 import {
   BookingOperationEventType,
   BookingRefundRequestStatus,
+  BookingRoomAllocationSource,
   BookingStatus,
   Prisma,
   UserRole,
@@ -40,6 +41,10 @@ import {
   buildCheckInPolicyPreview,
   buildCheckOutPolicyPreview,
 } from "./bookings.stay-policy.js";
+import {
+  closeActiveBookingRoomAllocations,
+  syncCurrentBookingRoomAllocations,
+} from "./bookings.allocations.js";
 
 export const assertCheckoutBalanceSettled = (input: {
   booking: repo.DashboardBookingRecord;
@@ -192,10 +197,10 @@ export const assertDashboardBookingStatusUpdateAllowed = (
       );
     }
 
-    if (actor.role === UserRole.MANAGER) {
+    if (!isAdminOverrideRole(actor.role)) {
       requireAuditNote(
         input.note,
-        "Cancellation note is required for manager cancellation",
+        "Cancellation note is required for staff cancellation",
       );
     }
   }
@@ -314,6 +319,12 @@ export const checkInBookingInTransaction = async (
   }
 
   const now = new Date();
+  await syncCurrentBookingRoomAllocations(tx, {
+    bookingId: input.bookingId,
+    actorUserId: input.actorUserId,
+    effectiveFrom: now,
+    source: BookingRoomAllocationSource.CHECK_IN_ASSIGNED,
+  });
   await updateVersionedBooking(tx, input.bookingId, input.checkIn.expectedVersion, {
     status: BookingStatus.CHECKED_IN,
     checkedInAt: now,
@@ -373,13 +384,14 @@ export const updateDashboardBookingLifecycle = async (input: {
   nextStatus: BookingStatus | undefined;
   statusChanged: boolean;
 }) => {
+  const lifecycleAt = new Date();
   const updatedBooking = await repo.updateBookingLifecycleById(
     input.booking.id,
     {
       ...(input.update.status !== undefined && { status: input.update.status }),
       ...(input.update.status === BookingStatus.CANCELLED && {
         cancellationReason: input.update.note ?? "Cancelled from dashboard",
-        cancelledAt: new Date(),
+        cancelledAt: lifecycleAt,
       }),
       ...(input.assignment !== undefined && input.assignment.bookingData),
       ...(input.update.internalNotes !== undefined && {
@@ -404,6 +416,16 @@ export const updateDashboardBookingLifecycle = async (input: {
         }
       : undefined,
     input.assignment?.assignments,
+    input.assignment !== undefined
+      ? {
+          actorUserId: input.actorUserId,
+          effectiveFrom: input.booking.checkIn,
+          source: BookingRoomAllocationSource.ROOM_ASSIGNED,
+        }
+      : undefined,
+    input.update.status === BookingStatus.CANCELLED
+      ? lifecycleAt
+      : undefined,
   );
 
   if (
@@ -456,10 +478,12 @@ export const checkOutBookingInTransaction = async (
   const roomIds = booking.items
     .map((item) => item.roomId)
     .filter((roomId): roomId is string => roomId !== null);
+  const checkedOutAt = new Date();
   await updateVersionedBooking(tx, input.bookingId, input.checkOut.expectedVersion, {
     status: BookingStatus.CHECKED_OUT,
-    checkedOutAt: new Date(),
+    checkedOutAt,
   });
+  await closeActiveBookingRoomAllocations(tx, input.bookingId, checkedOutAt);
   await markRoomsDirtyAfterCheckout(tx, {
     propertyId: booking.propertyId,
     bookingId: input.bookingId,
@@ -642,10 +666,12 @@ export const markBookingNoShowInTransaction = async (
       "Booking is not eligible for no-show yet",
     );
   }
+  const noShowAt = new Date();
   await updateVersionedBooking(tx, input.bookingId, input.noShow.expectedVersion, {
     status: BookingStatus.NO_SHOW,
-    noShowAt: new Date(),
+    noShowAt,
   });
+  await closeActiveBookingRoomAllocations(tx, input.bookingId, noShowAt);
   await createStatusHistory(tx, {
     bookingId: input.bookingId,
     fromStatus: booking.status,
@@ -767,6 +793,17 @@ export const reverseBookingLifecycleInTransaction = async (
       ...(booking.status === BookingStatus.NO_SHOW && { noShowAt: null }),
     },
   );
+  if (
+    booking.status === BookingStatus.CHECKED_OUT ||
+    booking.status === BookingStatus.NO_SHOW
+  ) {
+    await syncCurrentBookingRoomAllocations(tx, {
+      bookingId: booking.id,
+      actorUserId: input.actorUserId,
+      effectiveFrom: new Date(),
+      source: BookingRoomAllocationSource.ROOM_ASSIGNED,
+    });
+  }
   await createStatusHistory(tx, {
     bookingId: input.bookingId,
     fromStatus: booking.status,

@@ -427,9 +427,14 @@ export const runBillingTransaction = <T>(
     timeout: 10_000,
   });
 
-export const propertyScopeRoleForUser = (role: UserRole) =>
-  role === UserRole.ADMIN
-    ? PropertyAssignmentRole.ADMIN
-    : role === UserRole.MANAGER
-      ? PropertyAssignmentRole.MANAGER
-      : null;
+export const propertyScopeRoleForUser = (role: UserRole) => {
+  const assignmentRoleByUserRole: Partial<
+    Record<UserRole, PropertyAssignmentRole>
+  > = {
+    [UserRole.ADMIN]: PropertyAssignmentRole.ADMIN,
+    [UserRole.MANAGER]: PropertyAssignmentRole.MANAGER,
+    [UserRole.FRONT_DESK]: PropertyAssignmentRole.FRONT_DESK,
+    [UserRole.ACCOUNTANT]: PropertyAssignmentRole.ACCOUNTANT,
+  };
+  return assignmentRoleByUserRole[role] ?? null;
+};

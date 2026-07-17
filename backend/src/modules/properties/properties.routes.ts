@@ -14,9 +14,9 @@ const router = Router();
 router.use(authenticate, requirePasswordChangeComplete);
 
 // Properties CRUD
-router.get("/", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]), controller.list);
+router.get("/", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK, UserRole.ACCOUNTANT]), controller.list);
 router.post("/", authorize([UserRole.SUPER_ADMIN]), controller.create);
-router.get("/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]), controller.getById as unknown as RequestHandler);
+router.get("/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK, UserRole.ACCOUNTANT]), controller.getById as unknown as RequestHandler);
 router.patch("/:id", authorize([UserRole.SUPER_ADMIN]), controller.update as unknown as RequestHandler);
 
 // Property Amenity Assignments

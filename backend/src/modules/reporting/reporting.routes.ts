@@ -9,7 +9,7 @@ const router = Router();
 
 router.use(
   authenticate,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK, UserRole.ACCOUNTANT]),
 );
 
 router.get("/context", controller.getContext);
@@ -18,5 +18,15 @@ router.use(requirePasswordChangeComplete);
 
 router.get("/summary", controller.getSummary);
 router.get("/analytics", controller.getAnalytics);
+router.get(
+  "/properties/:propertyId/daily-closes",
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT]),
+  controller.listDailyCloses,
+);
+router.post(
+  "/properties/:propertyId/daily-closes",
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT]),
+  controller.createDailyClose,
+);
 
 export default router;

@@ -25,6 +25,8 @@ export const API_ENDPOINTS = {
     me: "/reporting/context",
     summary: "/reporting/summary",
     analytics: "/reporting/analytics",
+    dailyCloses: (propertyId: string) =>
+      `/reporting/properties/${propertyId}/daily-closes`,
   },
 
   tenants: {
@@ -64,6 +66,12 @@ export const API_ENDPOINTS = {
     list: "/sessions",
     deleteById: (sessionId: string) => `/sessions/${sessionId}`,
     deleteExpired: "/sessions/expired",
+  },
+
+  staff: {
+    list: "/users/staff",
+    create: "/users/staff",
+    updateById: (userId: string) => `/users/staff/${userId}`,
   },
 
   emailDeliveries: {
