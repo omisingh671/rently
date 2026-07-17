@@ -14,7 +14,7 @@ export const useCurrentProperty = () => {
     (state) => state.clearSelectedPropertyId,
   );
 
-  const propertiesQuery = useActiveProperties();
+  const propertiesQuery = useActiveProperties(selectedPropertyId);
   const properties = useMemo(
     () => propertiesQuery.data ?? [],
     [propertiesQuery.data],

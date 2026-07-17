@@ -68,7 +68,6 @@ export const update = async (req: AuthRequest, res: Response) => {
   const userId = getUserId(req);
 
   const input = {
-    ...(parsed.tenantId !== undefined && { tenantId: parsed.tenantId }),
     ...(parsed.slug !== undefined && { slug: parsed.slug }),
     ...(parsed.name !== undefined && { name: parsed.name }),
     ...(parsed.address !== undefined && { address: parsed.address }),

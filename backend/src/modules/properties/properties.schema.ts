@@ -38,7 +38,7 @@ export const createPropertySchema = z.object({
 });
 
 export const updatePropertySchema = z.object({
-  tenantId: z.string().uuid().optional(),
+  tenantId: z.never().optional(),
   slug: slugSchema.optional(),
   name: z.string().min(2).optional(),
   address: z.string().min(5).optional(),

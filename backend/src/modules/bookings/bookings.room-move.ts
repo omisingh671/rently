@@ -19,7 +19,9 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import { createRoomMoveAdjustmentCharge } from "./bookings.folio.js";
+import { markRoomsDirtyAfterCheckout } from "./bookings.housekeeping.js";
 import { mapTransactionBooking } from "./bookings.presenter.js";
+import { getVacatedRoomIds } from "./bookings.helper.js";
 
 export const moveBookingRoomsInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -92,6 +94,19 @@ export const moveBookingRoomsInTransaction = async (
     pricingPreview,
     oldRoomIds: input.oldRoomIds,
   });
+  const vacatedRoomIds = getVacatedRoomIds(
+    input.oldRoomIds,
+    input.roomMove.roomIds,
+  );
+  if (booking.status === BookingStatus.CHECKED_IN && vacatedRoomIds.length > 0) {
+    await markRoomsDirtyAfterCheckout(tx, {
+      propertyId: booking.propertyId,
+      bookingId: booking.id,
+      actorUserId: input.actor.id,
+      roomIds: vacatedRoomIds,
+      note: `Room vacated during move: ${input.roomMove.note}`,
+    });
+  }
   await createOperationEvent(tx, {
     bookingId: input.bookingId,
     propertyId: booking.propertyId,

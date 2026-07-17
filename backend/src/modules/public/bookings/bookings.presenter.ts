@@ -78,6 +78,7 @@ export const mapBooking = async (
     upfrontAmount: Number(booking.upfrontAmount),
     tokenPaidAmount,
     tokenPaymentStatus: getTokenPaymentStatus(booking, tokenPaidAmount),
+    paymentExpiresAt: booking.paymentExpiresAt?.toISOString() ?? null,
     guestName: booking.guestNameSnapshot,
     guestEmail: booking.guestEmailSnapshot,
     guestContactNumber: booking.guestContactSnapshot ?? null,

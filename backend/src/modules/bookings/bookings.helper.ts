@@ -19,6 +19,20 @@ export const allowedBookingTransitions: Record<BookingStatus, readonly BookingSt
   [BookingStatus.NO_SHOW]: [],
 };
 
+export const getLifecycleReversalTarget = (
+  status: BookingStatus,
+): BookingStatus | null => {
+  if (status === BookingStatus.CHECKED_IN) return BookingStatus.CONFIRMED;
+  if (status === BookingStatus.CHECKED_OUT) return BookingStatus.CHECKED_IN;
+  if (status === BookingStatus.NO_SHOW) return BookingStatus.CONFIRMED;
+  return null;
+};
+
+export const getVacatedRoomIds = (
+  previousRoomIds: readonly string[],
+  nextRoomIds: readonly string[],
+) => previousRoomIds.filter((roomId) => !nextRoomIds.includes(roomId));
+
 export const getLocalDateValue = (date: Date, timeZone: string) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone,

@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+const todayDateValue = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
 export const BookingFormSchema = z
   .object({
     checkIn: z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
@@ -19,6 +25,14 @@ export const BookingFormSchema = z
   .superRefine((data, ctx) => {
     const inTs = Date.parse(data.checkIn);
     const outTs = Date.parse(data.checkOut);
+
+    if (data.checkIn && data.checkIn < todayDateValue()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Check-in date cannot be earlier than today",
+        path: ["checkIn"],
+      });
+    }
 
     if (!Number.isNaN(inTs) && !Number.isNaN(outTs) && outTs <= inTs) {
       ctx.addIssue({

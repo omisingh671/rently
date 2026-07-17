@@ -107,3 +107,53 @@ export const markRoomsDirtyAfterCheckout = async (
     });
   }
 };
+
+export const restoreRoomsAfterCheckoutReversal = async (
+  tx: Prisma.TransactionClient,
+  input: {
+    propertyId: string;
+    bookingId: string;
+    actorUserId: string;
+    roomIds: string[];
+    note: string;
+  },
+) => {
+  for (const roomId of input.roomIds) {
+    const [room, latestEvent] = await Promise.all([
+      tx.room.findUnique({ where: { id: roomId } }),
+      tx.roomHousekeepingEvent.findFirst({
+        where: { roomId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      }),
+    ]);
+
+    if (
+      !room ||
+      room.housekeepingStatus !== RoomHousekeepingStatus.DIRTY ||
+      latestEvent?.bookingId !== input.bookingId ||
+      latestEvent.toStatus !== RoomHousekeepingStatus.DIRTY
+    ) {
+      throw new HttpError(
+        409,
+        "CHECK_OUT_REVERSAL_HOUSEKEEPING_CONFLICT",
+        "Housekeeping has changed since checkout. Resolve the room state before reversing checkout.",
+      );
+    }
+
+    await tx.room.update({
+      where: { id: roomId },
+      data: { housekeepingStatus: latestEvent.fromStatus },
+    });
+    await tx.roomHousekeepingEvent.create({
+      data: {
+        propertyId: input.propertyId,
+        roomId,
+        actorUserId: input.actorUserId,
+        bookingId: input.bookingId,
+        fromStatus: RoomHousekeepingStatus.DIRTY,
+        toStatus: latestEvent.fromStatus,
+        note: `Checkout reversal: ${input.note}`,
+      },
+    });
+  }
+};

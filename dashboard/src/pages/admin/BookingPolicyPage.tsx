@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
 import { AxiosError } from "axios";
+import { useBlocker } from "react-router-dom";
 
 import Button from "@/components/ui/Button";
 import { useAuthStore } from "@/stores/authStore";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
-import BillingSettingsSection from "@/features/billing/components/BillingSettingsSection";
 import BookingPolicyForm from "@/features/booking-policy/components/BookingPolicyForm";
 import {
   emptyBookingPolicyForm,
   mapFormToPayload,
   mapPolicyToForm,
+  validateBookingPolicyForm,
 } from "@/features/booking-policy/bookingPolicy.helpers";
 import { useBookingPolicy } from "@/features/booking-policy/hooks/useBookingPolicy";
 import type { BookingPolicyForm as BookingPolicyFormState } from "@/features/booking-policy/types";
+import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
 
 export default function BookingPolicyPage() {
   const user = useAuthStore((state) => state.user);
   const isManager = user?.role === "MANAGER";
-  const canEditSettings = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN";
   const {
     properties,
     selectedPropertyId,
@@ -30,6 +31,8 @@ export default function BookingPolicyPage() {
     isLoading: isLoadingPolicy,
     isFetching,
     isError,
+    audits,
+    areAuditsLoading,
     updatePolicy,
     isUpdating,
   } = useBookingPolicy(selectedPropertyId || undefined);
@@ -42,6 +45,10 @@ export default function BookingPolicyPage() {
   const [isDirty, setIsDirty] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<keyof BookingPolicyFormState, string>>
+  >({});
+  const navigationBlocker = useBlocker(isDirty);
 
   useEffect(() => {
     if (policy && (!isDirty || hydratedPropertyId !== policy.propertyId)) {
@@ -54,6 +61,24 @@ export default function BookingPolicyPage() {
     }
   }, [hydratedPropertyId, isDirty, policy]);
 
+  useEffect(() => {
+    if (!isDirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (navigationBlocker.state !== "blocked") return;
+    if (window.confirm("Discard unsaved booking policy changes and leave this page?")) {
+      navigationBlocker.proceed();
+    } else {
+      navigationBlocker.reset();
+    }
+  }, [navigationBlocker]);
+
   const handleFormChange = (nextForm: BookingPolicyFormState) => {
     setForm(nextForm);
     setIsDirty(true);
@@ -61,6 +86,14 @@ export default function BookingPolicyPage() {
   };
 
   const handlePropertyChange = (propertyId: string) => {
+    if (
+      isDirty &&
+      !window.confirm(
+        "Discard unsaved booking policy changes and switch property?",
+      )
+    ) {
+      return;
+    }
     setSelectedPropertyId(propertyId || null);
     setHydratedPropertyId(null);
     setIsDirty(false);
@@ -73,9 +106,20 @@ export default function BookingPolicyPage() {
 
     setServerError(null);
     setSavedMessage(null);
+    setFieldErrors({});
+
+    const validationErrors = validateBookingPolicyForm(form);
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setServerError("Correct the highlighted policy fields before saving.");
+      return;
+    }
 
     try {
-      const savedPolicy = await updatePolicy(mapFormToPayload(form));
+      if (!policy) return;
+      const savedPolicy = await updatePolicy(
+        mapFormToPayload(form, policy.version),
+      );
       setForm(mapPolicyToForm(savedPolicy));
       setHydratedPropertyId(savedPolicy.propertyId);
       setIsDirty(false);
@@ -131,23 +175,13 @@ export default function BookingPolicyPage() {
 
           <label className="block w-full text-sm font-semibold text-slate-700 lg:w-80">
             Property
-            <select
-              value={selectedPropertyId}
+            <PropertySearchSelect
+              className="mt-1"
+              selectedPropertyId={selectedPropertyId}
+              selectedPropertyName={properties.find((property) => property.id === selectedPropertyId)?.name}
               disabled={isLoadingProperties || properties.length === 0}
-              onChange={(event) =>
-                handlePropertyChange(event.target.value)
-              }
-              className="mt-1 h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100"
-            >
-              <option value="">
-                {isLoadingProperties ? "Loading properties..." : "Select property"}
-              </option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+              onChange={handlePropertyChange}
+            />
           </label>
         </div>
       </section>
@@ -183,6 +217,7 @@ export default function BookingPolicyPage() {
             form={form}
             readOnly={isManager}
             isSaving={isUpdating}
+            fieldErrors={fieldErrors}
             onChange={handleFormChange}
             onSubmit={handleSave}
           />
@@ -193,10 +228,35 @@ export default function BookingPolicyPage() {
               </Button>
             </div>
           )}
-          <BillingSettingsSection
-            propertyId={selectedPropertyId || undefined}
-            canEdit={canEditSettings}
-          />
+          <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-sm font-semibold text-slate-900">Policy history</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Latest saved versions with the responsible administrator.
+              </p>
+            </div>
+            {areAuditsLoading ? (
+              <div className="px-5 py-4 text-sm text-slate-500">Loading history...</div>
+            ) : audits.length === 0 ? (
+              <div className="px-5 py-4 text-sm text-slate-500">No policy changes recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {audits.map((audit) => (
+                  <div key={audit.id} className="flex flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        Version {audit.version} · {audit.actor.fullName}
+                      </div>
+                      <div className="text-xs text-slate-500">{audit.actor.email}</div>
+                    </div>
+                    <time className="text-xs font-medium text-slate-500">
+                      {new Date(audit.createdAt).toLocaleString()}
+                    </time>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>

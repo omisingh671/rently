@@ -18,8 +18,14 @@ import type {
   BookingRoomMovePreviewDTO,
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import {
   getLocalDateValue,
   isAdminOverrideRole,
@@ -1010,12 +1016,19 @@ export const buildRoomMovePricingPreview = async (
     : orderedRooms
         .map((room) => `Unit ${room.unit.unitNumber} / Room ${room.number}`)
         .join(", ");
-  const policy = await tx.propertyBookingPolicy.upsert({
-    where: { propertyId: booking.propertyId },
-    create: { propertyId: booking.propertyId, ...defaultBookingPolicyCreateData },
-    update: {},
-  });
-  const policySnapshot = buildStayPolicySnapshot(policy);
+  const bookedPolicy = parsePolicySnapshot(booking.policySnapshot);
+  const policySnapshot = bookedPolicy
+    ? buildStayPolicySnapshotFromBooking(bookedPolicy)
+    : buildStayPolicySnapshot(
+        await tx.propertyBookingPolicy.upsert({
+          where: { propertyId: booking.propertyId },
+          create: {
+            propertyId: booking.propertyId,
+            ...defaultBookingPolicyCreateData,
+          },
+          update: {},
+        }),
+      );
   const fingerprintPayload = {
     bookingId: booking.id,
     bookingVersion: booking.version,

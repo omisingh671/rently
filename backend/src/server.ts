@@ -3,6 +3,7 @@ import "dotenv/config";
 import { app } from "./app.js";
 import { prisma } from "@/db/prisma.js";
 import { startNotificationProcessor } from "@/modules/notifications/notifications.delivery.service.js";
+import { startPendingBookingExpiryProcessor } from "@/modules/bookings/bookings.expiry.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -10,6 +11,7 @@ const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 const stopNotificationProcessor = startNotificationProcessor();
+const stopPendingBookingExpiryProcessor = startPendingBookingExpiryProcessor();
 
 /**
  * --------------------------------------------------
@@ -19,6 +21,7 @@ const stopNotificationProcessor = startNotificationProcessor();
 const shutdown = async (signal: string) => {
   console.log(`Received ${signal}. Shutting down...`);
   stopNotificationProcessor();
+  stopPendingBookingExpiryProcessor();
   await prisma.$disconnect();
 
   server.close(() => {

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm, FormProvider, useFormContext, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -93,6 +93,21 @@ export default function BookingForm({
   });
 
   const { handleSubmit, setError, reset } = methods;
+  const selectedCheckIn = useWatch({
+    control: methods.control,
+    name: "checkIn",
+  });
+  const today = useMemo(() => {
+    const now = new Date();
+    const offset = now.getTimezoneOffset() * 60_000;
+    return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+  }, []);
+  const minimumCheckOut = useMemo(() => {
+    if (!selectedCheckIn) return today;
+    const next = new Date(`${selectedCheckIn}T00:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    return next.toISOString().slice(0, 10);
+  }, [selectedCheckIn, today]);
 
   useEffect(() => {
     if (!serverError) return;
@@ -161,14 +176,24 @@ export default function BookingForm({
                       <LuCalendar className="h-3.5 w-3.5 opacity-70" />
                       Check-in
                     </p>
-                    <InputField name="checkIn" type="date" required />
+                    <InputField
+                      name="checkIn"
+                      type="date"
+                      min={today}
+                      required
+                    />
                   </div>
                   <div>
                     <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-indigo-200">
                       <LuCalendar className="h-3.5 w-3.5 opacity-70" />
                       Check-out
                     </p>
-                    <InputField name="checkOut" type="date" required />
+                    <InputField
+                      name="checkOut"
+                      type="date"
+                      min={minimumCheckOut}
+                      required
+                    />
                   </div>
                 </div>
 

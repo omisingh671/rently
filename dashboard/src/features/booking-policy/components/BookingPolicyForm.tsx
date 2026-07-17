@@ -3,13 +3,13 @@ import Button from "@/components/ui/Button";
 import type {
   AdvancePaymentType,
   BookingPolicyForm as BookingPolicyFormState,
-  BookingStatusRule,
 } from "../types";
 
 interface BookingPolicyFormProps {
   form: BookingPolicyFormState;
   readOnly: boolean;
   isSaving: boolean;
+  fieldErrors: Partial<Record<keyof BookingPolicyFormState, string>>;
   onChange: (form: BookingPolicyFormState) => void;
   onSubmit: () => void;
 }
@@ -31,12 +31,8 @@ interface FieldPanelProps {
   label: string;
   description: string;
   children: ReactNode;
+  error?: string;
 }
-
-const statusOptions: Array<{ value: BookingStatusRule; label: string }> = [
-  { value: "PENDING", label: "Pending bookings" },
-  { value: "CONFIRMED", label: "Confirmed bookings" },
-];
 
 const inputClassName =
   "h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400";
@@ -52,7 +48,7 @@ function SectionHeader({ title, description }: SectionHeaderProps) {
   );
 }
 
-function FieldPanel({ label, description, children }: FieldPanelProps) {
+function FieldPanel({ label, description, children, error }: FieldPanelProps) {
   return (
     <div className="flex min-h-33 flex-col justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
       <div>
@@ -60,6 +56,7 @@ function FieldPanel({ label, description, children }: FieldPanelProps) {
         <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
       </div>
       <div className="mt-3">{children}</div>
+      {error && <p className="mt-2 text-xs font-semibold text-rose-600">{error}</p>}
     </div>
   );
 }
@@ -94,6 +91,7 @@ export default function BookingPolicyForm({
   form,
   readOnly,
   isSaving,
+  fieldErrors,
   onChange,
   onSubmit,
 }: BookingPolicyFormProps) {
@@ -117,14 +115,6 @@ export default function BookingPolicyForm({
     updateField("advancePaymentValue", event.target.value);
   };
 
-  const toggleAllowedStatus = (status: BookingStatusRule, checked: boolean) => {
-    const nextStatuses = checked
-      ? Array.from(new Set([...form.allowedStatuses, status]))
-      : form.allowedStatuses.filter((value) => value !== status);
-
-    updateField("allowedStatuses", nextStatuses);
-  };
-
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <section className={cardClassName}>
@@ -136,6 +126,7 @@ export default function BookingPolicyForm({
           <FieldPanel
             label="Check-in after"
             description="Shown to guests on booking details as the earliest check-in time."
+            error={fieldErrors.checkInTime}
           >
             <input
               type="time"
@@ -151,6 +142,7 @@ export default function BookingPolicyForm({
           <FieldPanel
             label="Check-out before"
             description="Shown to guests on booking details as the latest check-out time."
+            error={fieldErrors.checkOutTime}
           >
             <input
               type="time"
@@ -170,7 +162,7 @@ export default function BookingPolicyForm({
           title="Advance Payment"
           description="Choose whether guests pay nothing upfront, a fixed token amount, or a percentage of the booking total."
         />
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
           <FieldPanel
             label="Payment option"
             description="Decides what is collected when a new booking is created."
@@ -200,6 +192,7 @@ export default function BookingPolicyForm({
                   ? "Collected as a percentage of the booking total."
                   : "Collected as a fixed token amount at booking."
             }
+            error={fieldErrors.advancePaymentValue}
           >
             <input
               type="number"
@@ -229,6 +222,25 @@ export default function BookingPolicyForm({
               />
             </label>
           </FieldPanel>
+
+          <FieldPanel
+            label="Payment time limit"
+            description="Pending token bookings are cancelled automatically after this many minutes."
+            error={fieldErrors.pendingPaymentExpiryMinutes}
+          >
+            <input
+              type="number"
+              min="5"
+              max="120"
+              step="1"
+              value={form.pendingPaymentExpiryMinutes}
+              disabled={readOnly}
+              onChange={(event) =>
+                updateField("pendingPaymentExpiryMinutes", event.target.value)
+              }
+              className={inputClassName}
+            />
+          </FieldPanel>
         </div>
       </section>
 
@@ -252,7 +264,7 @@ export default function BookingPolicyForm({
                 <option value="FIXED_AMOUNT">Fixed amount</option>
               </select>
             </FieldPanel>
-            <FieldPanel label="Fixed fee" description="Applied only when fixed amount is selected.">
+            <FieldPanel label="Fixed fee" description="Applied only when fixed amount is selected." error={fieldErrors.earlyCheckInFeeValue}>
               <input className={inputClassName} type="number" min="0" disabled={readOnly || form.earlyCheckInFeeType === "NONE"} value={form.earlyCheckInFeeValue} onChange={(event) => updateField("earlyCheckInFeeValue", event.target.value)} />
             </FieldPanel>
           </div>
@@ -273,43 +285,9 @@ export default function BookingPolicyForm({
                 updateField("guestCancellationAllowed", checked)
               }
             />
-            <FieldPanel
-              label="Unused-night refund percentage"
-              description="Percentage of eligible unused-night value presented for manual refund review."
-            >
-              <input className={inputClassName} type="number" min="0" max="100" disabled={readOnly || !form.refundUnusedNights} value={form.earlyCheckoutRefundPercentage} onChange={(event) => updateField("earlyCheckoutRefundPercentage", event.target.value)} />
-            </FieldPanel>
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3">
-              <p className="text-sm font-semibold text-slate-800">
-                Eligible booking statuses
-              </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {statusOptions.map((option) => (
-                  <label
-                    key={option.value}
-                    className="flex items-center gap-2 text-sm font-semibold text-slate-700"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.allowedStatuses.includes(option.value)}
-                      disabled={readOnly}
-                      onChange={(event) =>
-                        toggleAllowedStatus(option.value, event.target.checked)
-                      }
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 disabled:cursor-not-allowed"
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <ToggleRow
-              title="Before check-in only"
-              description="Cancellation is limited to bookings that have not reached check-in."
-              checked={form.beforeCheckInOnly}
-              readOnly={readOnly}
-              onChange={(checked) => updateField("beforeCheckInOnly", checked)}
-            />
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
+              Guest cancellation is limited to pending or confirmed bookings before check-in. Staff corrections remain audited dashboard operations.
+            </p>
           </div>
         </section>
 
@@ -325,10 +303,10 @@ export default function BookingPolicyForm({
                 <option value="FIXED_AMOUNT">Fixed amount</option>
               </select>
             </FieldPanel>
-            <FieldPanel label="Tariff value" description="Multiplier or fixed amount, depending on tariff type.">
+            <FieldPanel label="Tariff value" description="Multiplier or fixed amount, depending on tariff type." error={fieldErrors.lateCheckoutFeeValue}>
               <input className={inputClassName} type="number" min="0" step="0.01" disabled={readOnly} value={form.lateCheckoutFeeValue} onChange={(event) => updateField("lateCheckoutFeeValue", event.target.value)} />
             </FieldPanel>
-            <FieldPanel label="Grace period (minutes)" description="Same-day late checkout charges begin after this grace period.">
+            <FieldPanel label="Grace period (minutes)" description="Same-day late checkout charges begin after this grace period." error={fieldErrors.lateCheckoutGraceMinutes}>
               <input className={inputClassName} type="number" min="0" max="1440" disabled={readOnly} value={form.lateCheckoutGraceMinutes} onChange={(event) => updateField("lateCheckoutGraceMinutes", event.target.value)} />
             </FieldPanel>
           </div>
@@ -345,33 +323,6 @@ export default function BookingPolicyForm({
               <option value="CREDIT_DIFFERENCE">Credit price difference</option>
               <option value="WAIVER">Admin decides with audit reason</option>
             </select>
-          </div>
-        </section>
-
-        <section className={cardClassName}>
-          <SectionHeader
-            title="Refund Rules"
-            description="Control how token and refund requests are handled after cancellation."
-          />
-          <div className="mt-4 space-y-3">
-            <ToggleRow
-              title="Refund requests can include token amount"
-              description="Allows the token amount to be considered during refund review."
-              checked={form.refundTokenRefundable}
-              readOnly={readOnly}
-              onChange={(checked) =>
-                updateField("refundTokenRefundable", checked)
-              }
-            />
-            <ToggleRow
-              title="Manual review required"
-              description="Keeps refund requests in review before fulfilment."
-              checked={form.refundManualReviewRequired}
-              readOnly={readOnly}
-              onChange={(checked) =>
-                updateField("refundManualReviewRequired", checked)
-              }
-            />
           </div>
         </section>
 
@@ -397,6 +348,23 @@ export default function BookingPolicyForm({
                 updateField("earlyCheckoutManualReviewRequired", checked)
               }
             />
+            <FieldPanel
+              label="Unused-night refund percentage"
+              description="Percentage of eligible unused-night value presented for refund review."
+              error={fieldErrors.earlyCheckoutRefundPercentage}
+            >
+              <input
+                className={inputClassName}
+                type="number"
+                min="0"
+                max="100"
+                disabled={readOnly || !form.refundUnusedNights}
+                value={form.earlyCheckoutRefundPercentage}
+                onChange={(event) =>
+                  updateField("earlyCheckoutRefundPercentage", event.target.value)
+                }
+              />
+            </FieldPanel>
           </div>
         </section>
 
@@ -406,24 +374,24 @@ export default function BookingPolicyForm({
             description="Control token handling and no-show marking after the check-in cutoff."
           />
           <div className="mt-4 space-y-3">
-            <ToggleRow
-              title="Mark after check-in cutoff"
-              description="Allows bookings to be marked no-show after the check-in cutoff."
-              checked={form.markAfterCheckInCutoff}
-              readOnly={readOnly}
-              onChange={(checked) =>
-                updateField("markAfterCheckInCutoff", checked)
-              }
-            />
-            <ToggleRow
-              title="No-show token remains refundable"
-              description="Keeps the token refundable even when a booking is marked no-show."
-              checked={form.noShowTokenRefundable}
-              readOnly={readOnly}
-              onChange={(checked) =>
-                updateField("noShowTokenRefundable", checked)
-              }
-            />
+            <FieldPanel
+              label="No-show after"
+              description="A confirmed arrival can be marked no-show only after this property-local time."
+              error={fieldErrors.noShowAfterTime}
+            >
+              <input
+                className={inputClassName}
+                type="time"
+                disabled={readOnly}
+                value={form.noShowAfterTime}
+                onChange={(event) =>
+                  updateField("noShowAfterTime", event.target.value)
+                }
+              />
+            </FieldPanel>
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500">
+              Token refundability uses the single advance-payment setting above. All guest refund requests require staff review.
+            </p>
           </div>
         </section>
       </div>
@@ -442,6 +410,9 @@ export default function BookingPolicyForm({
           rows={5}
           className="mt-4 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 read-only:bg-slate-100"
         />
+        {fieldErrors.guestPolicyText && (
+          <p className="mt-2 text-xs font-semibold text-rose-600">{fieldErrors.guestPolicyText}</p>
+        )}
       </section>
 
       {!readOnly && (

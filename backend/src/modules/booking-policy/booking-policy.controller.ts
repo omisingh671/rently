@@ -22,6 +22,15 @@ export const getBookingPolicy = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const listBookingPolicyAudits = async (req: AuthRequest, res: Response) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const data = await service.listBookingPolicyAudits(
+    getUserId(req),
+    params.propertyId,
+  );
+  res.json({ success: true, data });
+};
+
 export const updateBookingPolicy = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = updateBookingPolicySchema.parse(req.body);

@@ -20,6 +20,7 @@ type Props = {
   submitLabel: string;
   isSubmitting?: boolean;
   isCreateMode?: boolean;
+  lockTenant?: boolean;
   onCancel?: () => void;
 
   onSubmit: (
@@ -38,6 +39,7 @@ export default function PropertyForm({
   onSubmit,
   onCancel,
   isCreateMode = false,
+  lockTenant = false,
   isSubmitting = false,
 }: Props) {
   const methods = useForm<PropertyFormValues>({
@@ -148,7 +150,20 @@ export default function PropertyForm({
         )}
 
         <div className="bg-white space-y-6">
-          <SelectField name="tenantId" label="Tenant">
+          <SelectField
+            name="tenantId"
+            label="Tenant"
+            {...(lockTenant
+              ? {
+                  value: defaultValues?.tenantId ?? "",
+                  onChange: () => undefined,
+                  onMouseDown: (event) => event.preventDefault(),
+                  onKeyDown: (event) => event.preventDefault(),
+                  "aria-disabled": true,
+                  className: "bg-slate-50 text-slate-600",
+                }
+              : {})}
+          >
             <option value="">Select tenant</option>
             {tenantOptions.map((tenant) => (
               <option key={tenant.id} value={tenant.id}>
@@ -156,6 +171,11 @@ export default function PropertyForm({
               </option>
             ))}
           </SelectField>
+          {lockTenant && (
+            <p className="-mt-4 text-xs text-slate-500">
+              Property ownership cannot be changed after creation.
+            </p>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <InputField name="name" label="Property Name" />

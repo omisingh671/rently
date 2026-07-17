@@ -17,7 +17,7 @@ import {
   cashierSummaryQuerySchema,
   checkInBookingSchema,
   checkOutBookingSchema,
-  correctBookingStatusSchema,
+  reverseBookingLifecycleSchema,
   createBookingFolioChargeSchema,
   moveBookingRoomSchema,
   previewBookingRoomMoveSchema,
@@ -127,12 +127,6 @@ export const updateBooking = async (req: AuthRequest, res: Response) => {
     ...(body.note !== undefined && { note: body.note }),
     ...(body.roomId !== undefined && { roomId: body.roomId }),
     ...(body.roomIds !== undefined && { roomIds: body.roomIds }),
-    ...(body.statusOverride !== undefined && {
-      statusOverride: body.statusOverride,
-    }),
-    ...(body.allowBalanceDueCheckIn !== undefined && {
-      allowBalanceDueCheckIn: body.allowBalanceDueCheckIn,
-    }),
   });
   res.json({ success: true, data });
 };
@@ -251,18 +245,17 @@ export const extendStay = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
-export const correctBookingStatus = async (
+export const reverseBookingLifecycle = async (
   req: AuthRequest,
   res: Response,
 ) => {
   const params = idParamsSchema.parse(req.params);
-  const body = correctBookingStatusSchema.parse(req.body);
-  const data = await service.correctBookingStatus(
+  const body = reverseBookingLifecycleSchema.parse(req.body);
+  const data = await service.reverseBookingLifecycle(
     getUserId(req),
     params.id,
     {
       expectedVersion: body.expectedVersion,
-      status: body.status,
       note: body.note,
     },
   );

@@ -23,8 +23,14 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import * as repo from "./bookings.repository.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import { buildLateCheckoutPolicyPreview } from "./bookings.stay-policy.js";
 
 const getJsonString = (value: Prisma.JsonValue, key: string) => {
@@ -132,15 +138,19 @@ export const postLateCheckoutExtensionCharge = async (
         extensionPreview: null,
       };
     }
-    const policy = await tx.propertyBookingPolicy.upsert({
-      where: { propertyId: booking.propertyId },
-      create: {
-        propertyId: booking.propertyId,
-        ...defaultBookingPolicyCreateData,
-      },
-      update: {},
-    });
-    const policySnapshot = buildStayPolicySnapshot(policy);
+    const bookedPolicy = parsePolicySnapshot(booking.policySnapshot);
+    const policySnapshot = bookedPolicy
+      ? buildStayPolicySnapshotFromBooking(bookedPolicy)
+      : buildStayPolicySnapshot(
+          await tx.propertyBookingPolicy.upsert({
+            where: { propertyId: booking.propertyId },
+            create: {
+              propertyId: booking.propertyId,
+              ...defaultBookingPolicyCreateData,
+            },
+            update: {},
+          }),
+        );
     const extensionPreview = await buildLateCheckoutPolicyPreview(
       tx,
       booking,
@@ -260,6 +270,11 @@ export const createBookingFolioChargeInTransaction = async (
       ...(input.charge.note !== undefined && { note: input.charge.note }),
     },
   });
+  await billingService.createDebitNoteForFolioCharge(
+    booking.id,
+    charge.id,
+    tx,
+  );
   await updateVersionedBooking(
     tx,
     input.bookingId,
@@ -318,6 +333,12 @@ export const voidBookingFolioChargeInTransaction = async (
       voidedByUserId: input.actorUserId,
     },
   });
+  const creditNote = await billingService.createCreditNoteForVoidedFolioCharge(
+    booking.id,
+    charge.id,
+    input.voidCharge.reason,
+    tx,
+  );
   await updateVersionedBooking(
     tx,
     input.bookingId,
@@ -330,6 +351,10 @@ export const voidBookingFolioChargeInTransaction = async (
     actorUserId: input.actorUserId,
     eventType: BookingOperationEventType.FOLIO_CHARGE_VOID,
     note: input.voidCharge.reason,
-    metadata: { chargeId: input.chargeId, amount: charge.amount.toString() },
+    metadata: {
+      chargeId: input.chargeId,
+      amount: charge.amount.toString(),
+      creditNoteId: creditNote?.id ?? null,
+    },
   });
 };

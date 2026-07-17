@@ -104,6 +104,7 @@ export const assertCanManageInventory = async (
 export const ensurePropertyExists = async (propertyId: string) => {
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
+    include: { tenant: true },
   });
   if (!property) {
     throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");

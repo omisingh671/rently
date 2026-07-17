@@ -42,7 +42,9 @@ export const getTokenPaymentStatus = (
     return "NOT_REQUIRED" as const;
   }
 
-  return tokenPaidAmount > 0 ? "PAID" as const : "UNPAID" as const;
+  return tokenPaidAmount >= Number(booking.upfrontAmount)
+    ? "PAID" as const
+    : "UNPAID" as const;
 };
 
 export const getPaidAmount = (booking: repo.PublicBookingRecord) =>

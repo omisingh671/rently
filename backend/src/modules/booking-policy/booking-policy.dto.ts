@@ -5,11 +5,13 @@ export type BookingPolicyRulesDTO = Record<string, unknown>;
 export interface DashboardBookingPolicyDTO {
   id: string;
   propertyId: string;
+  version: number;
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: BookingPolicyRulesDTO;
   refundRules: BookingPolicyRulesDTO;
   earlyCheckInRules: BookingPolicyRulesDTO;
@@ -20,4 +22,14 @@ export interface DashboardBookingPolicyDTO {
   guestPolicyText: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface BookingPolicyAuditDTO {
+  id: string;
+  propertyId: string;
+  version: number;
+  actor: { id: string; fullName: string; email: string };
+  previousData: BookingPolicyRulesDTO;
+  nextData: BookingPolicyRulesDTO;
+  createdAt: Date;
 }

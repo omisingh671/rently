@@ -97,7 +97,7 @@ export default function BookingDetailsPage() {
     previewStayExtension,
     isPreviewingStayExtension,
     extendStay,
-    correctStatus,
+    reverseLifecycle,
     createFolioCharge,
     voidFolioCharge,
     recordBalancePayment,
@@ -166,7 +166,6 @@ export default function BookingDetailsPage() {
     pendingAction,
     note,
     selectedRoomIds,
-    selectedStatus,
     paymentAmount,
     paymentMethod,
     paymentReferenceId,
@@ -180,7 +179,6 @@ export default function BookingDetailsPage() {
     roomMovePreview,
     roomMovePricingAction,
     setNote,
-    setSelectedStatus,
     setPaymentAmount,
     setPaymentMethod,
     setPaymentReferenceId,
@@ -385,15 +383,14 @@ export default function BookingDetailsPage() {
             adminNote: note.trim(),
           },
         });
-      } else if (pendingAction.type === "statusOverride") {
+      } else if (pendingAction.type === "lifecycleReversal") {
         if (!note.trim()) {
-          setActionError("Audit note is required for status correction.");
+          setActionError("Audit note is required for lifecycle reversal.");
           return;
         }
 
-        await correctStatus({
+        await reverseLifecycle({
           expectedVersion: booking.version,
-          status: selectedStatus,
           note: note.trim(),
         });
       } else if (pendingAction.type === "checkIn") {
@@ -442,7 +439,7 @@ export default function BookingDetailsPage() {
         });
       } else if (pendingAction.status) {
         await updateBooking({
-          status: pendingAction.status,
+          status: "CANCELLED",
           ...(note.trim() && { note: note.trim() }),
         });
       }
@@ -903,7 +900,7 @@ export default function BookingDetailsPage() {
             onExtendStay={openStayExtension}
             onRecordPayment={() => openAction("recordPayment")}
             onAssignRoom={() => openAction("assignRoom")}
-            onStatusOverride={() => openAction("statusOverride")}
+            onLifecycleReversal={() => openAction("lifecycleReversal")}
             onNoShow={() => openAction("noShow")}
             onCancel={() => openAction("cancel")}
           />
@@ -983,7 +980,6 @@ export default function BookingDetailsPage() {
             ? selectedRoomIds.length
             : booking.items.length
         }
-        selectedStatus={selectedStatus}
         paymentAmount={paymentAmount}
         paymentMethod={paymentMethod}
         paymentReferenceId={paymentReferenceId}
@@ -1001,7 +997,6 @@ export default function BookingDetailsPage() {
         onRoomMovePricingActionChange={setRoomMovePricingAction}
         onNoteChange={setNote}
         onRoomToggle={toggleAssignedRoom}
-        onStatusChange={setSelectedStatus}
         onPaymentAmountChange={setPaymentAmount}
         onPaymentMethodChange={setPaymentMethod}
         onPaymentReferenceIdChange={setPaymentReferenceId}

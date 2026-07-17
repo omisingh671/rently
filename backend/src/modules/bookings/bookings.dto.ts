@@ -257,6 +257,7 @@ export interface DashboardBookingDTO {
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  paymentExpiresAt: Date | null;
   noShowEligible: boolean;
   isCheckInDatePassed: boolean;
   internalNotes: string | null;

@@ -23,7 +23,6 @@ import type {
   UpdateRefundRequestPayload,
   RoomBoardResponse,
   OperationsBoardResponse,
-  CorrectBookingStatusPayload,
   CreateFolioChargePayload,
   RoomHousekeepingStatus,
   VersionedBookingNotePayload,
@@ -248,12 +247,12 @@ export const commitStayExtensionApi = async (
   return data.data;
 };
 
-export const correctBookingStatusApi = async (
+export const reverseBookingLifecycleApi = async (
   bookingId: string,
-  payload: CorrectBookingStatusPayload,
+  payload: VersionedBookingNotePayload,
 ): Promise<AdminBooking> => {
   const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
-    API_ENDPOINTS.operations.bookingStatusCorrectionById(bookingId),
+    API_ENDPOINTS.operations.bookingLifecycleReversalById(bookingId),
     payload,
   );
   return data.data;

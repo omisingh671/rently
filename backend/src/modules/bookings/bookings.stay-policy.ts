@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { Prisma } from "@/generated/prisma/client.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import type {
   BookingCheckInPolicyPreviewDTO,
   BookingCheckOutPolicyPreviewDTO,
@@ -102,15 +108,28 @@ const loadPolicy = async (tx: Prisma.TransactionClient, propertyId: string) =>
     update: {},
   });
 
+const getStayPolicySnapshot = async (
+  tx: Prisma.TransactionClient,
+  booking: TransactionBooking,
+  capturedAt: Date,
+) => {
+  const bookingPolicy = parsePolicySnapshot(booking.policySnapshot);
+  if (bookingPolicy) {
+    return buildStayPolicySnapshotFromBooking(bookingPolicy);
+  }
+
+  return buildStayPolicySnapshot(
+    await loadPolicy(tx, booking.propertyId),
+    capturedAt,
+  );
+};
+
 export const buildCheckInPolicyPreview = async (
   tx: Prisma.TransactionClient,
   booking: TransactionBooking,
   now = new Date(),
 ): Promise<BookingCheckInPolicyPreviewDTO> => {
-  const policySnapshot = buildStayPolicySnapshot(
-    await loadPolicy(tx, booking.propertyId),
-    now,
-  );
+  const policySnapshot = await getStayPolicySnapshot(tx, booking, now);
   const timeZone = booking.property.tenant.timezone;
   const current = localParts(now, timeZone);
   const arrival = localParts(booking.checkIn, timeZone);
@@ -142,10 +161,7 @@ export const buildCheckOutPolicyPreview = async (
   booking: TransactionBooking,
   now = new Date(),
 ): Promise<BookingCheckOutPolicyPreviewDTO> => {
-  const policySnapshot = buildStayPolicySnapshot(
-    await loadPolicy(tx, booking.propertyId),
-    now,
-  );
+  const policySnapshot = await getStayPolicySnapshot(tx, booking, now);
   const timeZone = booking.property.tenant.timezone;
   const current = localParts(now, timeZone);
   const arrival = localParts(booking.checkIn, timeZone);

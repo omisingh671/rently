@@ -224,8 +224,8 @@ export default function OperationsPage({ module }: Props) {
         source={activeFilters.source}
         statuses={module === "bookings" ? bookingStatuses : leadStatuses}
         enquirySources={enquirySources}
-        properties={properties}
         selectedPropertyId={selectedPropertyId}
+        selectedPropertyName={properties.find((property) => property.id === selectedPropertyId)?.name}
         onSearchChange={(value) => setFilterValue("search", value)}
         onStatusChange={(value) => setFilterValue("status", value)}
         onSourceChange={(value) => setFilterValue("source", value)}

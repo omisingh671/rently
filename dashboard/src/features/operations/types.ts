@@ -113,6 +113,7 @@ export type AdminBooking = {
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  paymentExpiresAt: string | null;
   noShowEligible: boolean;
   isCheckInDatePassed: boolean;
   internalNotes: string | null;
@@ -226,13 +227,11 @@ export type AdminBooking = {
 };
 
 export type UpdateBookingPayload = {
-  status?: BookingStatus;
+  status?: Extract<BookingStatus, "CANCELLED">;
   note?: string;
   internalNotes?: string | null;
   roomId?: string;
   roomIds?: string[];
-  statusOverride?: boolean;
-  allowBalanceDueCheckIn?: boolean;
 };
 
 export type CheckInBookingPayload = {
@@ -366,10 +365,6 @@ export type CommitStayExtensionPayload = PreviewStayExtensionPayload & {
   pricingFingerprint: string;
   note: string;
   overrideReason?: string;
-};
-
-export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {
-  status: BookingStatus;
 };
 
 export type CreateFolioChargePayload = {
@@ -524,6 +519,7 @@ export type OperationsBoardResponse = {
     departures: number;
     inHouse: number;
     lateArrivals: number;
+    noShowReview: number;
     unassignedArrivals: number;
     balanceDue: number;
     refundAttention: number;
@@ -534,6 +530,7 @@ export type OperationsBoardResponse = {
   departures: AdminBooking[];
   inHouse: AdminBooking[];
   lateArrivals: AdminBooking[];
+  noShowReview: AdminBooking[];
   unassignedArrivals: AdminBooking[];
   balanceDue: AdminBooking[];
   refundAttention: AdminBooking[];

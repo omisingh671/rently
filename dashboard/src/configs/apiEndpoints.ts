@@ -140,6 +140,8 @@ export const API_ENDPOINTS = {
   bookingPolicy: {
     byProperty: (propertyId: string) =>
       `/properties/${propertyId}/booking-policy`,
+    audits: (propertyId: string) =>
+      `/properties/${propertyId}/booking-policy/audits`,
   },
 
   operations: {
@@ -170,8 +172,8 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/stay-extension`,
     bookingStayExtensionPreviewById: (bookingId: string) =>
       `/bookings/${bookingId}/stay-extension/preview`,
-    bookingStatusCorrectionById: (bookingId: string) =>
-      `/bookings/${bookingId}/status-correction`,
+    bookingLifecycleReversalById: (bookingId: string) =>
+      `/bookings/${bookingId}/lifecycle-reversal`,
     bookingFolioChargesById: (bookingId: string) =>
       `/bookings/${bookingId}/folio-charges`,
     bookingFolioChargeById: (bookingId: string, chargeId: string) =>

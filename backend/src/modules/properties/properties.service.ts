@@ -160,13 +160,9 @@ export const updateProperty = async (
   }
 
   await ensurePropertyExists(id);
-  if (data.tenantId !== undefined) {
-    await ensureTenantExists(data.tenantId);
-  }
 
   try {
     await repo.updatePropertyById(id, {
-      ...(data.tenantId !== undefined && { tenantId: data.tenantId }),
       ...(data.slug !== undefined && { slug: data.slug }),
       ...(data.name !== undefined && { name: data.name }),
       ...(data.address !== undefined && { address: data.address }),

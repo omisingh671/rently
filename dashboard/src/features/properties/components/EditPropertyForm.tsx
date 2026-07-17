@@ -48,7 +48,6 @@ export default function EditPropertyForm({ id }: { id: string }) {
   ) => {
     updateProperty(
       {
-        tenantId: values.tenantId,
         slug: values.slug,
         name: values.name,
         address: values.address,
@@ -82,6 +81,7 @@ export default function EditPropertyForm({ id }: { id: string }) {
   return (
     <PropertyForm
       submitLabel="Save Changes"
+      lockTenant
       isSubmitting={isUpdating}
       tenantOptions={tenants}
       defaultValues={{

@@ -47,7 +47,6 @@ export interface CreatePropertyPayload {
 }
 
 export interface UpdatePropertyPayload {
-  tenantId?: string;
   slug?: string;
   name?: string;
   address?: string;

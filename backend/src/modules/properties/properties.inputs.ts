@@ -17,7 +17,6 @@ export interface CreatePropertyInput {
 }
 
 export interface UpdatePropertyInput {
-  tenantId?: string;
   slug?: string;
   name?: string;
   address?: string;

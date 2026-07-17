@@ -45,6 +45,8 @@ const documentKeyForInvoice = (bookingId: string) => `INVOICE:${bookingId}`;
 const documentKeyForReceipt = (paymentId: string) => `RECEIPT:${paymentId}`;
 const documentKeyForDebitNote = (folioChargeId: string) =>
   `DEBIT_NOTE:${folioChargeId}`;
+const documentKeyForCreditNote = (folioChargeId: string) =>
+  `CREDIT_NOTE:${folioChargeId}`;
 const maxBillingTransactionAttempts = 3;
 
 const runBillingTransactionWithRetry = async <T>(
@@ -441,6 +443,94 @@ export const createDebitNoteForFolioCharge = async (
             },
           ]),
           notes: charge.note,
+          issuedAt: new Date(),
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
+  return mapDocument(document);
+};
+
+export const createCreditNoteForVoidedFolioCharge = async (
+  bookingId: string,
+  folioChargeId: string,
+  reason: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const debitNote = await repo.findDocumentByKey(
+    documentKeyForDebitNote(folioChargeId),
+    tx,
+  );
+  if (!debitNote || debitNote.status !== BillingDocumentStatus.ISSUED) {
+    return null;
+  }
+
+  const documentKey = documentKeyForCreditNote(folioChargeId);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing) return mapDocument(existing);
+
+  const booking = await repo.findBookingById(bookingId, tx);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  const charge = await tx.bookingFolioCharge.findUnique({
+    where: { id: folioChargeId },
+  });
+  if (!charge) {
+    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+  }
+
+  const documentNumber = await repo.nextDocumentNumber(
+    booking.propertyId,
+    BillingDocumentType.CREDIT_NOTE,
+    tx,
+  );
+  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const balance = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
+  );
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: BillingDocumentType.CREDIT_NOTE,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          booking: { connect: { id: booking.id } },
+          folioCharge: { connect: { id: charge.id } },
+          property: { connect: { id: booking.propertyId } },
+          tenant: { connect: { id: booking.property.tenantId } },
+          subtotal: debitNote.subtotal,
+          discount: debitNote.discount,
+          taxable: debitNote.taxable,
+          tax: debitNote.tax,
+          total: debitNote.total,
+          paid: zeroDecimal,
+          balance,
+          guestSnapshot: toJson(debitNote.guestSnapshot),
+          propertySnapshot: toJson(debitNote.propertySnapshot),
+          tenantSnapshot: toJson(debitNote.tenantSnapshot),
+          bookingSnapshot: toJson(debitNote.bookingSnapshot),
+          priceSnapshot: toJson({
+            reversedDocumentId: debitNote.id,
+            reversedDocumentNumber: debitNote.documentNumber,
+            reason,
+          }),
+          taxSnapshot: toJson(debitNote.taxSnapshot ?? []),
+          lineItems: toJson([
+            {
+              description: `Reversal of ${debitNote.documentNumber}: ${charge.description}`,
+              quantity: 1,
+              rate: debitNote.subtotal.toString(),
+              tax: debitNote.tax.toString(),
+              total: debitNote.total.toString(),
+            },
+          ]),
+          notes: reason,
           issuedAt: new Date(),
         },
         tx,

@@ -22,6 +22,7 @@ export const listPropertySummaries = (propertyIds?: string[]) =>
       tenant: {
         select: {
           name: true,
+          timezone: true,
         },
       },
     },
@@ -190,7 +191,7 @@ export const getPaymentsInRange = (
         propertyId: { in: propertyIds },
       }),
       status: "SUCCEEDED",
-      createdAt: { gte: startDate, lte: endDate },
+      paidAt: { gte: startDate, lte: endDate },
     },
   });
 
@@ -205,7 +206,7 @@ export const getRefundsInRange = (
         propertyId: { in: propertyIds },
       }),
       status: "SUCCEEDED",
-      createdAt: { gte: startDate, lte: endDate },
+      processedAt: { gte: startDate, lte: endDate },
     },
   });
 
@@ -299,3 +300,16 @@ export const getAllRoomsWithProperties = (propertyIds?: string[]) =>
     },
   });
 
+export const getOperationalUsersByIds = (userIds: string[]) =>
+  prisma.user.findMany({
+    where: {
+      id: { in: userIds },
+      role: { in: ["SUPER_ADMIN", "ADMIN", "MANAGER"] },
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+    },
+  });

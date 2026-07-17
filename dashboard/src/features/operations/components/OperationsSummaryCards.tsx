@@ -59,13 +59,13 @@ export function OperationsSummaryCards({
       description: "Guests currently staying",
     },
     {
-      label: "Late arrivals",
-      value: summary.lateArrivals,
+      label: "No-show review",
+      value: summary.noShowReview,
       icon: (
         <FiClock className={`h-3.5 w-3.5 ${OPERATION_PALETTE.late.icon}`} />
       ),
       tone: OPERATION_PALETTE.late,
-      description: "Missed scheduled check-in",
+      description: "Past the property no-show cutoff",
     },
     {
       label: "Unassigned",

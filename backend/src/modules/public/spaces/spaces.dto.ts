@@ -13,6 +13,7 @@ export interface PublicBookingPolicyDTO {
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: PublicBookingPolicyRulesDTO;
   refundRules: PublicBookingPolicyRulesDTO;
   earlyCheckoutRules: PublicBookingPolicyRulesDTO;

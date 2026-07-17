@@ -9,6 +9,8 @@ import type {
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
+import BillingSettingsSection from "@/features/billing/components/BillingSettingsSection";
+import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
 
 const documentTypes: Array<"" | BillingDocumentType> = [
   "",
@@ -53,6 +55,9 @@ export default function BillingPage() {
     useCurrentProperty();
   const billingActions = useBillingActions();
   const canVoid = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
+  );
+  const canEditSettings = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
   );
   const [page] = useState(1);
@@ -111,22 +116,15 @@ export default function BillingPage() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <select
-            className="rounded-md border border-slate-200 px-3 py-2 text-sm"
-            value={activePropertyId}
-            onChange={(event) => {
-              const propertyId = event.target.value;
+          <PropertySearchSelect
+            selectedPropertyId={activePropertyId}
+            selectedPropertyName={properties.find((property) => property.id === activePropertyId)?.name}
+            allowAll
+            onChange={(propertyId) => {
               setPropertyFilterMode(propertyId === "" ? "all" : "current");
               setSelectedPropertyId(propertyId || null);
             }}
-          >
-            <option value="">All properties</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
+          />
           <select
             className="rounded-md border border-slate-200 px-3 py-2 text-sm"
             value={filters.type}
@@ -347,6 +345,10 @@ export default function BillingPage() {
           </tbody>
         </table>
       </section>
+      <BillingSettingsSection
+        propertyId={activePropertyId || undefined}
+        canEdit={canEditSettings}
+      />
     </div>
   );
 }

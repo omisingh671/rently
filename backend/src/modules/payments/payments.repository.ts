@@ -201,6 +201,7 @@ export const confirmBooking = (
     data: {
       status: BookingStatus.CONFIRMED,
       paymentStatus,
+      paymentExpiresAt: null,
     },
   });
 

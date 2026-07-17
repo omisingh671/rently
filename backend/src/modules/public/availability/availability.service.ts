@@ -5,6 +5,7 @@ import {
 } from "@/generated/prisma/client.js";
 import { env } from "@/config/env.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertStayStartsOnOrAfterBusinessDate } from "@/common/utils/business-date.js";
 import { isTransientDatabaseError } from "@/common/retry/retry-policy.js";
 import * as repo from "./availability.repository.js";
 import * as spacesRepo from "@/modules/public/spaces/spaces.repository.js";
@@ -1193,6 +1194,10 @@ export const checkAvailability = async (
     ...tenantInput,
     ...(input.city !== undefined && { city: input.city }),
   });
+  assertStayStartsOnOrAfterBusinessDate(
+    input.checkIn,
+    scope.tenant.timezone,
+  );
   const nights = getNights(input.checkIn, input.checkOut);
   const options = await getPublicAvailabilityOptions(
     input,
@@ -1213,6 +1218,7 @@ export const createInventoryLock = async (
   tenantInput: TenantResolutionInput = {},
 ): Promise<PublicInventoryLockDTO> => {
   const scope = await tenantService.resolvePublicScope(tenantInput);
+  assertStayStartsOnOrAfterBusinessDate(input.from, scope.tenant.timezone);
   const nights = getNights(input.from, input.to);
   const lockToken = randomUUID();
   const createdAt = now();

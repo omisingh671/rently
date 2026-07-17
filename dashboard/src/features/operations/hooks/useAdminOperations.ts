@@ -6,7 +6,7 @@ import {
   checkOutBookingApi,
   previewCheckInPolicyApi,
   previewCheckOutPolicyApi,
-  correctBookingStatusApi,
+  reverseBookingLifecycleApi,
   createFolioChargeApi,
   createManualBookingApi,
   getBookingApi,
@@ -33,7 +33,6 @@ import type {
   CheckOutBookingPayload,
   CheckManualBookingAvailabilityPayload,
   CreateManualBookingPayload,
-  CorrectBookingStatusPayload,
   CreateFolioChargePayload,
   LeadStatus,
   RecordBalancePaymentPayload,
@@ -336,10 +335,10 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     onError: refreshBookingDetail,
   });
 
-  const correctStatus = useMutation({
-    mutationFn: (payload: CorrectBookingStatusPayload) => {
+  const reverseLifecycle = useMutation({
+    mutationFn: (payload: VersionedBookingNotePayload) => {
       if (!bookingId) throw new Error("BookingId required");
-      return correctBookingStatusApi(bookingId, payload);
+      return reverseBookingLifecycleApi(bookingId, payload);
     },
     onSuccess: syncBooking,
   });
@@ -415,7 +414,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     previewStayExtension: previewStayExtension.mutateAsync,
     isPreviewingStayExtension: previewStayExtension.isPending,
     extendStay: extendStay.mutateAsync,
-    correctStatus: correctStatus.mutateAsync,
+    reverseLifecycle: reverseLifecycle.mutateAsync,
     createFolioCharge: createFolioCharge.mutateAsync,
     voidFolioCharge: voidFolioCharge.mutateAsync,
     recordBalancePayment: recordBalancePayment.mutateAsync,
@@ -428,7 +427,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       markNoShow.isPending ||
       moveRooms.isPending ||
       extendStay.isPending ||
-      correctStatus.isPending ||
+      reverseLifecycle.isPending ||
       createFolioCharge.isPending ||
       voidFolioCharge.isPending ||
       recordBalancePayment.isPending ||

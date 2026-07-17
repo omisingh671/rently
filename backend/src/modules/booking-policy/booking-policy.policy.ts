@@ -14,6 +14,7 @@ export interface BookingPolicyShape {
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: Prisma.JsonValue;
   refundRules: Prisma.JsonValue;
   earlyCheckInRules: Prisma.JsonValue | null;
@@ -25,12 +26,15 @@ export interface BookingPolicyShape {
 }
 
 export interface BookingPolicySnapshot {
-  version: 1;
+  version: 3;
   policyId: string;
   capturedAt: string;
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
   earlyCheckInRules: BookingPolicyRules;
@@ -43,12 +47,9 @@ export interface BookingPolicySnapshot {
 
 export const defaultCancellationRules: BookingPolicyRules = {
   guestCancellationAllowed: true,
-  allowedStatuses: ["PENDING", "CONFIRMED"],
-  beforeCheckInOnly: true,
 };
 
 export const defaultRefundRules: BookingPolicyRules = {
-  tokenRefundable: false,
   manualReviewRequired: true,
 };
 
@@ -79,8 +80,7 @@ export const defaultDowngradeRules: BookingPolicyRules = {
 };
 
 export const defaultNoShowRules: BookingPolicyRules = {
-  markAfterCheckInCutoff: true,
-  tokenRefundable: false,
+  noShowAfterTime: "20:00",
 };
 
 export const defaultGuestPolicyText =
@@ -98,6 +98,7 @@ export const defaultBookingPolicyCreateData: Omit<
   tokenRefundable: false,
   checkInTime: "12:00",
   checkOutTime: "11:00",
+  pendingPaymentExpiryMinutes: 15,
   cancellationRules: toInputJson(defaultCancellationRules),
   refundRules: toInputJson(defaultRefundRules),
   earlyCheckInRules: toInputJson(defaultEarlyCheckInRules),
@@ -117,12 +118,15 @@ export const buildPolicySnapshot = (
   policy: BookingPolicyShape,
   capturedAt: Date,
 ): BookingPolicySnapshot => ({
-  version: 1,
+  version: 3,
   policyId: policy.id,
   capturedAt: capturedAt.toISOString(),
   advancePaymentType: policy.advancePaymentType,
   advancePaymentValue: new Prisma.Decimal(policy.advancePaymentValue).toString(),
   tokenRefundable: policy.tokenRefundable,
+  checkInTime: policy.checkInTime,
+  checkOutTime: policy.checkOutTime,
+  pendingPaymentExpiryMinutes: policy.pendingPaymentExpiryMinutes,
   cancellationRules: toRules(policy.cancellationRules),
   refundRules: toRules(policy.refundRules),
   earlyCheckInRules: toRules(policy.earlyCheckInRules),
@@ -142,7 +146,7 @@ export const parsePolicySnapshot = (
 
   const candidate = value as Record<string, unknown>;
   if (
-    candidate.version !== 1 ||
+    (candidate.version !== 1 && candidate.version !== 2 && candidate.version !== 3) ||
     typeof candidate.policyId !== "string" ||
     typeof candidate.capturedAt !== "string" ||
     typeof candidate.advancePaymentType !== "string" ||
@@ -154,12 +158,20 @@ export const parsePolicySnapshot = (
   }
 
   return {
-    version: 1,
+    version: 3,
     policyId: candidate.policyId,
     capturedAt: candidate.capturedAt,
     advancePaymentType: candidate.advancePaymentType as AdvancePaymentType,
     advancePaymentValue: candidate.advancePaymentValue,
     tokenRefundable: candidate.tokenRefundable,
+    checkInTime:
+      typeof candidate.checkInTime === "string" ? candidate.checkInTime : "12:00",
+    checkOutTime:
+      typeof candidate.checkOutTime === "string" ? candidate.checkOutTime : "11:00",
+    pendingPaymentExpiryMinutes:
+      typeof candidate.pendingPaymentExpiryMinutes === "number"
+        ? candidate.pendingPaymentExpiryMinutes
+        : 15,
     cancellationRules:
       candidate.cancellationRules !== null &&
       typeof candidate.cancellationRules === "object" &&

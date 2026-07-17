@@ -51,13 +51,11 @@ export const listBookingsQuerySchema = basePaginationQuerySchema.extend({
 
 export const updateBookingStatusSchema = z
   .object({
-    status: z.nativeEnum(BookingStatus).optional(),
+    status: z.literal(BookingStatus.CANCELLED).optional(),
     internalNotes: z.string().trim().max(5000).nullable().optional(),
     note: z.string().trim().max(1000).optional(),
     roomId: idSchema.optional(),
     roomIds: z.array(idSchema).optional(),
-    statusOverride: z.boolean().optional(),
-    allowBalanceDueCheckIn: z.boolean().optional(),
   })
   .refine(
     (data) =>
@@ -285,11 +283,10 @@ export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
   overrideReason: z.string().trim().min(1).max(1000).optional(),
 });
 
-export const correctBookingStatusSchema = z.object({
+export const reverseBookingLifecycleSchema = z.object({
   expectedVersion: expectedVersionSchema,
-  status: z.nativeEnum(BookingStatus),
   note: z.string().trim().min(1).max(1000),
-});
+}).strict();
 
 export const updateRoomHousekeepingSchema = z.object({
   expectedStatus: z.enum(["DIRTY", "CLEANING", "CLEAN", "INSPECTED"]),

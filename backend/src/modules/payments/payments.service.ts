@@ -1,4 +1,5 @@
 import {
+  BookingPaymentPolicy,
   BookingPaymentStatus,
   BookingStatus,
   PaymentMethod,
@@ -250,6 +251,18 @@ export const createManualPayment = async (
       );
     }
 
+    if (
+      booking.status === BookingStatus.PENDING &&
+      booking.paymentExpiresAt !== null &&
+      booking.paymentExpiresAt <= new Date()
+    ) {
+      throw new HttpError(
+        409,
+        "BOOKING_PAYMENT_EXPIRED",
+        "The payment deadline has passed. Start a new booking.",
+      );
+    }
+
     const {
       folioTotal,
       paidAmount: paidBefore,
@@ -289,6 +302,20 @@ export const createManualPayment = async (
     const amount = input.amount !== undefined
       ? new Prisma.Decimal(input.amount)
       : fallbackAmount;
+
+    if (
+      input.actorUserId === undefined &&
+      input.amount !== undefined &&
+      !amount.equals(fallbackAmount)
+    ) {
+      throw new HttpError(
+        422,
+        "PAYMENT_AMOUNT_MISMATCH",
+        purpose === PaymentPurpose.TOKEN
+          ? "Token payment amount must match the amount required by the booking policy"
+          : "Payment amount must match the outstanding booking balance",
+      );
+    }
 
     if (amount.lessThanOrEqualTo(0)) {
       throw new HttpError(
@@ -356,7 +383,15 @@ export const createManualPayment = async (
       paidAfter,
     );
 
-    if (booking.status === BookingStatus.PENDING) {
+    const confirmationAmount =
+      booking.paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING
+        ? minDecimal(booking.upfrontAmount, booking.totalAmount.plus(folioTotal))
+        : zeroDecimal;
+    const canConfirmPendingBooking =
+      booking.paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT ||
+      netPaidAfter.greaterThanOrEqualTo(confirmationAmount);
+
+    if (booking.status === BookingStatus.PENDING && canConfirmPendingBooking) {
       await repo.confirmBooking(booking.id, nextPaymentStatus, tx);
       await repo.createBookingStatusHistory(
         {

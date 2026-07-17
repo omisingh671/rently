@@ -115,6 +115,11 @@ enum BookingType {
   MULTI_ROOM
 }
 
+enum BookingSource {
+  PUBLIC
+  WALK_IN
+}
+
 enum BookingStatus {
   PENDING
   CONFIRMED
@@ -338,6 +343,7 @@ model User {
   createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
   voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
   notificationSettingAudits  NotificationSettingAudit[]
+  bookingPolicyAudits       BookingPolicyAudit[]
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -558,6 +564,7 @@ model Property {
   notificationOverrides PropertyNotificationOverride[]
   notificationSettingAudits NotificationSettingAudit[]
   notificationDeliveryJobs NotificationDeliveryJob[]
+  bookingPolicyAudits BookingPolicyAudit[]
 
   @@unique([tenantId, name, city, state])
   @@unique([tenantId, slug])
@@ -573,6 +580,7 @@ model PropertyBookingPolicy {
   tokenRefundable     Boolean            @default(false)
   checkInTime         String             @default("12:00")
   checkOutTime        String             @default("11:00")
+  pendingPaymentExpiryMinutes Int        @default(15)
   cancellationRules   Json
   refundRules         Json
   earlyCheckInRules   Json?
@@ -581,12 +589,33 @@ model PropertyBookingPolicy {
   downgradeRules      Json?
   noShowRules         Json
   guestPolicyText     String             @db.Text
+  version             Int                @default(1)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  audits   BookingPolicyAudit[]
 
   @@map("property_booking_policies")
+}
+
+model BookingPolicyAudit {
+  id          String   @id @default(uuid())
+  policyId    String
+  propertyId  String
+  actorUserId String
+  version     Int
+  previousData Json
+  nextData     Json
+  createdAt   DateTime @default(now())
+
+  policy   PropertyBookingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  property Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor    User                  @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("booking_policy_audits")
 }
 
 model Unit {
@@ -734,6 +763,7 @@ model Booking {
   userId        String
   productId     String?
   bookingType   BookingType       @default(SINGLE_TARGET)
+  source        BookingSource     @default(PUBLIC)
   targetType    BookingTargetType
   unitId        String?
   roomId        String?
@@ -765,6 +795,7 @@ model Booking {
   paymentStatus      BookingPaymentStatus @default(PENDING)
   paymentPolicy      BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount      Decimal              @default(10)
+  paymentExpiresAt   DateTime?
   policySnapshot     Json?
   couponId           String?
   discountAmount     Decimal              @default(0)
@@ -794,6 +825,7 @@ model Booking {
   @@index([roomId, checkIn, checkOut])
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
+  @@index([status, paymentExpiresAt])
   @@index([propertyId, checkedInAt])
   @@index([propertyId, checkedOutAt])
   @@map("bookings")
@@ -915,7 +947,7 @@ model BookingFolioCharge {
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
-  billingDocument BillingDocument?
+  billingDocuments BillingDocument[]
 
   @@index([bookingId, status, createdAt])
   @@index([propertyId, createdAt])
@@ -1060,7 +1092,7 @@ model BillingDocument {
   documentNumber   String
   bookingId        String
   paymentId        String?
-  folioChargeId    String?               @unique
+  folioChargeId    String?
   propertyId       String
   tenantId         String?
   subtotal         Decimal               @default(0)

@@ -47,7 +47,10 @@ router.post(
   controller.previewStayExtension,
 );
 router.post("/bookings/:id/stay-extension", controller.extendStay);
-router.post("/bookings/:id/status-correction", controller.correctBookingStatus);
+router.post(
+  "/bookings/:id/lifecycle-reversal",
+  controller.reverseBookingLifecycle,
+);
 router.post("/bookings/:id/folio-charges", controller.createBookingFolioCharge);
 router.post(
   "/bookings/:id/folio-charges/:chargeId/void",

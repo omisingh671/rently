@@ -3,6 +3,7 @@ import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProper
 import { useDashboardAnalytics } from "@/features/dashboard/hooks";
 import Button from "@/components/ui/Button";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
+import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
 
 // Date helpers
 const getPastDateStr = (daysAgo: number) => {
@@ -192,22 +193,16 @@ export default function ReportsPage() {
         <div className="flex flex-col flex-wrap gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3">
             {/* Properties switcher */}
-            <select
-              className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-500"
-              value={activePropertyId}
-              onChange={(event) => {
-                const propertyId = event.target.value;
+            <PropertySearchSelect
+              className="min-w-56"
+              selectedPropertyId={activePropertyId}
+              selectedPropertyName={properties.find((property) => property.id === activePropertyId)?.name}
+              allowAll
+              onChange={(propertyId) => {
                 setPropertyFilterMode(propertyId === "" ? "all" : "current");
                 setSelectedPropertyId(propertyId || null);
               }}
-            >
-              <option value="">All Properties</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.name}
-                </option>
-              ))}
-            </select>
+            />
 
             {/* Presets */}
             <div className="inline-flex rounded-md shadow-sm">

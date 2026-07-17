@@ -417,6 +417,11 @@ export default function BookingPaymentPage() {
                               </>
                             )}
                           </p>
+                          {booking.paymentExpiresAt && (
+                            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                              Complete payment before {new Date(booking.paymentExpiresAt).toLocaleString()} or this pending booking will be cancelled automatically.
+                            </p>
+                          )}
                           {canPayToken && (
                             <div className="mt-3 space-y-1.5 text-[11px] font-semibold italic">
                               <p className="text-xs font-bold text-slate-900">

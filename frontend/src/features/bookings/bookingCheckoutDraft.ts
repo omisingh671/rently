@@ -46,6 +46,12 @@ const isPositiveNumber = (value: unknown): value is number =>
 const isPositiveInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value > 0;
 
+const todayDateValue = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
 const isSafePathname = (value: string) =>
   value.startsWith("/") && !value.startsWith("//") && !value.includes("://");
 
@@ -71,6 +77,10 @@ const isCreateBookingPayload = (
     !isPositiveInteger(value.guests) ||
     !isComfortOption(value.comfortOption)
   ) {
+    return false;
+  }
+
+  if (value.from < todayDateValue() || value.to <= value.from) {
     return false;
   }
 
@@ -171,7 +181,11 @@ export const getBookingCheckoutDraft = (): BookingCheckoutDraft | null => {
     );
     if (!stored) return null;
 
-    return parseDraft(JSON.parse(stored));
+    const draft = parseDraft(JSON.parse(stored));
+    if (!draft) {
+      clearBookingCheckoutDraft();
+    }
+    return draft;
   } catch {
     clearBookingCheckoutDraft();
     return null;

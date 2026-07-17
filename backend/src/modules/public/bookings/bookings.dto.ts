@@ -105,6 +105,7 @@ export interface PublicBookingDTO {
   upfrontAmount: number;
   tokenPaidAmount: number;
   tokenPaymentStatus: "NOT_REQUIRED" | "UNPAID" | "PAID";
+  paymentExpiresAt: string | null;
   guestName: string;
   guestEmail: string;
   guestContactNumber: string | null;

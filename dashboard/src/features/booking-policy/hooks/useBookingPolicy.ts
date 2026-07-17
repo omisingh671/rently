@@ -1,6 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
-import { getBookingPolicyApi, updateBookingPolicyApi } from "../api";
+import {
+  getBookingPolicyApi,
+  getBookingPolicyAuditsApi,
+  updateBookingPolicyApi,
+} from "../api";
 import type { BookingPolicyPayload } from "../types";
 
 export const useBookingPolicy = (propertyId: string | undefined) => {
@@ -14,6 +18,16 @@ export const useBookingPolicy = (propertyId: string | undefined) => {
     queryFn: () => {
       if (!propertyId) throw new Error("PropertyId required");
       return getBookingPolicyApi(propertyId);
+    },
+    enabled,
+  });
+  const auditQuery = useQuery({
+    queryKey: propertyId
+      ? [...ADMIN_KEYS.bookingPolicy.detail(propertyId), "audits"]
+      : [...ADMIN_KEYS.bookingPolicy.all(), "audits"],
+    queryFn: () => {
+      if (!propertyId) throw new Error("PropertyId required");
+      return getBookingPolicyAuditsApi(propertyId);
     },
     enabled,
   });
@@ -45,6 +59,8 @@ export const useBookingPolicy = (propertyId: string | undefined) => {
     isLoading: policyQuery.isPending,
     isFetching: policyQuery.isFetching,
     isError: policyQuery.isError,
+    audits: auditQuery.data ?? [],
+    areAuditsLoading: auditQuery.isPending,
     updatePolicy: updatePolicy.mutateAsync,
     isUpdating: updatePolicy.isPending,
   };
