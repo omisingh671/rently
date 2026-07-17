@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { defineConfig, devices } from "playwright/test";
 
 const databaseName = process.env.E2E_DATABASE_NAME?.trim() ?? "";
@@ -31,7 +32,6 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "line",
   outputDir: "test-results",
-  globalSetup: "./tests/e2e/global-setup.ts",
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
