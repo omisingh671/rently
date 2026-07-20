@@ -138,6 +138,13 @@ export const mapFormToPayload = (
   guestPolicyText: form.guestPolicyText.trim(),
 });
 
+export const hasBookingPolicyChanges = (
+  form: BookingPolicyForm,
+  policy: BookingPolicy,
+) =>
+  JSON.stringify(mapFormToPayload(form, policy.version)) !==
+  JSON.stringify(mapFormToPayload(mapPolicyToForm(policy), policy.version));
+
 export const validateBookingPolicyForm = (form: BookingPolicyForm) => {
   const errors: Partial<Record<keyof BookingPolicyForm, string>> = {};
   const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;

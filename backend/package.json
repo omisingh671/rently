@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "serve:e2e": "tsx src/server.ts",
+    "prepare:e2e": "tsx e2e/prepare.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "check": "npm run typecheck && npm run lint && npm run build",
@@ -16,7 +17,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "seed": "tsx prisma/seed.ts",
+    "pretest:e2e": "npm run prepare:e2e",
     "test:e2e": "playwright test -c playwright.config.ts",
+    "pretest:e2e:headed": "npm run prepare:e2e",
     "test:e2e:headed": "playwright test -c playwright.config.ts --headed",
     "test:unit": "tsx --test src/common/utils/business-date.test.ts src/modules/booking-policy/booking-policy.validation.test.ts src/modules/bookings/bookings.lifecycle.test.ts src/modules/reporting/reporting.schema.test.ts",
     "build:scripts": "tsc -p tsconfig.scripts.json"

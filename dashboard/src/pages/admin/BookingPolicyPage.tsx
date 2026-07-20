@@ -8,6 +8,7 @@ import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProper
 import BookingPolicyForm from "@/features/booking-policy/components/BookingPolicyForm";
 import {
   emptyBookingPolicyForm,
+  hasBookingPolicyChanges,
   mapFormToPayload,
   mapPolicyToForm,
   validateBookingPolicyForm,
@@ -81,7 +82,7 @@ export default function BookingPolicyPage() {
 
   const handleFormChange = (nextForm: BookingPolicyFormState) => {
     setForm(nextForm);
-    setIsDirty(true);
+    setIsDirty(policy ? hasBookingPolicyChanges(nextForm, policy) : true);
     setSavedMessage(null);
   };
 
@@ -102,7 +103,7 @@ export default function BookingPolicyPage() {
   };
 
   const handleSave = async () => {
-    if (isUpdating) return;
+    if (isUpdating || !policy || !hasBookingPolicyChanges(form, policy)) return;
 
     setServerError(null);
     setSavedMessage(null);
@@ -116,7 +117,6 @@ export default function BookingPolicyPage() {
     }
 
     try {
-      if (!policy) return;
       const savedPolicy = await updatePolicy(
         mapFormToPayload(form, policy.version),
       );
@@ -217,6 +217,7 @@ export default function BookingPolicyPage() {
             form={form}
             readOnly={isManager}
             isSaving={isUpdating}
+            hasChanges={isDirty}
             fieldErrors={fieldErrors}
             onChange={handleFormChange}
             onSubmit={handleSave}

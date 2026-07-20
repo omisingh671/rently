@@ -1,5 +1,23 @@
 import { prisma } from "@/db/prisma.js";
-import type { Prisma } from "@/generated/prisma/client.js";
+import { isDeepStrictEqual } from "node:util";
+import type { AdvancePaymentType, Prisma } from "@/generated/prisma/client.js";
+
+export interface BookingPolicyUpdateData {
+  advancePaymentType: AdvancePaymentType;
+  advancePaymentValue: Prisma.Decimal;
+  tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
+  cancellationRules: Prisma.InputJsonValue;
+  refundRules: Prisma.InputJsonValue;
+  earlyCheckInRules: Prisma.InputJsonValue;
+  earlyCheckoutRules: Prisma.InputJsonValue;
+  lateCheckoutRules: Prisma.InputJsonValue;
+  downgradeRules: Prisma.InputJsonValue;
+  noShowRules: Prisma.InputJsonValue;
+  guestPolicyText: string;
+}
 
 export const findBookingPolicyByPropertyId = (propertyId: string) =>
   prisma.propertyBookingPolicy.findUnique({
@@ -53,11 +71,48 @@ const toAuditJson = (policy: {
     }),
   ) as unknown as Prisma.InputJsonValue;
 
+const toComparablePolicy = (policy: {
+  advancePaymentType: string;
+  advancePaymentValue: Prisma.Decimal;
+  tokenRefundable: boolean;
+  checkInTime: string;
+  checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
+  cancellationRules: Prisma.JsonValue;
+  refundRules: Prisma.JsonValue;
+  earlyCheckInRules: Prisma.JsonValue;
+  earlyCheckoutRules: Prisma.JsonValue;
+  lateCheckoutRules: Prisma.JsonValue;
+  downgradeRules: Prisma.JsonValue;
+  noShowRules: Prisma.JsonValue;
+  guestPolicyText: string;
+}) => ({
+  advancePaymentType: policy.advancePaymentType,
+  advancePaymentValue: policy.advancePaymentValue.toString(),
+  tokenRefundable: policy.tokenRefundable,
+  checkInTime: policy.checkInTime,
+  checkOutTime: policy.checkOutTime,
+  pendingPaymentExpiryMinutes: policy.pendingPaymentExpiryMinutes,
+  cancellationRules: policy.cancellationRules,
+  refundRules: policy.refundRules,
+  earlyCheckInRules: policy.earlyCheckInRules,
+  earlyCheckoutRules: policy.earlyCheckoutRules,
+  lateCheckoutRules: policy.lateCheckoutRules,
+  downgradeRules: policy.downgradeRules,
+  noShowRules: policy.noShowRules,
+  guestPolicyText: policy.guestPolicyText,
+});
+
+const toComparableUpdate = (data: BookingPolicyUpdateData) => ({
+  ...data,
+  advancePaymentValue: data.advancePaymentValue.toString(),
+});
+
 export const updateBookingPolicyWithAudit = (
   propertyId: string,
   expectedVersion: number,
   actorUserId: string,
-  data: Prisma.PropertyBookingPolicyUpdateManyMutationInput,
+  data: BookingPolicyUpdateData,
 ) =>
   prisma.$transaction(async (tx) => {
     const previous = await tx.propertyBookingPolicy.findUnique({
@@ -65,6 +120,11 @@ export const updateBookingPolicyWithAudit = (
     });
     if (!previous || previous.version !== expectedVersion) {
       return null;
+    }
+    if (
+      isDeepStrictEqual(toComparablePolicy(previous), toComparableUpdate(data))
+    ) {
+      return previous;
     }
 
     const result = await tx.propertyBookingPolicy.updateMany({

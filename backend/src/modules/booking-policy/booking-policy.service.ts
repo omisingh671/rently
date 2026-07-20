@@ -70,10 +70,10 @@ export interface UpdateBookingPolicyInput {
   pendingPaymentExpiryMinutes: number;
   cancellationRules: Record<string, unknown>;
   refundRules: Record<string, unknown>;
-  earlyCheckInRules?: Record<string, unknown>;
+  earlyCheckInRules: Record<string, unknown>;
   earlyCheckoutRules: Record<string, unknown>;
-  lateCheckoutRules?: Record<string, unknown>;
-  downgradeRules?: Record<string, unknown>;
+  lateCheckoutRules: Record<string, unknown>;
+  downgradeRules: Record<string, unknown>;
   noShowRules: Record<string, unknown>;
   guestPolicyText: string;
 }
@@ -98,26 +98,20 @@ export const updateBookingPolicy = async (
     input.expectedVersion,
     userId,
     {
-    advancePaymentType: input.advancePaymentType,
-    advancePaymentValue: new Prisma.Decimal(input.advancePaymentValue),
-    tokenRefundable: input.tokenRefundable,
-    checkInTime: input.checkInTime,
-    checkOutTime: input.checkOutTime,
-    pendingPaymentExpiryMinutes: input.pendingPaymentExpiryMinutes,
-    cancellationRules: input.cancellationRules as Prisma.InputJsonValue,
-    refundRules: input.refundRules as Prisma.InputJsonValue,
-    ...(input.earlyCheckInRules !== undefined && {
+      advancePaymentType: input.advancePaymentType,
+      advancePaymentValue: new Prisma.Decimal(input.advancePaymentValue),
+      tokenRefundable: input.tokenRefundable,
+      checkInTime: input.checkInTime,
+      checkOutTime: input.checkOutTime,
+      pendingPaymentExpiryMinutes: input.pendingPaymentExpiryMinutes,
+      cancellationRules: input.cancellationRules as Prisma.InputJsonValue,
+      refundRules: input.refundRules as Prisma.InputJsonValue,
       earlyCheckInRules: input.earlyCheckInRules as Prisma.InputJsonValue,
-    }),
-    earlyCheckoutRules: input.earlyCheckoutRules as Prisma.InputJsonValue,
-    ...(input.lateCheckoutRules !== undefined && {
+      earlyCheckoutRules: input.earlyCheckoutRules as Prisma.InputJsonValue,
       lateCheckoutRules: input.lateCheckoutRules as Prisma.InputJsonValue,
-    }),
-    ...(input.downgradeRules !== undefined && {
       downgradeRules: input.downgradeRules as Prisma.InputJsonValue,
-    }),
-    noShowRules: input.noShowRules as Prisma.InputJsonValue,
-    guestPolicyText: input.guestPolicyText,
+      noShowRules: input.noShowRules as Prisma.InputJsonValue,
+      guestPolicyText: input.guestPolicyText,
     },
   );
 

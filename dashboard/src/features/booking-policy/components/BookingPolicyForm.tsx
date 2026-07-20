@@ -9,6 +9,7 @@ interface BookingPolicyFormProps {
   form: BookingPolicyFormState;
   readOnly: boolean;
   isSaving: boolean;
+  hasChanges: boolean;
   fieldErrors: Partial<Record<keyof BookingPolicyFormState, string>>;
   onChange: (form: BookingPolicyFormState) => void;
   onSubmit: () => void;
@@ -91,6 +92,7 @@ export default function BookingPolicyForm({
   form,
   readOnly,
   isSaving,
+  hasChanges,
   fieldErrors,
   onChange,
   onSubmit,
@@ -417,7 +419,7 @@ export default function BookingPolicyForm({
 
       {!readOnly && (
         <div className="flex justify-end">
-          <Button type="submit" disabled={isSaving}>
+          <Button type="submit" disabled={isSaving || !hasChanges}>
             {isSaving ? "Saving..." : "Save Policy"}
           </Button>
         </div>

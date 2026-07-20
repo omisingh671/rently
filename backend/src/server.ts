@@ -18,15 +18,30 @@ const stopPendingBookingExpiryProcessor = startPendingBookingExpiryProcessor();
  * Graceful Shutdown (Prisma v7 compatible)
  * --------------------------------------------------
  */
+let isShuttingDown = false;
+
 const shutdown = async (signal: string) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   console.log(`Received ${signal}. Shutting down...`);
   stopNotificationProcessor();
   stopPendingBookingExpiryProcessor();
-  await prisma.$disconnect();
 
-  server.close(() => {
-    process.exit(0);
+  const serverClosed = new Promise<void>((resolve) => {
+    server.close(() => resolve());
   });
+  server.closeIdleConnections();
+
+  const forceCloseTimer = setTimeout(() => {
+    server.closeAllConnections();
+  }, 5_000);
+  forceCloseTimer.unref();
+
+  await serverClosed;
+  clearTimeout(forceCloseTimer);
+  await prisma.$disconnect();
+  process.exit(0);
 };
 
 process.on("SIGINT", shutdown);
