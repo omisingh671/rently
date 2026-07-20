@@ -280,17 +280,9 @@ export default function AdminSidebar({
 
           {admin.role === "ADMIN" && (
             <SidebarLink
-              to={adminPath(ADMIN_ROUTES.MANAGERS)}
+              to={adminPath(ADMIN_ROUTES.TEAM_USERS)}
               icon={FiUsers}
-              label="Managers"
-            />
-          )}
-
-          {admin.role === "ADMIN" && (
-            <SidebarLink
-              to={adminPath(ADMIN_ROUTES.STAFF)}
-              icon={FiUsers}
-              label="Operational Staff"
+              label="Team Users"
             />
           )}
 

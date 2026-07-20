@@ -38,11 +38,11 @@ export const ADMIN_KEYS = {
   /* ------------------------------------------------ */
 
   users: {
-      all: (scope: "admins" | "managers" | "staff") =>
+      all: (scope: "admins" | "team") =>
       [...ADMIN_KEYS.root, "users", scope] as const,
 
     list: (params: {
-        scope: "admins" | "managers" | "staff";
+        scope: "admins" | "team";
       page: number;
       limit: number;
       search?: string;
@@ -50,7 +50,7 @@ export const ADMIN_KEYS = {
         role?: string;
     }) => [...ADMIN_KEYS.users.all(params.scope), "list", params] as const,
 
-      detail: (scope: "admins" | "managers" | "staff", id: string) =>
+      detail: (scope: "admins" | "team", id: string) =>
       [...ADMIN_KEYS.users.all(scope), "detail", id] as const,
   },
 
@@ -338,5 +338,8 @@ export const ADMIN_KEYS = {
 
     setting: (propertyId: string) =>
       [...ADMIN_KEYS.billing.all(), "settings", propertyId] as const,
+
+    settingAudits: (propertyId: string) =>
+      [...ADMIN_KEYS.billing.setting(propertyId), "audits"] as const,
   },
 } as const;

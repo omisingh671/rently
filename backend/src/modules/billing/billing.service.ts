@@ -11,7 +11,9 @@ import {
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import type {
   BillingDocumentDTO,
+  BillingSettingAuditDTO,
   BillingSettingDTO,
+  BillingSettingSnapshotDTO,
 } from "./billing.dto.js";
 import type {
   BillingDocumentListInput,
@@ -120,6 +122,45 @@ const mapSetting = (setting: repo.BillingSettingRecord): BillingSettingDTO => ({
   footerNotes: setting.footerNotes ?? null,
   createdAt: setting.createdAt.toISOString(),
   updatedAt: setting.updatedAt.toISOString(),
+});
+
+const asNullableString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
+const asString = (value: unknown): string =>
+  typeof value === "string" ? value : "";
+
+const mapSettingSnapshot = (
+  value: Prisma.JsonValue,
+): BillingSettingSnapshotDTO => {
+  const snapshot =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    legalName: asNullableString(snapshot.legalName),
+    gstin: asNullableString(snapshot.gstin),
+    pan: asNullableString(snapshot.pan),
+    billingAddress: asNullableString(snapshot.billingAddress),
+    invoicePrefix: asString(snapshot.invoicePrefix),
+    receiptPrefix: asString(snapshot.receiptPrefix),
+    creditNotePrefix: asString(snapshot.creditNotePrefix),
+    debitNotePrefix: asString(snapshot.debitNotePrefix),
+    footerNotes: asNullableString(snapshot.footerNotes),
+  };
+};
+
+const mapSettingAudit = (
+  audit: repo.BillingSettingAuditRecord,
+): BillingSettingAuditDTO => ({
+  id: audit.id,
+  propertyId: audit.propertyId,
+  actor: audit.actor,
+  reason: audit.reason,
+  previousData: mapSettingSnapshot(audit.previousData),
+  nextData: mapSettingSnapshot(audit.nextData),
+  createdAt: audit.createdAt.toISOString(),
 });
 
 const normalizePaginationResult = <T>(
@@ -745,6 +786,17 @@ export const getDashboardSetting = async (
   return mapSetting(await repo.getOrCreateSetting(propertyId));
 };
 
+export const listDashboardSettingAudits = async (
+  userId: string,
+  propertyId: string,
+): Promise<BillingSettingAuditDTO[]> => {
+  const actor = await ensureActor(userId);
+  assertSettingWriteRole(actor);
+  await assertDashboardPropertyScope(actor, propertyId);
+  const audits = await repo.listSettingAudits(propertyId);
+  return audits.map(mapSettingAudit);
+};
+
 export const updateDashboardSetting = async (
   userId: string,
   propertyId: string,
@@ -754,27 +806,42 @@ export const updateDashboardSetting = async (
   assertSettingWriteRole(actor);
   await assertDashboardPropertyScope(actor, propertyId);
 
-  const setting = await repo.updateSetting(propertyId, {
-    ...(input.legalName !== undefined && { legalName: input.legalName }),
-    ...(input.gstin !== undefined && { gstin: input.gstin }),
-    ...(input.pan !== undefined && { pan: input.pan }),
-    ...(input.billingAddress !== undefined && {
-      billingAddress: input.billingAddress,
-    }),
-    ...(input.invoicePrefix !== undefined && {
-      invoicePrefix: input.invoicePrefix,
-    }),
-    ...(input.receiptPrefix !== undefined && {
-      receiptPrefix: input.receiptPrefix,
-    }),
-    ...(input.creditNotePrefix !== undefined && {
-      creditNotePrefix: input.creditNotePrefix,
-    }),
-    ...(input.debitNotePrefix !== undefined && {
-      debitNotePrefix: input.debitNotePrefix,
-    }),
-    ...(input.footerNotes !== undefined && { footerNotes: input.footerNotes }),
-  });
+  const setting = await repo.updateSettingWithAudit(
+    propertyId,
+    userId,
+    input.reason,
+    {
+      ...(input.legalName !== undefined && { legalName: input.legalName }),
+      ...(input.gstin !== undefined && { gstin: input.gstin }),
+      ...(input.pan !== undefined && { pan: input.pan }),
+      ...(input.billingAddress !== undefined && {
+        billingAddress: input.billingAddress,
+      }),
+      ...(input.invoicePrefix !== undefined && {
+        invoicePrefix: input.invoicePrefix,
+      }),
+      ...(input.receiptPrefix !== undefined && {
+        receiptPrefix: input.receiptPrefix,
+      }),
+      ...(input.creditNotePrefix !== undefined && {
+        creditNotePrefix: input.creditNotePrefix,
+      }),
+      ...(input.debitNotePrefix !== undefined && {
+        debitNotePrefix: input.debitNotePrefix,
+      }),
+      ...(input.footerNotes !== undefined && {
+        footerNotes: input.footerNotes,
+      }),
+    },
+  );
+
+  if (!setting) {
+    throw new HttpError(
+      400,
+      "NO_BILLING_SETTING_CHANGES",
+      "Change at least one billing setting before saving",
+    );
+  }
 
   return mapSetting(setting);
 };

@@ -25,8 +25,8 @@ export interface CreateDashboardUserInput {
   contactNumber?: string;
 }
 
-export interface CreateDashboardStaffInput extends CreateDashboardUserInput {
-  role: "FRONT_DESK" | "ACCOUNTANT";
+export interface CreateDashboardTeamUserInput extends CreateDashboardUserInput {
+  role: "MANAGER" | "FRONT_DESK" | "ACCOUNTANT";
 }
 
 export interface UpdateDashboardUserInput {

@@ -181,11 +181,7 @@ const routes: RouteObject[] = [
                         element: <SystemGuidePage />,
                       },
                       {
-                        path: ADMIN_ROUTES.MANAGERS,
-                        element: <UsersPage />,
-                      },
-                      {
-                        path: ADMIN_ROUTES.STAFF,
+                        path: ADMIN_ROUTES.TEAM_USERS,
                         element: <UsersPage />,
                       },
                       {

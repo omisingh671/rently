@@ -28,6 +28,7 @@ import type {
   ManagedUsersFilters,
   ManagedUserStatusVariables,
   UpdateUserVariables,
+  TeamUserRole,
 } from "../types";
 import type { PaginatedResult } from "@/common/types/pagination";
 
@@ -36,7 +37,7 @@ import { ADMIN_KEYS } from "@/features/config/adminKeys";
 type Filters = {
   search: string;
   isActive: "" | "true" | "false";
-  role?: "FRONT_DESK" | "ACCOUNTANT";
+  role?: TeamUserRole;
 };
 
 export function useAdminUsers(

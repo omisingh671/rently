@@ -21,7 +21,7 @@
     "test:e2e": "playwright test -c playwright.config.ts",
     "pretest:e2e:headed": "npm run prepare:e2e",
     "test:e2e:headed": "playwright test -c playwright.config.ts --headed",
-    "test:unit": "tsx --test src/common/utils/business-date.test.ts src/modules/booking-policy/booking-policy.validation.test.ts src/modules/bookings/bookings.lifecycle.test.ts src/modules/reporting/reporting.schema.test.ts",
+    "test:unit": "tsx --test src/common/utils/business-date.test.ts src/modules/billing/billing.schema.test.ts src/modules/booking-policy/booking-policy.validation.test.ts src/modules/bookings/bookings.lifecycle.test.ts src/modules/reporting/reporting.schema.test.ts src/modules/users/users.schema.test.ts",
     "build:scripts": "tsc -p tsconfig.scripts.json"
   },
   "keywords": [],

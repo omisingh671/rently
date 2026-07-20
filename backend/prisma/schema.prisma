@@ -355,6 +355,7 @@ model User {
   voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
   notificationSettingAudits  NotificationSettingAudit[]
   bookingPolicyAudits       BookingPolicyAudit[]
+  billingSettingAudits      BillingSettingAudit[]
   bookingRoomAllocations    BookingRoomAllocation[] @relation("BookingRoomAllocationActor")
   propertyDailyCloses       PropertyDailyClose[]     @relation("PropertyDailyCloseActor")
 
@@ -578,6 +579,7 @@ model Property {
   notificationSettingAudits NotificationSettingAudit[]
   notificationDeliveryJobs NotificationDeliveryJob[]
   bookingPolicyAudits BookingPolicyAudit[]
+  billingSettingAudits BillingSettingAudit[]
   bookingRoomAllocations BookingRoomAllocation[]
   dailyCloses            PropertyDailyClose[]
 
@@ -1148,8 +1150,28 @@ model BillingSetting {
   updatedAt            DateTime @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  audits   BillingSettingAudit[]
 
   @@map("billing_settings")
+}
+
+model BillingSettingAudit {
+  id               String   @id @default(uuid())
+  billingSettingId String
+  propertyId       String
+  actorUserId      String
+  reason           String   @db.VarChar(500)
+  previousData     Json
+  nextData         Json
+  createdAt        DateTime @default(now())
+
+  billingSetting BillingSetting @relation(fields: [billingSettingId], references: [id], onDelete: Cascade)
+  property       Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor          User           @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("billing_setting_audits")
 }
 
 model BillingDocument {

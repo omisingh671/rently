@@ -44,10 +44,10 @@ export const API_ENDPOINTS = {
     updateById: (userId: string) => `/users/admins/${userId}`,
   },
 
-  managers: {
-    list: "/users/managers",
-    create: "/users/managers",
-    updateById: (userId: string) => `/users/managers/${userId}`,
+  teamUsers: {
+    list: "/users/team",
+    create: "/users/team",
+    updateById: (userId: string) => `/users/team/${userId}`,
   },
 
   users: {
@@ -66,12 +66,6 @@ export const API_ENDPOINTS = {
     list: "/sessions",
     deleteById: (sessionId: string) => `/sessions/${sessionId}`,
     deleteExpired: "/sessions/expired",
-  },
-
-  staff: {
-    list: "/users/staff",
-    create: "/users/staff",
-    updateById: (userId: string) => `/users/staff/${userId}`,
   },
 
   emailDeliveries: {
@@ -217,6 +211,8 @@ export const API_ENDPOINTS = {
       `/billing-documents/${documentId}/void`,
     settingsByProperty: (propertyId: string) =>
       `/properties/${propertyId}/billing-settings`,
+    settingAuditsByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/billing-settings/audits`,
   },
 
   galleries: {

@@ -41,6 +41,7 @@ export const voidBillingDocumentSchema = z.object({
 });
 
 export const updateBillingSettingSchema = z.object({
+  reason: z.string().trim().min(5).max(500),
   legalName: optionalString(190),
   gstin: optionalString(32),
   pan: optionalString(32),

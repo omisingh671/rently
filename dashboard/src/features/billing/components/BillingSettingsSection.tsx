@@ -1,23 +1,19 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { useBillingSetting } from "@/features/billing/hooks";
 import { normalizeApiError } from "@/utils/errors";
+import BillingSettingsAuditHistory from "./BillingSettingsAuditHistory";
+import {
+  BILLING_SETTING_FIELD_LABELS,
+  getChangedBillingSettingFields,
+  toBillingSettingsFormState,
+  type BillingSettingsFormState,
+} from "./billingSettingsFields";
 
 const { FiFileText } = ICON_REGISTRY;
-
-type BillingSettingsFormState = {
-  legalName: string;
-  gstin: string;
-  pan: string;
-  billingAddress: string;
-  invoicePrefix: string;
-  receiptPrefix: string;
-  creditNotePrefix: string;
-  debitNotePrefix: string;
-  footerNotes: string;
-};
 
 interface BillingSettingsSectionProps {
   propertyId: string | undefined;
@@ -58,14 +54,25 @@ export default function BillingSettingsSection({
           Loading billing settings...
         </div>
       ) : billingSetting.data ? (
-        <BillingSettingsForm
-          key={propertyId}
-          initialData={billingSetting.data}
-          onSave={billingSetting.updateSetting}
-          isUpdating={billingSetting.isUpdating}
-          error={error}
-          canEdit={canEdit}
-        />
+        <>
+          <BillingSettingsForm
+            key={propertyId}
+            initialData={billingSetting.data}
+            onSave={billingSetting.updateSetting}
+            isUpdating={billingSetting.isUpdating}
+            error={error}
+            canEdit={canEdit}
+          />
+          <BillingSettingsAuditHistory
+            audits={billingSetting.audits}
+            isLoading={billingSetting.areAuditsLoading}
+            error={
+              billingSetting.auditsError
+                ? normalizeApiError(billingSetting.auditsError).message
+                : null
+            }
+          />
+        </>
       ) : null}
     </section>
   );
@@ -86,17 +93,15 @@ function BillingSettingsForm({
   error,
   canEdit,
 }: BillingSettingsFormProps) {
-  const [form, setForm] = useState<BillingSettingsFormState>({
-    legalName: initialData.legalName ?? "",
-    gstin: initialData.gstin ?? "",
-    pan: initialData.pan ?? "",
-    billingAddress: initialData.billingAddress ?? "",
-    invoicePrefix: initialData.invoicePrefix,
-    receiptPrefix: initialData.receiptPrefix,
-    creditNotePrefix: initialData.creditNotePrefix,
-    debitNotePrefix: initialData.debitNotePrefix,
-    footerNotes: initialData.footerNotes ?? "",
-  });
+  const initialForm = useMemo(
+    () => toBillingSettingsFormState(initialData),
+    [initialData],
+  );
+  const [form, setForm] = useState<BillingSettingsFormState>(initialForm);
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const changedFields = getChangedBillingSettingFields(initialForm, form);
 
   const updateField = (field: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -111,24 +116,49 @@ function BillingSettingsForm({
     event.preventDefault();
     if (!canEdit) return;
 
-    await onSave({
-      legalName: normalizeNullable(form.legalName),
-      gstin: normalizeNullable(form.gstin),
-      pan: normalizeNullable(form.pan),
-      billingAddress: normalizeNullable(form.billingAddress),
-      invoicePrefix: form.invoicePrefix.trim(),
-      receiptPrefix: form.receiptPrefix.trim(),
-      creditNotePrefix: form.creditNotePrefix.trim(),
-      debitNotePrefix: form.debitNotePrefix.trim(),
-      footerNotes: normalizeNullable(form.footerNotes),
-    });
+    if (changedFields.length === 0) {
+      setLocalError("Change at least one billing setting before saving.");
+      return;
+    }
+
+    setLocalError(null);
+    setIsConfirmationOpen(true);
+  };
+
+  const confirmSave = async () => {
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length < 5) {
+      setLocalError("Enter a change reason of at least 5 characters.");
+      return;
+    }
+
+    try {
+      await onSave({
+        reason: normalizedReason,
+        legalName: normalizeNullable(form.legalName),
+        gstin: normalizeNullable(form.gstin),
+        pan: normalizeNullable(form.pan),
+        billingAddress: normalizeNullable(form.billingAddress),
+        invoicePrefix: form.invoicePrefix.trim(),
+        receiptPrefix: form.receiptPrefix.trim(),
+        creditNotePrefix: form.creditNotePrefix.trim(),
+        debitNotePrefix: form.debitNotePrefix.trim(),
+        footerNotes: normalizeNullable(form.footerNotes),
+      });
+      setReason("");
+      setLocalError(null);
+      setIsConfirmationOpen(false);
+    } catch (caughtError) {
+      setLocalError(normalizeApiError(caughtError).message);
+    }
   };
 
   return (
-    <form className="space-y-5 px-6 py-5" onSubmit={onSubmit}>
-      {error && (
+    <>
+      <form className="space-y-5 px-6 py-5" onSubmit={onSubmit}>
+      {(error || localError) && (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
+          {error || localError}
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-3">
@@ -203,7 +233,80 @@ function BillingSettingsForm({
           Read-only
         </Button>
       )}
-    </form>
+      </form>
+
+      <Modal
+        isOpen={isConfirmationOpen}
+        onClose={() => {
+          if (!isUpdating) setIsConfirmationOpen(false);
+        }}
+        disableBackdropClose
+        disableEscapeClose
+        title="Confirm Billing Settings Change"
+      >
+        <div className="space-y-5">
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            This affects future billing documents and any PDF that must be
+            generated or retried.
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              Fields being changed
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              {changedFields
+                .map((field) => BILLING_SETTING_FIELD_LABELS[field])
+                .join(", ")}
+            </p>
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-700">
+              Change reason
+            </span>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={reason}
+              maxLength={500}
+              placeholder="Explain why these billing settings are changing"
+              disabled={isUpdating}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setLocalError(null);
+              }}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              Required, 5-500 characters. This is stored in the audit log.
+            </span>
+          </label>
+
+          {localError && (
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {localError}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row">
+            <Button
+              type="button"
+              variant="dark"
+              disabled={isUpdating}
+              onClick={() => setIsConfirmationOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isUpdating || reason.trim().length < 5}
+              onClick={() => void confirmSave()}
+            >
+              {isUpdating ? "Saving..." : "Confirm Change"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

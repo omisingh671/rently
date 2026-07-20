@@ -46,12 +46,7 @@ export default function PropertyAssignmentsPage() {
 
   const assignmentRole: PropertyAssignmentRole =
     currentUser?.role === "SUPER_ADMIN" ? "ADMIN" : staffAssignmentRole;
-  const userScope =
-    assignmentRole === "ADMIN"
-      ? "admins"
-      : assignmentRole === "MANAGER"
-        ? "managers"
-        : "staff";
+  const userScope = assignmentRole === "ADMIN" ? "admins" : "team";
 
   const { data: dashboardContext } = useDashboardContext();
   const { data: propertiesData } = useAdminProperties(1, ADMIN_OPTION_LIST_LIMIT, {
@@ -66,8 +61,8 @@ export default function PropertyAssignmentsPage() {
   } = useAdminUsers(userScope, 1, ADMIN_OPTION_LIST_LIMIT, {
     search: "",
     isActive: "",
-    ...(userScope === "staff" && {
-      role: assignmentRole as "FRONT_DESK" | "ACCOUNTANT",
+    ...(userScope === "team" && {
+      role: assignmentRole as "MANAGER" | "FRONT_DESK" | "ACCOUNTANT",
     }),
   });
 

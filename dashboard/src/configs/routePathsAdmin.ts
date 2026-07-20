@@ -6,8 +6,7 @@ export const ADMIN_ROUTES = {
   USERS: "users",
   SESSIONS: "sessions",
   ADMINS: "admins",
-  MANAGERS: "managers",
-  STAFF: "staff",
+  TEAM_USERS: "team-users",
   PROPERTY_ASSIGNMENTS: "property-assignments",
 
   PROPERTIES: "properties",

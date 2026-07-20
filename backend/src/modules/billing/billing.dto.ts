@@ -59,3 +59,18 @@ export interface BillingSettingDTO {
   createdAt: string;
   updatedAt: string;
 }
+
+export type BillingSettingSnapshotDTO = Omit<
+  BillingSettingDTO,
+  "id" | "propertyId" | "createdAt" | "updatedAt"
+>;
+
+export interface BillingSettingAuditDTO {
+  id: string;
+  propertyId: string;
+  actor: { id: string; fullName: string; email: string };
+  reason: string;
+  previousData: BillingSettingSnapshotDTO;
+  nextData: BillingSettingSnapshotDTO;
+  createdAt: string;
+}

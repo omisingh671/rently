@@ -13,7 +13,10 @@ import PageSizeSelector from "@/components/common/PageSizeSelector";
 import Pagination from "@/components/common/Pagination";
 
 import { useAdminListState } from "@/hooks/admin/useAdminListState";
-import type { AdminUserScope } from "@/features/users/types";
+import type {
+  AdminUserScope,
+  TeamUserRole,
+} from "@/features/users/types";
 import { ADMIN_ROUTES } from "@/configs/routePathsAdmin";
 import { useAuthStore } from "@/stores/authStore";
 import { normalizeApiError } from "@/utils/errors";
@@ -24,17 +27,22 @@ type Filters = {
   isActive: "" | "true" | "false";
 };
 
+const TEAM_ROLE_OPTIONS: ReadonlyArray<{
+  value: TeamUserRole;
+  label: string;
+}> = [
+  { value: "MANAGER", label: "Manager" },
+  { value: "FRONT_DESK", label: "Front Desk" },
+  { value: "ACCOUNTANT", label: "Accountant" },
+];
+
 const UsersPage = () => {
   const location = useLocation();
   const currentUser = useAuthStore((state) => state.user);
   const scope: AdminUserScope = location.pathname.includes(ADMIN_ROUTES.ADMINS)
     ? "admins"
-    : location.pathname.includes(ADMIN_ROUTES.STAFF)
-      ? "staff"
-      : "managers";
-  const [staffRole, setStaffRole] = useState<"FRONT_DESK" | "ACCOUNTANT">(
-    "FRONT_DESK",
-  );
+    : "team";
+  const [teamRole, setTeamRole] = useState<TeamUserRole | "">("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
@@ -67,7 +75,7 @@ const UsersPage = () => {
   } = useAdminUsers(scope, page, pageSize, {
     search: debouncedSearch,
     isActive: filters.isActive,
-    ...(scope === "staff" && { role: staffRole }),
+    ...(scope === "team" && teamRole && { role: teamRole }),
   });
 
   const users = data?.items ?? [];
@@ -76,16 +84,8 @@ const UsersPage = () => {
     pagination && pagination.total > pageSize ? pagination : null;
   const canCreate =
     (scope === "admins" && currentUser?.role === "SUPER_ADMIN") ||
-    (scope === "managers" && currentUser?.role === "ADMIN") ||
-    (scope === "staff" && currentUser?.role === "ADMIN");
-  const scopeLabel =
-    scope === "admins"
-      ? "Admin"
-      : scope === "managers"
-        ? "Manager"
-        : staffRole === "FRONT_DESK"
-          ? "Front Desk Staff"
-          : "Accountant";
+    (scope === "team" && currentUser?.role === "ADMIN");
+  const scopeLabel = scope === "admins" ? "Admin" : "User";
 
   return (
     <div className="space-y-6">
@@ -93,19 +93,23 @@ const UsersPage = () => {
         <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-start lg:justify-between">
           <UsersFilters {...filters} onChange={(next) => setFilters(next)} />
 
-          {scope === "staff" && (
+          {scope === "team" && (
             <label className="flex items-center gap-2 text-sm text-slate-700">
-              <span className="font-medium">Staff role</span>
+              <span className="font-medium">Role</span>
               <select
-                value={staffRole}
+                value={teamRole}
                 onChange={(event) => {
-                  setStaffRole(event.target.value as "FRONT_DESK" | "ACCOUNTANT");
+                  setTeamRole(event.target.value as TeamUserRole | "");
                   setPage(1);
                 }}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2"
               >
-                <option value="FRONT_DESK">Front Desk</option>
-                <option value="ACCOUNTANT">Accountant</option>
+                <option value="">All roles</option>
+                {TEAM_ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
           )}
@@ -153,9 +157,15 @@ const UsersPage = () => {
         <UserForm
           submitLabel={`Create ${scopeLabel}`}
           isSubmitting={isCreating}
+          {...(scope === "team" && { roleOptions: TEAM_ROLE_OPTIONS })}
           onCancel={() => setIsCreateOpen(false)}
           onSubmit={async (values, setServerError) => {
             try {
+              if (scope === "team" && !values.role) {
+                setServerError("Role is required");
+                return;
+              }
+
               await createUser({
                 fullName: values.fullName,
                 email: values.email,
@@ -164,7 +174,7 @@ const UsersPage = () => {
                   countryCode: "+91",
                   contactNumber: values.contactNumber,
                 }),
-                ...(scope === "staff" && { role: staffRole }),
+                ...(scope === "team" && { role: values.role }),
               });
               setIsCreateOpen(false);
             } catch (error) {

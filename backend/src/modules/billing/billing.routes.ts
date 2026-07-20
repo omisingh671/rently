@@ -33,8 +33,13 @@ router.patch("/billing-documents/:id/void", authorize(accountingRoles), controll
 
 router.get(
   "/properties/:propertyId/billing-settings",
-  authorize(billingReadRoles),
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
   controller.getDashboardSetting,
+);
+router.get(
+  "/properties/:propertyId/billing-settings/audits",
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
+  controller.listDashboardSettingAudits,
 );
 router.patch(
   "/properties/:propertyId/billing-settings",

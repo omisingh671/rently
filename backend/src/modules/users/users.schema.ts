@@ -99,21 +99,22 @@ export const createDashboardUserSchema = contactFieldsRefine(
   }),
 );
 
-export const staffRoleSchema = z.enum([
+export const teamUserRoleSchema = z.enum([
+  UserRole.MANAGER,
   UserRole.FRONT_DESK,
   UserRole.ACCOUNTANT,
 ]);
 
-export const listStaffQuerySchema = listUsersQuerySchema.extend({
-  role: staffRoleSchema,
+export const listTeamUsersQuerySchema = listUsersQuerySchema.extend({
+  role: teamUserRoleSchema.optional(),
 });
 
-export const createDashboardStaffSchema = contactFieldsRefine(
+export const createDashboardTeamUserSchema = contactFieldsRefine(
   z.object({
     fullName: z.string().trim().min(1).max(120),
     email: z.string().trim().email(),
     password: z.string().min(8),
-    role: staffRoleSchema,
+    role: teamUserRoleSchema,
     countryCode: countryCodeSchema.optional(),
     contactNumber: contactNumberSchema.optional(),
   }),

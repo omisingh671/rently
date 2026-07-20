@@ -345,10 +345,12 @@ export default function BillingPage() {
           </tbody>
         </table>
       </section>
-      <BillingSettingsSection
-        propertyId={activePropertyId || undefined}
-        canEdit={canEditSettings}
-      />
+      {canEditSettings && (
+        <BillingSettingsSection
+          propertyId={activePropertyId || undefined}
+          canEdit
+        />
+      )}
     </div>
   );
 }
