@@ -39,7 +39,10 @@ export default function AdminDashboard() {
   const from = todayStr();
   const to = tomorrowStr();
   const role = context?.user.role ?? user?.role;
-  const isManager = role === "MANAGER";
+  const canViewLeads =
+    role === "SUPER_ADMIN" || role === "ADMIN" || role === "MANAGER";
+  const canViewPricing = canViewLeads;
+  const canManageInventory = role === "SUPER_ADMIN" || role === "ADMIN";
 
   const boardQuery = useQuery({
     queryKey: propertyId
@@ -79,7 +82,7 @@ export default function AdminDashboard() {
         limit: DASHBOARD_SIGNAL_LIMIT,
         status: "NEW",
       }),
-    enabled: Boolean(propertyId),
+    enabled: Boolean(propertyId) && canViewLeads,
   });
 
   const quotesQuery = useQuery({
@@ -96,7 +99,7 @@ export default function AdminDashboard() {
         limit: DASHBOARD_SIGNAL_LIMIT,
         status: "NEW",
       }),
-    enabled: Boolean(propertyId),
+    enabled: Boolean(propertyId) && canViewLeads,
   });
 
   const ratesQuery = useQuery({
@@ -108,7 +111,7 @@ export default function AdminDashboard() {
         page: 1,
         limit: DASHBOARD_SIGNAL_LIMIT,
       }),
-    enabled: Boolean(propertyId) && !isManager,
+    enabled: Boolean(propertyId) && canViewPricing,
   });
 
   const dashboardBookings = bookingsQuery.data?.items ?? [];
@@ -120,6 +123,7 @@ export default function AdminDashboard() {
     enquiriesQuery.data?.pagination.total ?? 0,
     quotesQuery.data?.pagination.total ?? 0,
     from,
+    canViewLeads,
   );
   const needsAttention = getNeedsAttention({
     board: boardQuery.data,
@@ -127,6 +131,8 @@ export default function AdminDashboard() {
     rates: ratesQuery.data?.items ?? [],
     quotes: quotesQuery.data?.items ?? [],
     today: from,
+    includePricingSignals: canViewPricing,
+    includeLeadSignals: canViewLeads,
   });
   const hasRoomInventory =
     boardQuery.data?.units.some((unit) => unit.rooms.length > 0) ?? false;
@@ -137,14 +143,14 @@ export default function AdminDashboard() {
     propertyId &&
       (boardQuery.isPending ||
         bookingsQuery.isPending ||
-        enquiriesQuery.isPending ||
-        quotesQuery.isPending ||
-        (!isManager && ratesQuery.isPending)),
+        (canViewLeads && enquiriesQuery.isPending) ||
+        (canViewLeads && quotesQuery.isPending) ||
+        (canViewPricing && ratesQuery.isPending)),
   );
 
-  const noPropertyMessage = isManager
-    ? "No property is assigned yet. Ask an admin to assign a property and create inventory."
-    : "Create a property, units, and rooms to start tracking today's room status.";
+  const noPropertyMessage = canManageInventory
+    ? "Create a property, units, and rooms to start tracking today's room status."
+    : "No property is assigned yet. Ask an admin to assign a property and create inventory.";
 
   return (
     <div className="-m-6 min-h-full p-6">
@@ -164,7 +170,7 @@ export default function AdminDashboard() {
                 title="No inventory found"
                 message={noPropertyMessage}
                 action={
-                  !isManager ? (
+                  canManageInventory ? (
                     <Button
                       size="sm"
                       variant="dark"
@@ -190,7 +196,7 @@ export default function AdminDashboard() {
                 title="No inventory found"
                 message="Create units and rooms to start seeing today's room status here."
                 action={
-                  !isManager ? (
+                  canManageInventory ? (
                     <Button
                       size="sm"
                       variant="dark"
@@ -205,7 +211,10 @@ export default function AdminDashboard() {
                 }
               />
             ) : (
-              <RoomStatusSummary board={boardQuery.data} />
+              <RoomStatusSummary
+                board={boardQuery.data}
+                canOpenRoomBoard={role !== "ACCOUNTANT"}
+              />
             )}
 
             <TodayOperations

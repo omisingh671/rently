@@ -69,6 +69,28 @@ test("front desk and accountant permissions remain separated", async ({
   );
   expect(accountantCheckIn.status()).toBe(403);
 
+  const accountantRoomBoard = await request.get(
+    `${apiPrefix}/properties/${e2eFixture.property.id}/room-board`,
+    {
+      headers: bearerHeaders(accountant.accessToken),
+      params: { from: "2026-07-20", to: "2026-07-21" },
+    },
+  );
+  expect(accountantRoomBoard.status()).toBe(200);
+
+  const frontDeskAnalytics = await request.get(
+    `${apiPrefix}/reporting/analytics`,
+    {
+      headers: bearerHeaders(frontDesk.accessToken),
+      params: {
+        startDate: "2026-07-20",
+        endDate: "2026-07-20",
+        propertyId: e2eFixture.property.id,
+      },
+    },
+  );
+  expect(frontDeskAnalytics.status()).toBe(403);
+
   const accountantDailyCloses = await request.get(
     `${apiPrefix}/reporting/properties/${e2eFixture.property.id}/daily-closes`,
     {

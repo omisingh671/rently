@@ -320,6 +320,38 @@ test("front desk upgrades, downgrades, and extends an occupied stay", async ({
       .every((allocation) => allocation.effectiveTo !== null),
   ).toBe(true);
 
+  const manager = await loginDashboard(request, e2eFixture.users.manager);
+  const reportStart = addDays(checkIn, -2);
+  const analyticsResponse = await request.get(
+    `${apiPrefix}/reporting/analytics`,
+    {
+      headers: bearerHeaders(manager.accessToken),
+      params: {
+        startDate: reportStart,
+        endDate: extendedCheckOut,
+        propertyId: e2eFixture.property.id,
+      },
+    },
+  );
+  expect(analyticsResponse.status()).toBe(200);
+  const analytics = (await analyticsResponse.json()) as {
+    data: {
+      occupancy: Array<{
+        date: string;
+        occupiedNights: number;
+      }>;
+    };
+  };
+  const occupancyByDate = new Map(
+    analytics.data.occupancy.map((item) => [item.date, item.occupiedNights]),
+  );
+  expect(occupancyByDate.get(reportStart)).toBe(0);
+  expect(occupancyByDate.get(addDays(checkIn, -1))).toBe(0);
+  expect(occupancyByDate.get(checkIn)).toBe(1);
+  expect(occupancyByDate.get(addDays(checkIn, 1))).toBe(1);
+  expect(occupancyByDate.get(addDays(checkIn, 2))).toBe(1);
+  expect(occupancyByDate.get(extendedCheckOut)).toBe(0);
+
   const vacatedRooms = await prisma.room.findMany({
     where: {
       id: { in: [e2eFixture.roomId, e2eFixture.upgradeRoomId] },

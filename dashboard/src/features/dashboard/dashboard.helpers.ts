@@ -171,6 +171,7 @@ export const getTodayOperations = (
   enquiriesTotal: number,
   quotesTotal: number,
   today = todayStr(),
+  includeLeadSignals = true,
 ) => [
   {
     label: "Today Check-ins",
@@ -192,14 +193,18 @@ export const getTodayOperations = (
     label: "Pending Confirmations",
     value: bookings.filter((booking) => booking.status === "PENDING").length,
   },
-  {
-    label: "Pending Enquiries",
-    value: enquiriesTotal,
-  },
-  {
-    label: "Pending Quotes",
-    value: quotesTotal,
-  },
+  ...(includeLeadSignals
+    ? [
+        {
+          label: "Pending Enquiries",
+          value: enquiriesTotal,
+        },
+        {
+          label: "Pending Quotes",
+          value: quotesTotal,
+        },
+      ]
+    : []),
 ];
 
 const getAllRooms = (board: RoomBoardResponse | undefined): RoomBoardRoom[] =>
@@ -215,19 +220,22 @@ export const getNeedsAttention = ({
   rates,
   quotes,
   today = todayStr(),
+  includePricingSignals = true,
+  includeLeadSignals = true,
 }: {
   board: RoomBoardResponse | undefined;
   bookings: AdminBooking[];
   rates: AdminRoomPricing[];
   quotes: AdminQuote[];
   today?: string;
+  includePricingSignals?: boolean;
+  includeLeadSignals?: boolean;
 }) => {
   const activeRates = rates.filter((rate) => isActivePricing(rate, today));
   const allRooms = getAllRooms(board);
-  const roomsWithoutActivePricing = countRoomsWithoutActivePricing(
-    allRooms,
-    activeRates,
-  );
+  const roomsWithoutActivePricing = includePricingSignals
+    ? countRoomsWithoutActivePricing(allRooms, activeRates)
+    : 0;
   const disabledUnitsWithEnabledRooms =
     board?.units.filter(
       (unit) => !unit.isActive && unit.rooms.some((room) => room.isActive),
@@ -240,11 +248,13 @@ export const getNeedsAttention = ({
       booking.status === "PENDING" && Number(booking.upfrontAmount) > 0,
   ).length;
   const staleQuoteThreshold = Date.now() - 24 * 60 * 60 * 1000;
-  const staleQuotes = quotes.filter(
-    (quote) =>
-      quote.status !== "CLOSED" &&
-      new Date(quote.createdAt).getTime() < staleQuoteThreshold,
-  ).length;
+  const staleQuotes = includeLeadSignals
+    ? quotes.filter(
+        (quote) =>
+          quote.status !== "CLOSED" &&
+          new Date(quote.createdAt).getTime() < staleQuoteThreshold,
+      ).length
+    : 0;
 
   return [
     {

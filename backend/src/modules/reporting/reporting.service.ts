@@ -519,6 +519,7 @@ export const getReportingAnalytics = async (
   const days = getDaysArray(query.startDate, query.endDate);
   const reportRoomIds = new Set(rooms.map((room) => room.id));
   const occupiedRoomIdsForDay = (
+    dayStart: Date,
     dayEnd: Date,
     propertyId?: string,
   ) => {
@@ -526,6 +527,9 @@ export const getReportingAnalytics = async (
     const allocationSnapshotAt = new Date(dayEnd.getTime() - 1);
     for (const booking of bookingsOverlapping) {
       if (propertyId !== undefined && booking.propertyId !== propertyId) {
+        continue;
+      }
+      if (booking.checkIn >= dayEnd || booking.checkOut <= dayStart) {
         continue;
       }
       const activeAllocations = booking.roomAllocations.filter(
@@ -586,7 +590,7 @@ export const getReportingAnalytics = async (
 
     // Booked rooms on this day
     const occupiedNights = Array.from(
-      occupiedRoomIdsForDay(dayEnd),
+      occupiedRoomIdsForDay(dayStart, dayEnd),
     ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
 
     const actualOccupiedNights = Math.min(occupiedNights, availableNights);
@@ -763,7 +767,7 @@ export const getReportingAnalytics = async (
       propAvailableNights += availableOnDay;
 
       const occupiedOnDay = Array.from(
-        occupiedRoomIdsForDay(dayEnd, propId),
+        occupiedRoomIdsForDay(dayStart, dayEnd, propId),
       ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
       propOccupiedNights += Math.min(occupiedOnDay, availableOnDay);
     }

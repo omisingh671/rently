@@ -6,6 +6,12 @@ import { UserRole } from "@/generated/prisma/enums.js";
 import * as controller from "./reporting.controller.js";
 
 const router = Router();
+const reportingRoles = [
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+  UserRole.ACCOUNTANT,
+];
 
 router.use(
   authenticate,
@@ -17,15 +23,15 @@ router.get("/context", controller.getContext);
 router.use(requirePasswordChangeComplete);
 
 router.get("/summary", controller.getSummary);
-router.get("/analytics", controller.getAnalytics);
+router.get("/analytics", authorize(reportingRoles), controller.getAnalytics);
 router.get(
   "/properties/:propertyId/daily-closes",
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT]),
+  authorize(reportingRoles),
   controller.listDailyCloses,
 );
 router.post(
   "/properties/:propertyId/daily-closes",
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT]),
+  authorize(reportingRoles),
   controller.createDailyClose,
 );
 

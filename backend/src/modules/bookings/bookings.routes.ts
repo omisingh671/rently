@@ -30,7 +30,7 @@ const financialRoles = [
 router.use(authenticate, requirePasswordChangeComplete);
 
 router.get("/properties/:propertyId/bookings", authorize(bookingReadRoles), controller.listBookings);
-router.get("/properties/:propertyId/room-board", authorize(operationalRoles), controller.getRoomBoard);
+router.get("/properties/:propertyId/room-board", authorize(bookingReadRoles), controller.getRoomBoard);
 router.get(
   "/properties/:propertyId/operations/board",
   authorize(operationalRoles),
