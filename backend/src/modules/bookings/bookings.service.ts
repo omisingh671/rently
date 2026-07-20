@@ -566,7 +566,7 @@ export const voidBookingFolioCharge = async (
   input: VoidBookingFolioChargeInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  if (!isAdminOverrideRole(actor.role)) {
+  if (!isAdminOverrideRole(actor.role) && actor.role !== UserRole.ACCOUNTANT) {
     throw new HttpError(
       403,
       "FORBIDDEN",
