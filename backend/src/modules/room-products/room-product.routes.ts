@@ -7,21 +7,28 @@ import { UserRole } from "@/generated/prisma/enums.js";
 
 const router = Router();
 
-// Apply global auth middlewares
-router.use(
-  authenticate,
-  requirePasswordChangeComplete,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-);
+router.use(authenticate, requirePasswordChangeComplete);
+
+const authorizeRoomProducts = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
 
 router.get(
   "/properties/:propertyId/room-products",
+  authorizeRoomProducts,
   controller.listRoomProducts,
 );
 router.post(
   "/properties/:propertyId/room-products",
+  authorizeRoomProducts,
   controller.createRoomProduct,
 );
-router.patch("/room-products/:id", controller.updateRoomProduct);
+router.patch(
+  "/room-products/:id",
+  authorizeRoomProducts,
+  controller.updateRoomProduct,
+);
 
 export default router;

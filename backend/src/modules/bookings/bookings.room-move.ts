@@ -75,10 +75,25 @@ export const moveBookingRoomsInTransaction = async (
     input.roomMove.roomIds,
     booking.status === BookingStatus.CHECKED_IN,
   );
+  const pricingUpdatesByItemId = new Map(
+    pricingPreview.itemPricingUpdates.map((update) => [update.itemId, update]),
+  );
   for (const itemAssignment of input.assignment.assignments) {
+    const pricingUpdate = pricingUpdatesByItemId.get(itemAssignment.itemId);
+    if (!pricingUpdate) {
+      throw new HttpError(
+        409,
+        "PRICING_CHANGED",
+        "Room move pricing changed. Review the latest price before confirming.",
+      );
+    }
     await tx.bookingItem.update({
       where: { id: itemAssignment.itemId },
-      data: itemAssignment.data,
+      data: {
+        ...itemAssignment.data,
+        pricingId: pricingUpdate.pricingId,
+        pricePerNight: pricingUpdate.pricePerNight,
+      },
     });
   }
   await syncCurrentBookingRoomAllocations(tx, {

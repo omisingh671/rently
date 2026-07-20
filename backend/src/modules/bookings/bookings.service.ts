@@ -423,9 +423,11 @@ export const previewBookingRoomMove = async (
     forceConcreteRooms: booking.targetType !== BookingTargetType.UNIT,
     allowLateAssignment: true,
   });
-  return prisma.$transaction((tx) =>
+  const preview = await prisma.$transaction((tx) =>
     buildRoomMovePricingPreview(booking, input.roomIds, tx),
   );
+  const { itemPricingUpdates: _itemPricingUpdates, ...dto } = preview;
+  return dto;
 };
 
 export const moveBookingRooms = async (

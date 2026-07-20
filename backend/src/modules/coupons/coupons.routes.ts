@@ -7,14 +7,24 @@ import * as controller from "./coupons.controller.js";
 
 const router = Router();
 
-router.use(
-  authenticate,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-  requirePasswordChangeComplete,
-);
+router.use(authenticate, requirePasswordChangeComplete);
 
-router.get("/properties/:propertyId/coupons", controller.listCoupons);
-router.post("/properties/:propertyId/coupons", controller.createCoupon);
-router.patch("/coupons/:id", controller.updateCoupon);
+const authorizeCoupons = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
+
+router.get(
+  "/properties/:propertyId/coupons",
+  authorizeCoupons,
+  controller.listCoupons,
+);
+router.post(
+  "/properties/:propertyId/coupons",
+  authorizeCoupons,
+  controller.createCoupon,
+);
+router.patch("/coupons/:id", authorizeCoupons, controller.updateCoupon);
 
 export default router;

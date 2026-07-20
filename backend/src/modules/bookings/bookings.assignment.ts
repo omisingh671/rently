@@ -109,11 +109,11 @@ export const assertComplimentaryUpgradeAllowed = (
   input: MoveBookingRoomInput,
   pricingPreview: BookingRoomMovePreviewDTO,
 ) => {
-  if (
-    (input.pricingAction !== "COMPLIMENTARY_UPGRADE" &&
-      input.pricingAction !== "NO_CREDIT") ||
-    !pricingPreview.pricingRequired
-  ) {
+  const isDiscretionaryWaiver =
+    input.pricingAction === "COMPLIMENTARY_UPGRADE" ||
+    (input.pricingAction === "NO_CREDIT" &&
+      pricingPreview.downgradeTreatment !== "NO_CREDIT");
+  if (!isDiscretionaryWaiver || !pricingPreview.pricingRequired) {
     return;
   }
 
@@ -886,7 +886,15 @@ export const buildRoomMovePricingPreview = async (
   booking: repo.DashboardBookingRecord,
   roomIds: string[],
   tx: Prisma.TransactionClient,
-): Promise<BookingRoomMovePreviewDTO> => {
+): Promise<
+  BookingRoomMovePreviewDTO & {
+    itemPricingUpdates: Array<{
+      itemId: string;
+      pricingId: string;
+      pricePerNight: string;
+    }>;
+  }
+> => {
   const rooms = await tx.room.findMany({
     where: { id: { in: roomIds } },
     include: { unit: true },
@@ -940,6 +948,11 @@ export const buildRoomMovePricingPreview = async (
   let taxDifference = new Prisma.Decimal(0);
   const taxBreakdown: BookingRoomMovePreviewDTO["taxBreakdown"] = [];
   const pricingSnapshot: Array<Record<string, string>> = [];
+  const itemPricingUpdates: Array<{
+    itemId: string;
+    pricingId: string;
+    pricePerNight: string;
+  }> = [];
 
   for (const [index, target] of pricingTargets.entries()) {
     const currentTarget = currentPricingTargets[index];
@@ -1004,6 +1017,11 @@ export const buildRoomMovePricingPreview = async (
       destinationPricingId: destinationPricing.id,
       currentRate: oldRate.toString(),
       destinationRate: newRate.toString(),
+    });
+    itemPricingUpdates.push({
+      itemId: target.item.id,
+      pricingId: destinationPricing.id,
+      pricePerNight: newRate.toString(),
     });
   }
 
@@ -1080,6 +1098,7 @@ export const buildRoomMovePricingPreview = async (
     downgradeTreatment: policySnapshot.downgrade.financialTreatment,
     policySnapshot,
     taxBreakdown,
+    itemPricingUpdates,
   };
 };
 

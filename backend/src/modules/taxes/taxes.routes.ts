@@ -7,14 +7,24 @@ import * as controller from "./taxes.controller.js";
 
 const router = Router();
 
-router.use(
-  authenticate,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-  requirePasswordChangeComplete,
-);
+router.use(authenticate, requirePasswordChangeComplete);
 
-router.get("/properties/:propertyId/taxes", controller.listTaxes);
-router.post("/properties/:propertyId/taxes", controller.createTax);
-router.patch("/taxes/:id", controller.updateTax);
+const authorizeTaxes = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
+
+router.get(
+  "/properties/:propertyId/taxes",
+  authorizeTaxes,
+  controller.listTaxes,
+);
+router.post(
+  "/properties/:propertyId/taxes",
+  authorizeTaxes,
+  controller.createTax,
+);
+router.patch("/taxes/:id", authorizeTaxes, controller.updateTax);
 
 export default router;

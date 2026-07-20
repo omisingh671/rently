@@ -192,15 +192,33 @@ try {
       floor: 1,
     },
   });
-  await prisma.room.create({
-    data: {
-      id: e2eFixture.roomId,
-      unitId: e2eFixture.unitId,
-      name: "E2E Single Room",
-      number: "E2E-R1",
-      hasAC: false,
-      maxOccupancy: 1,
-    },
+  await prisma.room.createMany({
+    data: [
+      {
+        id: e2eFixture.roomId,
+        unitId: e2eFixture.unitId,
+        name: "E2E Standard Room",
+        number: "E2E-R1",
+        hasAC: false,
+        maxOccupancy: 1,
+      },
+      {
+        id: e2eFixture.upgradeRoomId,
+        unitId: e2eFixture.unitId,
+        name: "E2E Premium Room",
+        number: "E2E-R2",
+        hasAC: false,
+        maxOccupancy: 1,
+      },
+      {
+        id: e2eFixture.downgradeRoomId,
+        unitId: e2eFixture.unitId,
+        name: "E2E Economy Room",
+        number: "E2E-R3",
+        hasAC: false,
+        maxOccupancy: 1,
+      },
+    ],
   });
   await prisma.roomProduct.create({
     data: {
@@ -212,15 +230,33 @@ try {
       category: "NIGHTLY",
     },
   });
-  await prisma.roomPricing.create({
-    data: {
-      id: e2eFixture.pricingId,
-      propertyId: e2eFixture.property.id,
-      roomId: e2eFixture.roomId,
-      productId: e2eFixture.productId,
-      price: 1500,
-      validFrom: new Date("2020-01-01T00:00:00.000Z"),
-    },
+  await prisma.roomPricing.createMany({
+    data: [
+      {
+        id: e2eFixture.pricingId,
+        propertyId: e2eFixture.property.id,
+        roomId: e2eFixture.roomId,
+        productId: e2eFixture.productId,
+        price: 1500,
+        validFrom: new Date("2020-01-01T00:00:00.000Z"),
+      },
+      {
+        id: e2eFixture.upgradePricingId,
+        propertyId: e2eFixture.property.id,
+        roomId: e2eFixture.upgradeRoomId,
+        productId: e2eFixture.productId,
+        price: 2000,
+        validFrom: new Date("2020-01-01T00:00:00.000Z"),
+      },
+      {
+        id: e2eFixture.downgradePricingId,
+        propertyId: e2eFixture.property.id,
+        roomId: e2eFixture.downgradeRoomId,
+        productId: e2eFixture.productId,
+        price: 1000,
+        validFrom: new Date("2020-01-01T00:00:00.000Z"),
+      },
+    ],
   });
   await prisma.propertyBookingPolicy.create({
     data: {

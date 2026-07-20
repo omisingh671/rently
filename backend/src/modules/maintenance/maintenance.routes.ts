@@ -7,23 +7,38 @@ import { UserRole } from "@/generated/prisma/enums.js";
 
 const router = Router();
 
-// Apply global auth middlewares
-router.use(
-  authenticate,
-  requirePasswordChangeComplete,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-);
+router.use(authenticate, requirePasswordChangeComplete);
+
+const authorizeMaintenance = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
 
 router.get(
   "/properties/:propertyId/maintenance-blocks",
+  authorizeMaintenance,
   controller.listMaintenanceBlocks,
 );
 router.post(
   "/properties/:propertyId/maintenance-blocks",
+  authorizeMaintenance,
   controller.createMaintenanceBlock,
 );
-router.get("/maintenance-blocks/:id", controller.getMaintenanceBlockById);
-router.patch("/maintenance-blocks/:id", controller.updateMaintenanceBlock);
-router.delete("/maintenance-blocks/:id", controller.deleteMaintenanceBlock);
+router.get(
+  "/maintenance-blocks/:id",
+  authorizeMaintenance,
+  controller.getMaintenanceBlockById,
+);
+router.patch(
+  "/maintenance-blocks/:id",
+  authorizeMaintenance,
+  controller.updateMaintenanceBlock,
+);
+router.delete(
+  "/maintenance-blocks/:id",
+  authorizeMaintenance,
+  controller.deleteMaintenanceBlock,
+);
 
 export default router;

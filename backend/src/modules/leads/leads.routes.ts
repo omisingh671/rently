@@ -7,16 +7,26 @@ import * as controller from "./leads.controller.js";
 
 const router = Router();
 
-router.use(
-  authenticate,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-  requirePasswordChangeComplete,
+router.use(authenticate, requirePasswordChangeComplete);
+
+const authorizeLeads = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
+
+router.get(
+  "/properties/:propertyId/enquiries",
+  authorizeLeads,
+  controller.listEnquiries,
 );
+router.patch("/enquiries/:id", authorizeLeads, controller.updateEnquiry);
 
-router.get("/properties/:propertyId/enquiries", controller.listEnquiries);
-router.patch("/enquiries/:id", controller.updateEnquiry);
-
-router.get("/properties/:propertyId/quotes", controller.listQuotes);
-router.patch("/quotes/:id", controller.updateQuote);
+router.get(
+  "/properties/:propertyId/quotes",
+  authorizeLeads,
+  controller.listQuotes,
+);
+router.patch("/quotes/:id", authorizeLeads, controller.updateQuote);
 
 export default router;
