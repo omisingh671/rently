@@ -21,6 +21,7 @@ type AvailabilityFiltersPanelProps = {
   city: string;
   from: string;
   to: string;
+  minimumCheckInDate: string;
   guests: number;
   comfort: ComfortFilter;
   hasActiveFilters: boolean;
@@ -37,6 +38,7 @@ export default function AvailabilityFiltersPanel({
   city,
   from,
   to,
+  minimumCheckInDate,
   guests,
   comfort,
   hasActiveFilters,
@@ -86,6 +88,7 @@ export default function AvailabilityFiltersPanel({
           <input
             type="date"
             value={from}
+            min={minimumCheckInDate}
             onChange={(event) =>
               onFilterChange("from", event.target.value)
             }
@@ -100,7 +103,7 @@ export default function AvailabilityFiltersPanel({
           <input
             type="date"
             value={to}
-            min={from || undefined}
+            min={from || minimumCheckInDate}
             onChange={(event) => onFilterChange("to", event.target.value)}
             className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
           />
