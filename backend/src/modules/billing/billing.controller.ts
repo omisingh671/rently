@@ -122,6 +122,18 @@ export const getDashboardSetting = async (
   res.json({ success: true, data });
 };
 
+export const listDashboardSettingAudits = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = billingPropertyIdParamsSchema.parse(req.params);
+  const data = await service.listDashboardSettingAudits(
+    getUserId(req),
+    params.propertyId,
+  );
+  res.json({ success: true, data });
+};
+
 export const updateDashboardSetting = async (
   req: AuthRequest,
   res: Response,
@@ -129,6 +141,7 @@ export const updateDashboardSetting = async (
   const params = billingPropertyIdParamsSchema.parse(req.params);
   const body = updateBillingSettingSchema.parse(req.body);
   const data = await service.updateDashboardSetting(getUserId(req), params.propertyId, {
+    reason: body.reason,
     ...(body.legalName !== undefined && { legalName: body.legalName }),
     ...(body.gstin !== undefined && { gstin: body.gstin }),
     ...(body.pan !== undefined && { pan: body.pan }),

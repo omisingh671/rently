@@ -14,6 +14,15 @@ const assertRole = (actor: { role: UserRole }, roles: readonly UserRole[]) => {
   }
 };
 
+const assignmentRoleByUserRole: Partial<
+  Record<UserRole, PropertyAssignmentRole>
+> = {
+  [UserRole.ADMIN]: PropertyAssignmentRole.ADMIN,
+  [UserRole.MANAGER]: PropertyAssignmentRole.MANAGER,
+  [UserRole.FRONT_DESK]: PropertyAssignmentRole.FRONT_DESK,
+  [UserRole.ACCOUNTANT]: PropertyAssignmentRole.ACCOUNTANT,
+};
+
 const ensurePropertyExists = async (propertyId: string) => {
   const property = await prisma.property.findUnique({
     where: { id: propertyId },
@@ -32,22 +41,13 @@ export const getPropertyScope = async (actor: UserEntity) => {
     };
   }
 
-  if (actor.role === UserRole.ADMIN) {
+  const assignmentRole = assignmentRoleByUserRole[actor.role];
+  if (assignmentRole !== undefined) {
     return {
       isGlobal: false,
       propertyIds: await repo.listAssignedPropertyIds(
         actor.id,
-        PropertyAssignmentRole.ADMIN,
-      ),
-    };
-  }
-
-  if (actor.role === UserRole.MANAGER) {
-    return {
-      isGlobal: false,
-      propertyIds: await repo.listAssignedPropertyIds(
-        actor.id,
-        PropertyAssignmentRole.MANAGER,
+        assignmentRole,
       ),
     };
   }
@@ -124,8 +124,12 @@ export const listPropertyAssignments = async (
 
   const { items, total } = await repo.listPropertyAssignmentsPaginated({
     ...filters,
-    ...(actor.role === UserRole.ADMIN && {
-      role: PropertyAssignmentRole.MANAGER,
+    ...(actor.role === UserRole.ADMIN && filters.role === undefined && {
+      roles: [
+        PropertyAssignmentRole.MANAGER,
+        PropertyAssignmentRole.FRONT_DESK,
+        PropertyAssignmentRole.ACCOUNTANT,
+      ],
     }),
     ...(propertyIds !== undefined && { propertyIds }),
   });
@@ -197,12 +201,13 @@ export const createPropertyAssignment = async (
     }
   }
 
-  if (input.role === PropertyAssignmentRole.MANAGER) {
-    if (targetUser.role !== UserRole.MANAGER) {
+  if (input.role !== PropertyAssignmentRole.ADMIN) {
+    const expectedUserRole = input.role as UserRole;
+    if (targetUser.role !== expectedUserRole) {
       throw new HttpError(
         400,
         "INVALID_ASSIGNMENT",
-        "Only manager users can receive manager property assignments",
+        `Only ${input.role.toLowerCase().replace("_", " ")} users can receive this assignment`,
       );
     }
 
@@ -228,7 +233,7 @@ export const createPropertyAssignment = async (
         throw new HttpError(
           400,
           "INVALID_ASSIGNMENT",
-          "Admins can only assign managers they created",
+          "Admins can only assign staff users they created",
         );
       }
     }
@@ -238,7 +243,7 @@ export const createPropertyAssignment = async (
         throw new HttpError(
           400,
           "INVALID_ASSIGNMENT",
-          "Manager must belong to the admin assigned to the property",
+          "Staff user must belong to the admin assigned to the property",
         );
       }
     }
@@ -279,7 +284,7 @@ export const deletePropertyAssignment = async (
   }
 
   if (actor.role === UserRole.ADMIN) {
-    if (assignment.role !== PropertyAssignmentRole.MANAGER) {
+    if (assignment.role === PropertyAssignmentRole.ADMIN) {
       throw new HttpError(403, "FORBIDDEN", "Access denied");
     }
 

@@ -11,11 +11,13 @@ import {
   updateUserSchema,
   updateProfileSchema,
   createDashboardUserSchema,
+  createDashboardTeamUserSchema,
   updateDashboardUserSchema,
   updateUserRoleSchema,
   updateUserStatusSchema,
   updateForcePasswordChangeSchema,
   listUsersQuerySchema,
+  listTeamUsersQuerySchema,
   listAllUsersQuerySchema,
   idParamsSchema,
 } from "./users.schema.js";
@@ -124,39 +126,45 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
 };
 
 /**
- * Dashboard Manager Handlers
+ * Dashboard Team User Handlers
  */
-export const listManagers = async (req: AuthRequest, res: Response) => {
-  const query = listUsersQuerySchema.parse(req.query);
-  const data = await service.listManagers(getUserId(req), {
+export const listTeamUsers = async (req: AuthRequest, res: Response) => {
+  const query = listTeamUsersQuerySchema.parse(req.query);
+  const data = await service.listTeamUsers(getUserId(req), {
     page: query.page,
     limit: query.limit,
     ...(query.search !== undefined && { search: query.search }),
     ...(query.isActive !== undefined && { isActive: query.isActive }),
+    ...(query.role !== undefined && { role: query.role }),
   });
   res.json({ success: true, data });
 };
 
-export const createManager = async (req: AuthRequest, res: Response) => {
-  const body = createDashboardUserSchema.parse(req.body);
-  const data = await service.createManager(getUserId(req), {
+export const createTeamUser = async (req: AuthRequest, res: Response) => {
+  const body = createDashboardTeamUserSchema.parse(req.body);
+  const data = await service.createTeamUser(getUserId(req), {
     fullName: body.fullName,
     email: body.email,
     password: body.password,
+    role: body.role,
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
-    ...(body.contactNumber !== undefined && { contactNumber: body.contactNumber }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
   });
   res.status(201).json({ success: true, data });
 };
 
-export const updateManager = async (req: AuthRequest, res: Response) => {
+export const updateTeamUser = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const body = updateDashboardUserSchema.parse(req.body);
-  const data = await service.updateManager(getUserId(req), params.id, {
+  const data = await service.updateTeamUser(getUserId(req), params.id, {
     ...(body.fullName !== undefined && { fullName: body.fullName }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
-    ...(body.contactNumber !== undefined && { contactNumber: body.contactNumber }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
   });
   res.json({ success: true, data });
 };

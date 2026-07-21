@@ -18,6 +18,12 @@ router.get(
   controller.getBookingPolicy,
 );
 
+router.get(
+  "/properties/:propertyId/booking-policy/audits",
+  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
+  controller.listBookingPolicyAudits,
+);
+
 router.put(
   "/properties/:propertyId/booking-policy",
   authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),

@@ -78,6 +78,7 @@ export type BillingSetting = {
 };
 
 export type UpdateBillingSettingPayload = {
+  reason: string;
   legalName?: string | null;
   gstin?: string | null;
   pan?: string | null;
@@ -87,4 +88,19 @@ export type UpdateBillingSettingPayload = {
   creditNotePrefix?: string;
   debitNotePrefix?: string;
   footerNotes?: string | null;
+};
+
+export type BillingSettingSnapshot = Omit<
+  BillingSetting,
+  "id" | "propertyId" | "createdAt" | "updatedAt"
+>;
+
+export type BillingSettingAudit = {
+  id: string;
+  propertyId: string;
+  actor: { id: string; fullName: string; email: string };
+  reason: string;
+  previousData: BillingSettingSnapshot;
+  nextData: BillingSettingSnapshot;
+  createdAt: string;
 };

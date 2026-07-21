@@ -42,6 +42,7 @@ import {
 
 import { OptionGridCard } from "@/components/ui/OptionGridCard";
 import { OptionStackCard } from "@/components/ui/OptionStackCard";
+import { normalizeApiError } from "@/utils/errors";
 
 type LayoutMode = "grid" | "stack";
 
@@ -70,8 +71,45 @@ const getInitialComfort = (searchParams: URLSearchParams): ComfortFilter => {
   return "ALL";
 };
 
-const isValidDateRange = (from: string, to: string) =>
-  Boolean(from && to) && new Date(to) > new Date(from);
+const dateValuePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+const todayDateValue = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
+const getDateValidationMessage = (
+  from: string,
+  to: string,
+  today: string,
+): string | null => {
+  if (from && !dateValuePattern.test(from)) {
+    return "Choose a valid check-in date.";
+  }
+  if (from && from < today) {
+    return "Your check-in date has passed. Choose today or a future date.";
+  }
+  if (to && !dateValuePattern.test(to)) {
+    return "Choose a valid check-out date.";
+  }
+  if (from && to && to <= from) {
+    return "Check-out must be after check-in.";
+  }
+  return null;
+};
+
+const getAvailabilityErrorMessage = (error: unknown) => {
+  const normalizedError = normalizeApiError(error);
+  const validationMessage = normalizedError.validationIssues?.[0]?.message;
+  if (validationMessage) return validationMessage;
+
+  if (/^(Request failed|Network Error)/i.test(normalizedError.message)) {
+    return "We couldn't check availability right now. Please try again in a moment.";
+  }
+
+  return normalizedError.message;
+};
 
 const distanceSquared = (
   latitude: number,
@@ -111,7 +149,15 @@ export default function SpacesListPage() {
   const guests =
     Number.isInteger(guestsParam) && guestsParam > 0 ? guestsParam : 1;
   const comfort = getInitialComfort(searchParams);
-  const canCheckAvailability = isValidDateRange(from, to);
+  const minimumCheckInDate = todayDateValue();
+  const dateValidationMessage = getDateValidationMessage(
+    from,
+    to,
+    minimumCheckInDate,
+  );
+  const canCheckAvailability = Boolean(
+    from && to && !dateValidationMessage,
+  );
   const cityOptions = useMemo(
     () =>
       Array.from(
@@ -343,6 +389,7 @@ export default function SpacesListPage() {
               city={city}
               from={from}
               to={to}
+              minimumCheckInDate={minimumCheckInDate}
               guests={guests}
               comfort={comfort}
               hasActiveFilters={Boolean(searchParams.toString())}
@@ -389,10 +436,13 @@ export default function SpacesListPage() {
 
         <AvailabilityResultsState
           bookingError={bookingError}
+          validationMessage={dateValidationMessage}
           canCheckAvailability={canCheckAvailability}
           isFetching={availabilityQuery.isFetching}
           errorMessage={
-            availabilityQuery.isError ? availabilityQuery.error.message : null
+            availabilityQuery.isError
+              ? getAvailabilityErrorMessage(availabilityQuery.error)
+              : null
           }
           hasOptions={options.length > 0}
         />

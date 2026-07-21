@@ -254,123 +254,150 @@ export default function TenantsPage() {
     <div className="space-y-6">
       <form
         onSubmit={submit}
-        className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+        className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
       >
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          <input
-            value={form.name}
-            onChange={(event) => updateField("name", event.target.value)}
-            placeholder="Tenant name"
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-            required
-          />
-          <input
-            value={form.slug ?? ""}
-            placeholder="Generated slug"
-            className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
-            readOnly
-          />
-          <input
-            value={form.brandName}
-            onChange={(event) => updateField("brandName", event.target.value)}
-            placeholder="Brand name"
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-            required
-          />
-          <input
-            value={form.primaryDomain ?? ""}
-            onChange={(event) =>
-              updateField("primaryDomain", event.target.value)
-            }
-            placeholder="Primary domain"
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <input
-            type="email"
-            value={form.supportEmail ?? ""}
-            onChange={(event) =>
-              updateField("supportEmail", event.target.value)
-            }
-            placeholder="Support email"
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <input
-            value={form.supportPhone ?? ""}
-            onChange={(event) =>
-              updateField("supportPhone", event.target.value)
-            }
-            placeholder="Support phone"
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          />
-          <select
-            value={form.status}
-            onChange={(event) => updateField("status", event.target.value)}
-            className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-          >
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
-          </select>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-600">
-              Primary
-              <input
-                type="color"
-                value={form.primaryColor}
-                onChange={(event) =>
-                  updateField("primaryColor", event.target.value)
-                }
-                className="h-7 w-10 rounded border border-slate-300"
-                aria-label="Primary brand color"
-              />
-            </label>
-            <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-600">
-              Secondary
-              <input
-                type="color"
-                value={form.secondaryColor}
-                onChange={(event) =>
-                  updateField("secondaryColor", event.target.value)
-                }
-                className="h-7 w-10 rounded border border-slate-300"
-                aria-label="Secondary brand color"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-          {currentLogoUrl ? (
-            <img
-              src={currentLogoUrl}
-              alt="Tenant logo preview"
-              className="h-16 w-28 rounded border border-slate-200 bg-white object-contain p-1"
-            />
-          ) : (
-            <div className="flex h-16 w-28 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-xs text-slate-500">
-              No logo
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">
+                Tenant details
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Configure the tenant identity, support contact, and brand colors.
+              </p>
             </div>
-          )}
-          <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
-            {editingTenant?.logoUrl || logoFile ? "Replace logo" : "Upload logo"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="sr-only"
-              onChange={(event) => selectLogo(event.target.files?.[0] ?? null)}
-            />
-          </label>
-          <span className="text-xs text-slate-500">PNG, JPEG, or WebP up to 10 MB</span>
-          {editingTenant?.logoUrl && !logoFile && (
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              onClick={handleRemoveLogo}
-              disabled={isSubmitting}
-            >
-              Remove logo
-            </Button>
-          )}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <input
+                value={form.name}
+                onChange={(event) => updateField("name", event.target.value)}
+                placeholder="Tenant name"
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                required
+              />
+              <input
+                value={form.slug ?? ""}
+                placeholder="Generated slug"
+                className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
+                readOnly
+              />
+              <input
+                value={form.brandName}
+                onChange={(event) => updateField("brandName", event.target.value)}
+                placeholder="Brand name"
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                required
+              />
+              <input
+                value={form.primaryDomain ?? ""}
+                onChange={(event) =>
+                  updateField("primaryDomain", event.target.value)
+                }
+                placeholder="Primary domain"
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <input
+                type="email"
+                value={form.supportEmail ?? ""}
+                onChange={(event) =>
+                  updateField("supportEmail", event.target.value)
+                }
+                placeholder="Support email"
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <input
+                value={form.supportPhone ?? ""}
+                onChange={(event) =>
+                  updateField("supportPhone", event.target.value)
+                }
+                placeholder="Support phone"
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <select
+                value={form.status}
+                onChange={(event) => updateField("status", event.target.value)}
+                className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex h-10 items-center justify-between gap-2 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-600">
+                  Primary
+                  <input
+                    type="color"
+                    value={form.primaryColor}
+                    onChange={(event) =>
+                      updateField("primaryColor", event.target.value)
+                    }
+                    className="h-7 w-10 rounded border border-slate-300"
+                    aria-label="Primary brand color"
+                  />
+                </label>
+                <label className="flex h-10 items-center justify-between gap-2 rounded-md border border-slate-300 px-2 text-xs font-medium text-slate-600">
+                  Secondary
+                  <input
+                    type="color"
+                    value={form.secondaryColor}
+                    onChange={(event) =>
+                      updateField("secondaryColor", event.target.value)
+                    }
+                    className="h-7 w-10 rounded border border-slate-300"
+                    aria-label="Secondary brand color"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <aside className="flex flex-col rounded-xl border border-indigo-100 bg-gradient-to-b from-indigo-50 to-white p-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Logo</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Displayed throughout the tenant public site.
+              </p>
+            </div>
+
+            <div className="mt-4 flex min-h-40 flex-1 items-center justify-center rounded-lg border border-dashed border-indigo-200 bg-white p-4">
+              {currentLogoUrl ? (
+                <img
+                  src={currentLogoUrl}
+                  alt="Tenant logo preview"
+                  className="max-h-32 max-w-full object-contain"
+                />
+              ) : (
+                <div className="text-center text-sm text-slate-500">
+                  <span className="block font-medium text-slate-700">No logo yet</span>
+                  Upload the tenant brand mark.
+                </div>
+              )}
+            </div>
+
+            <label className="mt-4 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50">
+              {editingTenant?.logoUrl || logoFile ? "Replace logo" : "Upload logo"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="sr-only"
+                onChange={(event) => selectLogo(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              PNG, JPEG, or WebP up to 10 MB
+            </p>
+            {editingTenant?.logoUrl && !logoFile && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                onClick={handleRemoveLogo}
+                disabled={isSubmitting}
+                className="mt-3 w-full"
+              >
+                Remove logo
+              </Button>
+            )}
+          </aside>
         </div>
 
         {serverError && (

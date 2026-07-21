@@ -19,13 +19,11 @@ export interface DashboardBookingListInput extends DashboardPaginationInput {
 }
 
 export interface UpdateDashboardBookingInput {
-  status?: BookingStatus;
+  status?: Extract<BookingStatus, "CANCELLED">;
   internalNotes?: string | null;
   note?: string;
   roomId?: string;
   roomIds?: string[];
-  statusOverride?: boolean;
-  allowBalanceDueCheckIn?: boolean;
 }
 
 export interface RecordDashboardBookingPaymentInput {
@@ -130,15 +128,17 @@ export interface PreviewStayExtensionInput {
   newCheckOut: Date;
 }
 
+export type StayExtensionPricingAction = "CHARGE" | "COMPLIMENTARY";
+
 export interface CommitStayExtensionInput extends PreviewStayExtensionInput {
   pricingFingerprint: string;
+  pricingAction: StayExtensionPricingAction;
   note: string;
   overrideReason?: string;
 }
 
-export interface CorrectBookingStatusInput {
+export interface ReverseBookingLifecycleInput {
   expectedVersion: number;
-  status: BookingStatus;
   note: string;
 }
 

@@ -48,7 +48,7 @@ export default function Header({
           </button>
 
           <NavLink to={ROUTES.HOME} className="inline-flex items-center gap-3">
-            <div className="h-16 rounded-md overflow-hidden">
+            <div className="h-16 w-[180px] max-w-[42vw] rounded-md overflow-hidden">
               <TenantLogo
                 logoUrl={logoUrl}
                 fallbackSrc={logoSrc}

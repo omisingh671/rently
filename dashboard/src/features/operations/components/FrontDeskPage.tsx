@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import { ADMIN_KEYS } from "@/features/config/adminKeys";
 import { useCurrentProperty } from "@/features/properties/hooks/useCurrentProperty";
+import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { normalizeApiError } from "@/utils/errors";
@@ -369,7 +370,7 @@ function CashierPanel({
 
 function AttentionPanel({ board }: { board: OperationsBoardResponse }) {
   const totalAttention =
-    board.lateArrivals.length +
+    board.noShowReview.length +
     board.unassignedArrivals.length +
     board.maintenanceConflicts.length +
     board.balanceDue.length +
@@ -397,12 +398,12 @@ function AttentionPanel({ board }: { board: OperationsBoardResponse }) {
           </div>
         ) : (
           <>
-            {board.lateArrivals.map((booking) => (
+            {board.noShowReview.map((booking) => (
               <BookingMiniCard
-                key={`late-${booking.id}`}
+                key={`no-show-review-${booking.id}`}
                 booking={booking}
                 tone="late"
-                meta="Late arrival alert"
+                meta="No-show decision required"
               />
             ))}
             {board.unassignedArrivals.map((booking) => (
@@ -512,7 +513,9 @@ export default function FrontDeskPage() {
     toDateInput(new Date()),
   );
   const {
+    properties,
     selectedPropertyId,
+    setSelectedPropertyId,
     isLoading: isPropertyLoading,
   } = useCurrentProperty();
 
@@ -595,9 +598,9 @@ export default function FrontDeskPage() {
           tone: OPERATION_PALETTE.inHouse,
         },
         {
-          label: "Late",
-          value: board.summary.lateArrivals,
-          description: "Missed scheduled check-in",
+          label: "No-show Review",
+          value: board.summary.noShowReview,
+          description: "Confirmed arrivals past their policy cutoff",
           icon: <FiAlertTriangle className={`h-4 w-4 ${OPERATION_PALETTE.late.icon}`} />,
           className: OPERATION_PALETTE.late.card,
           tone: OPERATION_PALETTE.late,
@@ -674,6 +677,15 @@ export default function FrontDeskPage() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:flex xl:items-end">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Property
+              <PropertySearchSelect
+                className="mt-1 w-full xl:w-64"
+                selectedPropertyId={selectedPropertyId}
+                selectedPropertyName={properties.find((property) => property.id === selectedPropertyId)?.name}
+                onChange={(propertyId) => setSelectedPropertyId(propertyId || null)}
+              />
+            </label>
             <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Business Date
               <input

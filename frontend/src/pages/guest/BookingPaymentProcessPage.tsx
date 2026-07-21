@@ -207,6 +207,20 @@ export default function BookingPaymentProcessPage() {
   }
 
   const booking = bookingQuery.data;
+  if (
+    booking.status === "PENDING" &&
+    booking.paymentExpiresAt &&
+    new Date(booking.paymentExpiresAt).getTime() <= Date.now()
+  ) {
+    return (
+      <PaymentProcessState
+        tone="error"
+        title="Payment time expired"
+        message="This pending booking can no longer accept payment. Please start a new booking."
+        bookingId={booking.id}
+      />
+    );
+  }
   const amount = getPaymentAmount(booking, intent);
   const intentIssue = getIntentIssue(booking, intent);
   const paymentError = paymentMutation.error

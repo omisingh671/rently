@@ -25,6 +25,8 @@ export const API_ENDPOINTS = {
     me: "/reporting/context",
     summary: "/reporting/summary",
     analytics: "/reporting/analytics",
+    dailyCloses: (propertyId: string) =>
+      `/reporting/properties/${propertyId}/daily-closes`,
   },
 
   tenants: {
@@ -42,10 +44,10 @@ export const API_ENDPOINTS = {
     updateById: (userId: string) => `/users/admins/${userId}`,
   },
 
-  managers: {
-    list: "/users/managers",
-    create: "/users/managers",
-    updateById: (userId: string) => `/users/managers/${userId}`,
+  teamUsers: {
+    list: "/users/team",
+    create: "/users/team",
+    updateById: (userId: string) => `/users/team/${userId}`,
   },
 
   users: {
@@ -140,6 +142,8 @@ export const API_ENDPOINTS = {
   bookingPolicy: {
     byProperty: (propertyId: string) =>
       `/properties/${propertyId}/booking-policy`,
+    audits: (propertyId: string) =>
+      `/properties/${propertyId}/booking-policy/audits`,
   },
 
   operations: {
@@ -170,8 +174,8 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/stay-extension`,
     bookingStayExtensionPreviewById: (bookingId: string) =>
       `/bookings/${bookingId}/stay-extension/preview`,
-    bookingStatusCorrectionById: (bookingId: string) =>
-      `/bookings/${bookingId}/status-correction`,
+    bookingLifecycleReversalById: (bookingId: string) =>
+      `/bookings/${bookingId}/lifecycle-reversal`,
     bookingFolioChargesById: (bookingId: string) =>
       `/bookings/${bookingId}/folio-charges`,
     bookingFolioChargeById: (bookingId: string, chargeId: string) =>
@@ -207,6 +211,8 @@ export const API_ENDPOINTS = {
       `/billing-documents/${documentId}/void`,
     settingsByProperty: (propertyId: string) =>
       `/properties/${propertyId}/billing-settings`,
+    settingAuditsByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/billing-settings/audits`,
   },
 
   galleries: {

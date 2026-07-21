@@ -7,6 +7,7 @@ import {
   NotificationEventKey,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertStayStartsOnOrAfterBusinessDate } from "@/common/utils/business-date.js";
 import { createBookingForUser } from "@/modules/public/bookings/bookings.service.js";
 import { generateAvailabilityOptions } from "@/modules/public/availability/availability.service.js";
 import * as repo from "./bookings.repository.js";
@@ -22,9 +23,8 @@ import {
 import {
   assertDashboardBookingStatusUpdateAllowed,
   checkInBookingInTransaction,
-  checkOutDashboardBookingUpdateInTransaction,
   checkOutBookingInTransaction,
-  correctBookingStatusInTransaction,
+  reverseBookingLifecycleInTransaction,
   markBookingNoShowInTransaction,
   assertExpectedBookingVersion,
   findTransactionBooking,
@@ -84,7 +84,7 @@ import type {
   DashboardRoomBoardInput,
   CheckInBookingInput,
   CheckOutBookingInput,
-  CorrectBookingStatusInput,
+  ReverseBookingLifecycleInput,
   CreateBookingFolioChargeInput,
   MoveBookingRoomInput,
   PreviewBookingRoomMoveInput,
@@ -182,6 +182,7 @@ export const checkManualBookingAvailability = async (
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
   const property = await ensurePropertyExists(propertyId);
+  assertStayStartsOnOrAfterBusinessDate(input.from, property.tenant.timezone);
   const nights = getStayNights(input.from, input.to);
   const options = await generateAvailabilityOptions(
     {
@@ -208,6 +209,7 @@ export const createManualBooking = async (
   const actor = await getActor(userId);
   await assertPropertyInScope(actor, propertyId);
   const property = await ensurePropertyExists(propertyId);
+  assertStayStartsOnOrAfterBusinessDate(input.from, property.tenant.timezone);
   const guest = await findOrCreateWalkInGuest(actor, input);
 
   const createdBooking = await createBookingForUser(
@@ -261,7 +263,7 @@ export const updateBooking = async (
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
 
-  const { nextStatus, statusChanged, statusOverride } =
+  const { nextStatus, statusChanged } =
     assertDashboardBookingStatusUpdateAllowed(booking, actor, input);
 
   const assignment = await resolveDashboardBookingUpdateAssignment(
@@ -270,38 +272,12 @@ export const updateBooking = async (
     input,
   );
 
-  if (
-    statusChanged &&
-    nextStatus === BookingStatus.CHECKED_OUT &&
-    statusOverride !== true
-  ) {
-    const extension = await postLateCheckoutExtensionCharge(bookingId, actor, {
-      ...(input.note !== undefined && { note: input.note }),
-    });
-    const updated = await repo.runBookingTransaction(async (tx) => {
-      return checkOutDashboardBookingUpdateInTransaction(tx, {
-        bookingId,
-        actor,
-        update: input,
-        extensionChargeId: extension.extensionChargeId,
-        extraNights: extension.extensionPreview?.extraNights ?? 0,
-      });
-    });
-    await publishBookingNotification({
-      eventKey: NotificationEventKey.BOOKING_CHECKED_OUT,
-      businessEventId: `${bookingId}:${updated.version}:check-out`,
-      bookingId,
-    });
-    return updated;
-  }
-
   const updated = await updateDashboardBookingLifecycle({
     booking,
     actorUserId: actor.id,
     update: input,
     nextStatus,
     statusChanged,
-    statusOverride,
     ...(assignment !== undefined && { assignment }),
   });
   if (statusChanged) {
@@ -447,9 +423,11 @@ export const previewBookingRoomMove = async (
     forceConcreteRooms: booking.targetType !== BookingTargetType.UNIT,
     allowLateAssignment: true,
   });
-  return prisma.$transaction((tx) =>
+  const preview = await prisma.$transaction((tx) =>
     buildRoomMovePricingPreview(booking, input.roomIds, tx),
   );
+  const { itemPricingUpdates: _itemPricingUpdates, ...dto } = preview;
+  return dto;
 };
 
 export const moveBookingRooms = async (
@@ -520,27 +498,27 @@ export const extendStay = async (
   );
 };
 
-export const correctBookingStatus = async (
+export const reverseBookingLifecycle = async (
   userId: string,
   bookingId: string,
-  input: CorrectBookingStatusInput,
+  input: ReverseBookingLifecycleInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  if (!isAdminOverrideRole(actor.role)) {
+  if (!isAdminOverrideRole(actor.role) && actor.role !== UserRole.ACCOUNTANT) {
     throw new HttpError(
       403,
       "FORBIDDEN",
-      "Only Admin or Super Admin can correct booking status",
+      "Only Admin or Super Admin can reverse booking lifecycle actions",
     );
   }
   const initialBooking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, initialBooking.propertyId);
 
   return repo.runBookingTransaction(async (tx) => {
-    return correctBookingStatusInTransaction(tx, {
+    return reverseBookingLifecycleInTransaction(tx, {
       bookingId,
       actorUserId: actor.id,
-      correction: input,
+      reversal: input,
     });
   });
 };
@@ -588,11 +566,11 @@ export const voidBookingFolioCharge = async (
   input: VoidBookingFolioChargeInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  if (!isAdminOverrideRole(actor.role)) {
+  if (!isAdminOverrideRole(actor.role) && actor.role !== UserRole.ACCOUNTANT) {
     throw new HttpError(
       403,
       "FORBIDDEN",
-      "Only Admin or Super Admin can void folio charges",
+      "Only Admin, Super Admin, or Accountant can void folio charges",
     );
   }
   const initialBooking = await ensureBookingExists(bookingId);
@@ -635,7 +613,13 @@ export const recordBookingBalancePayment = async (
   input: RecordDashboardBookingPaymentInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.FRONT_DESK,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
@@ -655,7 +639,12 @@ export const recordBookingRefund = async (
   input: RecordDashboardBookingRefundInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);
@@ -676,7 +665,12 @@ export const updateRefundRequest = async (
   input: UpdateDashboardRefundRequestInput,
 ): Promise<DashboardBookingDTO> => {
   const actor = await getActor(userId);
-  assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]);
+  assertRole(actor, [
+    UserRole.SUPER_ADMIN,
+    UserRole.ADMIN,
+    UserRole.MANAGER,
+    UserRole.ACCOUNTANT,
+  ]);
 
   const booking = await ensureBookingExists(bookingId);
   await assertPropertyInScope(actor, booking.propertyId);

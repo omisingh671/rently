@@ -19,8 +19,11 @@ function getAdminPageMeta(pathname: string) {
   if (pathname.includes(ADMIN_ROUTES.ADMINS))
     return { title: "Admins", subtitle: "Manage property admins" };
 
-  if (pathname.includes(ADMIN_ROUTES.MANAGERS))
-    return { title: "Managers", subtitle: "Manage booking managers" };
+  if (pathname.includes(ADMIN_ROUTES.TEAM_USERS))
+    return {
+      title: "Team Users",
+      subtitle: "Manage managers and operational staff",
+    };
 
   if (pathname.includes(ADMIN_ROUTES.PROPERTY_ASSIGNMENTS))
     return {
@@ -113,7 +116,11 @@ export default function AdminLayout() {
         ? "Super Admin"
         : user?.role === "MANAGER"
           ? "Manager"
-          : "Admin",
+          : user?.role === "FRONT_DESK"
+            ? "Front Desk"
+            : user?.role === "ACCOUNTANT"
+              ? "Accountant"
+              : "Admin",
   };
 
   const handleLogout = () => {

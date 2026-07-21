@@ -15,6 +15,12 @@ export const createUserFormSchema = baseUserFormSchema.extend({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+export const createTeamUserFormSchema = createUserFormSchema.extend({
+  role: z.enum(["MANAGER", "FRONT_DESK", "ACCOUNTANT"], {
+    error: "Role is required",
+  }),
+});
+
 export const editUserFormSchema = baseUserFormSchema.extend({
   password: z.string(),
 });
@@ -25,4 +31,5 @@ export type UserFormValues = {
   password: string;
   countryCode: "+91";
   contactNumber: string;
+  role?: "MANAGER" | "FRONT_DESK" | "ACCOUNTANT";
 };

@@ -2,6 +2,7 @@ import { type UserRole } from "@/configs/appConfig";
 
 export type ManagedUserRole = UserRole | "GUEST";
 export type MutableManagedUserRole = Exclude<ManagedUserRole, "SUPER_ADMIN">;
+export type TeamUserRole = "MANAGER" | "FRONT_DESK" | "ACCOUNTANT";
 
 export type AdminUser = {
   id: string;
@@ -33,6 +34,7 @@ export interface CreateUserPayload {
   password: string;
   countryCode?: string;
   contactNumber?: string;
+  role?: TeamUserRole;
 }
 
 export interface UpdateUserVariables {
@@ -40,7 +42,7 @@ export interface UpdateUserVariables {
   payload: UpdateUserPayload;
 }
 
-export type AdminUserScope = "admins" | "managers";
+export type AdminUserScope = "admins" | "team";
 
 export type ManagedUsersFilters = {
   search?: string;

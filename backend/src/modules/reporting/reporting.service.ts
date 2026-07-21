@@ -2,6 +2,7 @@ import {
   BookingStatus,
   LeadStatus,
   PropertyAssignmentRole,
+  Prisma,
   UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -13,7 +14,7 @@ import {
 import { countAssignments } from "@/modules/property-assignments/property-assignments.repository.js";
 import { countUsersByRole } from "@/modules/users/users.repository.js";
 import * as repo from "./reporting.repository.js";
-import { prisma } from "@/db/prisma.js";
+import { getBusinessDateValue } from "@/common/utils/business-date.js";
 import type {
   ReportingMeDTO,
   ReportingSummaryDTO,
@@ -24,6 +25,7 @@ import type {
   PropertyPerformanceDTO,
   ManagerActivityDTO,
   ReportingAnalyticsDTO,
+  PropertyDailyCloseDTO,
 } from "./reporting.dto.js";
 
 
@@ -67,6 +69,8 @@ const REPORTING_MODULES: Record<UserRole, string[]> = {
     "quotes",
   ],
   [UserRole.MANAGER]: ["dashboard", "bookings", "enquiries", "quotes"],
+  [UserRole.FRONT_DESK]: ["dashboard", "bookings"],
+  [UserRole.ACCOUNTANT]: ["dashboard", "bookings", "billing", "reports"],
   [UserRole.GUEST]: [],
 };
 
@@ -226,23 +230,184 @@ export const getReportingSummary = async (
   };
 };
 
+const mapDailyClose = (
+  close: repo.PropertyDailyCloseRecord,
+): PropertyDailyCloseDTO => ({
+  id: close.id,
+  propertyId: close.propertyId,
+  businessDate: close.businessDate.toISOString().slice(0, 10),
+  closedByUserId: close.closedByUserId,
+  closedByName: close.closedBy.fullName,
+  paymentCount: close.paymentCount,
+  paymentTotal: Number(close.paymentTotal),
+  refundCount: close.refundCount,
+  refundTotal: Number(close.refundTotal),
+  netPaymentTotal: Number(close.netPaymentTotal),
+  bookingsCreated: close.bookingsCreated,
+  checkIns: close.checkIns,
+  checkOuts: close.checkOuts,
+  noShows: close.noShows,
+  note: close.note,
+  closedAt: close.closedAt.toISOString(),
+});
+
+export const listPropertyDailyCloses = async (
+  userId: string,
+  propertyId: string,
+  startDate: string,
+  endDate: string,
+): Promise<PropertyDailyCloseDTO[]> => {
+  const actor = await getActor(userId);
+  const scope = await getPropertyScope(actor);
+  if (!scope.isGlobal && !scope.propertyIds.includes(propertyId)) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const closes = await repo.listDailyCloses(
+    propertyId,
+    new Date(`${startDate}T00:00:00.000Z`),
+    new Date(`${endDate}T00:00:00.000Z`),
+  );
+  return closes.map(mapDailyClose);
+};
+
+export const closePropertyBusinessDate = async (
+  userId: string,
+  propertyId: string,
+  businessDate: string,
+  note?: string,
+): Promise<PropertyDailyCloseDTO> => {
+  const actor = await getActor(userId);
+  const scope = await getPropertyScope(actor);
+  if (!scope.isGlobal && !scope.propertyIds.includes(propertyId)) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
+  const [property] = await repo.listPropertySummaries([propertyId]);
+  if (!property) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+  const currentBusinessDate = getBusinessDateValue(
+    new Date(),
+    property.tenant.timezone,
+  );
+  if (businessDate >= currentBusinessDate) {
+    throw new HttpError(
+      422,
+      "OPEN_BUSINESS_DATE_CANNOT_BE_CLOSED",
+      "Only a completed business date before today can be closed",
+    );
+  }
+
+  const businessDateValue = new Date(`${businessDate}T00:00:00.000Z`);
+  const existing = await repo.findDailyClose(propertyId, businessDateValue);
+  if (existing) return mapDailyClose(existing);
+
+  const businessDateEnd = new Date(`${businessDate}T23:59:59.999Z`);
+  const unresolvedArrivals = await repo.listUnresolvedArrivalsThrough(
+    propertyId,
+    businessDateEnd,
+  );
+  if (unresolvedArrivals.length > 0) {
+    throw new HttpError(
+      409,
+      "UNRESOLVED_ARRIVALS",
+      "Resolve confirmed arrivals by checking in, cancelling, or marking no-show before daily close",
+      {
+        count: unresolvedArrivals.length,
+        bookings: unresolvedArrivals.slice(0, 20).map((booking) => ({
+          id: booking.id,
+          reference: booking.bookingRef,
+          checkIn: booking.checkIn.toISOString(),
+        })),
+      },
+    );
+  }
+
+  const broadStart = new Date(businessDateValue.getTime() - 86_400_000);
+  const broadEnd = new Date(businessDateEnd.getTime() + 86_400_000);
+  const [payments, refunds, bookings, statusHistory] = await Promise.all([
+    repo.getPaymentsInRange(broadStart, broadEnd, [propertyId]),
+    repo.getRefundsInRange(broadStart, broadEnd, [propertyId]),
+    repo.getBookingsCreatedInRange(broadStart, broadEnd, [propertyId]),
+    repo.getStatusHistoryInRange(broadStart, broadEnd, [propertyId]),
+  ]);
+  const isBusinessDate = (date: Date) =>
+    getBusinessDateValue(date, property.tenant.timezone) === businessDate;
+  const dayPayments = payments.filter(
+    (payment) => payment.paidAt !== null && isBusinessDate(payment.paidAt),
+  );
+  const dayRefunds = refunds.filter(
+    (refund) => refund.processedAt !== null && isBusinessDate(refund.processedAt),
+  );
+  const dayBookings = bookings.filter((booking) => isBusinessDate(booking.createdAt));
+  const dayStatusHistory = statusHistory.filter((history) =>
+    isBusinessDate(history.createdAt),
+  );
+  const paymentTotal = dayPayments.reduce(
+    (total, payment) => total + Number(payment.amount),
+    0,
+  );
+  const refundTotal = dayRefunds.reduce(
+    (total, refund) => total + Number(refund.amount),
+    0,
+  );
+
+  try {
+    return mapDailyClose(
+      await repo.createDailyClose({
+        property: { connect: { id: propertyId } },
+        closedBy: { connect: { id: actor.id } },
+        businessDate: businessDateValue,
+        paymentCount: dayPayments.length,
+        paymentTotal,
+        refundCount: dayRefunds.length,
+        refundTotal,
+        netPaymentTotal: paymentTotal - refundTotal,
+        bookingsCreated: dayBookings.length,
+        checkIns: dayStatusHistory.filter(
+          (history) => history.toStatus === "CHECKED_IN",
+        ).length,
+        checkOuts: dayStatusHistory.filter(
+          (history) => history.toStatus === "CHECKED_OUT",
+        ).length,
+        noShows: dayStatusHistory.filter(
+          (history) => history.toStatus === "NO_SHOW",
+        ).length,
+        ...(note !== undefined && { note }),
+      }),
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const concurrentClose = await repo.findDailyClose(
+        propertyId,
+        businessDateValue,
+      );
+      if (concurrentClose) return mapDailyClose(concurrentClose);
+    }
+    throw error;
+  }
+};
+
 const getDaysArray = (start: Date, end: Date): Date[] => {
   const arr: Date[] = [];
   const dt = new Date(start);
-  dt.setHours(0, 0, 0, 0);
+  dt.setUTCHours(0, 0, 0, 0);
   const endDt = new Date(end);
-  endDt.setHours(0, 0, 0, 0);
+  endDt.setUTCHours(0, 0, 0, 0);
   while (dt <= endDt) {
     arr.push(new Date(dt));
-    dt.setDate(dt.getDate() + 1);
+    dt.setUTCDate(dt.getUTCDate() + 1);
   }
   return arr;
 };
 
 const formatDateOnly = (date: Date): string => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
@@ -282,6 +447,20 @@ export const getReportingAnalytics = async (
     };
   }
 
+  const reportingProperties = await repo.listPropertySummaries(propertyIdsToQuery);
+  const propertyTimezones = new Map(
+    reportingProperties.map((property) => [property.id, property.tenant.timezone]),
+  );
+  const startDateValue = formatDateOnly(query.startDate);
+  const endDateValue = formatDateOnly(query.endDate);
+  const broadStartDate = new Date(query.startDate.getTime() - 86_400_000);
+  const broadEndDate = new Date(query.endDate.getTime() + 86_400_000);
+  const isEventInBusinessRange = (date: Date, propertyId: string) => {
+    const timeZone = propertyTimezones.get(propertyId) ?? "UTC";
+    const dateValue = getBusinessDateValue(date, timeZone);
+    return dateValue >= startDateValue && dateValue <= endDateValue;
+  };
+
   // Fetch all required data concurrently
   const [
     bookingsOverlapping,
@@ -293,31 +472,93 @@ export const getReportingAnalytics = async (
     maintenance,
     statusHistory,
     rooms,
-    allUsers,
   ] = await Promise.all([
     repo.getBookingsOverlapping(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getBookingsCreatedInRange(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getPaymentsInRange(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getRefundsInRange(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getEnquiriesInRange(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getQuotesInRange(query.startDate, query.endDate, propertyIdsToQuery),
+    repo.getBookingsCreatedInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
+    repo.getPaymentsInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
+    repo.getRefundsInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
+    repo.getEnquiriesInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
+    repo.getQuotesInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
     repo.getMaintenanceOverlapping(query.startDate, query.endDate, propertyIdsToQuery),
-    repo.getStatusHistoryInRange(query.startDate, query.endDate, propertyIdsToQuery),
+    repo.getStatusHistoryInRange(broadStartDate, broadEndDate, propertyIdsToQuery),
     repo.getAllRoomsWithProperties(propertyIdsToQuery),
-    prisma.user.findMany({
-      where: {
-        role: { in: [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER] },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-      },
-    }),
   ]);
 
+  const bookingsCreatedInBusinessRange = bookingsCreated.filter((booking) =>
+    isEventInBusinessRange(booking.createdAt, booking.propertyId),
+  );
+  const paymentsInBusinessRange = payments.filter(
+    (payment) =>
+      payment.paidAt !== null &&
+      isEventInBusinessRange(payment.paidAt, payment.propertyId),
+  );
+  const refundsInBusinessRange = refunds.filter(
+    (refund) =>
+      refund.processedAt !== null &&
+      isEventInBusinessRange(refund.processedAt, refund.propertyId),
+  );
+  const enquiriesInBusinessRange = enquiries.filter((enquiry) =>
+    isEventInBusinessRange(enquiry.createdAt, enquiry.propertyId),
+  );
+  const quotesInBusinessRange = quotes.filter((quote) =>
+    isEventInBusinessRange(quote.createdAt, quote.propertyId),
+  );
+  const statusHistoryInBusinessRange = statusHistory.filter((history) =>
+    isEventInBusinessRange(history.createdAt, history.booking.propertyId),
+  );
+
+  const operationalUserIds = new Set<string>();
+  statusHistoryInBusinessRange.forEach((history) => {
+    if (history.actorUserId) operationalUserIds.add(history.actorUserId);
+  });
+  paymentsInBusinessRange.forEach((payment) => {
+    if (payment.receivedByUserId) operationalUserIds.add(payment.receivedByUserId);
+  });
+  const allUsers = await repo.getOperationalUsersByIds([...operationalUserIds]);
+
   const days = getDaysArray(query.startDate, query.endDate);
+  const reportRoomIds = new Set(rooms.map((room) => room.id));
+  const occupiedRoomIdsForDay = (
+    dayStart: Date,
+    dayEnd: Date,
+    propertyId?: string,
+  ) => {
+    const occupiedRoomIds = new Set<string>();
+    const allocationSnapshotAt = new Date(dayEnd.getTime() - 1);
+    for (const booking of bookingsOverlapping) {
+      if (propertyId !== undefined && booking.propertyId !== propertyId) {
+        continue;
+      }
+      if (booking.checkIn >= dayEnd || booking.checkOut <= dayStart) {
+        continue;
+      }
+      const activeAllocations = booking.roomAllocations.filter(
+        (allocation) =>
+          allocation.effectiveFrom <= allocationSnapshotAt &&
+          (allocation.effectiveTo === null ||
+            allocation.effectiveTo > allocationSnapshotAt),
+      );
+      if (activeAllocations.length > 0) {
+        for (const allocation of activeAllocations) {
+          if (reportRoomIds.has(allocation.roomId)) {
+            occupiedRoomIds.add(allocation.roomId);
+          }
+        }
+        continue;
+      }
+
+      const legacyRoomIds = [
+        booking.roomId,
+        ...booking.items.map((item) => item.roomId),
+      ];
+      for (const roomId of legacyRoomIds) {
+        if (roomId !== null && reportRoomIds.has(roomId)) {
+          occupiedRoomIds.add(roomId);
+        }
+      }
+    }
+    return occupiedRoomIds;
+  };
 
   // 1. Calculate Daily Occupancy
   const occupancy: DailyOccupancyDTO[] = [];
@@ -326,9 +567,9 @@ export const getReportingAnalytics = async (
   for (const day of days) {
     const dayStr = formatDateOnly(day);
     const dayStart = new Date(day);
-    dayStart.setHours(0, 0, 0, 0);
+    dayStart.setUTCHours(0, 0, 0, 0);
     const dayEnd = new Date(day);
-    dayEnd.setHours(23, 59, 59, 999);
+    dayEnd.setUTCHours(23, 59, 59, 999);
 
     // Maintenance rooms on this day
     const maintenanceRoomsOnDay = new Set<string>();
@@ -348,16 +589,9 @@ export const getReportingAnalytics = async (
     const availableNights = Math.max(0, totalRoomsCount - maintenanceRoomsOnDay.size);
 
     // Booked rooms on this day
-    let occupiedNights = 0;
-    for (const b of bookingsOverlapping) {
-      if (b.checkIn < dayEnd && b.checkOut > dayStart) {
-        for (const item of b.items) {
-          if (item.roomId && rooms.some((r) => r.id === item.roomId)) {
-            occupiedNights++;
-          }
-        }
-      }
-    }
+    const occupiedNights = Array.from(
+      occupiedRoomIdsForDay(dayStart, dayEnd),
+    ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
 
     const actualOccupiedNights = Math.min(occupiedNights, availableNights);
     const occupancyRate = availableNights === 0 ? 0 : Math.round((actualOccupiedNights / availableNights) * 100);
@@ -376,12 +610,12 @@ export const getReportingAnalytics = async (
   for (const day of days) {
     const dayStr = formatDateOnly(day);
     const dayStart = new Date(day);
-    dayStart.setHours(0, 0, 0, 0);
+    dayStart.setUTCHours(0, 0, 0, 0);
     const dayEnd = new Date(day);
-    dayEnd.setHours(23, 59, 59, 999);
+    dayEnd.setUTCHours(23, 59, 59, 999);
 
-    const dayBookings = bookingsCreated.filter(
-      (b) => b.createdAt >= dayStart && b.createdAt <= dayEnd,
+    const dayBookings = bookingsOverlapping.filter(
+      (booking) => booking.checkIn < dayEnd && booking.checkOut > dayStart,
     );
 
     let subtotal = 0;
@@ -390,19 +624,33 @@ export const getReportingAnalytics = async (
     let total = 0;
 
     for (const b of dayBookings) {
-      subtotal += Number(b.subtotalAmount);
-      discount += Number(b.discountAmount);
-      tax += Number(b.taxAmount);
-      total += Number(b.totalAmount);
+      const stayNights = Math.max(
+        1,
+        Math.ceil((b.checkOut.getTime() - b.checkIn.getTime()) / 86_400_000),
+      );
+      subtotal += Number(b.subtotalAmount) / stayNights;
+      discount += Number(b.discountAmount) / stayNights;
+      tax += Number(b.taxAmount) / stayNights;
+      total += Number(b.totalAmount) / stayNights;
     }
 
-    const dayPayments = payments.filter(
-      (p) => p.createdAt >= dayStart && p.createdAt <= dayEnd,
+    const dayPayments = paymentsInBusinessRange.filter(
+      (payment) =>
+        payment.paidAt !== null &&
+        getBusinessDateValue(
+          payment.paidAt,
+          propertyTimezones.get(payment.propertyId) ?? "UTC",
+        ) === dayStr,
     );
     const paid = dayPayments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-    const dayRefunds = refunds.filter(
-      (r) => r.createdAt >= dayStart && r.createdAt <= dayEnd,
+    const dayRefunds = refundsInBusinessRange.filter(
+      (refund) =>
+        refund.processedAt !== null &&
+        getBusinessDateValue(
+          refund.processedAt,
+          propertyTimezones.get(refund.propertyId) ?? "UTC",
+        ) === dayStr,
     );
     const refundAmt = dayRefunds.reduce((sum, r) => sum + Number(r.amount), 0);
 
@@ -424,9 +672,8 @@ export const getReportingAnalytics = async (
     WALK_IN: { count: 0, revenue: 0 },
   };
 
-  for (const b of bookingsCreated) {
-    const isWalkIn = b.user?.createdByUserId !== null;
-    const sourceKey = isWalkIn ? "WALK_IN" : "PUBLIC";
+  for (const b of bookingsCreatedInBusinessRange) {
+    const sourceKey = b.source;
     sourceMap[sourceKey].count++;
     sourceMap[sourceKey].revenue += Number(b.totalAmount);
   }
@@ -446,25 +693,25 @@ export const getReportingAnalytics = async (
 
   // 4. Enquiry & Quote Conversions
   const bookedEmails = new Set(
-    bookingsCreated
+    bookingsCreatedInBusinessRange
       .filter((b) => ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(b.status))
       .map((b) => b.guestEmailSnapshot.trim().toLowerCase()),
   );
 
-  const convertedEnquiries = enquiries.filter((e) =>
+  const convertedEnquiries = enquiriesInBusinessRange.filter((e) =>
     bookedEmails.has(e.email.trim().toLowerCase()),
   ).length;
 
-  const convertedQuotes = quotes.filter((q) => {
-    return bookingsCreated.some(
+  const convertedQuotes = quotesInBusinessRange.filter((q) => {
+    return bookingsCreatedInBusinessRange.some(
       (b) =>
         ["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"].includes(b.status) &&
         (b.userId === q.userId || b.guestEmailSnapshot.trim().toLowerCase() === q.user?.email.trim().toLowerCase()),
     );
   }).length;
 
-  const totalEnquiries = enquiries.length;
-  const totalQuotes = quotes.length;
+  const totalEnquiries = enquiriesInBusinessRange.length;
+  const totalQuotes = quotesInBusinessRange.length;
   const enquiryConversionRate = totalEnquiries === 0 ? 0 : Math.round((convertedEnquiries / totalEnquiries) * 100);
   const quoteConversionRate = totalQuotes === 0 ? 0 : Math.round((convertedQuotes / totalQuotes) * 100);
 
@@ -475,7 +722,7 @@ export const getReportingAnalytics = async (
     totalQuotes,
     convertedQuotes,
     quoteConversionRate,
-    totalBookings: bookingsCreated.length,
+    totalBookings: bookingsCreatedInBusinessRange.length,
   };
 
   // 5. Property Performance
@@ -498,9 +745,9 @@ export const getReportingAnalytics = async (
 
     for (const day of days) {
       const dayStart = new Date(day);
-      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setUTCHours(0, 0, 0, 0);
       const dayEnd = new Date(day);
-      dayEnd.setHours(23, 59, 59, 999);
+      dayEnd.setUTCHours(23, 59, 59, 999);
 
       const maintenanceRoomsOnDay = new Set<string>();
       for (const m of maintenance) {
@@ -519,24 +766,34 @@ export const getReportingAnalytics = async (
       const availableOnDay = Math.max(0, propRoomsCount - maintenanceRoomsOnDay.size);
       propAvailableNights += availableOnDay;
 
-      let occupiedOnDay = 0;
-      for (const b of bookingsOverlapping) {
-        if (b.propertyId === propId && b.checkIn < dayEnd && b.checkOut > dayStart) {
-          for (const item of b.items) {
-            if (item.roomId && propRooms.some((r) => r.id === item.roomId)) {
-              occupiedOnDay++;
-            }
-          }
-        }
-      }
+      const occupiedOnDay = Array.from(
+        occupiedRoomIdsForDay(dayStart, dayEnd, propId),
+      ).filter((roomId) => !maintenanceRoomsOnDay.has(roomId)).length;
       propOccupiedNights += Math.min(occupiedOnDay, availableOnDay);
     }
 
-    const propBookingsCreated = bookingsCreated.filter((b) => b.propertyId === propId);
-    const grossRevenue = propBookingsCreated.reduce((sum, b) => sum + Number(b.totalAmount), 0);
+    const grossRevenue = bookingsOverlapping
+      .filter((booking) => booking.propertyId === propId)
+      .reduce((sum, booking) => {
+        const stayNights = Math.max(
+          1,
+          Math.ceil(
+            (booking.checkOut.getTime() - booking.checkIn.getTime()) /
+              86_400_000,
+          ),
+        );
+        const recognizedNights = days.filter((day) => {
+          const dayStart = new Date(day);
+          dayStart.setUTCHours(0, 0, 0, 0);
+          const dayEnd = new Date(day);
+          dayEnd.setUTCHours(23, 59, 59, 999);
+          return booking.checkIn < dayEnd && booking.checkOut > dayStart;
+        }).length;
+        return sum + (Number(booking.totalAmount) / stayNights) * recognizedNights;
+      }, 0);
 
-    const propPayments = payments.filter((p) => p.propertyId === propId);
-    const propRefunds = refunds.filter((r) => r.propertyId === propId);
+    const propPayments = paymentsInBusinessRange.filter((p) => p.propertyId === propId);
+    const propRefunds = refundsInBusinessRange.filter((r) => r.propertyId === propId);
     const netRevenue = propPayments.reduce((sum, p) => sum + Number(p.amount), 0) -
                        propRefunds.reduce((sum, r) => sum + Number(r.amount), 0);
 
@@ -560,17 +817,21 @@ export const getReportingAnalytics = async (
 
   // 6. Manager Activity
   const managers: ManagerActivityDTO[] = allUsers.map((u) => {
-    const walkinsCreated = bookingsCreated.filter((b) => b.user?.createdByUserId === u.id).length;
+    const walkinsCreated = statusHistoryInBusinessRange.filter(
+      (history) =>
+        history.actorUserId === u.id &&
+        history.note === "Manual walk-in booking created from dashboard",
+    ).length;
 
-    const checkInsProcessed = statusHistory.filter(
+    const checkInsProcessed = statusHistoryInBusinessRange.filter(
       (h) => h.toStatus === "CHECKED_IN" && h.actorUserId === u.id,
     ).length;
 
-    const checkOutsProcessed = statusHistory.filter(
+    const checkOutsProcessed = statusHistoryInBusinessRange.filter(
       (h) => h.toStatus === "CHECKED_OUT" && h.actorUserId === u.id,
     ).length;
 
-    const paymentsRecorded = payments.filter((p) => p.receivedByUserId === u.id).length;
+    const paymentsRecorded = paymentsInBusinessRange.filter((p) => p.receivedByUserId === u.id).length;
 
     return {
       managerId: u.id,
@@ -593,4 +854,3 @@ export const getReportingAnalytics = async (
     managers,
   };
 };
-

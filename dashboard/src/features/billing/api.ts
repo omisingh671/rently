@@ -6,6 +6,7 @@ import type {
   BillingDocumentListParams,
   BillingDocumentListResponse,
   BillingSetting,
+  BillingSettingAudit,
   UpdateBillingSettingPayload,
 } from "./types";
 
@@ -101,6 +102,16 @@ export const updateBillingSettingApi = async (
     API_ENDPOINTS.billing.settingsByProperty(propertyId),
     payload,
   );
+
+  return data.data;
+};
+
+export const listBillingSettingAuditsApi = async (
+  propertyId: string,
+): Promise<BillingSettingAudit[]> => {
+  const { data } = await axiosInstance.get<
+    ApiSuccessResponse<BillingSettingAudit[]>
+  >(API_ENDPOINTS.billing.settingAuditsByProperty(propertyId));
 
   return data.data;
 };

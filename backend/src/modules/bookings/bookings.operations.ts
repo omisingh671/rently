@@ -126,6 +126,10 @@ export const buildOperationsBoardPayload = (input: {
         toLocalBusinessDateValue(booking.checkIn, input.timezone) < targetDate,
     )
     .map((booking) => byId.get(booking.id)!);
+  const noShowReview = input.mappedBookings.filter(
+    (booking) =>
+      booking.status === BookingStatus.CONFIRMED && booking.noShowEligible,
+  );
   const unassignedArrivals = arrivals.filter(
     (booking) =>
       booking.items.length === 0 ||
@@ -191,6 +195,7 @@ export const buildOperationsBoardPayload = (input: {
       departures: departures.length,
       inHouse: inHouse.length,
       lateArrivals: lateArrivals.length,
+      noShowReview: noShowReview.length,
       unassignedArrivals: unassignedArrivals.length,
       balanceDue: balanceDue.length,
       refundAttention: refundAttention.length,
@@ -201,6 +206,7 @@ export const buildOperationsBoardPayload = (input: {
     departures,
     inHouse,
     lateArrivals,
+    noShowReview,
     unassignedArrivals,
     balanceDue,
     refundAttention,

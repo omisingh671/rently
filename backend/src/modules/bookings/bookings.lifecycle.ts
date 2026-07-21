@@ -1,6 +1,7 @@
 import {
   BookingOperationEventType,
   BookingRefundRequestStatus,
+  BookingRoomAllocationSource,
   BookingStatus,
   Prisma,
   UserRole,
@@ -9,21 +10,23 @@ import { HttpError } from "@/common/errors/http-error.js";
 import type {
   CheckInBookingInput,
   CheckOutBookingInput,
-  CorrectBookingStatusInput,
   NoShowBookingInput,
+  ReverseBookingLifecycleInput,
   UpdateDashboardBookingInput,
 } from "./bookings.inputs.js";
 import {
-  assertBookingHasAssignedTarget,
   assertTransactionalRoomsAvailable,
   getAssignedCheckInRoomIds,
   type BookingRoomAssignmentResolution,
 } from "./bookings.assignment.js";
 import { getBookingBalanceAmount } from "./bookings.financials.js";
-import { markRoomsDirtyAfterCheckout } from "./bookings.housekeeping.js";
 import {
-  assertBookingLifecycleDateAllowed,
+  markRoomsDirtyAfterCheckout,
+  restoreRoomsAfterCheckoutReversal,
+} from "./bookings.housekeeping.js";
+import {
   assertBookingTransitionAllowed,
+  getLifecycleReversalTarget,
   getLocalDateValue,
   isAdminOverrideRole,
   requireAuditNote,
@@ -38,6 +41,10 @@ import {
   buildCheckInPolicyPreview,
   buildCheckOutPolicyPreview,
 } from "./bookings.stay-policy.js";
+import {
+  closeActiveBookingRoomAllocations,
+  syncCurrentBookingRoomAllocations,
+} from "./bookings.allocations.js";
 
 export const assertCheckoutBalanceSettled = (input: {
   booking: repo.DashboardBookingRecord;
@@ -166,7 +173,6 @@ export const assertDashboardBookingStatusUpdateAllowed = (
   input: UpdateDashboardBookingInput,
 ) => {
   const nextStatus = input.status;
-  const statusOverride = input.statusOverride === true;
   const statusChanged =
     nextStatus !== undefined && nextStatus !== booking.status;
 
@@ -174,53 +180,10 @@ export const assertDashboardBookingStatusUpdateAllowed = (
     return {
       nextStatus,
       statusChanged,
-      statusOverride,
-    };
-  }
-
-  if (statusOverride) {
-    if (!isAdminOverrideRole(actor.role)) {
-      throw new HttpError(
-        403,
-        "FORBIDDEN",
-        "Only Admin or Super Admin can correct booking status",
-      );
-    }
-
-    requireAuditNote(
-      input.note,
-      "Audit note is required for status correction",
-    );
-
-    return {
-      nextStatus,
-      statusChanged,
-      statusOverride,
     };
   }
 
   assertBookingTransitionAllowed(booking.status, nextStatus);
-
-  if (nextStatus === BookingStatus.CHECKED_IN) {
-    assertBookingHasAssignedTarget(booking);
-    assertBookingLifecycleDateAllowed(booking, nextStatus);
-    const balanceAmount = getBookingBalanceAmount(booking);
-
-    if (balanceAmount.greaterThan(0)) {
-      if (input.allowBalanceDueCheckIn !== true) {
-        throw new HttpError(
-          409,
-          "CHECK_IN_BALANCE_DUE",
-          "Record balance payment before check-in or add an override note",
-        );
-      }
-
-      requireAuditNote(
-        input.note,
-        "Override note is required to check in with balance due",
-      );
-    }
-  }
 
   if (nextStatus === BookingStatus.CANCELLED) {
     if (
@@ -234,33 +197,17 @@ export const assertDashboardBookingStatusUpdateAllowed = (
       );
     }
 
-    if (actor.role === UserRole.MANAGER) {
+    if (!isAdminOverrideRole(actor.role)) {
       requireAuditNote(
         input.note,
-        "Cancellation note is required for manager cancellation",
+        "Cancellation note is required for staff cancellation",
       );
     }
-  }
-
-  if (nextStatus === BookingStatus.NO_SHOW) {
-    requireAuditNote(input.note, "No-show note is required");
-    if (!isBookingNoShowEligible(booking)) {
-      throw new HttpError(
-        409,
-        "NO_SHOW_NOT_ELIGIBLE",
-        "Booking is not eligible for no-show yet",
-      );
-    }
-  }
-
-  if (nextStatus === BookingStatus.CHECKED_OUT) {
-    assertBookingLifecycleDateAllowed(booking, nextStatus);
   }
 
   return {
     nextStatus,
     statusChanged,
-    statusOverride,
   };
 };
 
@@ -372,6 +319,12 @@ export const checkInBookingInTransaction = async (
   }
 
   const now = new Date();
+  await syncCurrentBookingRoomAllocations(tx, {
+    bookingId: input.bookingId,
+    actorUserId: input.actorUserId,
+    effectiveFrom: now,
+    source: BookingRoomAllocationSource.CHECK_IN_ASSIGNED,
+  });
   await updateVersionedBooking(tx, input.bookingId, input.checkIn.expectedVersion, {
     status: BookingStatus.CHECKED_IN,
     checkedInAt: now,
@@ -430,22 +383,16 @@ export const updateDashboardBookingLifecycle = async (input: {
   assignment?: BookingRoomAssignmentResolution;
   nextStatus: BookingStatus | undefined;
   statusChanged: boolean;
-  statusOverride: boolean;
 }) => {
+  const lifecycleAt = new Date();
   const updatedBooking = await repo.updateBookingLifecycleById(
     input.booking.id,
     {
       ...(input.update.status !== undefined && { status: input.update.status }),
       ...(input.update.status === BookingStatus.CANCELLED && {
         cancellationReason: input.update.note ?? "Cancelled from dashboard",
-        cancelledAt: new Date(),
+        cancelledAt: lifecycleAt,
       }),
-      ...(input.statusOverride &&
-        input.statusChanged &&
-        input.update.status !== BookingStatus.CANCELLED && {
-          cancellationReason: null,
-          cancelledAt: null,
-        }),
       ...(input.assignment !== undefined && input.assignment.bookingData),
       ...(input.update.internalNotes !== undefined && {
         internalNotes: input.update.internalNotes,
@@ -469,6 +416,16 @@ export const updateDashboardBookingLifecycle = async (input: {
         }
       : undefined,
     input.assignment?.assignments,
+    input.assignment !== undefined
+      ? {
+          actorUserId: input.actorUserId,
+          effectiveFrom: input.booking.checkIn,
+          source: BookingRoomAllocationSource.ROOM_ASSIGNED,
+        }
+      : undefined,
+    input.update.status === BookingStatus.CANCELLED
+      ? lifecycleAt
+      : undefined,
   );
 
   if (
@@ -521,10 +478,12 @@ export const checkOutBookingInTransaction = async (
   const roomIds = booking.items
     .map((item) => item.roomId)
     .filter((roomId): roomId is string => roomId !== null);
+  const checkedOutAt = new Date();
   await updateVersionedBooking(tx, input.bookingId, input.checkOut.expectedVersion, {
     status: BookingStatus.CHECKED_OUT,
-    checkedOutAt: new Date(),
+    checkedOutAt,
   });
+  await closeActiveBookingRoomAllocations(tx, input.bookingId, checkedOutAt);
   await markRoomsDirtyAfterCheckout(tx, {
     propertyId: booking.propertyId,
     bookingId: input.bookingId,
@@ -707,10 +666,12 @@ export const markBookingNoShowInTransaction = async (
       "Booking is not eligible for no-show yet",
     );
   }
+  const noShowAt = new Date();
   await updateVersionedBooking(tx, input.bookingId, input.noShow.expectedVersion, {
     status: BookingStatus.NO_SHOW,
-    noShowAt: new Date(),
+    noShowAt,
   });
+  await closeActiveBookingRoomAllocations(tx, input.bookingId, noShowAt);
   await createStatusHistory(tx, {
     bookingId: input.bookingId,
     fromStatus: booking.status,
@@ -729,47 +690,137 @@ export const markBookingNoShowInTransaction = async (
   return mapTransactionBooking(tx, input.bookingId);
 };
 
-export const correctBookingStatusInTransaction = async (
+export const reverseBookingLifecycleInTransaction = async (
   tx: Prisma.TransactionClient,
   input: {
     bookingId: string;
     actorUserId: string;
-    correction: CorrectBookingStatusInput;
+    reversal: ReverseBookingLifecycleInput;
   },
 ) => {
   const booking = await findTransactionBooking(tx, input.bookingId);
   assertExpectedBookingVersion(
     booking.version,
-    input.correction.expectedVersion,
+    input.reversal.expectedVersion,
   );
+
+  const nextStatus = getLifecycleReversalTarget(booking.status);
+
+  if (nextStatus === null) {
+    throw new HttpError(
+      409,
+      "LIFECYCLE_REVERSAL_NOT_ALLOWED",
+      "Only check-in, check-out, or no-show can be reversed",
+    );
+  }
+
+  const roomIds = booking.items
+    .map((item) => item.roomId)
+    .filter((roomId): roomId is string => roomId !== null);
+
+  if (booking.status === BookingStatus.NO_SHOW && roomIds.length > 0) {
+    await assertTransactionalRoomsAvailable(tx, booking, roomIds, false);
+  }
+
+  if (booking.status === BookingStatus.CHECKED_IN) {
+    const activeEarlyCheckInCharge = booking.folioCharges.some((charge) => {
+      if (charge.status !== "ACTIVE") return false;
+      const metadata = charge.metadata;
+      return (
+        metadata !== null &&
+        typeof metadata === "object" &&
+        !Array.isArray(metadata) &&
+        metadata.source === "EARLY_CHECK_IN_POLICY"
+      );
+    });
+    if (activeEarlyCheckInCharge) {
+      throw new HttpError(
+        409,
+        "CHECK_IN_REVERSAL_FINANCIAL_ADJUSTMENT",
+        "Void the early check-in charge before reversing check-in",
+      );
+    }
+  }
+
+  if (booking.status === BookingStatus.CHECKED_OUT) {
+    const checkoutEvent = [...booking.operationEvents]
+      .reverse()
+      .find((event) => event.eventType === BookingOperationEventType.CHECK_OUT);
+    const metadata = checkoutEvent?.metadata;
+    const checkoutMetadata =
+      metadata !== null &&
+      metadata !== undefined &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata)
+        ? metadata
+        : {};
+    const refundAmount = new Prisma.Decimal(
+      typeof checkoutMetadata.refundAmount === "string"
+        ? checkoutMetadata.refundAmount
+        : 0,
+    );
+    if (checkoutMetadata.extensionChargeId || refundAmount.greaterThan(0)) {
+      throw new HttpError(
+        409,
+        "CHECK_OUT_REVERSAL_FINANCIAL_ADJUSTMENT",
+        "Resolve checkout-generated charges or refund review before reversing checkout",
+      );
+    }
+    await restoreRoomsAfterCheckoutReversal(tx, {
+      propertyId: booking.propertyId,
+      bookingId: booking.id,
+      actorUserId: input.actorUserId,
+      roomIds,
+      note: input.reversal.note,
+    });
+  }
+
   await updateVersionedBooking(
     tx,
     input.bookingId,
-    input.correction.expectedVersion,
+    input.reversal.expectedVersion,
     {
-      status: input.correction.status,
-      ...(input.correction.status !== BookingStatus.CANCELLED && {
-        cancellationReason: null,
-        cancelledAt: null,
+      status: nextStatus,
+      ...(booking.status === BookingStatus.CHECKED_IN && {
+        checkedInAt: null,
+        identityVerifiedAt: null,
+        identityDocumentType: null,
+        identityDocumentReference: null,
       }),
+      ...(booking.status === BookingStatus.CHECKED_OUT && {
+        checkedOutAt: null,
+      }),
+      ...(booking.status === BookingStatus.NO_SHOW && { noShowAt: null }),
     },
   );
+  if (
+    booking.status === BookingStatus.CHECKED_OUT ||
+    booking.status === BookingStatus.NO_SHOW
+  ) {
+    await syncCurrentBookingRoomAllocations(tx, {
+      bookingId: booking.id,
+      actorUserId: input.actorUserId,
+      effectiveFrom: new Date(),
+      source: BookingRoomAllocationSource.ROOM_ASSIGNED,
+    });
+  }
   await createStatusHistory(tx, {
     bookingId: input.bookingId,
     fromStatus: booking.status,
-    toStatus: input.correction.status,
+    toStatus: nextStatus,
     actorUserId: input.actorUserId,
-    note: input.correction.note,
+    note: input.reversal.note,
   });
   await createOperationEvent(tx, {
     bookingId: input.bookingId,
     propertyId: booking.propertyId,
     actorUserId: input.actorUserId,
     eventType: BookingOperationEventType.STATUS_CORRECTION,
-    note: input.correction.note,
+    note: input.reversal.note,
     metadata: {
       fromStatus: booking.status,
-      toStatus: input.correction.status,
+      toStatus: nextStatus,
+      correctionType: `REVERSE_${booking.status}`,
     },
   });
 

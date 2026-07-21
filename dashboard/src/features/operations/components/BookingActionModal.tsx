@@ -3,7 +3,6 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import {
-  bookingStatuses,
   paymentMethods,
   paymentMethodsRequiringReference,
   refundMethods,
@@ -16,7 +15,6 @@ import {
   getPaymentReferenceLabel,
 } from "../bookingDisplay";
 import type {
-  BookingStatus,
   PaymentMethod,
   RoomMovePreview,
   RoomMovePricingAction,
@@ -42,7 +40,6 @@ type BookingActionModalProps = {
   selectedRoomIds: string[];
   assignedRoomIds: string[];
   requiredRoomCount: number;
-  selectedStatus: BookingStatus;
   paymentAmount: string;
   paymentMethod: PaymentMethod;
   paymentReferenceId: string;
@@ -60,7 +57,6 @@ type BookingActionModalProps = {
   onRoomMovePricingActionChange: (value: RoomMovePricingAction) => void;
   onNoteChange: (value: string) => void;
   onRoomToggle: (roomId: string) => void;
-  onStatusChange: (value: BookingStatus) => void;
   onPaymentAmountChange: (value: string) => void;
   onPaymentMethodChange: (value: PaymentMethod) => void;
   onPaymentReferenceIdChange: (value: string) => void;
@@ -80,7 +76,6 @@ export function BookingActionModal({
   selectedRoomIds,
   assignedRoomIds,
   requiredRoomCount,
-  selectedStatus,
   paymentAmount,
   paymentMethod,
   paymentReferenceId,
@@ -98,7 +93,6 @@ export function BookingActionModal({
   onRoomMovePricingActionChange,
   onNoteChange,
   onRoomToggle,
-  onStatusChange,
   onPaymentAmountChange,
   onPaymentMethodChange,
   onPaymentReferenceIdChange,
@@ -162,26 +156,6 @@ export function BookingActionModal({
                 />
               )}
             </>
-          )}
-
-          {action.type === "statusOverride" && (
-            <label className="block text-sm">
-              <span className="font-medium text-slate-700">Correct status</span>
-              <select
-                value={selectedStatus}
-                disabled={isSubmitting}
-                onChange={(event) =>
-                  onStatusChange(event.target.value as BookingStatus)
-                }
-                className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60"
-              >
-                {bookingStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {formatEnumLabel(status)}
-                  </option>
-                ))}
-              </select>
-            </label>
           )}
 
           {action.type === "checkIn" && (

@@ -16,6 +16,7 @@ export interface BillingDocumentListInput {
 }
 
 export interface UpdateBillingSettingInput {
+  reason: string;
   legalName?: string | null;
   gstin?: string | null;
   pan?: string | null;

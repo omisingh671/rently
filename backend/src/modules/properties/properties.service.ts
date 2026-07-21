@@ -133,7 +133,9 @@ export const getPropertyById = async (
   if (
     actor.role !== UserRole.SUPER_ADMIN &&
     actor.role !== UserRole.ADMIN &&
-    actor.role !== UserRole.MANAGER
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.FRONT_DESK &&
+    actor.role !== UserRole.ACCOUNTANT
   ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }
@@ -160,13 +162,9 @@ export const updateProperty = async (
   }
 
   await ensurePropertyExists(id);
-  if (data.tenantId !== undefined) {
-    await ensureTenantExists(data.tenantId);
-  }
 
   try {
     await repo.updatePropertyById(id, {
-      ...(data.tenantId !== undefined && { tenantId: data.tenantId }),
       ...(data.slug !== undefined && { slug: data.slug }),
       ...(data.name !== undefined && { name: data.name }),
       ...(data.address !== undefined && { address: data.address }),
@@ -231,7 +229,9 @@ export const listProperties = async (
   if (
     actor.role !== UserRole.SUPER_ADMIN &&
     actor.role !== UserRole.ADMIN &&
-    actor.role !== UserRole.MANAGER
+    actor.role !== UserRole.MANAGER &&
+    actor.role !== UserRole.FRONT_DESK &&
+    actor.role !== UserRole.ACCOUNTANT
   ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }

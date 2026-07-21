@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/authStore";
+import { useCurrentPropertyStore } from "@/stores/currentPropertyStore";
 import type { LoginPayload, LoginResponse } from "@/features/auth/types";
 import * as authApi from "./api";
 import type { AppError } from "@/utils/appError";
@@ -55,6 +56,9 @@ export const useResetPassword = () => {
  */
 export const useLogout = () => {
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const clearSelectedPropertyId = useCurrentPropertyStore(
+    (s) => s.clearSelectedPropertyId,
+  );
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, void>({
@@ -63,6 +67,7 @@ export const useLogout = () => {
         await authApi.logout();
       } finally {
         clearAuth();
+        clearSelectedPropertyId();
         queryClient.clear();
 
         // Notify other tabs

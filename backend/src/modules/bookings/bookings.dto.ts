@@ -2,6 +2,7 @@ import type {
   BookingPaymentPolicy,
   BookingPaymentStatus,
   BookingRefundRequestStatus,
+  BookingRoomAllocationSource,
   BookingType,
   BookingStatus,
   BookingTargetType,
@@ -109,6 +110,7 @@ export interface BookingStayExtensionPreviewDTO
   bookingVersion: number;
   newCheckOut: string;
   discountAmount: string;
+  existingBalance: string;
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
@@ -257,6 +259,7 @@ export interface DashboardBookingDTO {
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  paymentExpiresAt: Date | null;
   noShowEligible: boolean;
   isCheckInDatePassed: boolean;
   internalNotes: string | null;
@@ -331,6 +334,20 @@ export interface DashboardBookingDTO {
     }>;
     totalAmount: string;
     finalAmount: string;
+  }>;
+  roomAllocationHistory: Array<{
+    id: string;
+    bookingItemId: string | null;
+    roomId: string;
+    unitId: string;
+    unitNumber: string;
+    roomNumber: string;
+    source: BookingRoomAllocationSource;
+    effectiveFrom: Date;
+    effectiveTo: Date | null;
+    actorUserId: string | null;
+    actorName: string | null;
+    createdAt: Date;
   }>;
   statusHistory: Array<{
     id: string;

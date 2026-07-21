@@ -23,27 +23,16 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import * as repo from "./bookings.repository.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import { buildLateCheckoutPolicyPreview } from "./bookings.stay-policy.js";
-
-const getJsonString = (value: Prisma.JsonValue, key: string) => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value[key];
-  return typeof item === "string" ? item : null;
-};
-
-const getJsonNumber = (value: Prisma.JsonValue, key: string) => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value[key];
-  return typeof item === "number" ? item : null;
-};
+import { findMatchingLateCheckoutExtensionCharge } from "./bookings.helper.js";
 
 export const ensureLateCheckoutExtensionCharge = async (
   tx: Prisma.TransactionClient,
@@ -58,26 +47,19 @@ export const ensureLateCheckoutExtensionCharge = async (
     return null;
   }
 
-  const existing = input.booking.folioCharges.find((charge) => {
-    if (
-      charge.status !== FolioChargeStatus.ACTIVE ||
-      charge.type !== "EXTENSION"
-    ) {
-      return false;
-    }
+  const existing = findMatchingLateCheckoutExtensionCharge(
+    input.booking.folioCharges,
+    input.preview,
+  );
 
-    return (
-      getJsonString(charge.metadata, "source") === "LATE_CHECKOUT_EXTENSION" &&
-      getJsonString(charge.metadata, "originalCheckOutDate") ===
-        input.preview?.originalCheckOutDate &&
-      getJsonString(charge.metadata, "actualCheckOutDate") ===
-        input.preview?.actualCheckOutDate &&
-      getJsonNumber(charge.metadata, "extraNights") === input.preview?.extraNights
-    );
-  });
-
-  if (existing) {
+  if (existing?.status === FolioChargeStatus.ACTIVE) {
     return existing;
+  }
+
+  // Voiding an automatically generated late-checkout charge is the audited
+  // waiver for that exact stay period. Do not recreate it on the next attempt.
+  if (existing?.status === FolioChargeStatus.VOID) {
+    return null;
   }
 
   return tx.bookingFolioCharge.create({
@@ -132,15 +114,19 @@ export const postLateCheckoutExtensionCharge = async (
         extensionPreview: null,
       };
     }
-    const policy = await tx.propertyBookingPolicy.upsert({
-      where: { propertyId: booking.propertyId },
-      create: {
-        propertyId: booking.propertyId,
-        ...defaultBookingPolicyCreateData,
-      },
-      update: {},
-    });
-    const policySnapshot = buildStayPolicySnapshot(policy);
+    const bookedPolicy = parsePolicySnapshot(booking.policySnapshot);
+    const policySnapshot = bookedPolicy
+      ? buildStayPolicySnapshotFromBooking(bookedPolicy)
+      : buildStayPolicySnapshot(
+          await tx.propertyBookingPolicy.upsert({
+            where: { propertyId: booking.propertyId },
+            create: {
+              propertyId: booking.propertyId,
+              ...defaultBookingPolicyCreateData,
+            },
+            update: {},
+          }),
+        );
     const extensionPreview = await buildLateCheckoutPolicyPreview(
       tx,
       booking,
@@ -221,6 +207,12 @@ export const createRoomMoveAdjustmentCharge = async (
       charge.id,
       tx,
     );
+  } else if (input.roomMove.pricingAction === "APPLY_CREDIT") {
+    await billingService.createCreditNoteForFolioCredit(
+      input.booking.id,
+      charge.id,
+      tx,
+    );
   }
 
   return charge;
@@ -260,6 +252,11 @@ export const createBookingFolioChargeInTransaction = async (
       ...(input.charge.note !== undefined && { note: input.charge.note }),
     },
   });
+  await billingService.createDebitNoteForFolioCharge(
+    booking.id,
+    charge.id,
+    tx,
+  );
   await updateVersionedBooking(
     tx,
     input.bookingId,
@@ -318,6 +315,12 @@ export const voidBookingFolioChargeInTransaction = async (
       voidedByUserId: input.actorUserId,
     },
   });
+  const reversalNote = await billingService.createReversalNoteForVoidedFolioCharge(
+    booking.id,
+    charge.id,
+    input.voidCharge.reason,
+    tx,
+  );
   await updateVersionedBooking(
     tx,
     input.bookingId,
@@ -330,6 +333,10 @@ export const voidBookingFolioChargeInTransaction = async (
     actorUserId: input.actorUserId,
     eventType: BookingOperationEventType.FOLIO_CHARGE_VOID,
     note: input.voidCharge.reason,
-    metadata: { chargeId: input.chargeId, amount: charge.amount.toString() },
+    metadata: {
+      chargeId: input.chargeId,
+      amount: charge.amount.toString(),
+      reversalDocumentId: reversalNote?.id ?? null,
+    },
   });
 };

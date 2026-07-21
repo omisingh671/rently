@@ -1,13 +1,20 @@
 import { createHash } from "node:crypto";
-import { Prisma } from "@/generated/prisma/client.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import { FolioChargeStatus, Prisma } from "@/generated/prisma/client.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import type {
   BookingCheckInPolicyPreviewDTO,
   BookingCheckOutPolicyPreviewDTO,
 } from "./bookings.dto.js";
 import { buildLateCheckoutExtensionPreview } from "./bookings.assignment.js";
 import { getBookingRefundableAmount } from "./bookings.financials.js";
+import { findMatchingLateCheckoutExtensionCharge } from "./bookings.helper.js";
 import type { findTransactionBooking } from "./bookings.lifecycle.js";
 
 type TransactionBooking = Awaited<ReturnType<typeof findTransactionBooking>>;
@@ -102,15 +109,28 @@ const loadPolicy = async (tx: Prisma.TransactionClient, propertyId: string) =>
     update: {},
   });
 
+const getStayPolicySnapshot = async (
+  tx: Prisma.TransactionClient,
+  booking: TransactionBooking,
+  capturedAt: Date,
+) => {
+  const bookingPolicy = parsePolicySnapshot(booking.policySnapshot);
+  if (bookingPolicy) {
+    return buildStayPolicySnapshotFromBooking(bookingPolicy);
+  }
+
+  return buildStayPolicySnapshot(
+    await loadPolicy(tx, booking.propertyId),
+    capturedAt,
+  );
+};
+
 export const buildCheckInPolicyPreview = async (
   tx: Prisma.TransactionClient,
   booking: TransactionBooking,
   now = new Date(),
 ): Promise<BookingCheckInPolicyPreviewDTO> => {
-  const policySnapshot = buildStayPolicySnapshot(
-    await loadPolicy(tx, booking.propertyId),
-    now,
-  );
+  const policySnapshot = await getStayPolicySnapshot(tx, booking, now);
   const timeZone = booking.property.tenant.timezone;
   const current = localParts(now, timeZone);
   const arrival = localParts(booking.checkIn, timeZone);
@@ -142,10 +162,7 @@ export const buildCheckOutPolicyPreview = async (
   booking: TransactionBooking,
   now = new Date(),
 ): Promise<BookingCheckOutPolicyPreviewDTO> => {
-  const policySnapshot = buildStayPolicySnapshot(
-    await loadPolicy(tx, booking.propertyId),
-    now,
-  );
+  const policySnapshot = await getStayPolicySnapshot(tx, booking, now);
   const timeZone = booking.property.tenant.timezone;
   const current = localParts(now, timeZone);
   const arrival = localParts(booking.checkIn, timeZone);
@@ -164,12 +181,22 @@ export const buildCheckOutPolicyPreview = async (
     calculatedRefund,
     getBookingRefundableAmount(booking),
   ).toDecimalPlaces(2);
-  const lateCheckoutCharge = await buildLateCheckoutPolicyPreview(
+  const calculatedLateCheckoutCharge = await buildLateCheckoutPolicyPreview(
     tx,
     booking,
     policySnapshot,
     now,
   );
+  const matchingLateCheckoutCharge = calculatedLateCheckoutCharge
+    ? findMatchingLateCheckoutExtensionCharge(
+        booking.folioCharges,
+        calculatedLateCheckoutCharge,
+      )
+    : null;
+  const lateCheckoutCharge =
+    matchingLateCheckoutCharge?.status === FolioChargeStatus.VOID
+      ? null
+      : calculatedLateCheckoutCharge;
   const result = {
     bookingId: booking.id,
     bookingVersion: booking.version,

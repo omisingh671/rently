@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { bootstrapAuth } from "@/features/auth/bootstrap";
 import { useAuthStore } from "@/stores/authStore";
+import { useCurrentPropertyStore } from "@/stores/currentPropertyStore";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +33,9 @@ function FullScreenLoader({ message }: { message?: string }) {
 export default function AppProviders({ children }: PropsWithChildren) {
   const [bootstrapped, setBootstrapped] = useState(false);
   const clearAuth = useAuthStore((s) => s.clearAuth);
+  const clearSelectedPropertyId = useCurrentPropertyStore(
+    (s) => s.clearSelectedPropertyId,
+  );
 
   /**
    * Bootstrap auth (once)
@@ -61,6 +65,7 @@ export default function AppProviders({ children }: PropsWithChildren) {
     channel.onmessage = (event) => {
       if (event.data?.type === "LOGOUT") {
         clearAuth();
+        clearSelectedPropertyId();
         queryClient.clear();
       }
     };
@@ -68,7 +73,7 @@ export default function AppProviders({ children }: PropsWithChildren) {
     return () => {
       channel.close();
     };
-  }, [clearAuth]);
+  }, [clearAuth, clearSelectedPropertyId]);
 
   if (!bootstrapped) {
     return <FullScreenLoader />;

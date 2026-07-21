@@ -6,7 +6,7 @@ export type RiskAction =
   | "checkOut"
   | "cancel"
   | "noShow"
-  | "statusOverride"
+  | "lifecycleReversal"
   | "recordPayment"
   | "recordRefund"
   | "rejectRefundRequest";
@@ -19,15 +19,6 @@ export type PendingAction = {
   status?: BookingStatus;
   requiresNote?: boolean;
 };
-
-export const bookingStatuses: BookingStatus[] = [
-  "PENDING",
-  "CONFIRMED",
-  "CHECKED_IN",
-  "CHECKED_OUT",
-  "CANCELLED",
-  "NO_SHOW",
-];
 
 export const paymentMethods: PaymentMethod[] = [
   "CASH",
@@ -97,13 +88,13 @@ export const getActionDefaults = (action: RiskAction): PendingAction => {
     };
   }
 
-  if (action === "statusOverride") {
+  if (action === "lifecycleReversal") {
     return {
       type: action,
-      title: "Correct Booking Status",
+      title: "Reverse Last Lifecycle Action",
       message:
-        "Use this only to fix an operational mistake. The correction will be audited.",
-      confirmLabel: "Apply Correction",
+        "This reverses only the current check-in, check-out, or no-show state. Financial and housekeeping conflicts will block the reversal.",
+      confirmLabel: "Confirm Reversal",
       requiresNote: true,
     };
   }

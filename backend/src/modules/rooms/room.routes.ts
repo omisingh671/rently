@@ -11,14 +11,13 @@ const router = Router();
 router.use(
   authenticate,
   requirePasswordChangeComplete,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
 );
 
 // Rooms
-router.get("/properties/:propertyId/rooms", controller.listRooms);
-router.post("/properties/:propertyId/rooms", controller.createRoom);
-router.get("/rooms/:id", controller.getRoomById);
-router.patch("/rooms/:id", controller.updateRoom);
-router.delete("/rooms/:id", controller.deleteRoom);
+router.get("/properties/:propertyId/rooms", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK]), controller.listRooms);
+router.post("/properties/:propertyId/rooms", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.createRoom);
+router.get("/rooms/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.FRONT_DESK]), controller.getRoomById);
+router.patch("/rooms/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.updateRoom);
+router.delete("/rooms/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.deleteRoom);
 
 export default router;

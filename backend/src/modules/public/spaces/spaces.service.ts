@@ -89,6 +89,7 @@ export const mapPolicy = (policy: BookingPolicyShape): PublicBookingPolicyDTO =>
   tokenRefundable: policy.tokenRefundable,
   checkInTime: policy.checkInTime,
   checkOutTime: policy.checkOutTime,
+  pendingPaymentExpiryMinutes: policy.pendingPaymentExpiryMinutes,
   cancellationRules: asRuleObject(policy.cancellationRules),
   refundRules: asRuleObject(policy.refundRules),
   earlyCheckoutRules: asRuleObject(policy.earlyCheckoutRules),

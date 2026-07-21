@@ -4,10 +4,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import Button from "@/components/ui/Button";
 import { InputField } from "@/components/inputs/InputField/InputField";
+import { SelectField } from "@/components/inputs/SelectField/SelectField";
 import { ErrorSummary } from "@/components/inputs";
 
 import {
   createUserFormSchema,
+  createTeamUserFormSchema,
   editUserFormSchema,
   type UserFormValues,
 } from "./user.schema";
@@ -18,6 +20,10 @@ type Props = {
   submitLabel: string;
   isSubmitting?: boolean;
   initialValues?: Partial<UserFormValues>;
+  roleOptions?: ReadonlyArray<{
+    value: "MANAGER" | "FRONT_DESK" | "ACCOUNTANT";
+    label: string;
+  }>;
   onCancel?: () => void;
   onSubmit: (
     values: UserFormValues,
@@ -31,6 +37,7 @@ export default function UserForm({
   submitLabel,
   isSubmitting = false,
   initialValues,
+  roleOptions,
   onCancel,
   onSubmit,
 }: Props) {
@@ -41,13 +48,26 @@ export default function UserForm({
       password: "",
       countryCode: "+91",
       contactNumber: initialValues?.contactNumber ?? "",
+      ...(roleOptions?.[0] && {
+        role: initialValues?.role ?? roleOptions[0].value,
+      }),
     }),
-    [initialValues?.contactNumber, initialValues?.email, initialValues?.fullName],
+    [
+      initialValues?.contactNumber,
+      initialValues?.email,
+      initialValues?.fullName,
+      initialValues?.role,
+      roleOptions,
+    ],
   );
 
   const methods = useForm<UserFormValues>({
     resolver: zodResolver(
-      mode === "create" ? createUserFormSchema : editUserFormSchema,
+      mode === "create"
+        ? roleOptions
+          ? createTeamUserFormSchema
+          : createUserFormSchema
+        : editUserFormSchema,
     ),
     defaultValues,
   });
@@ -85,7 +105,9 @@ export default function UserForm({
             <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           )}
           <p className="mt-1 text-sm text-slate-500">
-            Create a new dashboard account.
+            {mode === "create"
+              ? "Create a new dashboard account."
+              : "Update dashboard account details."}
           </p>
         </div>
 
@@ -100,6 +122,16 @@ export default function UserForm({
         />
         {mode === "create" && (
           <InputField name="password" label="Password" type="password" />
+        )}
+
+        {mode === "create" && roleOptions && (
+          <SelectField name="role" label="Role">
+            {roleOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </SelectField>
         )}
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -1,4 +1,8 @@
-export type PropertyAssignmentRole = "ADMIN" | "MANAGER";
+export type PropertyAssignmentRole =
+  | "ADMIN"
+  | "MANAGER"
+  | "FRONT_DESK"
+  | "ACCOUNTANT";
 
 export type AdminPropertyAssignment = {
   id: string;

@@ -1,5 +1,6 @@
 import {
   BookingOperationEventType,
+  BookingRoomAllocationSource,
   BookingStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
@@ -19,7 +20,10 @@ import {
   updateVersionedBooking,
 } from "./bookings.lifecycle.js";
 import { createRoomMoveAdjustmentCharge } from "./bookings.folio.js";
+import { markRoomsDirtyAfterCheckout } from "./bookings.housekeeping.js";
 import { mapTransactionBooking } from "./bookings.presenter.js";
+import { getVacatedRoomIds } from "./bookings.helper.js";
+import { syncCurrentBookingRoomAllocations } from "./bookings.allocations.js";
 
 export const moveBookingRoomsInTransaction = async (
   tx: Prisma.TransactionClient,
@@ -71,12 +75,33 @@ export const moveBookingRoomsInTransaction = async (
     input.roomMove.roomIds,
     booking.status === BookingStatus.CHECKED_IN,
   );
+  const pricingUpdatesByItemId = new Map(
+    pricingPreview.itemPricingUpdates.map((update) => [update.itemId, update]),
+  );
   for (const itemAssignment of input.assignment.assignments) {
+    const pricingUpdate = pricingUpdatesByItemId.get(itemAssignment.itemId);
+    if (!pricingUpdate) {
+      throw new HttpError(
+        409,
+        "PRICING_CHANGED",
+        "Room move pricing changed. Review the latest price before confirming.",
+      );
+    }
     await tx.bookingItem.update({
       where: { id: itemAssignment.itemId },
-      data: itemAssignment.data,
+      data: {
+        ...itemAssignment.data,
+        pricingId: pricingUpdate.pricingId,
+        pricePerNight: pricingUpdate.pricePerNight,
+      },
     });
   }
+  await syncCurrentBookingRoomAllocations(tx, {
+    bookingId: booking.id,
+    actorUserId: input.actor.id,
+    effectiveFrom: new Date(`${pricingPreview.effectiveDate}T00:00:00.000Z`),
+    source: BookingRoomAllocationSource.ROOM_MOVE,
+  });
   await updateVersionedBooking(
     tx,
     input.bookingId,
@@ -92,6 +117,19 @@ export const moveBookingRoomsInTransaction = async (
     pricingPreview,
     oldRoomIds: input.oldRoomIds,
   });
+  const vacatedRoomIds = getVacatedRoomIds(
+    input.oldRoomIds,
+    input.roomMove.roomIds,
+  );
+  if (booking.status === BookingStatus.CHECKED_IN && vacatedRoomIds.length > 0) {
+    await markRoomsDirtyAfterCheckout(tx, {
+      propertyId: booking.propertyId,
+      bookingId: booking.id,
+      actorUserId: input.actor.id,
+      roomIds: vacatedRoomIds,
+      note: `Room vacated during move: ${input.roomMove.note}`,
+    });
+  }
   await createOperationEvent(tx, {
     bookingId: input.bookingId,
     propertyId: booking.propertyId,

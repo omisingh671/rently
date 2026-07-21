@@ -5,11 +5,13 @@ export type BookingPolicyRules = Record<string, unknown>;
 export type BookingPolicy = {
   id: string;
   propertyId: string;
+  version: number;
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
   earlyCheckInRules: BookingPolicyRules;
@@ -23,11 +25,13 @@ export type BookingPolicy = {
 };
 
 export type BookingPolicyPayload = {
+  expectedVersion: number;
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: number;
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: number;
   cancellationRules: BookingPolicyRules;
   refundRules: BookingPolicyRules;
   earlyCheckInRules: BookingPolicyRules;
@@ -38,34 +42,34 @@ export type BookingPolicyPayload = {
   guestPolicyText: string;
 };
 
-export type BookingStatusRule = "PENDING" | "CONFIRMED";
-
 export type BookingPolicyForm = {
   advancePaymentType: AdvancePaymentType;
   advancePaymentValue: string;
   tokenRefundable: boolean;
   checkInTime: string;
   checkOutTime: string;
+  pendingPaymentExpiryMinutes: string;
   guestCancellationAllowed: boolean;
-  allowedStatuses: BookingStatusRule[];
-  beforeCheckInOnly: boolean;
-  cancellationRulesExtra: BookingPolicyRules;
-  refundTokenRefundable: boolean;
-  refundManualReviewRequired: boolean;
-  refundRulesExtra: BookingPolicyRules;
   earlyCheckInEnabled: boolean;
   earlyCheckInFeeType: "NONE" | "FIXED_AMOUNT";
   earlyCheckInFeeValue: string;
   refundUnusedNights: boolean;
   earlyCheckoutRefundPercentage: string;
   earlyCheckoutManualReviewRequired: boolean;
-  earlyCheckoutRulesExtra: BookingPolicyRules;
   lateCheckoutFeeType: "NIGHTLY_RATE_MULTIPLIER" | "FIXED_AMOUNT";
   lateCheckoutFeeValue: string;
   lateCheckoutGraceMinutes: string;
   downgradeFinancialTreatment: "NO_CREDIT" | "CREDIT_DIFFERENCE" | "WAIVER";
-  markAfterCheckInCutoff: boolean;
-  noShowTokenRefundable: boolean;
-  noShowRulesExtra: BookingPolicyRules;
+  noShowAfterTime: string;
   guestPolicyText: string;
+};
+
+export type BookingPolicyAudit = {
+  id: string;
+  propertyId: string;
+  version: number;
+  actor: { id: string; fullName: string; email: string };
+  previousData: BookingPolicyRules;
+  nextData: BookingPolicyRules;
+  createdAt: string;
 };

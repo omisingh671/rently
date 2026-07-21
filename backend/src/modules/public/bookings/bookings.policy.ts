@@ -28,8 +28,9 @@ export const mapSnapshotPolicy = (
   advancePaymentType: snapshot.advancePaymentType as AdvancePaymentType,
   advancePaymentValue: Number(snapshot.advancePaymentValue),
   tokenRefundable: Boolean(snapshot.tokenRefundable),
-  checkInTime: "12:00",
-  checkOutTime: "11:00",
+  checkInTime: String(snapshot.checkInTime),
+  checkOutTime: String(snapshot.checkOutTime),
+  pendingPaymentExpiryMinutes: Number(snapshot.pendingPaymentExpiryMinutes),
   cancellationRules: snapshot.cancellationRules as Record<string, unknown>,
   refundRules: snapshot.refundRules as Record<string, unknown>,
   earlyCheckoutRules: snapshot.earlyCheckoutRules as Record<string, unknown>,
@@ -43,18 +44,10 @@ export const getBookingPolicyDto = async (
 ): Promise<PublicBookingPolicyDTO> => {
   const snapshot = parsePolicySnapshot(booking.policySnapshot);
   if (snapshot !== null) {
-    const currentPolicy = await spacesService.ensureBookingPolicy(
+    return mapSnapshotPolicy(
       booking.propertyId,
-      tx,
+      snapshot as unknown as Record<string, unknown>,
     );
-    return {
-      ...mapSnapshotPolicy(
-        booking.propertyId,
-        snapshot as unknown as Record<string, unknown>,
-      ),
-      checkInTime: currentPolicy.checkInTime,
-      checkOutTime: currentPolicy.checkOutTime,
-    };
   }
 
   return spacesService.mapPolicy(

@@ -11,6 +11,8 @@ enum UserRole {
   SUPER_ADMIN
   ADMIN
   MANAGER
+  FRONT_DESK
+  ACCOUNTANT
   GUEST
 }
 
@@ -22,6 +24,8 @@ enum SessionAudience {
 enum PropertyAssignmentRole {
   ADMIN
   MANAGER
+  FRONT_DESK
+  ACCOUNTANT
 }
 
 enum PropertyStatus {
@@ -113,6 +117,11 @@ enum BookingTargetType {
 enum BookingType {
   SINGLE_TARGET
   MULTI_ROOM
+}
+
+enum BookingSource {
+  PUBLIC
+  WALK_IN
 }
 
 enum BookingStatus {
@@ -271,6 +280,13 @@ enum BookingOperationEventType {
   STAY_EXTENSION
 }
 
+enum BookingRoomAllocationSource {
+  BOOKING_CREATED
+  ROOM_ASSIGNED
+  CHECK_IN_ASSIGNED
+  ROOM_MOVE
+}
+
 enum MaintenanceStatus {
   SCHEDULED
   IN_PROGRESS
@@ -338,6 +354,10 @@ model User {
   createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
   voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
   notificationSettingAudits  NotificationSettingAudit[]
+  bookingPolicyAudits       BookingPolicyAudit[]
+  billingSettingAudits      BillingSettingAudit[]
+  bookingRoomAllocations    BookingRoomAllocation[] @relation("BookingRoomAllocationActor")
+  propertyDailyCloses       PropertyDailyClose[]     @relation("PropertyDailyCloseActor")
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -558,11 +578,40 @@ model Property {
   notificationOverrides PropertyNotificationOverride[]
   notificationSettingAudits NotificationSettingAudit[]
   notificationDeliveryJobs NotificationDeliveryJob[]
+  bookingPolicyAudits BookingPolicyAudit[]
+  billingSettingAudits BillingSettingAudit[]
+  bookingRoomAllocations BookingRoomAllocation[]
+  dailyCloses            PropertyDailyClose[]
 
   @@unique([tenantId, name, city, state])
   @@unique([tenantId, slug])
   @@index([tenantId])
   @@map("properties")
+}
+
+model PropertyDailyClose {
+  id               String   @id @default(uuid())
+  propertyId       String
+  businessDate     DateTime @db.Date
+  closedByUserId   String
+  paymentCount     Int
+  paymentTotal     Decimal  @db.Decimal(12, 2)
+  refundCount      Int
+  refundTotal      Decimal  @db.Decimal(12, 2)
+  netPaymentTotal  Decimal  @db.Decimal(12, 2)
+  bookingsCreated  Int
+  checkIns          Int
+  checkOuts         Int
+  noShows           Int
+  note              String? @db.VarChar(500)
+  closedAt          DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  closedBy User     @relation("PropertyDailyCloseActor", fields: [closedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([propertyId, businessDate])
+  @@index([closedByUserId, closedAt])
+  @@map("property_daily_closes")
 }
 
 model PropertyBookingPolicy {
@@ -573,6 +622,7 @@ model PropertyBookingPolicy {
   tokenRefundable     Boolean            @default(false)
   checkInTime         String             @default("12:00")
   checkOutTime        String             @default("11:00")
+  pendingPaymentExpiryMinutes Int        @default(15)
   cancellationRules   Json
   refundRules         Json
   earlyCheckInRules   Json?
@@ -581,12 +631,33 @@ model PropertyBookingPolicy {
   downgradeRules      Json?
   noShowRules         Json
   guestPolicyText     String             @db.Text
+  version             Int                @default(1)
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  audits   BookingPolicyAudit[]
 
   @@map("property_booking_policies")
+}
+
+model BookingPolicyAudit {
+  id          String   @id @default(uuid())
+  policyId    String
+  propertyId  String
+  actorUserId String
+  version     Int
+  previousData Json
+  nextData     Json
+  createdAt   DateTime @default(now())
+
+  policy   PropertyBookingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  property Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor    User                  @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("booking_policy_audits")
 }
 
 model Unit {
@@ -633,6 +704,7 @@ model Room {
   pricing           RoomPricing[]
   maintenanceBlocks MaintenanceBlock[]
   housekeepingEvents RoomHousekeepingEvent[]
+  bookingRoomAllocations BookingRoomAllocation[]
   galleries         Gallery[]
 
   @@unique([unitId, number])
@@ -734,6 +806,7 @@ model Booking {
   userId        String
   productId     String?
   bookingType   BookingType       @default(SINGLE_TARGET)
+  source        BookingSource     @default(PUBLIC)
   targetType    BookingTargetType
   unitId        String?
   roomId        String?
@@ -765,6 +838,7 @@ model Booking {
   paymentStatus      BookingPaymentStatus @default(PENDING)
   paymentPolicy      BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
   upfrontAmount      Decimal              @default(10)
+  paymentExpiresAt   DateTime?
   policySnapshot     Json?
   couponId           String?
   discountAmount     Decimal              @default(0)
@@ -787,6 +861,7 @@ model Booking {
   housekeepingEvents RoomHousekeepingEvent[]
   inventoryLocks InventoryLock[]
   billingDocuments BillingDocument[]
+  roomAllocations BookingRoomAllocation[]
 
   @@index([propertyId])
   @@index([userId])
@@ -794,6 +869,7 @@ model Booking {
   @@index([roomId, checkIn, checkOut])
   @@index([unitId, checkIn, checkOut])
   @@index([status, checkIn, checkOut])
+  @@index([status, paymentExpiresAt])
   @@index([propertyId, checkedInAt])
   @@index([propertyId, checkedOutAt])
   @@map("bookings")
@@ -850,11 +926,37 @@ model BookingItem {
   createdAt DateTime @default(now())
 
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomAllocations BookingRoomAllocation[]
 
   @@index([bookingId])
   @@index([roomId])
   @@index([unitId])
   @@map("booking_items")
+}
+
+model BookingRoomAllocation {
+  id            String                      @id @default(uuid())
+  bookingId     String
+  bookingItemId String?
+  propertyId    String
+  roomId        String
+  actorUserId   String?
+  source        BookingRoomAllocationSource
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  createdAt     DateTime                    @default(now())
+
+  booking     Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingItem BookingItem? @relation(fields: [bookingItemId], references: [id], onDelete: SetNull)
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room        Room        @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  actor       User?       @relation("BookingRoomAllocationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, effectiveFrom], map: "bra_booking_from_idx")
+  @@index([bookingItemId, effectiveFrom], map: "bra_item_from_idx")
+  @@index([propertyId, roomId, effectiveFrom, effectiveTo], map: "bra_property_room_interval_idx")
+  @@index([actorUserId, createdAt], map: "bra_actor_created_idx")
+  @@map("booking_room_allocations")
 }
 
 model BookingStatusHistory {
@@ -915,7 +1017,7 @@ model BookingFolioCharge {
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
-  billingDocument BillingDocument?
+  billingDocuments BillingDocument[]
 
   @@index([bookingId, status, createdAt])
   @@index([propertyId, createdAt])
@@ -1048,8 +1150,28 @@ model BillingSetting {
   updatedAt            DateTime @updatedAt
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  audits   BillingSettingAudit[]
 
   @@map("billing_settings")
+}
+
+model BillingSettingAudit {
+  id               String   @id @default(uuid())
+  billingSettingId String
+  propertyId       String
+  actorUserId      String
+  reason           String   @db.VarChar(500)
+  previousData     Json
+  nextData         Json
+  createdAt        DateTime @default(now())
+
+  billingSetting BillingSetting @relation(fields: [billingSettingId], references: [id], onDelete: Cascade)
+  property       Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  actor          User           @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("billing_setting_audits")
 }
 
 model BillingDocument {
@@ -1060,7 +1182,7 @@ model BillingDocument {
   documentNumber   String
   bookingId        String
   paymentId        String?
-  folioChargeId    String?               @unique
+  folioChargeId    String?
   propertyId       String
   tenantId         String?
   subtotal         Decimal               @default(0)

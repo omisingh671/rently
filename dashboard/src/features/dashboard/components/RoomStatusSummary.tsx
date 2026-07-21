@@ -24,9 +24,13 @@ const statusOrder: RoomBoardStatus[] = [
 
 type RoomStatusSummaryProps = {
   board: RoomBoardResponse;
+  canOpenRoomBoard?: boolean;
 };
 
-export function RoomStatusSummary({ board }: RoomStatusSummaryProps) {
+export function RoomStatusSummary({
+  board,
+  canOpenRoomBoard = true,
+}: RoomStatusSummaryProps) {
   const totalRooms = getTotalRooms(board);
 
   return (
@@ -34,14 +38,16 @@ export function RoomStatusSummary({ board }: RoomStatusSummaryProps) {
       title="Today's Room Status"
       subtitle={`${totalRooms} total rooms across today's board`}
       action={
-        <Button
-          size="sm"
-          variant="secondary"
-          to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
-          iconRight={<FiArrowRight />}
-        >
-          View Room Board
-        </Button>
+        canOpenRoomBoard ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}
+            iconRight={<FiArrowRight />}
+          >
+            View Room Board
+          </Button>
+        ) : undefined
       }
     >
       <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 2xl:grid-cols-5">

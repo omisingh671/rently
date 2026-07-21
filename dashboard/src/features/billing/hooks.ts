@@ -6,6 +6,7 @@ import {
   generateReceiptApi,
   getBillingSettingApi,
   listBillingDocumentsApi,
+  listBillingSettingAuditsApi,
   retryBillingDocumentPdfApi,
   updateBillingSettingApi,
   voidBillingDocumentApi,
@@ -108,6 +109,17 @@ export const useBillingSetting = (propertyId: string | undefined) => {
     enabled: !!propertyId,
   });
 
+  const auditsQuery = useQuery({
+    queryKey: propertyId
+      ? ADMIN_KEYS.billing.settingAudits(propertyId)
+      : ADMIN_KEYS.billing.all(),
+    queryFn: () => {
+      if (!propertyId) throw new Error("Property id required");
+      return listBillingSettingAuditsApi(propertyId);
+    },
+    enabled: !!propertyId,
+  });
+
   const update = useMutation({
     mutationFn: (payload: UpdateBillingSettingPayload) => {
       if (!propertyId) throw new Error("Property id required");
@@ -117,6 +129,9 @@ export const useBillingSetting = (propertyId: string | undefined) => {
       queryClient.invalidateQueries({
         queryKey: ADMIN_KEYS.billing.setting(setting.propertyId),
       });
+      queryClient.invalidateQueries({
+        queryKey: ADMIN_KEYS.billing.settingAudits(setting.propertyId),
+      });
     },
   });
 
@@ -124,5 +139,8 @@ export const useBillingSetting = (propertyId: string | undefined) => {
     ...query,
     updateSetting: update.mutateAsync,
     isUpdating: update.isPending,
+    audits: auditsQuery.data ?? [],
+    areAuditsLoading: auditsQuery.isPending,
+    auditsError: auditsQuery.error,
   };
 };

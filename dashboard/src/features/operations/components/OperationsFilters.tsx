@@ -1,11 +1,12 @@
 import Button from "@/components/ui/Button";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
-import type { AdminProperty } from "@/features/properties/types";
+import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
+import { useAuthStore } from "@/stores/authStore";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { FiChevronDown } from "react-icons/fi";
 
-const { FiClipboard, FiFilter, FiHome, FiPlus, FiSearch } = ICON_REGISTRY;
+const { FiClipboard, FiFilter, FiPlus, FiSearch } = ICON_REGISTRY;
 
 type OperationsFiltersProps = {
   module: "bookings" | "enquiries" | "quotes";
@@ -14,8 +15,8 @@ type OperationsFiltersProps = {
   source: string;
   statuses: readonly string[];
   enquirySources: ReadonlyArray<{ value: string; label: string }>;
-  properties: AdminProperty[];
   selectedPropertyId: string;
+  selectedPropertyName?: string;
   onSearchChange: (value: string) => void;
   onStatusChange: (value: string) => void;
   onSourceChange: (value: string) => void;
@@ -29,13 +30,17 @@ export function OperationsFilters({
   source,
   statuses,
   enquirySources,
-  properties,
   selectedPropertyId,
+  selectedPropertyName,
   onSearchChange,
   onStatusChange,
   onSourceChange,
   onPropertyChange,
 }: OperationsFiltersProps) {
+  const canAccessFrontDeskOperations = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "MANAGER", "FRONT_DESK"]),
+  );
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center">
       <div className="relative flex-1 lg:max-w-md">
@@ -51,22 +56,12 @@ export function OperationsFilters({
       <div className="hidden h-6 w-px bg-slate-200 lg:block" />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:items-center">
-        <div className="relative">
-          <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <select
-            value={selectedPropertyId}
-            onChange={(event) => onPropertyChange(event.target.value || null)}
-            className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-72"
-          >
-            <option value="">Select property</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
-          <FiChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        </div>
+        <PropertySearchSelect
+          className="lg:w-72"
+          selectedPropertyId={selectedPropertyId}
+          selectedPropertyName={selectedPropertyName}
+          onChange={(value) => onPropertyChange(value || null)}
+        />
 
         <div className="relative">
           <FiFilter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -105,7 +100,7 @@ export function OperationsFilters({
         )}
       </div>
 
-      {module === "bookings" && (
+      {module === "bookings" && canAccessFrontDeskOperations && (
         <div className="flex items-center gap-3 lg:ml-auto">
           <div className="mr-1 hidden h-6 w-px bg-slate-200 lg:block" />
           <Button

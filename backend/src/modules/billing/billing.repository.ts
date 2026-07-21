@@ -72,7 +72,24 @@ export type BillingPaymentRecord = Prisma.PaymentGetPayload<{
   include: typeof billingPaymentInclude;
 }>;
 export type BillingSettingRecord = Prisma.BillingSettingGetPayload<Record<string, never>>;
+export type BillingSettingAuditRecord = Prisma.BillingSettingAuditGetPayload<{
+  include: {
+    actor: { select: { id: true; fullName: true; email: true } };
+  };
+}>;
 export type BillingActorRecord = Prisma.UserGetPayload<Record<string, never>>;
+
+export interface BillingSettingUpdateData {
+  legalName?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  billingAddress?: string | null;
+  invoicePrefix?: string;
+  receiptPrefix?: string;
+  creditNotePrefix?: string;
+  debitNotePrefix?: string;
+  footerNotes?: string | null;
+}
 
 export const findUserById = (userId: string) =>
   prisma.user.findUnique({
@@ -220,27 +237,78 @@ export const getOrCreateSetting = (
     create: { propertyId },
   });
 
-export const updateSetting = (
-  propertyId: string,
-  data: {
-    legalName?: string | null;
-    gstin?: string | null;
-    pan?: string | null;
-    billingAddress?: string | null;
-    invoicePrefix?: string;
-    receiptPrefix?: string;
-    creditNotePrefix?: string;
-    debitNotePrefix?: string;
-    footerNotes?: string | null;
-  },
+const toSettingAuditJson = (
+  setting: BillingSettingRecord,
+): Prisma.InputJsonValue => ({
+  legalName: setting.legalName,
+  gstin: setting.gstin,
+  pan: setting.pan,
+  billingAddress: setting.billingAddress,
+  invoicePrefix: setting.invoicePrefix,
+  receiptPrefix: setting.receiptPrefix,
+  creditNotePrefix: setting.creditNotePrefix,
+  debitNotePrefix: setting.debitNotePrefix,
+  footerNotes: setting.footerNotes,
+});
+
+const hasSettingChanges = (
+  current: BillingSettingRecord,
+  data: BillingSettingUpdateData,
 ) =>
-  prisma.billingSetting.upsert({
+  (data.legalName !== undefined && data.legalName !== current.legalName) ||
+  (data.gstin !== undefined && data.gstin !== current.gstin) ||
+  (data.pan !== undefined && data.pan !== current.pan) ||
+  (data.billingAddress !== undefined && data.billingAddress !== current.billingAddress) ||
+  (data.invoicePrefix !== undefined && data.invoicePrefix !== current.invoicePrefix) ||
+  (data.receiptPrefix !== undefined && data.receiptPrefix !== current.receiptPrefix) ||
+  (data.creditNotePrefix !== undefined && data.creditNotePrefix !== current.creditNotePrefix) ||
+  (data.debitNotePrefix !== undefined && data.debitNotePrefix !== current.debitNotePrefix) ||
+  (data.footerNotes !== undefined && data.footerNotes !== current.footerNotes);
+
+export const listSettingAudits = (
+  propertyId: string,
+): Promise<BillingSettingAuditRecord[]> =>
+  prisma.billingSettingAudit.findMany({
     where: { propertyId },
-    update: data,
-    create: {
-      property: { connect: { id: propertyId } },
-      ...data,
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      actor: { select: { id: true, fullName: true, email: true } },
     },
+  });
+
+export const updateSettingWithAudit = (
+  propertyId: string,
+  actorUserId: string,
+  reason: string,
+  data: BillingSettingUpdateData,
+) =>
+  prisma.$transaction(async (tx) => {
+    const previous = await tx.billingSetting.upsert({
+      where: { propertyId },
+      update: {},
+      create: { propertyId },
+    });
+
+    if (!hasSettingChanges(previous, data)) return null;
+
+    const next = await tx.billingSetting.update({
+      where: { propertyId },
+      data,
+    });
+
+    await tx.billingSettingAudit.create({
+      data: {
+        billingSettingId: next.id,
+        propertyId,
+        actorUserId,
+        reason,
+        previousData: toSettingAuditJson(previous),
+        nextData: toSettingAuditJson(next),
+      },
+    });
+
+    return next;
   });
 
 export const nextDocumentNumber = async (
@@ -427,9 +495,14 @@ export const runBillingTransaction = <T>(
     timeout: 10_000,
   });
 
-export const propertyScopeRoleForUser = (role: UserRole) =>
-  role === UserRole.ADMIN
-    ? PropertyAssignmentRole.ADMIN
-    : role === UserRole.MANAGER
-      ? PropertyAssignmentRole.MANAGER
-      : null;
+export const propertyScopeRoleForUser = (role: UserRole) => {
+  const assignmentRoleByUserRole: Partial<
+    Record<UserRole, PropertyAssignmentRole>
+  > = {
+    [UserRole.ADMIN]: PropertyAssignmentRole.ADMIN,
+    [UserRole.MANAGER]: PropertyAssignmentRole.MANAGER,
+    [UserRole.FRONT_DESK]: PropertyAssignmentRole.FRONT_DESK,
+    [UserRole.ACCOUNTANT]: PropertyAssignmentRole.ACCOUNTANT,
+  };
+  return assignmentRoleByUserRole[role] ?? null;
+};

@@ -7,15 +7,25 @@ import { UserRole } from "@/generated/prisma/enums.js";
 
 const router = Router();
 
-router.use(
-  authenticate,
-  requirePasswordChangeComplete,
-  authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]),
-);
+router.use(authenticate, requirePasswordChangeComplete);
 
-router.get("/properties/:propertyId/pricing", controller.listRoomPricing);
-router.post("/properties/:propertyId/pricing", controller.createRoomPricing);
-router.patch("/pricing/:id", controller.updateRoomPricing);
-router.delete("/pricing/:id", controller.deleteRoomPricing);
+const authorizePricing = authorize([
+  UserRole.SUPER_ADMIN,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+]);
+
+router.get(
+  "/properties/:propertyId/pricing",
+  authorizePricing,
+  controller.listRoomPricing,
+);
+router.post(
+  "/properties/:propertyId/pricing",
+  authorizePricing,
+  controller.createRoomPricing,
+);
+router.patch("/pricing/:id", authorizePricing, controller.updateRoomPricing);
+router.delete("/pricing/:id", authorizePricing, controller.deleteRoomPricing);
 
 export default router;

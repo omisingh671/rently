@@ -18,6 +18,7 @@ import type {
   CreateUserInput,
   UpdateUserInput,
   CreateDashboardUserInput,
+  CreateDashboardTeamUserInput,
   UpdateDashboardUserInput,
   UpdateDashboardUserStatusInput,
   UpdateDashboardUserRoleInput,
@@ -30,6 +31,7 @@ interface ListUsersParams {
   limit: number;
   search?: string;
   role?: UserRole;
+  roles?: UserRole[];
   isActive?: boolean;
   mustChangePassword?: boolean;
   createdByUserId?: string;
@@ -77,17 +79,19 @@ const ensureRoleManageable = (target: UserEntity) => {
   }
 };
 
-const ensureManagerBelongsToAdmin = (
-  actor: UserEntity,
-  manager: UserEntity,
-) => {
-  if (
-    actor.role === UserRole.ADMIN &&
-    manager.createdByUserId !== actor.id
-  ) {
-    throw new HttpError(404, "MANAGER_NOT_FOUND", "Manager not found");
-  }
-};
+type TeamUserRole = Extract<
+  UserRole,
+  "MANAGER" | "FRONT_DESK" | "ACCOUNTANT"
+>;
+
+const TEAM_USER_ROLES: TeamUserRole[] = [
+  UserRole.MANAGER,
+  UserRole.FRONT_DESK,
+  UserRole.ACCOUNTANT,
+];
+
+const isTeamUserRole = (role: UserRole): role is TeamUserRole =>
+  TEAM_USER_ROLES.includes(role as TeamUserRole);
 
 /**
  * Public/General users endpoints
@@ -97,6 +101,7 @@ export const listUsers = async ({
   limit,
   search,
   role,
+  roles,
   isActive,
   mustChangePassword,
   createdByUserId,
@@ -108,7 +113,9 @@ export const listUsers = async ({
 
   const { items, total } = await repo.listUsersPaginated(safePage, safeLimit, {
     ...(search !== undefined && { search }),
-    ...(role !== undefined && { roles: [role] }),
+    ...((roles !== undefined || role !== undefined) && {
+      roles: roles ?? [role as UserRole],
+    }),
     ...(isActive !== undefined && { isActive }),
     ...(mustChangePassword !== undefined && { mustChangePassword }),
     ...(createdByUserId !== undefined && { createdByUserId }),
@@ -291,38 +298,43 @@ export const updateAdmin = async (
 };
 
 /**
- * Dashboard Manager Services
+ * Dashboard Team User Services
  */
-export const listManagers = async (
+export const listTeamUsers = async (
   userId: string,
-  filters: Omit<ListUsersParams, "page" | "limit"> & { page: number; limit: number },
+  filters: Omit<ListUsersParams, "page" | "limit" | "roles"> & {
+    page: number;
+    limit: number;
+    role?: TeamUserRole;
+  },
 ) => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
+  const { role, ...listFilters } = filters;
 
   return listUsers({
-    ...filters,
-    role: UserRole.MANAGER,
+    ...listFilters,
+    roles: role ? [role] : TEAM_USER_ROLES,
     ...(actor.role === UserRole.ADMIN && {
       createdByUserId: actor.id,
     }),
   });
 };
 
-export const createManager = async (
+export const createTeamUser = async (
   userId: string,
-  input: CreateDashboardUserInput,
+  input: CreateDashboardTeamUserInput,
 ): Promise<DashboardUserDTO> => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.ADMIN]);
   await ensureUniqueUserEmail(input.email);
 
   const passwordHash = await hashPassword(input.password);
-  const manager = await repo.createUser({
+  const teamUser = await repo.createUser({
     fullName: input.fullName,
     email: input.email,
     passwordHash,
-    role: UserRole.MANAGER,
+    role: input.role as TeamUserRole,
     createdBy: {
       connect: {
         id: actor.id,
@@ -335,25 +347,30 @@ export const createManager = async (
       }),
   });
 
-  return mapDashboardUser(manager as UserEntity);
+  return mapDashboardUser(teamUser as UserEntity);
 };
 
-export const updateManager = async (
+export const updateTeamUser = async (
   userId: string,
-  managerId: string,
+  teamUserId: string,
   input: UpdateDashboardUserInput,
 ): Promise<DashboardUserDTO> => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN, UserRole.ADMIN]);
 
-  const manager = await repo.findUserById(managerId);
-  if (!manager || manager.role !== UserRole.MANAGER) {
-    throw new HttpError(404, "MANAGER_NOT_FOUND", "Manager not found");
+  const teamUser = await repo.findUserById(teamUserId);
+  if (!teamUser || !isTeamUserRole(teamUser.role)) {
+    throw new HttpError(404, "TEAM_USER_NOT_FOUND", "Team user not found");
   }
 
-  ensureManagerBelongsToAdmin(actor, manager as UserEntity);
+  if (
+    actor.role === UserRole.ADMIN &&
+    teamUser.createdByUserId !== actor.id
+  ) {
+    throw new HttpError(404, "TEAM_USER_NOT_FOUND", "Team user not found");
+  }
 
-  const updatedManager = await repo.updateUserById(managerId, {
+  const updatedTeamUser = await repo.updateUserById(teamUserId, {
     ...(input.fullName !== undefined && { fullName: input.fullName }),
     ...(input.isActive !== undefined && { isActive: input.isActive }),
     ...(input.countryCode !== undefined &&
@@ -362,8 +379,7 @@ export const updateManager = async (
         contactNumber: input.contactNumber,
       }),
   });
-
-  return mapDashboardUser(updatedManager as UserEntity);
+  return mapDashboardUser(updatedTeamUser as UserEntity);
 };
 
 /**

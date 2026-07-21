@@ -23,11 +23,11 @@ router.post("/admins", authorize([UserRole.SUPER_ADMIN]), controller.createAdmin
 router.patch("/admins/:id", authorize([UserRole.SUPER_ADMIN]), controller.updateAdmin);
 
 /**
- * Dashboard Manager management routes (SUPER_ADMIN and ADMIN)
+ * Dashboard team-user management routes (SUPER_ADMIN and ADMIN)
  */
-router.get("/managers", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.listManagers);
-router.post("/managers", authorize([UserRole.ADMIN]), controller.createManager);
-router.patch("/managers/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.updateManager);
+router.get("/team", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.listTeamUsers);
+router.post("/team", authorize([UserRole.ADMIN]), controller.createTeamUser);
+router.patch("/team/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), controller.updateTeamUser);
 
 /**
  * Dashboard Operator / User management routes (SUPER_ADMIN only)

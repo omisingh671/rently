@@ -29,7 +29,7 @@ type BookingStatusPanelProps = {
   onExtendStay: () => void;
   onRecordPayment: () => void;
   onAssignRoom: () => void;
-  onStatusOverride: () => void;
+  onLifecycleReversal: () => void;
   onNoShow: () => void;
   onCancel: () => void;
 };
@@ -51,7 +51,7 @@ export function BookingStatusPanel({
   onExtendStay,
   onRecordPayment,
   onAssignRoom,
-  onStatusOverride,
+  onLifecycleReversal,
   onNoShow,
   onCancel,
 }: BookingStatusPanelProps) {
@@ -123,14 +123,21 @@ export function BookingStatusPanel({
                   : "Assign Room"}
           </ActionButton>
         )}
-        {canUseAdminCorrection && (
+        {canUseAdminCorrection &&
+          (booking.status === "CHECKED_IN" ||
+            booking.status === "CHECKED_OUT" ||
+            booking.status === "NO_SHOW") && (
           <ActionButton
             theme="orange"
             icon={<FiEdit3 />}
             disabled={isMutating}
-            onClick={onStatusOverride}
+            onClick={onLifecycleReversal}
           >
-            Fix Status Mistake
+            {booking.status === "CHECKED_IN"
+              ? "Reverse Check-In"
+              : booking.status === "CHECKED_OUT"
+                ? "Reverse Check-Out"
+                : "Reverse No-Show"}
           </ActionButton>
         )}
         {canMarkNoShow && (

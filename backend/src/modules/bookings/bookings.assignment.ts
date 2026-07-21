@@ -11,15 +11,20 @@ import {
   TaxTargetType,
   TaxType,
   UnitStatus,
-  UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type {
   BookingRoomMovePreviewDTO,
   BookingStayExtensionChargePreviewDTO,
 } from "./bookings.dto.js";
-import { defaultBookingPolicyCreateData } from "@/modules/booking-policy/booking-policy.policy.js";
-import { buildStayPolicySnapshot } from "@/modules/booking-policy/stay-policy.js";
+import {
+  defaultBookingPolicyCreateData,
+  parsePolicySnapshot,
+} from "@/modules/booking-policy/booking-policy.policy.js";
+import {
+  buildStayPolicySnapshot,
+  buildStayPolicySnapshotFromBooking,
+} from "@/modules/booking-policy/stay-policy.js";
 import {
   getLocalDateValue,
   isAdminOverrideRole,
@@ -104,11 +109,11 @@ export const assertComplimentaryUpgradeAllowed = (
   input: MoveBookingRoomInput,
   pricingPreview: BookingRoomMovePreviewDTO,
 ) => {
-  if (
-    (input.pricingAction !== "COMPLIMENTARY_UPGRADE" &&
-      input.pricingAction !== "NO_CREDIT") ||
-    !pricingPreview.pricingRequired
-  ) {
+  const isDiscretionaryWaiver =
+    input.pricingAction === "COMPLIMENTARY_UPGRADE" ||
+    (input.pricingAction === "NO_CREDIT" &&
+      pricingPreview.downgradeTreatment !== "NO_CREDIT");
+  if (!isDiscretionaryWaiver || !pricingPreview.pricingRequired) {
     return;
   }
 
@@ -462,7 +467,7 @@ export const resolveDashboardBookingUpdateAssignment = async (
   if (
     assignment !== undefined &&
     booking.status === BookingStatus.CHECKED_IN &&
-    actor.role === UserRole.MANAGER
+    !isAdminOverrideRole(actor.role)
   ) {
     requireAuditNote(
       input.note,
@@ -881,7 +886,15 @@ export const buildRoomMovePricingPreview = async (
   booking: repo.DashboardBookingRecord,
   roomIds: string[],
   tx: Prisma.TransactionClient,
-): Promise<BookingRoomMovePreviewDTO> => {
+): Promise<
+  BookingRoomMovePreviewDTO & {
+    itemPricingUpdates: Array<{
+      itemId: string;
+      pricingId: string;
+      pricePerNight: string;
+    }>;
+  }
+> => {
   const rooms = await tx.room.findMany({
     where: { id: { in: roomIds } },
     include: { unit: true },
@@ -935,6 +948,11 @@ export const buildRoomMovePricingPreview = async (
   let taxDifference = new Prisma.Decimal(0);
   const taxBreakdown: BookingRoomMovePreviewDTO["taxBreakdown"] = [];
   const pricingSnapshot: Array<Record<string, string>> = [];
+  const itemPricingUpdates: Array<{
+    itemId: string;
+    pricingId: string;
+    pricePerNight: string;
+  }> = [];
 
   for (const [index, target] of pricingTargets.entries()) {
     const currentTarget = currentPricingTargets[index];
@@ -1000,6 +1018,11 @@ export const buildRoomMovePricingPreview = async (
       currentRate: oldRate.toString(),
       destinationRate: newRate.toString(),
     });
+    itemPricingUpdates.push({
+      itemId: target.item.id,
+      pricingId: destinationPricing.id,
+      pricePerNight: newRate.toString(),
+    });
   }
 
   baseDifference = moneyDecimal(baseDifference);
@@ -1010,12 +1033,19 @@ export const buildRoomMovePricingPreview = async (
     : orderedRooms
         .map((room) => `Unit ${room.unit.unitNumber} / Room ${room.number}`)
         .join(", ");
-  const policy = await tx.propertyBookingPolicy.upsert({
-    where: { propertyId: booking.propertyId },
-    create: { propertyId: booking.propertyId, ...defaultBookingPolicyCreateData },
-    update: {},
-  });
-  const policySnapshot = buildStayPolicySnapshot(policy);
+  const bookedPolicy = parsePolicySnapshot(booking.policySnapshot);
+  const policySnapshot = bookedPolicy
+    ? buildStayPolicySnapshotFromBooking(bookedPolicy)
+    : buildStayPolicySnapshot(
+        await tx.propertyBookingPolicy.upsert({
+          where: { propertyId: booking.propertyId },
+          create: {
+            propertyId: booking.propertyId,
+            ...defaultBookingPolicyCreateData,
+          },
+          update: {},
+        }),
+      );
   const fingerprintPayload = {
     bookingId: booking.id,
     bookingVersion: booking.version,
@@ -1068,6 +1098,7 @@ export const buildRoomMovePricingPreview = async (
     downgradeTreatment: policySnapshot.downgrade.financialTreatment,
     policySnapshot,
     taxBreakdown,
+    itemPricingUpdates,
   };
 };
 

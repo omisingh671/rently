@@ -188,13 +188,23 @@ export const isBookingNoShowEligible = (
   const currentLocal = getDateParts(now, timeZone);
   const checkInLocal = getDateParts(booking.checkIn, timeZone);
   const dateCompare = compareLocalDate(currentLocal, checkInLocal);
+  const policySnapshot = parsePolicySnapshot(booking.policySnapshot);
+  const configuredCutoff = policySnapshot?.noShowRules.noShowAfterTime;
+  const cutoff =
+    typeof configuredCutoff === "string" &&
+    /^([01]\d|2[0-3]):[0-5]\d$/.test(configuredCutoff)
+      ? configuredCutoff
+      : "20:00";
+  const [cutoffHour = 20, cutoffMinute = 0] = cutoff.split(":").map(Number);
 
   if (dateCompare > 0) {
     return true;
   }
 
-  return dateCompare === 0 && (currentLocal.hour > 20 ||
-    (currentLocal.hour === 20 && currentLocal.minute >= 0));
+  return dateCompare === 0 &&
+    (currentLocal.hour > cutoffHour ||
+      (currentLocal.hour === cutoffHour &&
+        currentLocal.minute >= cutoffMinute));
 };
 
 export const isBookingCheckInDatePassed = (
@@ -324,6 +334,7 @@ export const mapBooking = (
     balanceAmount: balanceAmount.toString(),
     paymentPolicy: booking.paymentPolicy,
     upfrontAmount: booking.upfrontAmount.toString(),
+    paymentExpiresAt: booking.paymentExpiresAt ?? null,
     noShowEligible: isBookingNoShowEligible(booking),
     isCheckInDatePassed: isBookingCheckInDatePassed(booking),
     internalNotes: booking.internalNotes ?? null,
@@ -403,6 +414,20 @@ export const mapBooking = (
       taxBreakdown: getDashboardTaxBreakdown(item.taxBreakdown),
       totalAmount: item.totalAmount.toString(),
       finalAmount: item.finalAmount.toString(),
+    })),
+    roomAllocationHistory: booking.roomAllocations.map((allocation) => ({
+      id: allocation.id,
+      bookingItemId: allocation.bookingItemId ?? null,
+      roomId: allocation.roomId,
+      unitId: allocation.room.unitId,
+      unitNumber: allocation.room.unit.unitNumber,
+      roomNumber: allocation.room.number,
+      source: allocation.source,
+      effectiveFrom: allocation.effectiveFrom,
+      effectiveTo: allocation.effectiveTo ?? null,
+      actorUserId: allocation.actorUserId ?? null,
+      actorName: allocation.actor?.fullName ?? null,
+      createdAt: allocation.createdAt,
     })),
     statusHistory: booking.statusHistory.map((event) => ({
       id: event.id,

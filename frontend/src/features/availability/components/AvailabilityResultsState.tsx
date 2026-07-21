@@ -1,5 +1,6 @@
 type AvailabilityResultsStateProps = {
   bookingError: string | null;
+  validationMessage: string | null;
   canCheckAvailability: boolean;
   isFetching: boolean;
   errorMessage: string | null;
@@ -8,6 +9,7 @@ type AvailabilityResultsStateProps = {
 
 export default function AvailabilityResultsState({
   bookingError,
+  validationMessage,
   canCheckAvailability,
   isFetching,
   errorMessage,
@@ -15,7 +17,16 @@ export default function AvailabilityResultsState({
 }: AvailabilityResultsStateProps) {
   let stateContent = null;
 
-  if (!canCheckAvailability) {
+  if (validationMessage) {
+    stateContent = (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-8 text-center">
+        <h2 className="text-lg font-semibold text-amber-950">
+          Update your stay dates
+        </h2>
+        <p className="mt-2 text-sm text-amber-800">{validationMessage}</p>
+      </div>
+    );
+  } else if (!canCheckAvailability) {
     stateContent = (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
         <h2 className="text-lg font-semibold text-slate-900">

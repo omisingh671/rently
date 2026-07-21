@@ -1,8 +1,51 @@
 import { prisma } from "@/db/prisma.js";
 import {
+  Prisma,
   type BookingStatus,
   type LeadStatus,
 } from "@/generated/prisma/client.js";
+
+const dailyCloseInclude = {
+  closedBy: { select: { fullName: true } },
+} satisfies Prisma.PropertyDailyCloseInclude;
+
+export type PropertyDailyCloseRecord = Prisma.PropertyDailyCloseGetPayload<{
+  include: typeof dailyCloseInclude;
+}>;
+
+export const findDailyClose = (propertyId: string, businessDate: Date) =>
+  prisma.propertyDailyClose.findUnique({
+    where: { propertyId_businessDate: { propertyId, businessDate } },
+    include: dailyCloseInclude,
+  });
+
+export const listDailyCloses = (
+  propertyId: string,
+  startDate: Date,
+  endDate: Date,
+) =>
+  prisma.propertyDailyClose.findMany({
+    where: { propertyId, businessDate: { gte: startDate, lte: endDate } },
+    orderBy: { businessDate: "desc" },
+    include: dailyCloseInclude,
+  });
+
+export const createDailyClose = (data: Prisma.PropertyDailyCloseCreateInput) =>
+  prisma.propertyDailyClose.create({ data, include: dailyCloseInclude });
+
+export const listUnresolvedArrivalsThrough = (
+  propertyId: string,
+  businessDateEnd: Date,
+) =>
+  prisma.booking.findMany({
+    where: {
+      propertyId,
+      status: "CONFIRMED",
+      checkIn: { lte: businessDateEnd },
+    },
+    select: { id: true, bookingRef: true, checkIn: true },
+    orderBy: { checkIn: "asc" },
+  });
 
 export const listPropertySummaries = (propertyIds?: string[]) =>
   prisma.property.findMany({
@@ -22,6 +65,7 @@ export const listPropertySummaries = (propertyIds?: string[]) =>
       tenant: {
         select: {
           name: true,
+          timezone: true,
         },
       },
     },
@@ -150,6 +194,7 @@ export const getBookingsOverlapping = (
     },
     include: {
       items: true,
+      roomAllocations: true,
       user: {
         select: {
           createdByUserId: true,
@@ -190,7 +235,7 @@ export const getPaymentsInRange = (
         propertyId: { in: propertyIds },
       }),
       status: "SUCCEEDED",
-      createdAt: { gte: startDate, lte: endDate },
+      paidAt: { gte: startDate, lte: endDate },
     },
   });
 
@@ -205,7 +250,7 @@ export const getRefundsInRange = (
         propertyId: { in: propertyIds },
       }),
       status: "SUCCEEDED",
-      createdAt: { gte: startDate, lte: endDate },
+      processedAt: { gte: startDate, lte: endDate },
     },
   });
 
@@ -299,3 +344,24 @@ export const getAllRoomsWithProperties = (propertyIds?: string[]) =>
     },
   });
 
+export const getOperationalUsersByIds = (userIds: string[]) =>
+  prisma.user.findMany({
+    where: {
+      id: { in: userIds },
+      role: {
+        in: [
+          "SUPER_ADMIN",
+          "ADMIN",
+          "MANAGER",
+          "FRONT_DESK",
+          "ACCOUNTANT",
+        ],
+      },
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+    },
+  });

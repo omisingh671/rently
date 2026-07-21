@@ -8,7 +8,11 @@ import {
 import { HttpError } from "@/common/errors/http-error.js";
 import { billingService } from "@/modules/billing/index.js";
 import { getInventoryConflictTypes } from "@/modules/public/availability/availability.conflicts.js";
-import { isAdminOverrideRole } from "./bookings.helper.js";
+import {
+  assertStayExtensionPricingActionAllowed,
+  isAdminOverrideRole,
+  shouldCreateStayExtensionCharge,
+} from "./bookings.helper.js";
 import { buildStayExtensionChargePreview } from "./bookings.assignment.js";
 import type { DashboardActor } from "./bookings.access.js";
 import type { BookingStayExtensionPreviewDTO } from "./bookings.dto.js";
@@ -128,9 +132,8 @@ export const buildStayExtensionPreview = async (
   }
 
   const discountAmount = "0";
-  const resultingBalance = new Prisma.Decimal(
-    mapBooking(booking).balanceAmount,
-  )
+  const existingBalance = mapBooking(booking).balanceAmount;
+  const resultingBalance = new Prisma.Decimal(existingBalance)
     .plus(chargePreview.totalAmount)
     .toDecimalPlaces(2)
     .toString();
@@ -156,6 +159,7 @@ export const buildStayExtensionPreview = async (
     bookingVersion: booking.version,
     newCheckOut: input.newCheckOut.toISOString(),
     discountAmount,
+    existingBalance,
     resultingBalance,
     pricingFingerprint,
     conflicts,
@@ -204,6 +208,10 @@ export const commitStayExtension = async (
       "Only Admin or Super Admin can override maintenance conflicts",
     );
   }
+  assertStayExtensionPricingActionAllowed(
+    input.extension.pricingAction,
+    input.actor.role,
+  );
 
   await updateVersionedBooking(
     tx,
@@ -211,35 +219,46 @@ export const commitStayExtension = async (
     input.extension.expectedVersion,
     { checkOut: input.extension.newCheckOut },
   );
-  const charge = await tx.bookingFolioCharge.create({
-    data: {
-      bookingId: booking.id,
-      propertyId: booking.propertyId,
-      createdByUserId: input.actor.id,
-      type: "EXTENSION",
-      description: `Stay extension: ${preview.extraNights} night${preview.extraNights === 1 ? "" : "s"}`,
-      amount: preview.totalAmount,
-      note: input.extension.note,
-      metadata: {
-        source: "STAY_EXTENSION",
-        originalCheckOutDate: preview.originalCheckOutDate,
-        newCheckOut: preview.newCheckOut,
-        addedNights: preview.extraNights,
-        baseAmount: preview.baseAmount,
-        discountAmount: preview.discountAmount,
-        discountPolicy: "ADDITIONAL_NIGHTS_NOT_DISCOUNTED",
-        taxAmount: preview.taxAmount,
-        totalAmount: preview.totalAmount,
-        taxBreakdown: preview.taxBreakdown,
-        pricingSnapshot: preview.pricingSnapshot,
-        pricingFingerprint: preview.pricingFingerprint,
-        ...(input.extension.overrideReason !== undefined && {
-          maintenanceOverrideReason: input.extension.overrideReason,
-        }),
-      },
-    },
-  });
-  await billingService.createDebitNoteForFolioCharge(booking.id, charge.id, tx);
+  const createsCharge = shouldCreateStayExtensionCharge(
+    input.extension.pricingAction,
+  );
+  const charge = createsCharge
+    ? await tx.bookingFolioCharge.create({
+        data: {
+          bookingId: booking.id,
+          propertyId: booking.propertyId,
+          createdByUserId: input.actor.id,
+          type: "EXTENSION",
+          description: `Stay extension: ${preview.extraNights} night${preview.extraNights === 1 ? "" : "s"}`,
+          amount: preview.totalAmount,
+          note: input.extension.note,
+          metadata: {
+            source: "STAY_EXTENSION",
+            originalCheckOutDate: preview.originalCheckOutDate,
+            newCheckOut: preview.newCheckOut,
+            addedNights: preview.extraNights,
+            baseAmount: preview.baseAmount,
+            discountAmount: preview.discountAmount,
+            discountPolicy: "ADDITIONAL_NIGHTS_NOT_DISCOUNTED",
+            taxAmount: preview.taxAmount,
+            totalAmount: preview.totalAmount,
+            taxBreakdown: preview.taxBreakdown,
+            pricingSnapshot: preview.pricingSnapshot,
+            pricingFingerprint: preview.pricingFingerprint,
+            ...(input.extension.overrideReason !== undefined && {
+              maintenanceOverrideReason: input.extension.overrideReason,
+            }),
+          },
+        },
+      })
+    : null;
+  if (charge) {
+    await billingService.createDebitNoteForFolioCharge(
+      booking.id,
+      charge.id,
+      tx,
+    );
+  }
   await createOperationEvent(tx, {
     bookingId: booking.id,
     propertyId: booking.propertyId,
@@ -254,9 +273,13 @@ export const commitStayExtension = async (
       discountAmount: preview.discountAmount,
       taxAmount: preview.taxAmount,
       totalAmount: preview.totalAmount,
-      resultingBalance: preview.resultingBalance,
+      pricingAction: input.extension.pricingAction,
+      waivedAmount: createsCharge ? "0" : preview.totalAmount,
+      resultingBalance: createsCharge
+        ? preview.resultingBalance
+        : preview.existingBalance,
       pricingFingerprint: preview.pricingFingerprint,
-      folioChargeId: charge.id,
+      folioChargeId: charge?.id ?? null,
       ...(input.extension.overrideReason !== undefined && {
         maintenanceOverrideReason: input.extension.overrideReason,
       }),

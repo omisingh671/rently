@@ -1,17 +1,21 @@
 import {
   BookingPaymentPolicy,
+  BookingRoomAllocationSource,
   BookingRefundRequestStatus,
   BookingStatus,
   BookingTargetType,
   BookingType,
   Prisma,
 } from "@/generated/prisma/client.js";
+import { syncCurrentBookingRoomAllocations } from "@/modules/bookings/bookings.allocations.js";
 import { NotificationEventKey } from "@/generated/prisma/enums.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertStayStartsOnOrAfterBusinessDate } from "@/common/utils/business-date.js";
 import {
   buildPolicySnapshot,
   getPaymentPolicyForAdvanceType,
+  parsePolicySnapshot,
 } from "@/modules/booking-policy/booking-policy.policy.js";
 import * as repo from "./bookings.repository.js";
 import * as spacesRepo from "@/modules/public/spaces/spaces.repository.js";
@@ -92,6 +96,7 @@ export const createBookingForUser = async (
   options: CreateBookingOptions = {},
 ): Promise<PublicBookingDTO> => {
   const scope = await tenantService.resolvePublicScope(tenantInput);
+  assertStayStartsOnOrAfterBusinessDate(input.from, scope.tenant.timezone);
   const requiredPropertyId =
     options.requiredPropertyId ??
     getRequiredPropertyId(scope.propertyScope, input.propertyId);
@@ -101,6 +106,11 @@ export const createBookingForUser = async (
     async () => {
       const booking = await repo.runSerializableTransaction(async (tx) => {
         const createdAt = now();
+        assertStayStartsOnOrAfterBusinessDate(
+          input.from,
+          scope.tenant.timezone,
+          createdAt,
+        );
         const bookingRef = await generateBookingRef(createdAt, tx);
         const guestSnapshot = await resolveBookingGuestSnapshot(
           userId,
@@ -207,6 +217,7 @@ export const createBookingForUser = async (
               bookingType: isMultiItem
                 ? BookingType.MULTI_ROOM
                 : BookingType.SINGLE_TARGET,
+              source: options.actorUserId === undefined ? "PUBLIC" : "WALK_IN",
               targetType: firstItem.target.targetType,
               unitId: isMultiItem ? null : firstItem.target.unitId,
               roomId: isMultiItem ? null : firstItem.target.roomId,
@@ -232,6 +243,11 @@ export const createBookingForUser = async (
               ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
               paymentPolicy,
               upfrontAmount: quote.upfrontAmount,
+              ...(paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING && {
+                paymentExpiresAt: new Date(
+                  createdAt.getTime() + policy.pendingPaymentExpiryMinutes * 60_000,
+                ),
+              }),
               policySnapshot: policySnapshot as unknown as Prisma.InputJsonValue,
               ...(options.internalNotes !== undefined && {
                 internalNotes: options.internalNotes,
@@ -243,6 +259,12 @@ export const createBookingForUser = async (
             },
             tx,
           );
+          await syncCurrentBookingRoomAllocations(tx, {
+            bookingId: booking.id,
+            actorUserId: options.actorUserId ?? guestSnapshot.userId,
+            effectiveFrom: booking.checkIn,
+            source: BookingRoomAllocationSource.BOOKING_CREATED,
+          });
 
           if (quote.couponId) {
             await repo.incrementCouponUsage(quote.couponId, tx);
@@ -508,6 +530,7 @@ export const createBookingForUser = async (
             bookingType: isMultiRoom
               ? BookingType.MULTI_ROOM
               : BookingType.SINGLE_TARGET,
+            source: options.actorUserId === undefined ? "PUBLIC" : "WALK_IN",
             targetType: isMultiRoom
               ? BookingTargetType.ROOM
               : firstTarget.targetType,
@@ -537,6 +560,11 @@ export const createBookingForUser = async (
             ...(quote.couponId && { coupon: { connect: { id: quote.couponId } } }),
             paymentPolicy,
             upfrontAmount: quote.upfrontAmount,
+            ...(paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING && {
+              paymentExpiresAt: new Date(
+                createdAt.getTime() + policy.pendingPaymentExpiryMinutes * 60_000,
+              ),
+            }),
             policySnapshot: policySnapshot as unknown as Prisma.InputJsonValue,
             ...(options.internalNotes !== undefined && {
               internalNotes: options.internalNotes,
@@ -548,6 +576,12 @@ export const createBookingForUser = async (
           },
           tx,
         );
+        await syncCurrentBookingRoomAllocations(tx, {
+          bookingId: booking.id,
+          actorUserId: options.actorUserId ?? guestSnapshot.userId,
+          effectiveFrom: booking.checkIn,
+          source: BookingRoomAllocationSource.BOOKING_CREATED,
+        });
 
         if (quote.couponId) {
           await repo.incrementCouponUsage(quote.couponId, tx);
@@ -1035,6 +1069,15 @@ export const cancelBooking = async (
       409,
       "BOOKING_NOT_CANCELLABLE",
       "Only pending or confirmed bookings can be cancelled",
+    );
+  }
+
+  const bookedPolicy = parsePolicySnapshot(booking.policySnapshot);
+  if (bookedPolicy?.cancellationRules.guestCancellationAllowed === false) {
+    throw new HttpError(
+      409,
+      "GUEST_CANCELLATION_DISABLED",
+      "Guest cancellation is disabled by this booking policy",
     );
   }
 

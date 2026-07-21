@@ -11,7 +11,9 @@ import {
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import type {
   BillingDocumentDTO,
+  BillingSettingAuditDTO,
   BillingSettingDTO,
+  BillingSettingSnapshotDTO,
 } from "./billing.dto.js";
 import type {
   BillingDocumentListInput,
@@ -45,6 +47,8 @@ const documentKeyForInvoice = (bookingId: string) => `INVOICE:${bookingId}`;
 const documentKeyForReceipt = (paymentId: string) => `RECEIPT:${paymentId}`;
 const documentKeyForDebitNote = (folioChargeId: string) =>
   `DEBIT_NOTE:${folioChargeId}`;
+const documentKeyForCreditNote = (folioChargeId: string) =>
+  `CREDIT_NOTE:${folioChargeId}`;
 const maxBillingTransactionAttempts = 3;
 
 const runBillingTransactionWithRetry = async <T>(
@@ -118,6 +122,45 @@ const mapSetting = (setting: repo.BillingSettingRecord): BillingSettingDTO => ({
   footerNotes: setting.footerNotes ?? null,
   createdAt: setting.createdAt.toISOString(),
   updatedAt: setting.updatedAt.toISOString(),
+});
+
+const asNullableString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
+const asString = (value: unknown): string =>
+  typeof value === "string" ? value : "";
+
+const mapSettingSnapshot = (
+  value: Prisma.JsonValue,
+): BillingSettingSnapshotDTO => {
+  const snapshot =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    legalName: asNullableString(snapshot.legalName),
+    gstin: asNullableString(snapshot.gstin),
+    pan: asNullableString(snapshot.pan),
+    billingAddress: asNullableString(snapshot.billingAddress),
+    invoicePrefix: asString(snapshot.invoicePrefix),
+    receiptPrefix: asString(snapshot.receiptPrefix),
+    creditNotePrefix: asString(snapshot.creditNotePrefix),
+    debitNotePrefix: asString(snapshot.debitNotePrefix),
+    footerNotes: asNullableString(snapshot.footerNotes),
+  };
+};
+
+const mapSettingAudit = (
+  audit: repo.BillingSettingAuditRecord,
+): BillingSettingAuditDTO => ({
+  id: audit.id,
+  propertyId: audit.propertyId,
+  actor: audit.actor,
+  reason: audit.reason,
+  previousData: mapSettingSnapshot(audit.previousData),
+  nextData: mapSettingSnapshot(audit.nextData),
+  createdAt: audit.createdAt.toISOString(),
 });
 
 const normalizePaginationResult = <T>(
@@ -451,6 +494,206 @@ export const createDebitNoteForFolioCharge = async (
   return mapDocument(document);
 };
 
+export const createCreditNoteForFolioCredit = async (
+  bookingId: string,
+  folioChargeId: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const invoice = await repo.findDocumentByKey(documentKeyForInvoice(bookingId), tx);
+  if (!invoice) return null;
+
+  const documentKey = documentKeyForCreditNote(folioChargeId);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing) return mapDocument(existing);
+
+  const booking = await repo.findBookingById(bookingId, tx);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  const charge = await tx.bookingFolioCharge.findUnique({
+    where: { id: folioChargeId },
+  });
+  if (!charge) {
+    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+  }
+  if (!charge.amount.lessThan(0)) {
+    throw new HttpError(
+      422,
+      "FOLIO_CREDIT_AMOUNT_INVALID",
+      "Credit-note folio adjustment must be negative",
+    );
+  }
+
+  const metadata =
+    charge.metadata !== null &&
+    typeof charge.metadata === "object" &&
+    !Array.isArray(charge.metadata)
+      ? charge.metadata
+      : {};
+  const subtotal = new Prisma.Decimal(
+    typeof metadata.baseDifference === "string"
+      ? metadata.baseDifference
+      : charge.amount,
+  ).abs();
+  const tax = new Prisma.Decimal(
+    typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
+  ).abs();
+  const total = charge.amount.abs();
+  const documentNumber = await repo.nextDocumentNumber(
+    booking.propertyId,
+    BillingDocumentType.CREDIT_NOTE,
+    tx,
+  );
+  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const balance = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
+  );
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: BillingDocumentType.CREDIT_NOTE,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          booking: { connect: { id: booking.id } },
+          folioCharge: { connect: { id: charge.id } },
+          property: { connect: { id: booking.propertyId } },
+          tenant: { connect: { id: booking.property.tenantId } },
+          subtotal,
+          discount: zeroDecimal,
+          taxable: subtotal,
+          tax,
+          total,
+          paid: zeroDecimal,
+          balance,
+          guestSnapshot: toJson(buildGuestSnapshot(booking)),
+          propertySnapshot: toJson(buildPropertySnapshot(booking)),
+          tenantSnapshot: toJson(buildTenantSnapshot(booking)),
+          bookingSnapshot: toJson(buildBookingSnapshot(booking)),
+          priceSnapshot: toJson(metadata),
+          taxSnapshot: toJson(metadata.taxBreakdown ?? []),
+          lineItems: toJson([
+            {
+              description: charge.description,
+              targetLabel: booking.targetLabel,
+              quantity: 1,
+              rate: subtotal.toString(),
+              tax: tax.toString(),
+              total: total.toString(),
+            },
+          ]),
+          notes: charge.note,
+          issuedAt: new Date(),
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
+  return mapDocument(document);
+};
+
+export const createReversalNoteForVoidedFolioCharge = async (
+  bookingId: string,
+  folioChargeId: string,
+  reason: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const [debitNote, creditNote] = await Promise.all([
+    repo.findDocumentByKey(documentKeyForDebitNote(folioChargeId), tx),
+    repo.findDocumentByKey(documentKeyForCreditNote(folioChargeId), tx),
+  ]);
+  const reversedDocument =
+    debitNote?.status === BillingDocumentStatus.ISSUED
+      ? debitNote
+      : creditNote?.status === BillingDocumentStatus.ISSUED
+        ? creditNote
+        : null;
+  if (!reversedDocument) return null;
+
+  const reversalType =
+    reversedDocument.type === BillingDocumentType.DEBIT_NOTE
+      ? BillingDocumentType.CREDIT_NOTE
+      : BillingDocumentType.DEBIT_NOTE;
+  const documentKey =
+    reversalType === BillingDocumentType.CREDIT_NOTE
+      ? documentKeyForCreditNote(folioChargeId)
+      : documentKeyForDebitNote(folioChargeId);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing && existing.id !== reversedDocument.id) return mapDocument(existing);
+
+  const booking = await repo.findBookingById(bookingId, tx);
+  if (!booking) {
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  }
+  const charge = await tx.bookingFolioCharge.findUnique({
+    where: { id: folioChargeId },
+  });
+  if (!charge) {
+    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+  }
+
+  const documentNumber = await repo.nextDocumentNumber(
+    booking.propertyId,
+    reversalType,
+    tx,
+  );
+  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const balance = maxDecimal(
+    zeroDecimal,
+    booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
+  );
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: reversalType,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          booking: { connect: { id: booking.id } },
+          folioCharge: { connect: { id: charge.id } },
+          property: { connect: { id: booking.propertyId } },
+          tenant: { connect: { id: booking.property.tenantId } },
+          subtotal: reversedDocument.subtotal,
+          discount: reversedDocument.discount,
+          taxable: reversedDocument.taxable,
+          tax: reversedDocument.tax,
+          total: reversedDocument.total,
+          paid: zeroDecimal,
+          balance,
+          guestSnapshot: toJson(reversedDocument.guestSnapshot),
+          propertySnapshot: toJson(reversedDocument.propertySnapshot),
+          tenantSnapshot: toJson(reversedDocument.tenantSnapshot),
+          bookingSnapshot: toJson(reversedDocument.bookingSnapshot),
+          priceSnapshot: toJson({
+            reversedDocumentId: reversedDocument.id,
+            reversedDocumentNumber: reversedDocument.documentNumber,
+            reason,
+          }),
+          taxSnapshot: toJson(reversedDocument.taxSnapshot ?? []),
+          lineItems: toJson([
+            {
+              description: `Reversal of ${reversedDocument.documentNumber}: ${charge.description}`,
+              quantity: 1,
+              rate: reversedDocument.subtotal.toString(),
+              tax: reversedDocument.tax.toString(),
+              total: reversedDocument.total.toString(),
+            },
+          ]),
+          notes: reason,
+          issuedAt: new Date(),
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
+  return mapDocument(document);
+};
+
 export const listDashboardDocuments = async (
   userId: string,
   filters: BillingDocumentListInput,
@@ -517,7 +760,11 @@ export const voidDashboardDocument = async (
   reason: string | undefined,
 ) => {
   const actor = await ensureActor(userId);
-  if (actor.role !== UserRole.SUPER_ADMIN && actor.role !== UserRole.ADMIN) {
+  if (
+    actor.role !== UserRole.SUPER_ADMIN &&
+    actor.role !== UserRole.ADMIN &&
+    actor.role !== UserRole.ACCOUNTANT
+  ) {
     throw new HttpError(403, "FORBIDDEN", "Access denied");
   }
 
@@ -539,6 +786,17 @@ export const getDashboardSetting = async (
   return mapSetting(await repo.getOrCreateSetting(propertyId));
 };
 
+export const listDashboardSettingAudits = async (
+  userId: string,
+  propertyId: string,
+): Promise<BillingSettingAuditDTO[]> => {
+  const actor = await ensureActor(userId);
+  assertSettingWriteRole(actor);
+  await assertDashboardPropertyScope(actor, propertyId);
+  const audits = await repo.listSettingAudits(propertyId);
+  return audits.map(mapSettingAudit);
+};
+
 export const updateDashboardSetting = async (
   userId: string,
   propertyId: string,
@@ -548,27 +806,42 @@ export const updateDashboardSetting = async (
   assertSettingWriteRole(actor);
   await assertDashboardPropertyScope(actor, propertyId);
 
-  const setting = await repo.updateSetting(propertyId, {
-    ...(input.legalName !== undefined && { legalName: input.legalName }),
-    ...(input.gstin !== undefined && { gstin: input.gstin }),
-    ...(input.pan !== undefined && { pan: input.pan }),
-    ...(input.billingAddress !== undefined && {
-      billingAddress: input.billingAddress,
-    }),
-    ...(input.invoicePrefix !== undefined && {
-      invoicePrefix: input.invoicePrefix,
-    }),
-    ...(input.receiptPrefix !== undefined && {
-      receiptPrefix: input.receiptPrefix,
-    }),
-    ...(input.creditNotePrefix !== undefined && {
-      creditNotePrefix: input.creditNotePrefix,
-    }),
-    ...(input.debitNotePrefix !== undefined && {
-      debitNotePrefix: input.debitNotePrefix,
-    }),
-    ...(input.footerNotes !== undefined && { footerNotes: input.footerNotes }),
-  });
+  const setting = await repo.updateSettingWithAudit(
+    propertyId,
+    userId,
+    input.reason,
+    {
+      ...(input.legalName !== undefined && { legalName: input.legalName }),
+      ...(input.gstin !== undefined && { gstin: input.gstin }),
+      ...(input.pan !== undefined && { pan: input.pan }),
+      ...(input.billingAddress !== undefined && {
+        billingAddress: input.billingAddress,
+      }),
+      ...(input.invoicePrefix !== undefined && {
+        invoicePrefix: input.invoicePrefix,
+      }),
+      ...(input.receiptPrefix !== undefined && {
+        receiptPrefix: input.receiptPrefix,
+      }),
+      ...(input.creditNotePrefix !== undefined && {
+        creditNotePrefix: input.creditNotePrefix,
+      }),
+      ...(input.debitNotePrefix !== undefined && {
+        debitNotePrefix: input.debitNotePrefix,
+      }),
+      ...(input.footerNotes !== undefined && {
+        footerNotes: input.footerNotes,
+      }),
+    },
+  );
+
+  if (!setting) {
+    throw new HttpError(
+      400,
+      "NO_BILLING_SETTING_CHANGES",
+      "Change at least one billing setting before saving",
+    );
+  }
 
   return mapSetting(setting);
 };

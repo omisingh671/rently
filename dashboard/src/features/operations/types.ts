@@ -113,6 +113,7 @@ export type AdminBooking = {
   balanceAmount: string;
   paymentPolicy: BookingPaymentPolicy;
   upfrontAmount: string;
+  paymentExpiresAt: string | null;
   noShowEligible: boolean;
   isCheckInDatePassed: boolean;
   internalNotes: string | null;
@@ -187,6 +188,24 @@ export type AdminBooking = {
     totalAmount: string;
     finalAmount: string;
   }>;
+  roomAllocationHistory: Array<{
+    id: string;
+    bookingItemId: string | null;
+    roomId: string;
+    unitId: string;
+    unitNumber: string;
+    roomNumber: string;
+    source:
+      | "BOOKING_CREATED"
+      | "ROOM_ASSIGNED"
+      | "CHECK_IN_ASSIGNED"
+      | "ROOM_MOVE";
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    actorUserId: string | null;
+    actorName: string | null;
+    createdAt: string;
+  }>;
   statusHistory: Array<{
     id: string;
     fromStatus: BookingStatus | null;
@@ -226,13 +245,11 @@ export type AdminBooking = {
 };
 
 export type UpdateBookingPayload = {
-  status?: BookingStatus;
+  status?: Extract<BookingStatus, "CANCELLED">;
   note?: string;
   internalNotes?: string | null;
   roomId?: string;
   roomIds?: string[];
-  statusOverride?: boolean;
-  allowBalanceDueCheckIn?: boolean;
 };
 
 export type CheckInBookingPayload = {
@@ -341,6 +358,7 @@ export type StayExtensionPreview = {
   discountAmount: string;
   taxAmount: string;
   totalAmount: string;
+  existingBalance: string;
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
@@ -364,12 +382,9 @@ export type PreviewStayExtensionPayload = {
 
 export type CommitStayExtensionPayload = PreviewStayExtensionPayload & {
   pricingFingerprint: string;
+  pricingAction: "CHARGE" | "COMPLIMENTARY";
   note: string;
   overrideReason?: string;
-};
-
-export type CorrectBookingStatusPayload = VersionedBookingNotePayload & {
-  status: BookingStatus;
 };
 
 export type CreateFolioChargePayload = {
@@ -524,6 +539,7 @@ export type OperationsBoardResponse = {
     departures: number;
     inHouse: number;
     lateArrivals: number;
+    noShowReview: number;
     unassignedArrivals: number;
     balanceDue: number;
     refundAttention: number;
@@ -534,6 +550,7 @@ export type OperationsBoardResponse = {
   departures: AdminBooking[];
   inHouse: AdminBooking[];
   lateArrivals: AdminBooking[];
+  noShowReview: AdminBooking[];
   unassignedArrivals: AdminBooking[];
   balanceDue: AdminBooking[];
   refundAttention: AdminBooking[];

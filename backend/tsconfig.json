@@ -31,5 +31,5 @@
     "noEmit": true
   },
 
-  "include": ["src", "scripts", "tests", "prisma"]
+  "include": ["src", "scripts", "tests", "prisma", "e2e", "playwright.config.ts"]
 }

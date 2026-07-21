@@ -7,7 +7,13 @@ export const SUPPORT_PHONE = publicEnv.supportPhone;
 export const SUPPORT_PHONE_WA = SUPPORT_PHONE.replace(/\D/g, "");
 
 // Dashboard roles
-export const USER_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"] as const;
+export const USER_ROLES = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "MANAGER",
+  "FRONT_DESK",
+  "ACCOUNTANT",
+] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 // Auth / tokens

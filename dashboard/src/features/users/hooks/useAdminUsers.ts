@@ -28,6 +28,7 @@ import type {
   ManagedUsersFilters,
   ManagedUserStatusVariables,
   UpdateUserVariables,
+  TeamUserRole,
 } from "../types";
 import type { PaginatedResult } from "@/common/types/pagination";
 
@@ -36,6 +37,7 @@ import { ADMIN_KEYS } from "@/features/config/adminKeys";
 type Filters = {
   search: string;
   isActive: "" | "true" | "false";
+  role?: TeamUserRole;
 };
 
 export function useAdminUsers(
@@ -54,6 +56,7 @@ export function useAdminUsers(
     limit,
     ...(filters.search && { search: filters.search }),
     ...(filters.isActive && { isActive: filters.isActive }),
+    ...(filters.role && { role: filters.role }),
   });
 
   const usersQuery = useQuery<PaginatedResult<AdminUser>>({
@@ -62,6 +65,7 @@ export function useAdminUsers(
       fetchAdminUsers(scope, page, limit, {
         ...(filters.search && { search: filters.search }),
         ...(filters.isActive && { isActive: filters.isActive === "true" }),
+        ...(filters.role && { role: filters.role }),
       }),
     placeholderData: (prev) => prev,
   });

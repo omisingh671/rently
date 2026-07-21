@@ -11,11 +11,13 @@ export const mapBookingPolicy = (
 ): DashboardBookingPolicyDTO => ({
   id: policy.id,
   propertyId: policy.propertyId,
+  version: policy.version,
   advancePaymentType: policy.advancePaymentType,
   advancePaymentValue: policy.advancePaymentValue.toString(),
   tokenRefundable: policy.tokenRefundable,
   checkInTime: policy.checkInTime,
   checkOutTime: policy.checkOutTime,
+  pendingPaymentExpiryMinutes: policy.pendingPaymentExpiryMinutes,
   cancellationRules: asPolicyRuleObject(policy.cancellationRules),
   refundRules: asPolicyRuleObject(policy.refundRules),
   earlyCheckInRules: asPolicyRuleObject(policy.earlyCheckInRules),

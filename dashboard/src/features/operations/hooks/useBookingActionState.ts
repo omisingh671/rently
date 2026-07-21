@@ -6,7 +6,6 @@ import {
 } from "../bookingActionLabels";
 import type {
   AdminBooking,
-  BookingStatus,
   PaymentMethod,
   RoomMovePreview,
   RoomMovePricingAction,
@@ -35,8 +34,6 @@ export function useBookingActionState({
   );
   const [note, setNote] = useState("");
   const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
-  const [selectedStatus, setSelectedStatus] =
-    useState<BookingStatus>("PENDING");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentReferenceId, setPaymentReferenceId] = useState("");
@@ -110,9 +107,6 @@ export function useBookingActionState({
     if (type === "assignRoom" && booking) {
       setHasInitializedRoomIds(false);
       setSelectedRoomIds(getAssignedRoomIds(booking, rooms));
-    }
-    if (type === "statusOverride" && booking) {
-      setSelectedStatus(booking.status);
     }
     if (type === "recordPayment" && booking) {
       setPaymentAmount(booking.balanceAmount);
@@ -202,7 +196,6 @@ export function useBookingActionState({
     pendingAction,
     note,
     selectedRoomIds,
-    selectedStatus,
     paymentAmount,
     paymentMethod,
     paymentReferenceId,
@@ -216,7 +209,6 @@ export function useBookingActionState({
     roomMovePreview,
     roomMovePricingAction,
     setNote,
-    setSelectedStatus,
     setPaymentAmount,
     setPaymentMethod,
     setPaymentReferenceId,
