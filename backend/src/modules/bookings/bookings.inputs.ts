@@ -128,8 +128,11 @@ export interface PreviewStayExtensionInput {
   newCheckOut: Date;
 }
 
+export type StayExtensionPricingAction = "CHARGE" | "COMPLIMENTARY";
+
 export interface CommitStayExtensionInput extends PreviewStayExtensionInput {
   pricingFingerprint: string;
+  pricingAction: StayExtensionPricingAction;
   note: string;
   overrideReason?: string;
 }

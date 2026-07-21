@@ -279,6 +279,7 @@ export const previewStayExtensionSchema = z.object({
 
 export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
   pricingFingerprint: z.string().trim().length(64),
+  pricingAction: z.enum(["CHARGE", "COMPLIMENTARY"]).default("CHARGE"),
   note: z.string().trim().min(1).max(1000),
   overrideReason: z.string().trim().min(1).max(1000).optional(),
 });

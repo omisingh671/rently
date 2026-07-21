@@ -110,6 +110,7 @@ export interface BookingStayExtensionPreviewDTO
   bookingVersion: number;
   newCheckOut: string;
   discountAmount: string;
+  existingBalance: string;
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{

@@ -79,6 +79,8 @@ export default function BookingDetailsPage() {
   const [isStayExtensionOpen, setIsStayExtensionOpen] = useState(false);
   const [extensionDate, setExtensionDate] = useState("");
   const [extensionNote, setExtensionNote] = useState("");
+  const [extensionPricingAction, setExtensionPricingAction] =
+    useState<"CHARGE" | "COMPLIMENTARY">("CHARGE");
   const [extensionOverrideReason, setExtensionOverrideReason] = useState("");
   const [extensionPreview, setExtensionPreview] =
     useState<StayExtensionPreview | null>(null);
@@ -465,6 +467,7 @@ export default function BookingDetailsPage() {
     nextCheckOut.setUTCDate(nextCheckOut.getUTCDate() + 1);
     setExtensionDate(nextCheckOut.toISOString().slice(0, 10));
     setExtensionNote("");
+    setExtensionPricingAction("CHARGE");
     setExtensionOverrideReason("");
     setExtensionPreview(null);
     setExtensionError("");
@@ -496,6 +499,7 @@ export default function BookingDetailsPage() {
         expectedVersion: booking.version,
         newCheckOut: extensionPreview.newCheckOut,
         pricingFingerprint: extensionPreview.pricingFingerprint,
+        pricingAction: extensionPricingAction,
         note: extensionNote.trim(),
         ...(extensionOverrideReason.trim() && {
           overrideReason: extensionOverrideReason.trim(),
@@ -1034,9 +1038,11 @@ export default function BookingDetailsPage() {
         currentCheckOut={booking.checkOut}
         newCheckOut={extensionDate}
         note={extensionNote}
+        pricingAction={extensionPricingAction}
         overrideReason={extensionOverrideReason}
         preview={extensionPreview}
         canOverrideMaintenance={canUseAdminCorrection}
+        canApproveComplimentary={canUseAdminCorrection}
         isPreviewing={isPreviewingStayExtension}
         isSubmitting={isMutating}
         errorMessage={extensionError}
@@ -1046,6 +1052,7 @@ export default function BookingDetailsPage() {
           setExtensionError("");
         }}
         onNoteChange={setExtensionNote}
+        onPricingActionChange={setExtensionPricingAction}
         onOverrideReasonChange={setExtensionOverrideReason}
         onPreview={() => void previewExtension()}
         onClose={() => setIsStayExtensionOpen(false)}

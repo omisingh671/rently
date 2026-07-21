@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Prisma } from "@/generated/prisma/client.js";
+import { FolioChargeStatus, Prisma } from "@/generated/prisma/client.js";
 import {
   defaultBookingPolicyCreateData,
   parsePolicySnapshot,
@@ -14,6 +14,7 @@ import type {
 } from "./bookings.dto.js";
 import { buildLateCheckoutExtensionPreview } from "./bookings.assignment.js";
 import { getBookingRefundableAmount } from "./bookings.financials.js";
+import { findMatchingLateCheckoutExtensionCharge } from "./bookings.helper.js";
 import type { findTransactionBooking } from "./bookings.lifecycle.js";
 
 type TransactionBooking = Awaited<ReturnType<typeof findTransactionBooking>>;
@@ -180,12 +181,22 @@ export const buildCheckOutPolicyPreview = async (
     calculatedRefund,
     getBookingRefundableAmount(booking),
   ).toDecimalPlaces(2);
-  const lateCheckoutCharge = await buildLateCheckoutPolicyPreview(
+  const calculatedLateCheckoutCharge = await buildLateCheckoutPolicyPreview(
     tx,
     booking,
     policySnapshot,
     now,
   );
+  const matchingLateCheckoutCharge = calculatedLateCheckoutCharge
+    ? findMatchingLateCheckoutExtensionCharge(
+        booking.folioCharges,
+        calculatedLateCheckoutCharge,
+      )
+    : null;
+  const lateCheckoutCharge =
+    matchingLateCheckoutCharge?.status === FolioChargeStatus.VOID
+      ? null
+      : calculatedLateCheckoutCharge;
   const result = {
     bookingId: booking.id,
     bookingVersion: booking.version,

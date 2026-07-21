@@ -1,15 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { BookingStatus } from "@/generated/prisma/client.js";
 import {
+  BookingStatus,
+  FolioChargeStatus,
+} from "@/generated/prisma/client.js";
+import {
+  assertStayExtensionPricingActionAllowed,
+  findMatchingLateCheckoutExtensionCharge,
   getLifecycleReversalTarget,
   getVacatedRoomIds,
+  shouldCreateStayExtensionCharge,
 } from "./bookings.helper.js";
 import {
+  commitStayExtensionSchema,
   reverseBookingLifecycleSchema,
   updateBookingStatusSchema,
 } from "./bookings.schema.js";
 import { buildRoomAllocationSyncPlan } from "./bookings.allocations.js";
+
+const lateCheckoutPreview = {
+  extraNights: 36,
+  effectiveDate: "2026-06-14",
+  originalCheckOutDate: "2026-06-14",
+  actualCheckOutDate: "2026-07-20",
+  currentAssignment: "Room 100-A",
+  nightlyRate: "2000",
+  baseAmount: "72000",
+  taxAmount: "0",
+  totalAmount: "72000",
+  taxBreakdown: [],
+  pricingSnapshot: [],
+};
 
 test("maps only explicit lifecycle reversals", () => {
   assert.equal(
@@ -98,5 +119,104 @@ test("lifecycle reversal requires version and audit note without target status",
     reverseBookingLifecycleSchema.safeParse({ expectedVersion: 3, note: "" })
       .success,
     false,
+  );
+});
+
+test("late checkout charge matching prefers an active charge over an older void", () => {
+  const charge = findMatchingLateCheckoutExtensionCharge(
+    [
+      {
+        id: "void-charge",
+        status: FolioChargeStatus.VOID,
+        type: "EXTENSION",
+        metadata: {
+          source: "LATE_CHECKOUT_EXTENSION",
+          originalCheckOutDate: "2026-06-14",
+          actualCheckOutDate: "2026-07-20",
+          extraNights: 36,
+        },
+      },
+      {
+        id: "active-charge",
+        status: FolioChargeStatus.ACTIVE,
+        type: "EXTENSION",
+        metadata: {
+          source: "LATE_CHECKOUT_EXTENSION",
+          originalCheckOutDate: "2026-06-14",
+          actualCheckOutDate: "2026-07-20",
+          extraNights: 36,
+        },
+      },
+    ],
+    lateCheckoutPreview,
+  );
+
+  assert.equal(charge?.id, "active-charge");
+});
+
+test("late checkout charge matching keeps a voided charge as the waiver", () => {
+  const charge = findMatchingLateCheckoutExtensionCharge(
+    [
+      {
+        id: "void-charge",
+        status: FolioChargeStatus.VOID,
+        type: "EXTENSION",
+        metadata: {
+          source: "LATE_CHECKOUT_EXTENSION",
+          originalCheckOutDate: "2026-06-14",
+          actualCheckOutDate: "2026-07-20",
+          extraNights: 36,
+        },
+      },
+    ],
+    lateCheckoutPreview,
+  );
+
+  assert.equal(charge?.status, FolioChargeStatus.VOID);
+});
+
+test("stay extension defaults to the existing charged pricing treatment", () => {
+  const result = commitStayExtensionSchema.parse({
+    expectedVersion: 2,
+    newCheckOut: "2026-07-25T00:00:00.000Z",
+    pricingFingerprint: "a".repeat(64),
+    note: "Guest requested additional nights",
+  });
+
+  assert.equal(result.pricingAction, "CHARGE");
+});
+
+test("stay extension accepts an explicit complimentary pricing treatment", () => {
+  const result = commitStayExtensionSchema.safeParse({
+    expectedVersion: 2,
+    newCheckOut: "2026-07-25T00:00:00.000Z",
+    pricingFingerprint: "a".repeat(64),
+    pricingAction: "COMPLIMENTARY",
+    note: "Approved service recovery",
+  });
+
+  assert.equal(result.success, true);
+});
+
+test("complimentary stay extensions create no folio charge", () => {
+  assert.equal(shouldCreateStayExtensionCharge("CHARGE"), true);
+  assert.equal(shouldCreateStayExtensionCharge("COMPLIMENTARY"), false);
+});
+
+test("complimentary stay extensions require an admin approval role", () => {
+  assert.doesNotThrow(() =>
+    assertStayExtensionPricingActionAllowed(
+      "COMPLIMENTARY",
+      "ADMIN",
+    ),
+  );
+  assert.throws(
+    () =>
+      assertStayExtensionPricingActionAllowed(
+        "COMPLIMENTARY",
+        "MANAGER",
+      ),
+    (error: unknown) =>
+      error instanceof Error && error.message.includes("Only Admin"),
   );
 });

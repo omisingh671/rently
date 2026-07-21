@@ -9,14 +9,17 @@ type StayExtensionModalProps = {
   currentCheckOut: string;
   newCheckOut: string;
   note: string;
+  pricingAction: "CHARGE" | "COMPLIMENTARY";
   overrideReason: string;
   preview: StayExtensionPreview | null;
   canOverrideMaintenance: boolean;
+  canApproveComplimentary: boolean;
   isPreviewing: boolean;
   isSubmitting: boolean;
   errorMessage: string;
   onNewCheckOutChange: (value: string) => void;
   onNoteChange: (value: string) => void;
+  onPricingActionChange: (value: "CHARGE" | "COMPLIMENTARY") => void;
   onOverrideReasonChange: (value: string) => void;
   onPreview: () => void;
   onClose: () => void;
@@ -28,14 +31,17 @@ export function StayExtensionModal({
   currentCheckOut,
   newCheckOut,
   note,
+  pricingAction,
   overrideReason,
   preview,
   canOverrideMaintenance,
+  canApproveComplimentary,
   isPreviewing,
   isSubmitting,
   errorMessage,
   onNewCheckOutChange,
   onNoteChange,
+  onPricingActionChange,
   onOverrideReasonChange,
   onPreview,
   onClose,
@@ -106,12 +112,66 @@ export function StayExtensionModal({
               <PreviewRow label="Additional discount" value={formatMoney(preview.discountAmount)} />
               <PreviewRow label="Tax" value={formatMoney(preview.taxAmount)} />
               <PreviewRow label="Extension total" value={formatMoney(preview.totalAmount)} />
-              <PreviewRow label="Resulting balance" value={formatMoney(preview.resultingBalance)} />
+              <PreviewRow
+                label={pricingAction === "COMPLIMENTARY" ? "Amount waived" : "Resulting balance"}
+                value={formatMoney(
+                  pricingAction === "COMPLIMENTARY"
+                    ? preview.totalAmount
+                    : preview.resultingBalance,
+                )}
+              />
             </div>
             <p className="mt-3 text-xs text-slate-500">
               Existing booking discounts are frozen. Additional nights use the active rate and tax configuration.
             </p>
           </div>
+        )}
+
+        {preview && (
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-semibold text-slate-700">
+              Extension pricing
+            </legend>
+            <label className="flex cursor-pointer gap-3 rounded-md border border-slate-200 p-3 text-sm">
+              <input
+                type="radio"
+                name="extensionPricingAction"
+                checked={pricingAction === "CHARGE"}
+                disabled={isSubmitting}
+                onChange={() => onPricingActionChange("CHARGE")}
+              />
+              <span>
+                <span className="block font-semibold text-slate-900">
+                  Charge {formatMoney(preview.totalAmount)}
+                </span>
+                <span className="text-slate-500">
+                  Post the extension to the guest folio and create a debit note.
+                </span>
+              </span>
+            </label>
+            {canApproveComplimentary && (
+              <label className="flex cursor-pointer gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                <input
+                  type="radio"
+                  name="extensionPricingAction"
+                  checked={pricingAction === "COMPLIMENTARY"}
+                  disabled={isSubmitting}
+                  onChange={() => onPricingActionChange("COMPLIMENTARY")}
+                />
+                <span>
+                  <span className="block font-semibold text-amber-900">
+                    Complimentary extension
+                  </span>
+                  <span className="text-amber-800">
+                    Waive {formatMoney(preview.totalAmount)} without creating a folio charge.
+                  </span>
+                </span>
+              </label>
+            )}
+            <p className="text-xs text-slate-500">
+              Select the guest&apos;s real final departure date. Staying beyond that date can create a separate late-checkout charge.
+            </p>
+          </fieldset>
         )}
 
         {preview && preview.conflicts.length > 0 && (
@@ -143,7 +203,9 @@ export function StayExtensionModal({
           )}
 
         <label className="block text-sm">
-          <span className="font-medium text-slate-700">Audit note</span>
+          <span className="font-medium text-slate-700">
+            {pricingAction === "COMPLIMENTARY" ? "Complimentary approval reason" : "Audit note"}
+          </span>
           <textarea
             value={note}
             required
@@ -165,7 +227,9 @@ export function StayExtensionModal({
             Cancel
           </Button>
           <Button type="submit" disabled={!canSubmit}>
-            Confirm extension
+            {pricingAction === "COMPLIMENTARY"
+              ? "Confirm complimentary extension"
+              : "Confirm extension"}
           </Button>
         </div>
       </form>

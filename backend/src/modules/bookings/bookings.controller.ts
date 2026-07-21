@@ -237,6 +237,7 @@ export const extendStay = async (req: AuthRequest, res: Response) => {
     expectedVersion: body.expectedVersion,
     newCheckOut: body.newCheckOut,
     pricingFingerprint: body.pricingFingerprint,
+    pricingAction: body.pricingAction,
     note: body.note,
     ...(body.overrideReason !== undefined && {
       overrideReason: body.overrideReason,

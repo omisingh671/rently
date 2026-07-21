@@ -358,6 +358,7 @@ export type StayExtensionPreview = {
   discountAmount: string;
   taxAmount: string;
   totalAmount: string;
+  existingBalance: string;
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
@@ -381,6 +382,7 @@ export type PreviewStayExtensionPayload = {
 
 export type CommitStayExtensionPayload = PreviewStayExtensionPayload & {
   pricingFingerprint: string;
+  pricingAction: "CHARGE" | "COMPLIMENTARY";
   note: string;
   overrideReason?: string;
 };

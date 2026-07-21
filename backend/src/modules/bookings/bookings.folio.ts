@@ -32,24 +32,7 @@ import {
   buildStayPolicySnapshotFromBooking,
 } from "@/modules/booking-policy/stay-policy.js";
 import { buildLateCheckoutPolicyPreview } from "./bookings.stay-policy.js";
-
-const getJsonString = (value: Prisma.JsonValue, key: string) => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value[key];
-  return typeof item === "string" ? item : null;
-};
-
-const getJsonNumber = (value: Prisma.JsonValue, key: string) => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const item = value[key];
-  return typeof item === "number" ? item : null;
-};
+import { findMatchingLateCheckoutExtensionCharge } from "./bookings.helper.js";
 
 export const ensureLateCheckoutExtensionCharge = async (
   tx: Prisma.TransactionClient,
@@ -64,26 +47,19 @@ export const ensureLateCheckoutExtensionCharge = async (
     return null;
   }
 
-  const existing = input.booking.folioCharges.find((charge) => {
-    if (
-      charge.status !== FolioChargeStatus.ACTIVE ||
-      charge.type !== "EXTENSION"
-    ) {
-      return false;
-    }
+  const existing = findMatchingLateCheckoutExtensionCharge(
+    input.booking.folioCharges,
+    input.preview,
+  );
 
-    return (
-      getJsonString(charge.metadata, "source") === "LATE_CHECKOUT_EXTENSION" &&
-      getJsonString(charge.metadata, "originalCheckOutDate") ===
-        input.preview?.originalCheckOutDate &&
-      getJsonString(charge.metadata, "actualCheckOutDate") ===
-        input.preview?.actualCheckOutDate &&
-      getJsonNumber(charge.metadata, "extraNights") === input.preview?.extraNights
-    );
-  });
-
-  if (existing) {
+  if (existing?.status === FolioChargeStatus.ACTIVE) {
     return existing;
+  }
+
+  // Voiding an automatically generated late-checkout charge is the audited
+  // waiver for that exact stay period. Do not recreate it on the next attempt.
+  if (existing?.status === FolioChargeStatus.VOID) {
+    return null;
   }
 
   return tx.bookingFolioCharge.create({

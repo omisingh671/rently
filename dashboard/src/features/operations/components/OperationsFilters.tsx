@@ -2,6 +2,7 @@ import Button from "@/components/ui/Button";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 import { ADMIN_ROUTES, adminPath } from "@/configs/routePathsAdmin";
 import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
+import { useAuthStore } from "@/stores/authStore";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { FiChevronDown } from "react-icons/fi";
 
@@ -36,6 +37,10 @@ export function OperationsFilters({
   onSourceChange,
   onPropertyChange,
 }: OperationsFiltersProps) {
+  const canAccessFrontDeskOperations = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "MANAGER", "FRONT_DESK"]),
+  );
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row lg:items-center">
       <div className="relative flex-1 lg:max-w-md">
@@ -95,7 +100,7 @@ export function OperationsFilters({
         )}
       </div>
 
-      {module === "bookings" && (
+      {module === "bookings" && canAccessFrontDeskOperations && (
         <div className="flex items-center gap-3 lg:ml-auto">
           <div className="mr-1 hidden h-6 w-px bg-slate-200 lg:block" />
           <Button

@@ -1,10 +1,59 @@
 import {
   BookingStatus,
+  FolioChargeStatus,
+  Prisma,
   UserRole,
   PaymentMethod,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
-import type { RecordDashboardBookingPaymentInput } from "./bookings.inputs.js";
+import type { BookingStayExtensionChargePreviewDTO } from "./bookings.dto.js";
+import type {
+  RecordDashboardBookingPaymentInput,
+  StayExtensionPricingAction,
+} from "./bookings.inputs.js";
+
+const getJsonValue = (value: Prisma.JsonValue, key: string) => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value[key] ?? null;
+};
+
+type LateCheckoutFolioCharge = {
+  id: string;
+  status: FolioChargeStatus;
+  type: string;
+  metadata: Prisma.JsonValue;
+};
+
+export const findMatchingLateCheckoutExtensionCharge = <
+  T extends LateCheckoutFolioCharge,
+>(
+  charges: T[],
+  preview: BookingStayExtensionChargePreviewDTO,
+) => {
+  const matches = charges.filter((charge) => {
+    if (charge.type !== "EXTENSION") {
+      return false;
+    }
+
+    return (
+      getJsonValue(charge.metadata, "source") === "LATE_CHECKOUT_EXTENSION" &&
+      getJsonValue(charge.metadata, "originalCheckOutDate") ===
+        preview.originalCheckOutDate &&
+      getJsonValue(charge.metadata, "actualCheckOutDate") ===
+        preview.actualCheckOutDate &&
+      getJsonValue(charge.metadata, "extraNights") === preview.extraNights
+    );
+  });
+
+  return (
+    matches.find((charge) => charge.status === FolioChargeStatus.ACTIVE) ??
+    matches.find((charge) => charge.status === FolioChargeStatus.VOID) ??
+    null
+  );
+};
 
 export const allowedBookingTransitions: Record<BookingStatus, readonly BookingStatus[]> = {
   [BookingStatus.PENDING]: [BookingStatus.CONFIRMED, BookingStatus.CANCELLED],
@@ -94,6 +143,23 @@ export const assertBookingTransitionAllowed = (
 
 export const isAdminOverrideRole = (role: UserRole) =>
   role === UserRole.SUPER_ADMIN || role === UserRole.ADMIN;
+
+export const assertStayExtensionPricingActionAllowed = (
+  pricingAction: StayExtensionPricingAction,
+  role: UserRole,
+) => {
+  if (pricingAction === "COMPLIMENTARY" && !isAdminOverrideRole(role)) {
+    throw new HttpError(
+      403,
+      "FORBIDDEN",
+      "Only Admin or Super Admin can approve a complimentary stay extension",
+    );
+  }
+};
+
+export const shouldCreateStayExtensionCharge = (
+  pricingAction: StayExtensionPricingAction,
+) => pricingAction === "CHARGE";
 
 export const requireAuditNote = (note: string | undefined, message: string) => {
   if (!note?.trim()) {
