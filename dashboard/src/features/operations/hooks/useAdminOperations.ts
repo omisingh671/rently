@@ -274,6 +274,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       return checkOutBookingApi(bookingId, payload);
     },
     onSuccess: syncBooking,
+    onError: refreshBookingDetail,
   });
 
   const markNoShow = useMutation({

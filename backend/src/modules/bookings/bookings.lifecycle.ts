@@ -26,6 +26,7 @@ import {
 } from "./bookings.housekeeping.js";
 import {
   assertBookingTransitionAllowed,
+  getCheckoutReversalFinancialBlock,
   getLifecycleReversalTarget,
   getLocalDateValue,
   isAdminOverrideRole,
@@ -759,11 +760,24 @@ export const reverseBookingLifecycleInTransaction = async (
         ? checkoutMetadata.refundAmount
         : 0,
     );
-    if (checkoutMetadata.extensionChargeId || refundAmount.greaterThan(0)) {
+    const financialBlock = getCheckoutReversalFinancialBlock({
+      extensionChargeId: checkoutMetadata.extensionChargeId,
+      folioCharges: booking.folioCharges,
+      balanceDue: getBookingBalanceAmount(booking),
+      refundAmount,
+    });
+    if (financialBlock === "UNSETTLED_CHECKOUT_CHARGE") {
       throw new HttpError(
         409,
         "CHECK_OUT_REVERSAL_FINANCIAL_ADJUSTMENT",
-        "Resolve checkout-generated charges or refund review before reversing checkout",
+        "Settle or void the checkout-generated charge before reversing checkout",
+      );
+    }
+    if (financialBlock === "REFUND_REVIEW") {
+      throw new HttpError(
+        409,
+        "CHECK_OUT_REVERSAL_REFUND_REVIEW",
+        "Complete or reject the early-checkout refund review before reversing checkout",
       );
     }
     await restoreRoomsAfterCheckoutReversal(tx, {

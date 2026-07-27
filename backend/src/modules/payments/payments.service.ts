@@ -243,7 +243,10 @@ export const createManualPayment = async (
       );
     }
 
-    if (booking.status === BookingStatus.CHECKED_OUT) {
+    if (
+      booking.status === BookingStatus.CHECKED_OUT &&
+      input.actorUserId === undefined
+    ) {
       throw new HttpError(
         409,
         "BOOKING_PAYMENT_CLOSED",

@@ -53,6 +53,9 @@ type BookingActionModalProps = {
   roomMovePreview: RoomMovePreview | null;
   checkInPolicyPreview: CheckInPolicyPreview | null;
   checkOutPolicyPreview: CheckOutPolicyPreview | null;
+  checkOutBalanceAmount: string;
+  canOverrideCheckOutBalance: boolean;
+  allowBalanceDueCheckout: boolean;
   roomMovePricingAction: RoomMovePricingAction;
   onRoomMovePricingActionChange: (value: RoomMovePricingAction) => void;
   onNoteChange: (value: string) => void;
@@ -66,6 +69,7 @@ type BookingActionModalProps = {
   onRefundMethodChange: (value: PaymentMethod) => void;
   identityVerified: boolean;
   onIdentityVerifiedChange: (value: boolean) => void;
+  onAllowBalanceDueCheckoutChange: (value: boolean) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
@@ -89,6 +93,9 @@ export function BookingActionModal({
   roomMovePreview,
   checkInPolicyPreview,
   checkOutPolicyPreview,
+  checkOutBalanceAmount,
+  canOverrideCheckOutBalance,
+  allowBalanceDueCheckout,
   roomMovePricingAction,
   onRoomMovePricingActionChange,
   onNoteChange,
@@ -102,14 +109,23 @@ export function BookingActionModal({
   onRefundMethodChange,
   identityVerified,
   onIdentityVerifiedChange,
+  onAllowBalanceDueCheckoutChange,
   onClose,
   onSubmit,
 }: BookingActionModalProps) {
   const paymentReferenceRequired =
     action?.type === "recordPayment" &&
     paymentMethodsRequiringReference.has(paymentMethod);
+  const hasCheckOutBalance =
+    action?.type === "checkOut" && Number(checkOutBalanceAmount) > 0;
+  const canSubmitCheckOut =
+    !hasCheckOutBalance ||
+    (canOverrideCheckOutBalance &&
+      allowBalanceDueCheckout &&
+      note.trim().length > 0);
   const canSubmit =
     !isSubmitting &&
+    canSubmitCheckOut &&
     (action?.type !== "assignRoom" ||
       (selectedRoomIds.length === requiredRoomCount &&
         roomMovePreview !== null)) &&
@@ -196,6 +212,43 @@ export function BookingActionModal({
                 <p>Late checkout tariff: {formatMoney(checkOutPolicyPreview.lateCheckoutCharge.totalAmount)} ({formatEnumLabel(checkOutPolicyPreview.lateCheckoutCharge.tariffType)}).</p>
               )}
               {!checkOutPolicyPreview.isEarly && !checkOutPolicyPreview.lateCheckoutCharge && <p>Standard checkout policy applies with no timing adjustment.</p>}
+            </div>
+          )}
+
+          {action.type === "checkOut" && hasCheckOutBalance && (
+            <div className="space-y-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              <p>
+                Outstanding balance:{" "}
+                <strong>{formatMoney(checkOutBalanceAmount)}</strong>. Record
+                the payment before checkout.
+              </p>
+              {canOverrideCheckOutBalance ? (
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={allowBalanceDueCheckout}
+                    disabled={isSubmitting}
+                    onChange={(event) =>
+                      onAllowBalanceDueCheckoutChange(event.target.checked)
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-red-300"
+                  />
+                  <span>
+                    <span className="block font-semibold">
+                      Use Admin balance override
+                    </span>
+                    <span className="text-red-700">
+                      Checkout will continue without settlement. A specific
+                      audit reason is required.
+                    </span>
+                  </span>
+                </label>
+              ) : (
+                <p className="font-medium">
+                  Only an Admin or Super Admin can explicitly override this
+                  balance.
+                </p>
+              )}
             </div>
           )}
 

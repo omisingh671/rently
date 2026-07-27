@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   BookingStatus,
   FolioChargeStatus,
+  Prisma,
 } from "@/generated/prisma/client.js";
 import {
   assertStayExtensionPricingActionAllowed,
   findMatchingLateCheckoutExtensionCharge,
+  getCheckoutReversalFinancialBlock,
   getLifecycleReversalTarget,
   getVacatedRoomIds,
   shouldCreateStayExtensionCharge,
@@ -173,6 +175,43 @@ test("late checkout charge matching keeps a voided charge as the waiver", () => 
   );
 
   assert.equal(charge?.status, FolioChargeStatus.VOID);
+});
+
+test("checkout reversal blocks only an active unpaid checkout charge", () => {
+  const activeCharge = {
+    id: "late-charge",
+    status: FolioChargeStatus.ACTIVE,
+  };
+
+  assert.equal(
+    getCheckoutReversalFinancialBlock({
+      extensionChargeId: activeCharge.id,
+      folioCharges: [activeCharge],
+      balanceDue: new Prisma.Decimal(6500),
+      refundAmount: new Prisma.Decimal(0),
+    }),
+    "UNSETTLED_CHECKOUT_CHARGE",
+  );
+  assert.equal(
+    getCheckoutReversalFinancialBlock({
+      extensionChargeId: activeCharge.id,
+      folioCharges: [activeCharge],
+      balanceDue: new Prisma.Decimal(0),
+      refundAmount: new Prisma.Decimal(0),
+    }),
+    null,
+  );
+  assert.equal(
+    getCheckoutReversalFinancialBlock({
+      extensionChargeId: activeCharge.id,
+      folioCharges: [
+        { ...activeCharge, status: FolioChargeStatus.VOID },
+      ],
+      balanceDue: new Prisma.Decimal(6500),
+      refundAmount: new Prisma.Decimal(0),
+    }),
+    null,
+  );
 });
 
 test("stay extension defaults to the existing charged pricing treatment", () => {

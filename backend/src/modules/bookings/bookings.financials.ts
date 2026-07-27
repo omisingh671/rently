@@ -197,13 +197,6 @@ export const assertBookingCanAcceptPayment = (
     );
   }
 
-  if (booking.status === BookingStatus.CHECKED_OUT) {
-    throw new HttpError(
-      409,
-      "BOOKING_PAYMENT_CLOSED",
-      "Checked-out bookings cannot accept payments",
-    );
-  }
 };
 
 export const getRefundRecordedByUserId = (metadata: Prisma.JsonValue) => {

@@ -187,6 +187,7 @@ export default function BookingDetailsPage() {
     refundMethod,
     actionError,
     identityVerified,
+    allowBalanceDueCheckout,
     roomMovePreview,
     roomMovePricingAction,
     setNote,
@@ -199,6 +200,7 @@ export default function BookingDetailsPage() {
     setRefundMethod,
     setActionError,
     setIdentityVerified,
+    setAllowBalanceDueCheckout,
     setRoomMovePreview,
     setRoomMovePricingAction,
     openAction,
@@ -429,15 +431,23 @@ export default function BookingDetailsPage() {
           }),
         });
       } else if (pendingAction.type === "checkOut") {
-        if (pendingAction.requiresNote && !note.trim()) {
-          setActionError("Audit note is required for balance override.");
+        if (
+          Number(booking.balanceAmount) > 0 &&
+          (!canUseAdminCorrection ||
+            !allowBalanceDueCheckout ||
+            !note.trim())
+        ) {
+          setActionError(
+            "Record the payment or explicitly select the Admin balance override and enter an audit reason.",
+          );
           return;
         }
         await checkOutBooking({
           expectedVersion: booking.version,
-          ...(Number(booking.balanceAmount) > 0 && {
-            allowBalanceDueCheckout: true,
-          }),
+          ...(Number(booking.balanceAmount) > 0 &&
+            allowBalanceDueCheckout && {
+              allowBalanceDueCheckout: true,
+            }),
           ...(note.trim() && { note: note.trim() }),
           ...(checkOutPolicyPreview && {
             policyFingerprint: checkOutPolicyPreview.policyFingerprint,
@@ -538,8 +548,9 @@ export default function BookingDetailsPage() {
     Number(booking.balanceAmount) > 0 &&
     booking.status !== "CANCELLED" &&
     booking.status !== "NO_SHOW" &&
-    booking.status !== "CHECKED_OUT" &&
-    (booking.status === "CHECKED_IN" || !booking.isCheckInDatePassed);
+    (booking.status === "CHECKED_IN" ||
+      booking.status === "CHECKED_OUT" ||
+      !booking.isCheckInDatePassed);
   const canShowRefunds =
     booking !== undefined &&
     (booking.status === "CANCELLED" || booking.status === "NO_SHOW") &&
@@ -639,7 +650,7 @@ export default function BookingDetailsPage() {
             <div className="min-w-0">
               <div className="font-extrabold text-sm text-amber-950">Outstanding Balance Due</div>
               <div className="text-xs text-amber-800 font-semibold mt-0.5">
-                This folio has an unpaid balance of <span className="font-bold text-amber-950">{formatMoney(booking.balanceAmount)}</span>. Please collect the payment before or during check-in.
+                This folio has an unpaid balance of <span className="font-bold text-amber-950">{formatMoney(booking.balanceAmount)}</span>. {booking.status === "CHECKED_OUT" ? "Settle it before reversing checkout or closing the folio." : "Please collect the payment before checkout."}
               </div>
             </div>
           </div>
@@ -1017,6 +1028,9 @@ export default function BookingDetailsPage() {
         roomMovePreview={roomMovePreview}
         checkInPolicyPreview={checkInPolicyPreview}
         checkOutPolicyPreview={checkOutPolicyPreview}
+        checkOutBalanceAmount={booking.balanceAmount}
+        canOverrideCheckOutBalance={canUseAdminCorrection}
+        allowBalanceDueCheckout={allowBalanceDueCheckout}
         roomMovePricingAction={roomMovePricingAction}
         onRoomMovePricingActionChange={setRoomMovePricingAction}
         onNoteChange={setNote}
@@ -1030,6 +1044,7 @@ export default function BookingDetailsPage() {
         onRefundMethodChange={setRefundMethod}
         identityVerified={identityVerified}
         onIdentityVerifiedChange={setIdentityVerified}
+        onAllowBalanceDueCheckoutChange={setAllowBalanceDueCheckout}
         onClose={closeAction}
         onSubmit={submitAction}
       />

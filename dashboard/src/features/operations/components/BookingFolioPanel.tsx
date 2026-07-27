@@ -34,6 +34,12 @@ export function BookingFolioPanel({
   const [errorMessage, setErrorMessage] = useState("");
   const [voidChargeId, setVoidChargeId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
+  const activeCharges = booking.folioCharges.filter(
+    (charge) => charge.status === "ACTIVE",
+  );
+  const voidedCharges = booking.folioCharges.filter(
+    (charge) => charge.status === "VOID",
+  );
 
   const addCharge = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -82,10 +88,61 @@ export function BookingFolioPanel({
             Guest folio
           </h3>
           <p className="mt-1 text-sm text-slate-500">
-            Active operational charges: {formatMoney(booking.folioTotal)}
+            Charges and payments reconcile to the amount still due.
           </p>
         </div>
       </div>
+
+      <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="bg-white p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Booking amount
+          </div>
+          <div className="mt-1 font-semibold text-slate-900">
+            {formatMoney(booking.totalAmount)}
+          </div>
+        </div>
+        <div className="bg-white p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Active folio charges ({activeCharges.length})
+          </div>
+          <div className="mt-1 font-semibold text-slate-900">
+            + {formatMoney(booking.folioTotal)}
+          </div>
+        </div>
+        <div className="bg-white p-3">
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Net payments received
+          </div>
+          <div className="mt-1 font-semibold text-emerald-700">
+            − {formatMoney(booking.netPaidAmount)}
+          </div>
+        </div>
+        <div
+          className={
+            Number(booking.balanceAmount) > 0
+              ? "bg-amber-50 p-3"
+              : "bg-emerald-50 p-3"
+          }
+        >
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-600">
+            Remaining to collect
+          </div>
+          <div
+            className={
+              Number(booking.balanceAmount) > 0
+                ? "mt-1 font-bold text-amber-800"
+                : "mt-1 font-bold text-emerald-800"
+            }
+          >
+            {formatMoney(booking.balanceAmount)}
+          </div>
+        </div>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        Payments apply to the booking total, not to individual folio rows.
+        Voided charges remain visible for audit but do not increase the balance.
+      </p>
 
       <form
         onSubmit={addCharge}
@@ -136,53 +193,86 @@ export function BookingFolioPanel({
         </div>
       )}
 
-      <div className="mt-4 divide-y divide-slate-100">
-        {booking.folioCharges.length === 0 ? (
+      <div className="mt-4">
+        {activeCharges.length === 0 ? (
           <p className="text-sm text-slate-500 py-2">
-            No folio charges recorded.
+            No active folio charges.
           </p>
         ) : (
-          booking.folioCharges.map((charge) => (
-            <div
-              key={charge.id}
-              className="flex flex-wrap items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0 text-sm"
-            >
-              <div>
-                <div className="font-semibold text-slate-900">
-                  {charge.description}
-                </div>
-                <div className="text-xs text-slate-500">
-                  {formatEnumLabel(charge.type)} / {charge.createdByName} /{" "}
-                  {formatDateTime(charge.createdAt)}
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={
-                    charge.status === "VOID"
-                      ? "line-through text-slate-400"
-                      : "font-bold"
-                  }
+          <>
+            <h4 className="text-sm font-semibold text-slate-800">
+              Active charges
+            </h4>
+            <div className="divide-y divide-slate-100">
+              {activeCharges.map((charge) => (
+                <div
+                  key={charge.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3.5 text-sm"
                 >
-                  {formatMoney(charge.amount)}
-                </span>
-                <StatusBadge status={charge.status} />
-                {charge.status === "ACTIVE" && canVoid && (
-                  <button
-                    type="button"
-                    disabled={isMutating}
-                    onClick={() => {
-                      setVoidChargeId(charge.id);
-                      setVoidReason("");
-                    }}
-                    className="font-semibold text-rose-700 hover:underline disabled:opacity-50"
-                  >
-                    Void
-                  </button>
-                )}
-              </div>
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {charge.description}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {formatEnumLabel(charge.type)} / {charge.createdByName} /{" "}
+                      {formatDateTime(charge.createdAt)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold">
+                      {formatMoney(charge.amount)}
+                    </span>
+                    <StatusBadge status={charge.status} />
+                    {canVoid && (
+                      <button
+                        type="button"
+                        disabled={isMutating}
+                        onClick={() => {
+                          setVoidChargeId(charge.id);
+                          setVoidReason("");
+                        }}
+                        className="font-semibold text-rose-700 hover:underline disabled:opacity-50"
+                      >
+                        Void
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))
+          </>
+        )}
+
+        {voidedCharges.length > 0 && (
+          <details className="mt-4 rounded-md border border-slate-200 bg-slate-50">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-700">
+              Voided charge history ({voidedCharges.length})
+            </summary>
+            <div className="divide-y divide-slate-200 border-t border-slate-200 px-3">
+              {voidedCharges.map((charge) => (
+                <div
+                  key={charge.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                >
+                  <div>
+                    <div className="font-medium text-slate-600">
+                      {charge.description}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {formatEnumLabel(charge.type)} / {charge.createdByName} /{" "}
+                      {formatDateTime(charge.createdAt)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="line-through text-slate-400">
+                      {formatMoney(charge.amount)}
+                    </span>
+                    <StatusBadge status={charge.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 
