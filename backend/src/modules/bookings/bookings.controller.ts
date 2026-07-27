@@ -68,6 +68,15 @@ export const getBookingById = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const refreshBookingFolio = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.refreshBookingFolio(getUserId(req), params.id);
+  res.json({ success: true, data });
+};
+
 export const createManualBooking = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = createManualBookingSchema.parse(req.body);

@@ -178,6 +178,8 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/lifecycle-reversal`,
     bookingFolioChargesById: (bookingId: string) =>
       `/bookings/${bookingId}/folio-charges`,
+    bookingFolioRefreshById: (bookingId: string) =>
+      `/bookings/${bookingId}/folio-charges/refresh`,
     bookingFolioChargeById: (bookingId: string, chargeId: string) =>
       `/bookings/${bookingId}/folio-charges/${chargeId}/void`,
     roomBoardByProperty: (propertyId: string) =>

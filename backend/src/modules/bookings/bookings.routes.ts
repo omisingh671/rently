@@ -72,6 +72,11 @@ router.post(
   authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
   controller.reverseBookingLifecycle,
 );
+router.post(
+  "/bookings/:id/folio-charges/refresh",
+  authorize(bookingReadRoles),
+  controller.refreshBookingFolio,
+);
 router.post("/bookings/:id/folio-charges", authorize(bookingReadRoles), controller.createBookingFolioCharge);
 router.post(
   "/bookings/:id/folio-charges/:chargeId/void",

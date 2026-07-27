@@ -174,6 +174,19 @@ export const getBookingById = async (
   return mapDashboardBooking(booking);
 };
 
+export const refreshBookingFolio = async (
+  userId: string,
+  bookingId: string,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  await postLateCheckoutExtensionCharge(bookingId, actor, {});
+
+  return mapDashboardBooking(await ensureBookingExists(bookingId));
+};
+
 export const checkManualBookingAvailability = async (
   userId: string,
   propertyId: string,

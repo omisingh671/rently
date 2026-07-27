@@ -96,6 +96,7 @@ export default function BookingDetailsPage() {
     isFetching,
     isError,
     error,
+    refreshBooking,
     updateBooking,
     checkInBooking,
     checkOutBooking,
@@ -805,7 +806,11 @@ export default function BookingDetailsPage() {
           <BookingFolioPanel
             booking={booking}
             isMutating={isMutating}
+            isRefreshing={isFetching}
+            canRecordBalance={canRecordBalance}
             canVoid={canVoidFolio}
+            onRecordPayment={() => openAction("recordPayment")}
+            onRefresh={refreshBooking}
             onCreate={createFolioCharge}
             onVoid={(chargeId, reason) =>
               voidFolioCharge({
@@ -922,7 +927,6 @@ export default function BookingDetailsPage() {
             canCheckIn={canCheckIn}
             canCheckOut={canCheckOut}
             canExtendStay={canExtendStay}
-            canRecordBalance={canRecordBalance}
             canAssignRoom={canAssignRoom}
             canUseAdminCorrection={canUseAdminCorrection}
             canMarkNoShow={canMarkNoShow}
@@ -932,7 +936,6 @@ export default function BookingDetailsPage() {
             onCheckIn={() => openAction("checkIn")}
             onCheckOut={() => openAction("checkOut")}
             onExtendStay={openStayExtension}
-            onRecordPayment={() => openAction("recordPayment")}
             onAssignRoom={() => openAction("assignRoom")}
             onLifecycleReversal={() => openAction("lifecycleReversal")}
             onNoShow={() => openAction("noShow")}

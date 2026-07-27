@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import {
   FiAlertTriangle,
-  FiCreditCard,
   FiEdit3,
   FiHome,
   FiLogIn,
@@ -17,7 +16,6 @@ type BookingStatusPanelProps = {
   canCheckIn: boolean;
   canCheckOut: boolean;
   canExtendStay: boolean;
-  canRecordBalance: boolean;
   canAssignRoom: boolean;
   canUseAdminCorrection: boolean;
   canMarkNoShow: boolean;
@@ -27,7 +25,6 @@ type BookingStatusPanelProps = {
   onCheckIn: () => void;
   onCheckOut: () => void;
   onExtendStay: () => void;
-  onRecordPayment: () => void;
   onAssignRoom: () => void;
   onLifecycleReversal: () => void;
   onNoShow: () => void;
@@ -39,7 +36,6 @@ export function BookingStatusPanel({
   canCheckIn,
   canCheckOut,
   canExtendStay,
-  canRecordBalance,
   canAssignRoom,
   canUseAdminCorrection,
   canMarkNoShow,
@@ -49,7 +45,6 @@ export function BookingStatusPanel({
   onCheckIn,
   onCheckOut,
   onExtendStay,
-  onRecordPayment,
   onAssignRoom,
   onLifecycleReversal,
   onNoShow,
@@ -95,16 +90,6 @@ export function BookingStatusPanel({
             onClick={onExtendStay}
           >
             Extend Stay
-          </ActionButton>
-        )}
-        {canRecordBalance && (
-          <ActionButton
-            theme="indigo"
-            icon={<FiCreditCard />}
-            disabled={isMutating}
-            onClick={onRecordPayment}
-          >
-            Record Balance Payment
           </ActionButton>
         )}
         {canAssignRoom && (

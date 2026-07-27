@@ -6,11 +6,16 @@ import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import { formatDateTime, formatMoney } from "../bookingDisplay";
 import type { AdminBooking, FolioChargeType } from "../types";
+import { FiCreditCard, FiRefreshCw } from "react-icons/fi";
 
 type BookingFolioPanelProps = {
   booking: AdminBooking;
   isMutating: boolean;
+  isRefreshing: boolean;
+  canRecordBalance: boolean;
   canVoid: boolean;
+  onRecordPayment: () => void;
+  onRefresh: () => Promise<void>;
   onCreate: (payload: {
     expectedVersion: number;
     type: FolioChargeType;
@@ -24,7 +29,11 @@ type BookingFolioPanelProps = {
 export function BookingFolioPanel({
   booking,
   isMutating,
+  isRefreshing,
+  canRecordBalance,
   canVoid,
+  onRecordPayment,
+  onRefresh,
   onCreate,
   onVoid,
 }: BookingFolioPanelProps) {
@@ -80,6 +89,15 @@ export function BookingFolioPanel({
     }
   };
 
+  const refreshFolio = async () => {
+    try {
+      setErrorMessage("");
+      await onRefresh();
+    } catch (error) {
+      setErrorMessage(normalizeApiError(error).message);
+    }
+  };
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -91,6 +109,20 @@ export function BookingFolioPanel({
             Charges and payments reconcile to the amount still due.
           </p>
         </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={isRefreshing || isMutating}
+          icon={
+            <FiRefreshCw
+              className={isRefreshing ? "animate-spin" : undefined}
+            />
+          }
+          onClick={() => void refreshFolio()}
+        >
+          {isRefreshing ? "Refreshing..." : "Refresh folio"}
+        </Button>
       </div>
 
       <div className="mt-4 grid gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200 sm:grid-cols-2 xl:grid-cols-4">
@@ -137,6 +169,19 @@ export function BookingFolioPanel({
           >
             {formatMoney(booking.balanceAmount)}
           </div>
+          {canRecordBalance && (
+            <Button
+              type="button"
+              size="sm"
+              variant="warning"
+              className="mt-2 w-full font-semibold"
+              disabled={isRefreshing || isMutating}
+              icon={<FiCreditCard />}
+              onClick={onRecordPayment}
+            >
+              Collect {formatMoney(booking.balanceAmount)}
+            </Button>
+          )}
         </div>
       </div>
       <p className="mt-2 text-xs text-slate-500">
