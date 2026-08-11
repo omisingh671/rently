@@ -175,9 +175,9 @@ export default function BookingPolicyForm({
               onChange={handleAdvanceType}
               className={inputClassName}
             >
-              <option value="NONE">No upfront payment</option>
-              <option value="FIXED_AMOUNT">Fixed token amount</option>
-              <option value="PERCENTAGE">Percentage of booking</option>
+              <option value="NONE">No Upfront Payment</option>
+              <option value="FIXED_AMOUNT">Fixed Token Amount</option>
+              <option value="PERCENTAGE">Percentage of Booking</option>
             </select>
           </FieldPanel>
 
@@ -262,8 +262,8 @@ export default function BookingPolicyForm({
             />
             <FieldPanel label="Fee type" description="No fee or a fixed early-arrival charge.">
               <select className={inputClassName} disabled={readOnly} value={form.earlyCheckInFeeType} onChange={(event) => updateField("earlyCheckInFeeType", event.target.value as BookingPolicyFormState["earlyCheckInFeeType"])}>
-                <option value="NONE">No fee</option>
-                <option value="FIXED_AMOUNT">Fixed amount</option>
+                <option value="NONE">No Fee</option>
+                <option value="FIXED_AMOUNT">Fixed Amount</option>
               </select>
             </FieldPanel>
             <FieldPanel label="Fixed fee" description="Applied only when fixed amount is selected." error={fieldErrors.earlyCheckInFeeValue}>
@@ -301,8 +301,8 @@ export default function BookingPolicyForm({
           <div className="mt-4 grid gap-4 lg:grid-cols-3">
             <FieldPanel label="Tariff type" description="Charge a rate multiplier or fixed amount per extra night.">
               <select className={inputClassName} disabled={readOnly} value={form.lateCheckoutFeeType} onChange={(event) => updateField("lateCheckoutFeeType", event.target.value as BookingPolicyFormState["lateCheckoutFeeType"])}>
-                <option value="NIGHTLY_RATE_MULTIPLIER">Nightly-rate multiplier</option>
-                <option value="FIXED_AMOUNT">Fixed amount</option>
+                <option value="NIGHTLY_RATE_MULTIPLIER">Nightly-Rate Multiplier</option>
+                <option value="FIXED_AMOUNT">Fixed Amount</option>
               </select>
             </FieldPanel>
             <FieldPanel label="Tariff value" description="Multiplier or fixed amount, depending on tariff type." error={fieldErrors.lateCheckoutFeeValue}>
@@ -321,9 +321,9 @@ export default function BookingPolicyForm({
           />
           <div className="mt-4 max-w-xl">
             <select className={inputClassName} disabled={readOnly} value={form.downgradeFinancialTreatment} onChange={(event) => updateField("downgradeFinancialTreatment", event.target.value as BookingPolicyFormState["downgradeFinancialTreatment"])}>
-              <option value="NO_CREDIT">No credit</option>
-              <option value="CREDIT_DIFFERENCE">Credit price difference</option>
-              <option value="WAIVER">Admin decides with audit reason</option>
+              <option value="NO_CREDIT">No Credit</option>
+              <option value="CREDIT_DIFFERENCE">Credit Price Difference</option>
+              <option value="WAIVER">Admin Decides with Audit Reason</option>
             </select>
           </div>
         </section>

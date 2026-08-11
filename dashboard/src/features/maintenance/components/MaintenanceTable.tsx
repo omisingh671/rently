@@ -100,40 +100,53 @@ export default function MaintenanceTable({
                     {serial}
                   </AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900">
+                    <div>
+                      <span className="font-semibold text-slate-900">
                         {getTargetLabel(block)}
                       </span>
-                      <StatusBadge status={block.targetType} />
+                      <div className="mt-1.5">
+                        <StatusBadge status={block.targetType} />
+                      </div>
                     </div>
                   </AdminTableCell>
-                  <AdminTableCell>
-                    {block.reason
-                      ? highlightText(block.reason, search)
-                      : "Scheduled maintenance"}
+                  <AdminTableCell className="max-w-sm">
+                    <p className="line-clamp-2 leading-5 text-slate-700">
+                      {block.reason
+                        ? highlightText(block.reason, search)
+                        : "No maintenance reason recorded"}
+                    </p>
                   </AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">
-                    {formatDate(block.startDate)} -{" "}
-                    {formatInclusiveEndDate(block.endDate)}
+                    <p className="font-medium text-slate-800">
+                      {formatDate(block.startDate)} – {formatInclusiveEndDate(block.endDate)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Inclusive</p>
                   </AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">
                     <div className="flex flex-wrap gap-2">
                       <StatusBadge status={block.status} />
                       <StatusBadge status={block.priority} />
                     </div>
+                    {block.emergencyOverride && (
+                      <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                        Conflict override recorded
+                      </span>
+                    )}
                   </AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">{block.createdByName}</AdminTableCell>
                   <AdminTableCell className="whitespace-nowrap">
-                    <div className="flex gap-3">
+                    <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() => onEdit(block)}
-                        className="text-indigo-600 hover:underline"
+                        className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:border-indigo-200 hover:bg-indigo-50"
                       >
                         Edit
                       </button>
                       <button
+                        type="button"
                         onClick={() => onDelete(block)}
-                        className="text-rose-600 hover:underline"
+                        className="rounded-md border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                       >
                         Delete
                       </button>

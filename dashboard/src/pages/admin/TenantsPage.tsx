@@ -435,7 +435,7 @@ export default function TenantsPage() {
           }
           className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-300"
         >
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="ACTIVE">Active</option>
           <option value="INACTIVE">Inactive</option>
         </select>

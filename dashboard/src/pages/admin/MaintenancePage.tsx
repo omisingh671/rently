@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { HiCalendarDays, HiWrenchScrewdriver } from "react-icons/hi2";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import Pagination from "@/components/common/Pagination";
@@ -14,12 +15,16 @@ import type {
   AdminMaintenanceBlock,
   MaintenanceTargetType,
 } from "@/features/maintenance/types";
+import PropertyClosuresPanel from "@/features/property-closures/PropertyClosuresPanel";
+import { normalizeApiError } from "@/utils/errors";
 
 type Filters = {
   propertyId: string;
   search: string;
   targetType: MaintenanceTargetType | "";
 };
+
+type AvailabilityControlView = "MAINTENANCE" | "CLOSURES";
 
 const toDateInputValue = (value: string) => value.slice(0, 10);
 
@@ -51,8 +56,13 @@ export default function MaintenancePage() {
   });
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeView, setActiveView] =
+    useState<AvailabilityControlView>("MAINTENANCE");
   const [editingBlock, setEditingBlock] =
     useState<AdminMaintenanceBlock | null>(null);
+  const [deletingBlock, setDeletingBlock] =
+    useState<AdminMaintenanceBlock | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const {
     properties,
@@ -142,65 +152,130 @@ export default function MaintenancePage() {
     [editingBlock, filters.propertyId],
   );
 
+  const selectedPropertyName =
+    properties.find((property) => property.id === filters.propertyId)?.name ??
+    "the selected property";
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row">
-        <MaintenanceFilters
-          properties={properties}
-          propertyId={filters.propertyId}
-          search={filters.search}
-          targetType={filters.targetType}
-          onChange={(next) => {
-            if (next.propertyId) {
-              setSelectedPropertyId(next.propertyId);
-            }
-            setFilters(next);
-          }}
-        />
-
-        <Button
-          disabled={!filters.propertyId || isLoadingProperties || isPropertiesError}
-          onClick={() => {
-            setEditingBlock(null);
-            setIsModalOpen(true);
-          }}
-        >
-          Create Block
-        </Button>
-      </div>
-
-      <MaintenanceTable
-        items={data?.items}
-        page={page}
-        pageSize={pageSize}
-        search={debouncedSearch}
-        isPending={Boolean(filters.propertyId) && isPending}
-        isFetching={isFetching}
-        isError={isError}
-        emptyMessage={
-          !filters.propertyId
-            ? "No accessible properties found."
-            : "No maintenance blocks found for this property."
-        }
-        isDeleting={isDeleting}
-        onEdit={(block) => {
-          setEditingBlock(block);
-          setIsModalOpen(true);
-        }}
-        onDelete={(block) => {
-          void deleteMaintenance(block.id);
-        }}
-      />
-
-      {visiblePagination && (
-        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <PageSizeSelector value={pageSize} onChange={setPageSize} />
-          <Pagination
-            page={visiblePagination.page}
-            totalPages={visiblePagination.totalPages}
-            onPageChange={setPage}
-          />
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-900">
+            What do you need to take out of sale?
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Choose one workflow for each event. Do not create both records for the same dates and purpose.
+          </p>
         </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setActiveView("MAINTENANCE")}
+            className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+              activeView === "MAINTENANCE"
+                ? "border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100"
+                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span className="rounded-lg bg-white p-2 text-indigo-600 shadow-sm">
+              <HiWrenchScrewdriver className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block font-semibold text-slate-900">Maintenance blocks</span>
+              <span className="mt-1 block text-sm leading-5 text-slate-600">
+                Repairs, inspections, safety faults, or equipment downtime. Target a property, unit, or room.
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveView("CLOSURES")}
+            className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+              activeView === "CLOSURES"
+                ? "border-indigo-400 bg-indigo-50 ring-2 ring-indigo-100"
+                : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            <span className="rounded-lg bg-white p-2 text-indigo-600 shadow-sm">
+              <HiCalendarDays className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block font-semibold text-slate-900">Property closures</span>
+              <span className="mt-1 block text-sm leading-5 text-slate-600">
+                Holidays or owner-requested sell stops. Always closes all public inventory for the property.
+              </span>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {activeView === "MAINTENANCE" ? (
+        <>
+          <div className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:flex-row">
+            <MaintenanceFilters
+              properties={properties}
+              propertyId={filters.propertyId}
+              search={filters.search}
+              targetType={filters.targetType}
+              onChange={(next) => {
+                if (next.propertyId) {
+                  setSelectedPropertyId(next.propertyId);
+                }
+                setFilters(next);
+              }}
+            />
+
+            <Button
+              disabled={!filters.propertyId || isLoadingProperties || isPropertiesError}
+              onClick={() => {
+                setEditingBlock(null);
+                setIsModalOpen(true);
+              }}
+            >
+              Create Maintenance Block
+            </Button>
+          </div>
+
+          <MaintenanceTable
+            items={data?.items}
+            page={page}
+            pageSize={pageSize}
+            search={debouncedSearch}
+            isPending={Boolean(filters.propertyId) && isPending}
+            isFetching={isFetching}
+            isError={isError}
+            emptyMessage={
+              !filters.propertyId
+                ? "No accessible properties found."
+                : "No maintenance blocks found for this property."
+            }
+            isDeleting={isDeleting}
+            onEdit={(block) => {
+              setEditingBlock(block);
+              setIsModalOpen(true);
+            }}
+            onDelete={(block) => {
+              setDeleteError(null);
+              setDeletingBlock(block);
+            }}
+          />
+
+          {visiblePagination && (
+            <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-6 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <PageSizeSelector value={pageSize} onChange={setPageSize} />
+              <Pagination
+                page={visiblePagination.page}
+                totalPages={visiblePagination.totalPages}
+                onPageChange={setPage}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <PropertyClosuresPanel
+          key={filters.propertyId || "no-property"}
+          propertyId={filters.propertyId}
+        />
       )}
 
       <Modal
@@ -265,6 +340,72 @@ export default function MaintenancePage() {
           }}
           onCancel={handleCloseModal}
         />
+      </Modal>
+
+      <Modal
+        isOpen={deletingBlock !== null}
+        onClose={() => {
+          if (!isDeleting) {
+            setDeletingBlock(null);
+            setDeleteError(null);
+          }
+        }}
+        title="Delete Maintenance Block?"
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+            <p className="font-semibold">This permanently removes the record and reopens its inventory dates.</p>
+            <p className="mt-1 text-rose-700">
+              For an audit-friendly history, edit the block and set its status to Cancelled instead.
+            </p>
+          </div>
+          {deletingBlock && (
+            <dl className="grid gap-3 rounded-lg border border-slate-200 p-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-slate-500">Target</dt>
+                <dd className="mt-1 font-medium text-slate-900">
+                  {deletingBlock.roomLabel ?? deletingBlock.unitNumber ?? selectedPropertyName}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Reason</dt>
+                <dd className="mt-1 font-medium text-slate-900">
+                  {deletingBlock.reason || "No reason recorded"}
+                </dd>
+              </div>
+            </dl>
+          )}
+          {deleteError && (
+            <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{deleteError}</p>
+          )}
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+            <Button
+              variant="secondary"
+              disabled={isDeleting}
+              onClick={() => {
+                setDeletingBlock(null);
+                setDeleteError(null);
+              }}
+            >
+              Keep Block
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!deletingBlock || isDeleting}
+              onClick={() => {
+                if (!deletingBlock) return;
+                setDeleteError(null);
+                void deleteMaintenance(deletingBlock.id)
+                  .then(() => setDeletingBlock(null))
+                  .catch((caughtError: unknown) => {
+                    setDeleteError(normalizeApiError(caughtError).message);
+                  });
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete Permanently"}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

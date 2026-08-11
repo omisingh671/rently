@@ -124,6 +124,13 @@ export const API_ENDPOINTS = {
       `/maintenance-blocks/${maintenanceId}`,
   },
 
+  propertyClosures: {
+    byProperty: (propertyId: string) =>
+      `/properties/${propertyId}/property-closures`,
+    cancelById: (closureId: string) =>
+      `/property-closures/${closureId}/cancel`,
+  },
+
   pricing: {
     productsByProperty: (propertyId: string) =>
       `/properties/${propertyId}/room-products`,
@@ -192,6 +199,8 @@ export const API_ENDPOINTS = {
       `/properties/${propertyId}/operations/cashier-summary`,
     bookingAvailabilityByProperty: (propertyId: string) =>
       `/properties/${propertyId}/bookings/availability`,
+    bookingCalendarAvailabilityByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/bookings/availability/calendar`,
     enquiriesByProperty: (propertyId: string) =>
       `/properties/${propertyId}/enquiries`,
     enquiryById: (enquiryId: string) => `/enquiries/${enquiryId}`,

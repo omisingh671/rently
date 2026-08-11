@@ -25,10 +25,10 @@ export default function AssignmentsFilters({
           onChange={(e) => onChange({ propertyId: e.target.value })}
           className="appearance-none h-8 w-full cursor-pointer bg-transparent px-2 text-sm outline-none"
         >
-          <option value="">All properties</option>
+          <option value="">All Properties</option>
           {properties.length === 0 && (
             <option value="" disabled>
-              No properties available
+              No Properties Available
             </option>
           )}
           {properties.map((property) => (

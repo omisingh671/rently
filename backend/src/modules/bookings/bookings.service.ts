@@ -9,7 +9,10 @@ import {
 import { HttpError } from "@/common/errors/http-error.js";
 import { assertStayStartsOnOrAfterBusinessDate } from "@/common/utils/business-date.js";
 import { createBookingForUser } from "@/modules/public/bookings/bookings.service.js";
-import { generateAvailabilityOptions } from "@/modules/public/availability/availability.service.js";
+import {
+  generateAvailabilityOptions,
+  getPropertyCalendarAvailability,
+} from "@/modules/public/availability/availability.service.js";
 import * as repo from "./bookings.repository.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 
@@ -79,6 +82,7 @@ import {
 
 import type {
   CheckDashboardManualBookingAvailabilityInput,
+  CheckDashboardManualBookingCalendarAvailabilityInput,
   CreateDashboardManualBookingInput,
   DashboardBookingListInput,
   DashboardRoomBoardInput,
@@ -102,6 +106,7 @@ import type {
 import type {
   DashboardBookingDTO,
   DashboardManualBookingAvailabilityDTO,
+  DashboardManualBookingCalendarAvailabilityDTO,
   DashboardRoomBoardDTO,
   BookingRoomMovePreviewDTO,
   BookingStayExtensionPreviewDTO,
@@ -212,6 +217,22 @@ export const checkManualBookingAvailability = async (
     { pricePrivateRoomsByCapacity: false },
   );
   return buildManualBookingAvailabilityDTO(propertyId, input, options);
+};
+
+export const checkManualBookingCalendarAvailability = async (
+  userId: string,
+  propertyId: string,
+  input: CheckDashboardManualBookingCalendarAvailabilityInput,
+): Promise<DashboardManualBookingCalendarAvailabilityDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+
+  return getPropertyCalendarAvailability(input, {
+    tenantId: property.tenantId,
+    propertyId,
+    timezone: property.tenant.timezone,
+  });
 };
 
 export const createManualBooking = async (

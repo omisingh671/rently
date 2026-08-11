@@ -82,7 +82,7 @@ export function PricingRatesSection({
               }
               className={inputClass}
             >
-              <option value="">Select rate product</option>
+              <option value="">Select Rate Product</option>
               {products.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name}
@@ -99,9 +99,9 @@ export function PricingRatesSection({
               }
               className={inputClass}
             >
-              <option value="PROPERTY">Property-wide</option>
-              <option value="UNIT">Unit override</option>
-              <option value="ROOM">Room override</option>
+              <option value="PROPERTY">Property-Wide</option>
+              <option value="UNIT">Unit Override</option>
+              <option value="ROOM">Room Override</option>
             </select>
           </label>
           {form.targetType === "UNIT" && (
@@ -114,7 +114,7 @@ export function PricingRatesSection({
                 }
                 className={inputClass}
               >
-                <option value="">Select unit</option>
+                <option value="">Select Unit</option>
                 {units.map((unit) => (
                   <option key={unit.id} value={unit.id}>
                     {unit.unitNumber}
@@ -133,7 +133,7 @@ export function PricingRatesSection({
                 }
                 className={inputClass}
               >
-                <option value="">Select room</option>
+                <option value="">Select Room</option>
                 {rooms.map((room) => (
                   <option key={room.id} value={room.id}>
                     {room.unitNumber} / {room.number} - {room.name}

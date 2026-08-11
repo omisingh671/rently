@@ -244,6 +244,12 @@ export const ADMIN_KEYS = {
       ] as const,
   },
 
+  propertyClosures: {
+    all: () => [...ADMIN_KEYS.root, "property-closures"] as const,
+    byProperty: (propertyId: string) =>
+      [...ADMIN_KEYS.propertyClosures.all(), propertyId] as const,
+  },
+
   pricing: {
     all: () => [...ADMIN_KEYS.root, "pricing"] as const,
 
@@ -281,6 +287,24 @@ export const ADMIN_KEYS = {
 
     bookingDetail: (bookingId: string) =>
       [...ADMIN_KEYS.operations.all(), "bookings", "detail", bookingId] as const,
+
+    bookingCalendarAvailability: (params: {
+      propertyId: string;
+      startDate: string;
+      endDate: string;
+      guests: number;
+      comfortOption: "AC" | "NON_AC" | "ALL";
+    }) =>
+      [
+        ...ADMIN_KEYS.operations.byProperty(params.propertyId),
+        "booking-calendar-availability",
+        {
+          startDate: params.startDate,
+          endDate: params.endDate,
+          guests: params.guests,
+          comfortOption: params.comfortOption,
+        },
+      ] as const,
 
     roomBoards: (propertyId: string) =>
       [...ADMIN_KEYS.operations.byProperty(propertyId), "room-board"] as const,

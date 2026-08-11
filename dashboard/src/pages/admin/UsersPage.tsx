@@ -104,7 +104,7 @@ const UsersPage = () => {
                 }}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2"
               >
-                <option value="">All roles</option>
+                <option value="">All Roles</option>
                 {TEAM_ROLE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

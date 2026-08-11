@@ -145,9 +145,9 @@ export function PricingTaxesSection({
               }
               className={inputClass}
             >
-              <option value="ALL">All accommodation</option>
-              <option value="ROOM">Rooms only</option>
-              <option value="UNIT">Units only</option>
+              <option value="ALL">All Accommodation</option>
+              <option value="ROOM">Rooms Only</option>
+              <option value="UNIT">Units Only</option>
             </select>
           </label>
           <label className={fieldClass}>
@@ -162,9 +162,9 @@ export function PricingTaxesSection({
               className={inputClass}
             >
               <option value="SLAB_PER_ITEM_NIGHTLY_TARIFF">
-                Slab by nightly tariff
+                Slab by Nightly Tariff
               </option>
-              <option value="FLAT">Flat rule</option>
+              <option value="FLAT">Flat Rule</option>
             </select>
           </label>
           <label className={fieldClass}>

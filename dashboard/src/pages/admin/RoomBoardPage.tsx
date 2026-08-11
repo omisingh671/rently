@@ -239,7 +239,7 @@ export default function RoomBoardPage() {
                 }
                 className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               >
-                <option value="">Select property</option>
+                <option value="">Select Property</option>
                 {properties.map((property) => (
                   <option key={property.id} value={property.id}>
                     {property.name}

@@ -367,14 +367,40 @@ export default function WalkInBookingPage() {
           className="rounded-md border border-slate-200 bg-white p-4"
           onSubmit={submit}
         >
-          <div className="grid gap-4 lg:grid-cols-2">
-            <GuestFields
-              form={form}
-              disabled={createBooking.isPending}
-              errors={hasAttemptedSubmit ? guestFieldErrors : {}}
-              onChange={updateForm}
-            />
-            <StayFields form={form} disabled={createBooking.isPending} onChange={updateForm} />
+          <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+            <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">
+                Guest Details
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Enter the primary guest and optional contact number.
+              </p>
+              <div className="mt-4">
+                <GuestFields
+                  form={form}
+                  disabled={createBooking.isPending}
+                  errors={hasAttemptedSubmit ? guestFieldErrors : {}}
+                  onChange={updateForm}
+                />
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+              <h3 className="text-sm font-semibold text-slate-900">
+                Stay Details
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Select one stay range, guest count, comfort, and any coupon.
+              </p>
+              <div className="mt-4">
+                <StayFields
+                  form={form}
+                  propertyId={selectedPropertyId}
+                  disabled={createBooking.isPending}
+                  onChange={updateForm}
+                />
+              </div>
+            </section>
           </div>
 
           <div className="mt-4 flex justify-end">
@@ -437,11 +463,12 @@ export default function WalkInBookingPage() {
             <textarea
               value={form.internalNotes}
               maxLength={5000}
+              placeholder="Add a note for the front desk team (optional)"
               disabled={createBooking.isPending}
               onChange={(event) =>
                 updateForm({ internalNotes: event.target.value })
               }
-              className="mt-1 min-h-28 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="mt-1 min-h-28 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
             />
           </label>
 

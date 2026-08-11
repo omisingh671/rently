@@ -75,6 +75,13 @@ export interface CheckDashboardManualBookingAvailabilityInput {
   comfortOption: ComfortOption;
 }
 
+export interface CheckDashboardManualBookingCalendarAvailabilityInput {
+  startDate: Date;
+  endDate: Date;
+  guests: number;
+  comfortOption: ComfortOption;
+}
+
 export interface DashboardRoomBoardInput {
   from: Date;
   to: Date;

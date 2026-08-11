@@ -31,6 +31,22 @@ export const PUBLIC_QUERY_KEYS = {
   availability: {
     all: availabilityScope,
     check: [...availabilityScope, "check"] as const,
+    calendar: (criteria: {
+      startDate: string;
+      endDate: string;
+      guests: number;
+      comfort: string;
+      city?: string;
+    }) =>
+      [
+        ...availabilityScope,
+        "calendar",
+        criteria.startDate,
+        criteria.endDate,
+        criteria.guests,
+        criteria.comfort,
+        criteria.city ?? "all",
+      ] as const,
     byCriteria: (criteria: {
       checkIn: string;
       checkOut: string;

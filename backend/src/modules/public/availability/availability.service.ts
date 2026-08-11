@@ -13,10 +13,13 @@ import * as tenantService from "@/modules/public/tenant/tenant.service.js";
 import * as spacesService from "@/modules/public/spaces/spaces.service.js";
 import type {
   CheckAvailabilityInput,
+  CalendarAvailabilityInput,
   CreateInventoryLockInput,
 } from "./availability.inputs.js";
 import type {
   PublicAvailabilityDTO,
+  PublicCalendarAvailabilityDTO,
+  CalendarClosureReason,
   PublicInventoryLockDTO,
   GalleryImageDTO,
   GalleryImageScope,
@@ -389,7 +392,7 @@ const filterAvailableInventory = async (
   );
   if (propertyIds.length === 0) return { rooms: [], units: [] };
 
-  const [bookingItems, maintenanceBlocks, inventoryLocks] =
+  const [bookingItems, maintenanceBlocks, propertyClosures, inventoryLocks] =
     await repo.listAvailabilityConflicts(
       propertyIds,
       stay.checkIn,
@@ -435,6 +438,9 @@ const filterAvailableInventory = async (
     });
   }
   for (const block of maintenanceBlocks) addTargetConflict(block);
+  for (const closure of propertyClosures) {
+    blockedProperties.add(closure.propertyId);
+  }
   for (const lock of inventoryLocks) addTargetConflict(lock);
 
   return {
@@ -1210,6 +1216,170 @@ export const checkAvailability = async (
     available: options.length > 0,
     options,
   };
+};
+
+const addUtcDays = (value: Date, days: number) => {
+  const next = new Date(value);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+};
+
+const toDateKey = (value: Date) => value.toISOString().slice(0, 10);
+
+const overlapsDay = (
+  block: { startDate: Date; endDate: Date },
+  dayStart: Date,
+  dayEnd: Date,
+) => block.startDate < dayEnd && block.endDate > dayStart;
+
+const mapWithConcurrency = async <T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+) => {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const value = values[index];
+      if (value !== undefined) {
+        results[index] = await mapper(value);
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, worker),
+  );
+  return results;
+};
+
+interface CalendarAvailabilityScope {
+  tenantId: string;
+  timezone: string;
+  propertyScope: { propertyId?: string; city?: string };
+  propertyIds: string[];
+}
+
+const buildCalendarAvailability = async (
+  input: CalendarAvailabilityInput,
+  scope: CalendarAvailabilityScope,
+): Promise<PublicCalendarAvailabilityDTO> => {
+  assertStayStartsOnOrAfterBusinessDate(input.startDate, scope.timezone);
+
+  const [maintenanceBlocks, propertyClosures] =
+    scope.propertyIds.length === 0
+      ? [[], []] as const
+      : await repo.listPropertyWideCalendarBlocks(
+          scope.propertyIds,
+          input.startDate,
+          input.endDate,
+        );
+
+  const dayStarts: Date[] = [];
+  for (
+    let day = new Date(input.startDate);
+    day < input.endDate;
+    day = addUtcDays(day, 1)
+  ) {
+    dayStarts.push(day);
+  }
+
+  const days = await mapWithConcurrency(dayStarts, 4, async (dayStart) => {
+    const dayEnd = addUtcDays(dayStart, 1);
+    const options = await generateAvailabilityOptions(
+      {
+        checkIn: dayStart,
+        checkOut: dayEnd,
+        guests: input.guests,
+        comfortOption: input.comfortOption,
+        ...(input.city !== undefined && { city: input.city }),
+      },
+      scope.tenantId,
+      1,
+      scope.propertyScope,
+    );
+
+    if (options.length > 0) {
+      return {
+        date: toDateKey(dayStart),
+        status: "AVAILABLE" as const,
+        reason: null,
+      };
+    }
+
+    const closureReasonByProperty = new Map<
+      string,
+      CalendarClosureReason
+    >();
+    for (const block of maintenanceBlocks) {
+      if (overlapsDay(block, dayStart, dayEnd)) {
+        closureReasonByProperty.set(block.propertyId, "MAINTENANCE");
+      }
+    }
+    for (const closure of propertyClosures) {
+      if (overlapsDay(closure, dayStart, dayEnd)) {
+        closureReasonByProperty.set(closure.propertyId, closure.type);
+      }
+    }
+
+    const allPropertiesClosed =
+      scope.propertyIds.length > 0 &&
+      scope.propertyIds.every((propertyId) =>
+        closureReasonByProperty.has(propertyId),
+      );
+    const reasons = new Set(closureReasonByProperty.values());
+
+    return {
+      date: toDateKey(dayStart),
+      status: allPropertiesClosed ? ("CLOSED" as const) : ("SOLD_OUT" as const),
+      reason:
+        allPropertiesClosed && reasons.size === 1
+          ? (reasons.values().next().value ?? null)
+          : null,
+    };
+  });
+
+  return {
+    startDate: toDateKey(input.startDate),
+    endDate: toDateKey(input.endDate),
+    days,
+  };
+};
+
+export const getPropertyCalendarAvailability = async (
+  input: CalendarAvailabilityInput,
+  scope: { tenantId: string; propertyId: string; timezone: string },
+): Promise<PublicCalendarAvailabilityDTO> =>
+  buildCalendarAvailability(input, {
+    tenantId: scope.tenantId,
+    timezone: scope.timezone,
+    propertyScope: { propertyId: scope.propertyId },
+    propertyIds: [scope.propertyId],
+  });
+
+export const getCalendarAvailability = async (
+  input: CalendarAvailabilityInput,
+  tenantInput: TenantResolutionInput = {},
+): Promise<PublicCalendarAvailabilityDTO> => {
+  const scope = await tenantService.resolvePublicScope({
+    ...tenantInput,
+    ...(input.city !== undefined && { city: input.city }),
+  });
+  const properties = await repo.listPublicCalendarProperties(
+    scope.tenant.id,
+    scope.propertyScope,
+  );
+
+  return buildCalendarAvailability(input, {
+    tenantId: scope.tenant.id,
+    timezone: scope.tenant.timezone,
+    propertyScope: scope.propertyScope,
+    propertyIds: properties.map((property) => property.id),
+  });
 };
 
 export const createInventoryLock = async (

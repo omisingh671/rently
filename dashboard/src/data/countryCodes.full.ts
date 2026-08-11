@@ -252,5 +252,4 @@ export const COUNTRY_CODES: CountryCode[] = [
   { iso2: "ZM", name: "Zambia", dial_code: "+260" },
   { iso2: "ZW", name: "Zimbabwe", dial_code: "+263" },
 ];
-
 export default COUNTRY_CODES;

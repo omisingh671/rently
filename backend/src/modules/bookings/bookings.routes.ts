@@ -51,6 +51,11 @@ router.post(
   authorize(operationalRoles),
   controller.checkManualBookingAvailability,
 );
+router.post(
+  "/properties/:propertyId/bookings/availability/calendar",
+  authorize(operationalRoles),
+  controller.checkManualBookingCalendarAvailability,
+);
 router.post("/properties/:propertyId/bookings", authorize(operationalRoles), controller.createManualBooking);
 router.get("/bookings/:id", authorize(bookingReadRoles), controller.getBookingById);
 router.patch("/bookings/:id", authorize(operationalRoles), controller.updateBooking);

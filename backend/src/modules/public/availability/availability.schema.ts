@@ -41,6 +41,34 @@ export const checkAvailabilitySchema = z
     path: ["checkOut"],
   });
 
+export const calendarAvailabilitySchema = z
+  .object({
+    startDate: isoDateSchema,
+    endDate: isoDateSchema,
+    guests: z.coerce.number().int().min(1).max(20),
+    comfortOption: z.nativeEnum(ComfortOption),
+    city: z.string().trim().min(1).max(80).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const durationDays = Math.ceil(
+      (data.endDate.getTime() - data.startDate.getTime()) / 86_400_000,
+    );
+    if (durationDays < 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "endDate must be after startDate",
+        path: ["endDate"],
+      });
+    }
+    if (durationDays > 62) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Calendar range cannot exceed 62 days",
+        path: ["endDate"],
+      });
+    }
+  });
+
 export const createInventoryLockSchema = z
   .object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),

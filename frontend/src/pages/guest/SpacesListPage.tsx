@@ -185,6 +185,20 @@ export default function SpacesListPage() {
     [searchParams, setSearchParams],
   );
 
+  const updateDateRange = useCallback(
+    (nextFrom: string, nextTo: string) => {
+      const next = new URLSearchParams(searchParams);
+      if (nextFrom) next.set("from", nextFrom);
+      else next.delete("from");
+      if (nextTo) next.set("to", nextTo);
+      else next.delete("to");
+      next.delete("occupancy");
+      next.delete("ac");
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
+
   useEffect(() => {
     if (
       IS_PROPERTY_SPECIFIC_MODE ||
@@ -396,6 +410,7 @@ export default function SpacesListPage() {
               canCheckAvailability={canCheckAvailability}
               isChecking={availabilityQuery.isFetching}
               onFilterChange={updateSearchParam}
+              onDateRangeChange={updateDateRange}
               onClear={clearFilters}
               onCheck={() => void availabilityQuery.refetch()}
             />

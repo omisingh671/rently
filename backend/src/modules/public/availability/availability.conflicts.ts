@@ -12,6 +12,7 @@ export interface AvailabilityDateRange {
 export type InventoryConflictType =
   | "BOOKING"
   | "MAINTENANCE"
+  | "PROPERTY_CLOSURE"
   | "INVENTORY_LOCK";
 
 export const getInventoryConflictTypes = async (
@@ -22,7 +23,7 @@ export const getInventoryConflictTypes = async (
   ignoreLockToken?: string,
 ): Promise<InventoryConflictType[]> => {
   const at = new Date();
-  const [hasBooking, hasMaintenance, hasLock] = await Promise.all([
+  const [hasBooking, hasMaintenance, hasPropertyClosure, hasLock] = await Promise.all([
     repo.hasOverlappingBooking(
       target,
       dateRange.checkIn,
@@ -32,6 +33,12 @@ export const getInventoryConflictTypes = async (
     repo.hasOverlappingMaintenance(
       propertyId,
       target,
+      dateRange.checkIn,
+      dateRange.checkOut,
+      tx,
+    ),
+    repo.hasOverlappingPropertyClosure(
+      propertyId,
       dateRange.checkIn,
       dateRange.checkOut,
       tx,
@@ -49,6 +56,7 @@ export const getInventoryConflictTypes = async (
   return [
     ...(hasBooking ? (["BOOKING"] as const) : []),
     ...(hasMaintenance ? (["MAINTENANCE"] as const) : []),
+    ...(hasPropertyClosure ? (["PROPERTY_CLOSURE"] as const) : []),
     ...(hasLock ? (["INVENTORY_LOCK"] as const) : []),
   ];
 };

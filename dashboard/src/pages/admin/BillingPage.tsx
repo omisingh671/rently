@@ -137,7 +137,7 @@ export default function BillingPage() {
           >
             {documentTypes.map((type) => (
               <option key={type || "ALL"} value={type}>
-                {type ? formatEnumLabel(type) : "All types"}
+                {type ? formatEnumLabel(type) : "All Types"}
               </option>
             ))}
           </select>
@@ -153,7 +153,7 @@ export default function BillingPage() {
           >
             {documentStatuses.map((status) => (
               <option key={status || "ALL"} value={status}>
-                {status ? formatEnumLabel(status) : "All statuses"}
+                {status ? formatEnumLabel(status) : "All Statuses"}
               </option>
             ))}
           </select>

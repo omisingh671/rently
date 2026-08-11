@@ -49,7 +49,7 @@ export default function UsersFilters({
           }
           className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
         >
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </select>

@@ -362,7 +362,11 @@ export type StayExtensionPreview = {
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
-    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    type:
+      | "BOOKING"
+      | "MAINTENANCE"
+      | "PROPERTY_CLOSURE"
+      | "INVENTORY_LOCK";
     targetType: BookingTargetType;
     targetId: string;
     targetLabel: string;
@@ -468,6 +472,35 @@ export type ManualBookingAvailabilityResponse = {
   guests: number;
   availableSpaceIds: string[];
   items: ManualBookingAvailabilityItem[];
+};
+
+export type ManualBookingCalendarAvailabilityPayload = {
+  startDate: string;
+  endDate: string;
+  guests: number;
+  comfortOption: ConcreteComfortOption;
+};
+
+export type ManualBookingCalendarAvailabilityStatus =
+  | "AVAILABLE"
+  | "SOLD_OUT"
+  | "CLOSED";
+
+export type ManualBookingCalendarClosureReason =
+  | "MAINTENANCE"
+  | "HOLIDAY_CLOSURE"
+  | "OWNER_BLOCK";
+
+export type ManualBookingCalendarAvailabilityDay = {
+  date: string;
+  status: ManualBookingCalendarAvailabilityStatus;
+  reason: ManualBookingCalendarClosureReason | null;
+};
+
+export type ManualBookingCalendarAvailabilityResponse = {
+  startDate: string;
+  endDate: string;
+  days: ManualBookingCalendarAvailabilityDay[];
 };
 
 export type RoomBoardStatus =

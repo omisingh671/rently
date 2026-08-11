@@ -6,6 +6,10 @@ const router = Router();
 
 router.post("/availability/check", controller.checkAvailability);
 router.post(
+  "/availability/calendar",
+  controller.getCalendarAvailability,
+);
+router.post(
   "/inventory-locks",
   optionalAuthenticate,
   controller.createInventoryLock,

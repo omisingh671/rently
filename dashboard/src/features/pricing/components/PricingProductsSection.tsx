@@ -93,7 +93,7 @@ export function PricingProductsSection({
               className={inputClass}
             >
               <option value="NIGHTLY">Nightly</option>
-              <option value="LONG_STAY">Long stay</option>
+              <option value="LONG_STAY">Long Stay</option>
               <option value="CORPORATE">Corporate</option>
             </select>
           </label>

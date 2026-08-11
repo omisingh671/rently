@@ -11,6 +11,7 @@ import {
   recordBookingPaymentSchema,
   recordBookingRefundSchema,
   refundRequestParamsSchema,
+  checkManualBookingCalendarAvailabilitySchema,
   checkManualBookingAvailabilitySchema,
   updateBookingStatusSchema,
   updateRefundRequestSchema,
@@ -118,6 +119,25 @@ export const checkManualBookingAvailability = async (
       ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
       from: body.from,
       to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+    },
+  );
+  res.json({ success: true, data });
+};
+
+export const checkManualBookingCalendarAvailability = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = checkManualBookingCalendarAvailabilitySchema.parse(req.body);
+  const data = await service.checkManualBookingCalendarAvailability(
+    getUserId(req),
+    params.propertyId,
+    {
+      startDate: body.startDate,
+      endDate: body.endDate,
       guests: body.guests,
       comfortOption: body.comfortOption,
     },

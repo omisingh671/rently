@@ -76,7 +76,7 @@ export default function UnitForm({
 
             <div className="space-y-6">
               <SelectField name="propertyId" label="Property">
-                <option value="">Select property</option>
+                <option value="">Select Property</option>
                 {properties.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}

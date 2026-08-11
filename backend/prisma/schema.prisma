@@ -301,6 +301,16 @@ enum MaintenancePriority {
   EMERGENCY
 }
 
+enum PropertyClosureType {
+  HOLIDAY_CLOSURE
+  OWNER_BLOCK
+}
+
+enum PropertyClosureStatus {
+  ACTIVE
+  CANCELLED
+}
+
 enum FolioChargeType {
   INCIDENTAL
   PENALTY
@@ -349,6 +359,8 @@ model User {
   createdProperties          Property[]             @relation("PropertyCreatedBy")
   createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
   assignedMaintenanceBlocks  MaintenanceBlock[]     @relation("MaintenanceAssignedTo")
+  createdPropertyClosures    PropertyClosure[]      @relation("PropertyClosureCreatedBy")
+  cancelledPropertyClosures  PropertyClosure[]      @relation("PropertyClosureCancelledBy")
   bookingOperationEvents     BookingOperationEvent[]
   housekeepingEvents         RoomHousekeepingEvent[]
   createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
@@ -567,6 +579,7 @@ model Property {
   enquiries         Enquiry[]
   assignments       PropertyAssignment[]
   maintenanceBlocks MaintenanceBlock[]
+  propertyClosures  PropertyClosure[]
   bookingOperationEvents BookingOperationEvent[]
   folioCharges      BookingFolioCharge[]
   housekeepingEvents RoomHousekeepingEvent[]
@@ -1360,6 +1373,31 @@ model MaintenanceBlock {
   @@index([assignedToUserId, status])
   @@index([startDate, endDate])
   @@map("maintenance_blocks")
+}
+
+model PropertyClosure {
+  id                   String                @id @default(uuid())
+  propertyId           String
+  type                 PropertyClosureType
+  status               PropertyClosureStatus @default(ACTIVE)
+  reason               String                @db.VarChar(500)
+  startDate            DateTime
+  endDate              DateTime
+  createdByUserId      String
+  cancelledByUserId    String?
+  cancelledAt          DateTime?
+  cancellationReason   String?               @db.VarChar(500)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("PropertyClosureCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  cancelledBy User?    @relation("PropertyClosureCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+
+  @@index([propertyId, status, startDate, endDate])
+  @@index([createdByUserId, createdAt])
+  @@index([cancelledByUserId, cancelledAt])
+  @@map("property_closures")
 }
 
 model RoomHousekeepingEvent {

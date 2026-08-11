@@ -46,6 +46,26 @@ export interface DashboardManualBookingAvailabilityDTO {
   items: DashboardManualBookingAvailabilityItemDTO[];
 }
 
+export type DashboardCalendarAvailabilityStatus =
+  | "AVAILABLE"
+  | "SOLD_OUT"
+  | "CLOSED";
+
+export type DashboardCalendarClosureReason =
+  | "MAINTENANCE"
+  | "HOLIDAY_CLOSURE"
+  | "OWNER_BLOCK";
+
+export interface DashboardManualBookingCalendarAvailabilityDTO {
+  startDate: string;
+  endDate: string;
+  days: Array<{
+    date: string;
+    status: DashboardCalendarAvailabilityStatus;
+    reason: DashboardCalendarClosureReason | null;
+  }>;
+}
+
 export interface BookingRoomMovePreviewDTO {
   bookingId: string;
   bookingVersion: number;
@@ -114,7 +134,11 @@ export interface BookingStayExtensionPreviewDTO
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
-    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    type:
+      | "BOOKING"
+      | "MAINTENANCE"
+      | "PROPERTY_CLOSURE"
+      | "INVENTORY_LOCK";
     targetType: BookingTargetType;
     targetId: string;
     targetLabel: string;

@@ -87,10 +87,10 @@ export default function AssignmentForm({
         <ErrorSummary />
 
         <SelectField name="propertyId" label="Property">
-          <option value="">Select property</option>
+          <option value="">Select Property</option>
           {properties.length === 0 && (
             <option value="" disabled>
-              No properties available
+              No Properties Available
             </option>
           )}
           {properties.map((property) => (
@@ -104,20 +104,20 @@ export default function AssignmentForm({
           name="userId"
           label={role === "ADMIN" ? "Admin" : "Manager"}
         >
-          <option value="">Select user</option>
+          <option value="">Select User</option>
           {isLoadingUsers && (
             <option value="" disabled>
-              Loading {role === "ADMIN" ? "admins" : "managers"}...
+              Loading {role === "ADMIN" ? "Admins" : "Managers"}...
             </option>
           )}
           {!isLoadingUsers && isUsersError && (
             <option value="" disabled>
-              Failed to load {role === "ADMIN" ? "admins" : "managers"}
+              Failed to Load {role === "ADMIN" ? "Admins" : "Managers"}
             </option>
           )}
           {!isLoadingUsers && !isUsersError && users.length === 0 && (
             <option value="" disabled>
-              No {role === "ADMIN" ? "admins" : "managers"} available
+              No {role === "ADMIN" ? "Admins" : "Managers"} Available
             </option>
           )}
           {users.map((user) => (

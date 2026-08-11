@@ -47,6 +47,27 @@ export interface AvailabilityResult {
   options: AvailabilityOption[];
 }
 
+export type CalendarAvailabilityStatus =
+  | "AVAILABLE"
+  | "SOLD_OUT"
+  | "CLOSED";
+export type CalendarClosureReason =
+  | "MAINTENANCE"
+  | "HOLIDAY_CLOSURE"
+  | "OWNER_BLOCK";
+
+export interface CalendarAvailabilityDay {
+  date: string;
+  status: CalendarAvailabilityStatus;
+  reason: CalendarClosureReason | null;
+}
+
+export interface CalendarAvailabilityResult {
+  startDate: string;
+  endDate: string;
+  days: CalendarAvailabilityDay[];
+}
+
 export interface AvailabilityOptionGroup {
   groupId: string;
   displayTitle: string;

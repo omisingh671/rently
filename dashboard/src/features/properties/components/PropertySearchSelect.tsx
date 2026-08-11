@@ -39,13 +39,13 @@ export default function PropertySearchSelect({
     staleTime: 5 * 60_000,
   });
   const selectedLabel =
-    selectedPropertyName ?? selectedQuery.data?.name ?? "Select property";
+    selectedPropertyName ?? selectedQuery.data?.name ?? "Select Property";
 
   return (
     <div className={`relative ${className ?? ""}`}>
       <input
         type="search"
-        value={open ? search : selectedPropertyId ? selectedLabel : allowAll ? "All properties" : ""}
+        value={open ? search : selectedPropertyId ? selectedLabel : allowAll ? "All Properties" : ""}
         placeholder="Search properties"
         disabled={disabled}
         onFocus={() => {
@@ -71,7 +71,7 @@ export default function PropertySearchSelect({
               }}
               className="block w-full rounded px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
             >
-              All properties
+              All Properties
             </button>
           )}
           {optionsQuery.isFetching ? (
