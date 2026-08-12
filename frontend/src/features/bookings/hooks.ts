@@ -113,7 +113,7 @@ export const useCreateCommercialQuoteRequest = () =>
     mutationFn: api.createCommercialQuoteRequest,
   });
 
-export const useCreateManualPayment = () => {
+export const useProcessGatewayPayment = () => {
   const queryClient = useQueryClient();
 
   return useMutation<
@@ -126,6 +126,7 @@ export const useCreateManualPayment = () => {
       purpose?: PaymentPurpose;
       status?: string;
       checkoutToken?: string;
+      guest?: { name?: string; email?: string; contact?: string };
     }
   >({
     mutationFn: ({
@@ -135,15 +136,19 @@ export const useCreateManualPayment = () => {
       purpose,
       status,
       checkoutToken,
+      guest,
     }) =>
-      api.createManualPayment(
+      api.processGatewayPayment({
         bookingId,
         idempotencyKey,
         amount,
-        purpose,
-        status,
-        checkoutToken,
-      ),
+        ...(purpose !== undefined && { purpose }),
+        ...(checkoutToken !== undefined && { checkoutToken }),
+        ...(status === "SUCCEEDED" || status === "FAILED"
+          ? { mockOutcome: status }
+          : {}),
+        ...(guest !== undefined && { guest }),
+      }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: BOOKING_KEYS.all });
       queryClient.invalidateQueries({

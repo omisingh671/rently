@@ -253,3 +253,21 @@ export interface CreateManualPaymentResponse {
     balanceAmount: number;
   };
 }
+
+export interface GatewayPaymentIntentResponse
+  extends CreateManualPaymentResponse {
+  checkout: {
+    mode: "MOCK" | "LIVE";
+    provider: Exclude<PaymentProvider, "MANUAL">;
+    strategy: "MOCK" | "SDK" | "REDIRECT";
+    providerOrderId: string;
+    amountMinor: number;
+    currency: string;
+    name: string;
+    description: string;
+    publicKey?: string;
+    sessionToken?: string;
+    providerData?: Record<string, string>;
+    redirectUrl?: string;
+  };
+}

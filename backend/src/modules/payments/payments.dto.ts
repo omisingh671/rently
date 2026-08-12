@@ -21,6 +21,8 @@ export interface PaymentDTO {
   idempotencyKey: string;
   providerOrderId: string | null;
   providerPaymentId: string | null;
+  failureCode: string | null;
+  failureMessage: string | null;
   note: string | null;
   receivedByUserId: string | null;
   paidAt: string | null;
@@ -37,4 +39,23 @@ export interface CreateManualPaymentDTO {
     paidAmount: number;
     balanceAmount: number;
   };
+}
+
+export interface GatewayCheckoutDTO {
+  mode: "MOCK" | "LIVE";
+  provider: PaymentProvider;
+  strategy: "MOCK" | "SDK" | "REDIRECT";
+  providerOrderId: string;
+  amountMinor: number;
+  currency: string;
+  name: string;
+  description: string;
+  publicKey?: string;
+  sessionToken?: string;
+  providerData?: Record<string, string>;
+  redirectUrl?: string;
+}
+
+export interface CreateGatewayPaymentIntentDTO extends CreateManualPaymentDTO {
+  checkout: GatewayCheckoutDTO;
 }

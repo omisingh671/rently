@@ -32,6 +32,21 @@ router.post(
   optionalAuthenticate,
   paymentsController.createManualPayment,
 );
+router.post(
+  "/bookings/:id/payments/intents",
+  optionalAuthenticate,
+  paymentsController.createGatewayPaymentIntent,
+);
+router.post(
+  "/payments/:id/verify",
+  optionalAuthenticate,
+  paymentsController.verifyGatewayPayment,
+);
+router.post(
+  "/payments/:id/mock-complete",
+  optionalAuthenticate,
+  paymentsController.completeMockGatewayPayment,
+);
 router.get(
   "/bookings/:id/billing-documents",
   optionalAuthenticate,

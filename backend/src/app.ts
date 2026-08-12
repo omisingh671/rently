@@ -49,6 +49,7 @@ import bookingsRouter from "@/modules/bookings/index.js";
 import emailDeliveriesRouter from "@/modules/email-deliveries/email-deliveries.routes.js";
 import { notificationsRouter } from "@/modules/notifications/index.js";
 import { commercialRouter } from "@/modules/commercial/index.js";
+import { paymentsController } from "@/modules/payments/index.js";
 
 
 const allowedOrigins = Array.from(
@@ -169,6 +170,12 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(
   STORAGE_PATHS.localPublicPath,
   express.static(path.resolve(STORAGE_PATHS.localDirectory)),
+);
+// Gateway signatures are calculated over the exact raw request bytes.
+app.post(
+  `${API_PREFIX}/payments/webhooks/:provider`,
+  express.raw({ type: "application/json", limit: "256kb" }),
+  paymentsController.handleGatewayWebhook,
 );
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));

@@ -9,8 +9,10 @@ import type {
   CreateOptionBookingPayload,
   InventoryLock,
   CreateManualPaymentResponse,
+  GatewayPaymentIntentResponse,
   PaymentPurpose,
 } from "./types";
+import { openGatewayCheckout } from "./payments/paymentCheckout";
 
 type GuestDetailsPayload = {
   guestDetails?: BookingGuestDetails;
@@ -204,4 +206,52 @@ export const createManualPayment = async (
   );
 
   return res.data?.data;
+};
+
+export const processGatewayPayment = async (input: {
+  bookingId: string;
+  idempotencyKey: string;
+  amount: number;
+  purpose?: PaymentPurpose;
+  checkoutToken?: string;
+  mockOutcome?: "SUCCEEDED" | "FAILED";
+  guest?: { name?: string; email?: string; contact?: string };
+}): Promise<CreateManualPaymentResponse> => {
+  const intentResponse = await axiosInstance.post(
+    `/public/bookings/${input.bookingId}/payments/intents`,
+    {
+      amount: input.amount,
+      ...(input.checkoutToken !== undefined && {
+        checkoutToken: input.checkoutToken,
+      }),
+      ...(input.purpose !== undefined && { purpose: input.purpose }),
+    },
+    { headers: { "Idempotency-Key": input.idempotencyKey } },
+  );
+  const intent = intentResponse.data?.data as GatewayPaymentIntentResponse;
+
+  if (intent.checkout.strategy === "MOCK") {
+    const completed = await axiosInstance.post(
+      `/public/payments/${intent.payment.id}/mock-complete`,
+      {
+        ...(input.checkoutToken !== undefined && {
+          checkoutToken: input.checkoutToken,
+        }),
+        outcome: input.mockOutcome ?? "SUCCEEDED",
+      },
+    );
+    return completed.data?.data;
+  }
+
+  const providerResult = await openGatewayCheckout(intent.checkout, input.guest);
+  const verified = await axiosInstance.post(
+    `/public/payments/${intent.payment.id}/verify`,
+    {
+      ...(input.checkoutToken !== undefined && {
+        checkoutToken: input.checkoutToken,
+      }),
+      ...providerResult,
+    },
+  );
+  return verified.data?.data;
 };

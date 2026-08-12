@@ -56,6 +56,13 @@ const getPaymentRefundedAmount = (
   payment: repo.DashboardBookingRecord["payments"][number],
 ) =>
   payment.refunds
+    .filter((refund) => refund.status === PaymentRefundStatus.SUCCEEDED)
+    .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
+
+const getPaymentReservedRefundAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) =>
+  payment.refunds
     .filter((refund) => isRefundReserved(refund.status))
     .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
 
@@ -72,7 +79,10 @@ const getPaymentRefundableAmount = (
     return zeroDecimal;
   }
 
-  return maxDecimal(zeroDecimal, payment.amount.minus(getPaymentRefundedAmount(payment)));
+  return maxDecimal(
+    zeroDecimal,
+    payment.amount.minus(getPaymentReservedRefundAmount(payment)),
+  );
 };
 
 const activeRefundRequestStatuses: readonly BookingRefundRequestStatus[] = [

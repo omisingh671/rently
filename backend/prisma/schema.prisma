@@ -215,6 +215,13 @@ enum PaymentRefundStatus {
   CANCELLED
 }
 
+enum PaymentWebhookEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
 enum BookingRefundRequestStatus {
   REQUESTED
   IN_REVIEW
@@ -1180,12 +1187,33 @@ model Payment {
   refunds          PaymentRefund[]
 
   @@unique([provider, providerPaymentId])
+  @@unique([provider, providerOrderId])
   @@index([bookingId])
   @@index([propertyId])
   @@index([userId])
   @@index([receivedByUserId])
   @@index([status, createdAt])
   @@map("payments")
+}
+
+model PaymentWebhookEvent {
+  id              String                    @id @default(uuid())
+  provider        PaymentProvider
+  providerEventId String                    @db.VarChar(191)
+  eventType       String                    @db.VarChar(100)
+  status          PaymentWebhookEventStatus @default(RECEIVED)
+  payload         Json
+  payloadHash     String                    @db.Char(64)
+  attemptCount    Int                       @default(0)
+  lastError       String?                   @db.Text
+  receivedAt      DateTime                  @default(now())
+  processedAt     DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@unique([provider, providerEventId])
+  @@index([status, receivedAt])
+  @@map("payment_webhook_events")
 }
 
 model PaymentRefund {
