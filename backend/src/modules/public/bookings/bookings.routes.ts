@@ -11,6 +11,11 @@ const router = Router();
 
 router.get("/bookings", authenticate, controller.listBookings);
 router.post("/bookings/quote", optionalAuthenticate, controller.getBookingQuote);
+router.post(
+  "/quote-requests",
+  optionalAuthenticate,
+  controller.createCommercialQuoteRequest,
+);
 router.post("/bookings", optionalAuthenticate, controller.createBooking);
 router.post(
   "/bookings/:id/checkout/quote",

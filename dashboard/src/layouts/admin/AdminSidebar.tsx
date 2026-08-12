@@ -153,6 +153,12 @@ export default function AdminSidebar({
             label="Bookings"
           />
 
+          <SidebarLink
+            to={adminPath(ADMIN_ROUTES.COMMERCIAL)}
+            icon={FiBriefcase}
+            label="Corporate & Groups"
+          />
+
           {admin.role !== "ACCOUNTANT" && (
             <SidebarLink
               to={adminPath(ADMIN_ROUTES.ROOM_BOARD)}

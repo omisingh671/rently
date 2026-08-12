@@ -6,6 +6,7 @@ import {
   UnitStatus,
   ComfortOption,
   BookingTargetType,
+  PricingTier,
 } from "@/generated/prisma/client.js";
 
 type PublicDbClient = typeof prisma | Prisma.TransactionClient;
@@ -68,6 +69,7 @@ export const activePricingBaseWhere = (
     product: {
       is: {},
     },
+    pricingTier: PricingTier.STANDARD,
     AND: [
       {
         validFrom: { lte: stay?.checkIn ?? now },

@@ -73,6 +73,7 @@ export const findOverlappingRoomPricing = (input: {
   roomId?: string | null;
   unitId?: string | null;
   rateType: RateType;
+  pricingTier: PricingTier;
   validFrom: Date;
   validTo?: Date | null;
   excludePricingId?: string;
@@ -89,6 +90,7 @@ export const findOverlappingRoomPricing = (input: {
       propertyId: input.propertyId,
       productId: input.productId,
       rateType: input.rateType,
+      pricingTier: input.pricingTier,
       ...scopeWhere,
       ...(input.excludePricingId !== undefined && {
         id: { not: input.excludePricingId },

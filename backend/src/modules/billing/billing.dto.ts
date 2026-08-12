@@ -23,6 +23,7 @@ export interface BillingDocumentDTO {
   balance: string;
   guestSnapshot: unknown;
   propertySnapshot: unknown;
+  supplierSnapshot: unknown;
   tenantSnapshot: unknown;
   bookingSnapshot: unknown;
   priceSnapshot: unknown;
@@ -37,11 +38,18 @@ export interface BillingDocumentDTO {
   pdfLastError: string | null;
   pdfCorrelationId: string | null;
   pdfRenderedAt: string | null;
+  pdfNextAttemptAt: string | null;
+  pdfDeadLetteredAt: string | null;
   issuedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;
   createdAt: string;
   updatedAt: string;
+  fiscalYear: string | null;
+  recipientGstin: string | null;
+  placeOfSupplyStateCode: string | null;
+  supplierStateCode: string | null;
+  sacCode: string | null;
 }
 
 export interface BillingSettingDTO {
@@ -56,6 +64,8 @@ export interface BillingSettingDTO {
   creditNotePrefix: string;
   debitNotePrefix: string;
   footerNotes: string | null;
+  stateCode: string | null;
+  sacCode: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -51,6 +51,13 @@ export const updateBillingSettingSchema = z.object({
   creditNotePrefix: z.string().trim().min(1).max(20).optional(),
   debitNotePrefix: z.string().trim().min(1).max(20).optional(),
   footerNotes: optionalString(2000),
+  stateCode: z
+    .string()
+    .trim()
+    .regex(/^\d{2}$/, "State code must contain exactly two digits")
+    .nullable()
+    .optional(),
+  sacCode: z.string().trim().regex(/^\d{4,8}$/).optional(),
 });
 
 export const publicBillingDocumentsQuerySchema = z.object({

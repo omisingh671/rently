@@ -86,6 +86,12 @@ export const createManualBooking = async (req: AuthRequest, res: Response) => {
     ...(body.bookingOptionId !== undefined && {
       bookingOptionId: body.bookingOptionId,
     }),
+    ...(body.bookingGroupId !== undefined && {
+      bookingGroupId: body.bookingGroupId,
+    }),
+    ...(body.inventoryLockToken !== undefined && {
+      inventoryLockToken: body.inventoryLockToken,
+    }),
     ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
     ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
     from: body.from,
@@ -117,6 +123,9 @@ export const checkManualBookingAvailability = async (
     params.propertyId,
     {
       ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
       from: body.from,
       to: body.to,
       guests: body.guests,

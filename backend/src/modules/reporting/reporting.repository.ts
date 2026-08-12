@@ -47,6 +47,20 @@ export const listUnresolvedArrivalsThrough = (
     orderBy: { checkIn: "asc" },
   });
 
+export const listNoShowArrivalsInRange = (
+  propertyId: string,
+  startDate: Date,
+  endDate: Date,
+) =>
+  prisma.booking.findMany({
+    where: {
+      propertyId,
+      status: "NO_SHOW",
+      checkIn: { gte: startDate, lte: endDate },
+    },
+    select: { id: true, checkIn: true },
+  });
+
 export const listPropertySummaries = (propertyIds?: string[]) =>
   prisma.property.findMany({
     where: {

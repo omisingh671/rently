@@ -7,18 +7,22 @@ import * as controller from "./property-closures.controller.js";
 
 const router = Router();
 router.use(authenticate, requirePasswordChangeComplete);
-router.use(authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]));
+
+const propertyClosureRoles = [UserRole.SUPER_ADMIN, UserRole.ADMIN];
 
 router.get(
   "/properties/:propertyId/property-closures",
+  authorize(propertyClosureRoles),
   controller.listPropertyClosures,
 );
 router.post(
   "/properties/:propertyId/property-closures",
+  authorize(propertyClosureRoles),
   controller.createPropertyClosure,
 );
 router.patch(
   "/property-closures/:id/cancel",
+  authorize(propertyClosureRoles),
   controller.cancelPropertyClosure,
 );
 

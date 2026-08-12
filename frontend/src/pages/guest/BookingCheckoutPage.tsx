@@ -26,6 +26,7 @@ import {
   useBookingCheckoutQuote,
   useBookingQuote,
   useCreateBooking,
+  useCreateCommercialQuoteRequest,
   useUpdateBookingCheckout,
 } from "@/features/bookings/hooks";
 import { useProfile } from "@/features/profile/hooks";
@@ -48,6 +49,32 @@ const guestInfoSchema = z.object({
     .trim()
     .min(5, "Mobile number is required")
     .max(40),
+  billingLegalName: z.string().trim().max(190).optional(),
+  gstin: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(
+      (value) =>
+        value.length === 0 ||
+        /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value),
+      "Enter a valid GSTIN",
+    )
+    .optional(),
+  billingAddress: z.string().trim().max(1000).optional(),
+  placeOfSupplyStateCode: z
+    .string()
+    .trim()
+    .refine((value) => value.length === 0 || /^\d{2}$/.test(value), "Use a 2-digit state code")
+    .optional(),
+}).superRefine((value, ctx) => {
+  if (value.gstin && !value.placeOfSupplyStateCode) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["placeOfSupplyStateCode"],
+      message: "State code is required for GST billing",
+    });
+  }
 });
 
 type GuestInfoFormValues = z.input<typeof guestInfoSchema>;
@@ -89,6 +116,10 @@ const buildBookingFormValues = (booking: Booking): GuestInfoFormValues => ({
   name: booking.guestName,
   email: booking.guestEmail,
   ...splitContactNumber(booking.guestContactNumber),
+  billingLegalName: "",
+  gstin: "",
+  billingAddress: "",
+  placeOfSupplyStateCode: "",
 });
 
 const buildBookingSummary = (booking: Booking) => ({
@@ -127,6 +158,7 @@ export default function BookingCheckoutPage() {
   );
   const profileQuery = useProfile(isAuthenticated);
   const createBookingMutation = useCreateBooking();
+  const commercialQuoteMutation = useCreateCommercialQuoteRequest();
   const updateBookingCheckoutMutation = useUpdateBookingCheckout();
   const quoteMutation = useBookingQuote();
   const checkoutQuoteMutation = useBookingCheckoutQuote();
@@ -155,6 +187,10 @@ export default function BookingCheckoutPage() {
       name: profile?.fullName ?? user?.fullName ?? "",
       email: profile?.email ?? user?.email ?? "",
       ...splitContactNumber(profile?.contactNumber),
+      billingLegalName: "",
+      gstin: "",
+      billingAddress: "",
+      placeOfSupplyStateCode: "",
     };
   }, [profile, user]);
   const editBooking = editBookingQuery.data;
@@ -286,6 +322,26 @@ export default function BookingCheckoutPage() {
       email: values.email,
       contactNumber: `${values.countryCode}-${values.contactNumber}`,
     };
+    const hasBillingDetails = Boolean(
+      values.billingLegalName ||
+        values.gstin ||
+        values.billingAddress ||
+        values.placeOfSupplyStateCode,
+    );
+    const billingDetails = hasBillingDetails
+      ? {
+          ...(values.billingLegalName && {
+            legalName: values.billingLegalName,
+          }),
+          ...(values.gstin && { gstin: values.gstin }),
+          ...(values.billingAddress && {
+            billingAddress: values.billingAddress,
+          }),
+          ...(values.placeOfSupplyStateCode && {
+            placeOfSupplyStateCode: values.placeOfSupplyStateCode,
+          }),
+        }
+      : undefined;
 
     if (isEditingCheckout && editBookingId) {
       try {
@@ -303,6 +359,7 @@ export default function BookingCheckoutPage() {
           payload: {
             ...checkoutPayload,
             guestDetails,
+            ...(billingDetails !== undefined && { billingDetails }),
           },
         });
         navigate(ROUTES.BOOKING_PAYMENT(editBookingId), { replace: true });
@@ -324,6 +381,7 @@ export default function BookingCheckoutPage() {
       guestDetails: {
         ...guestDetails,
       },
+      ...(billingDetails !== undefined && { billingDetails }),
     };
 
     try {
@@ -336,6 +394,25 @@ export default function BookingCheckoutPage() {
       setSubmitError(normalizeApiError(error).message);
     } finally {
       submitGuardRef.current = false;
+    }
+  };
+
+  const onRequestCommercialQuote = async (values: GuestInfoSubmitValues) => {
+    if (!quotePayload || isEditingCheckout) return;
+    setSubmitError(null);
+    try {
+      await commercialQuoteMutation.mutateAsync({
+        ...quotePayload,
+        guestName: values.name,
+        guestEmail: values.email,
+        guestContactNumber: `${values.countryCode}-${values.contactNumber}`,
+        ...(values.billingLegalName && {
+          companyName: values.billingLegalName,
+        }),
+        notes: "Commercial or long-stay quote requested from booking checkout",
+      });
+    } catch (error: unknown) {
+      setSubmitError(normalizeApiError(error).message);
     }
   };
 
@@ -443,6 +520,32 @@ export default function BookingCheckoutPage() {
                 </div>
               </div>
 
+              <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <legend className="px-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  GST billing details (optional)
+                </legend>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Legal name</span>
+                    <input className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" {...form.register("billingLegalName")} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">GSTIN</span>
+                    <input className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm uppercase" {...form.register("gstin")} />
+                    <FieldError message={form.formState.errors.gstin?.message} />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Billing address</span>
+                    <textarea className="min-h-20 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" {...form.register("billingAddress")} />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Place of supply state code</span>
+                    <input inputMode="numeric" maxLength={2} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm" {...form.register("placeOfSupplyStateCode")} />
+                    <FieldError message={form.formState.errors.placeOfSupplyStateCode?.message} />
+                  </label>
+                </div>
+              </fieldset>
+
               {submitError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                   {submitError}
@@ -451,6 +554,11 @@ export default function BookingCheckoutPage() {
               {quoteError && !submitError && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                   {quoteError}
+                </div>
+              )}
+              {commercialQuoteMutation.isSuccess && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  Quote request saved. Reference {commercialQuoteMutation.data.id.slice(0, 8).toUpperCase()}; our team can now track it in the dashboard.
                 </div>
               )}
 
@@ -480,6 +588,21 @@ export default function BookingCheckoutPage() {
                       ? "Save and return to payment"
                       : "Continue to payment"}
                 </Button>
+                {!isEditingCheckout && (
+                  <Button
+                    type="button"
+                    fullWidth
+                    size="md"
+                    variant="secondary"
+                    className="mt-3"
+                    disabled={commercialQuoteMutation.isPending}
+                    onClick={() => void form.handleSubmit(onRequestCommercialQuote)()}
+                  >
+                    {commercialQuoteMutation.isPending
+                      ? "Saving quote request..."
+                      : "Request a tracked quote instead"}
+                  </Button>
+                )}
               </div>
             </form>
           </div>

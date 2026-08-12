@@ -426,6 +426,8 @@ export type UpdateRefundRequestPayload = {
 export type CreateManualBookingPayload = {
   bookingType: BookingType;
   bookingOptionId?: string;
+  bookingGroupId?: string;
+  inventoryLockToken?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: string;
@@ -442,6 +444,7 @@ export type CreateManualBookingPayload = {
 
 export type CheckManualBookingAvailabilityPayload = {
   spaceIds?: string[];
+  inventoryLockToken?: string;
   from: string;
   to: string;
   guests: number;
@@ -460,6 +463,8 @@ export type ManualBookingAvailabilityItem = {
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
+  roomId: string | null;
+  unitId: string | null;
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;

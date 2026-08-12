@@ -213,6 +213,13 @@ export interface BookingGuestDetails {
   contactNumber: string;
 }
 
+export interface BookingBillingDetails {
+  legalName?: string;
+  gstin?: string;
+  billingAddress?: string;
+  placeOfSupplyStateCode?: string;
+}
+
 export interface Payment {
   id: string;
   bookingId: string;

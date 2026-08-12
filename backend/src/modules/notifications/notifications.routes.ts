@@ -6,12 +6,16 @@ import { UserRole } from "@/generated/prisma/enums.js";
 import * as controller from "./notifications.controller.js";
 
 const router = Router();
-router.use(authenticate, requirePasswordChangeComplete, authorize([UserRole.SUPER_ADMIN]));
-router.get("/notification-settings", controller.getSettings);
-router.patch("/notification-settings/global", controller.updateGlobalSetting);
-router.patch("/properties/:propertyId/notification-overrides", controller.updatePropertyOverride);
-router.get("/notification-setting-audits", controller.getAudits);
-router.get("/notification-deliveries", controller.getDeliveries);
-router.post("/notification-deliveries/:id/retry", controller.retryDelivery);
+const superAdminOnly = [
+  authenticate,
+  requirePasswordChangeComplete,
+  authorize([UserRole.SUPER_ADMIN]),
+] as const;
+router.get("/notification-settings", ...superAdminOnly, controller.getSettings);
+router.patch("/notification-settings/global", ...superAdminOnly, controller.updateGlobalSetting);
+router.patch("/properties/:propertyId/notification-overrides", ...superAdminOnly, controller.updatePropertyOverride);
+router.get("/notification-setting-audits", ...superAdminOnly, controller.getAudits);
+router.get("/notification-deliveries", ...superAdminOnly, controller.getDeliveries);
+router.post("/notification-deliveries/:id/retry", ...superAdminOnly, controller.retryDelivery);
 
 export default router;

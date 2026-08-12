@@ -104,6 +104,15 @@ export const useUpdateBookingCheckout = () => {
   });
 };
 
+export const useCreateCommercialQuoteRequest = () =>
+  useMutation<
+    api.CommercialQuoteRequestResponse,
+    Error,
+    api.CommercialQuoteRequestPayload
+  >({
+    mutationFn: api.createCommercialQuoteRequest,
+  });
+
 export const useCreateManualPayment = () => {
   const queryClient = useQueryClient();
 

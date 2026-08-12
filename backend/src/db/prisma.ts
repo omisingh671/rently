@@ -1,16 +1,13 @@
 import "dotenv/config";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
+import { parseDatabaseUrl } from "@/config/database-url.js";
 import { PrismaClient } from "../generated/prisma/client.js";
 
-const adapter = new PrismaMariaDb({
-  host: process.env.DATABASE_HOST!,
-  user: process.env.DATABASE_USER!,
-  password: process.env.DATABASE_PASSWORD!,
-  database: process.env.DATABASE_NAME!,
-  port: Number(process.env.DATABASE_PORT),
-  connectionLimit: 5,
-  allowPublicKeyRetrieval: true,
-  ssl: false,
-});
+const databaseUrl = process.env.DATABASE_URL?.trim();
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required");
+}
+
+const adapter = new PrismaMariaDb(parseDatabaseUrl(databaseUrl));
 
 export const prisma = new PrismaClient({ adapter });

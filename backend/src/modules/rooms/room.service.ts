@@ -1,5 +1,10 @@
 import { prisma } from "@/db/prisma.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 import { RoomStatus } from "@/generated/prisma/enums.js";
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import {
@@ -165,6 +170,15 @@ export const createRoom = async (
     ...(input.status !== undefined && { status: input.status }),
   });
 
+  await recordPropertyAudit({
+    propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.ROOM,
+    entityId: room.id,
+    action: PropertyAuditAction.CREATED,
+    nextData: { ...room, amenityIds: input.amenityIds ?? [] },
+  });
+
   if ((input.amenityIds ?? []).length === 0) {
     return toRoomResponseDto(room);
   }
@@ -195,6 +209,19 @@ export const updateRoom = async (
   const existingRoom = await ensureRoomExists(roomId);
   const propertyId = existingRoom.unit.propertyId;
   await assertCanManageInventory(actor, propertyId);
+
+  const makesInventoryUnavailable =
+    input.isActive === false || input.status === RoomStatus.MAINTENANCE;
+  if (
+    makesInventoryUnavailable &&
+    await repo.hasActiveInventoryCommitments(roomId)
+  ) {
+    throw new HttpError(
+      409,
+      "INVENTORY_HAS_ACTIVE_COMMITMENTS",
+      "Reassign or cancel active bookings and release inventory holds before disabling this room",
+    );
+  }
 
   let nextUnitId = input.unitId ?? existingRoom.unitId;
   if (input.unitId !== undefined) {
@@ -241,6 +268,16 @@ export const updateRoom = async (
     ...(input.isActive !== undefined && { isActive: input.isActive }),
   });
 
+  await recordPropertyAudit({
+    propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.ROOM,
+    entityId: roomId,
+    action: PropertyAuditAction.UPDATED,
+    previousData: existingRoom,
+    nextData: { ...room, amenityIds: input.amenityIds },
+  });
+
   if (input.amenityIds === undefined) {
     return toRoomResponseDto(room);
   }
@@ -260,5 +297,20 @@ export const deleteRoom = async (
   const actor = await getActor(userId);
   const room = await ensureRoomExists(roomId);
   await assertCanManageInventory(actor, room.unit.propertyId);
+  if (await repo.hasActiveInventoryCommitments(roomId)) {
+    throw new HttpError(
+      409,
+      "INVENTORY_HAS_ACTIVE_COMMITMENTS",
+      "Reassign or cancel active bookings and release inventory holds before disabling this room",
+    );
+  }
   await repo.softDeleteRoomById(roomId);
+  await recordPropertyAudit({
+    propertyId: room.unit.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.ROOM,
+    entityId: roomId,
+    action: PropertyAuditAction.DELETED,
+    previousData: room,
+  });
 };

@@ -37,6 +37,25 @@ const getCurrentAuthUser = async (userId: string) => {
   return user;
 };
 
+const assertSessionActive = async (
+  sessionId: string,
+  userId: string,
+  audience: SessionAudience,
+) => {
+  const session = await prisma.session.findFirst({
+    where: {
+      id: sessionId,
+      userId,
+      audience,
+      expiresAt: { gt: new Date() },
+    },
+    select: { id: true },
+  });
+  if (!session) {
+    throw new HttpError(401, "UNAUTHORIZED", "Session has been revoked");
+  }
+};
+
 export const authenticate: RequestHandler = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -54,6 +73,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   if (payload.audience !== audience) {
     throw new HttpError(401, "UNAUTHORIZED", "Invalid access token audience");
   }
+  await assertSessionActive(payload.sessionId, payload.sub, audience);
   const user = await getCurrentAuthUser(payload.sub);
   assertRoleAllowedForAudience(user.role, audience);
 
@@ -88,6 +108,7 @@ export const optionalAuthenticate: RequestHandler = async (req, _res, next) => {
   if (payload.audience !== audience) {
     throw new HttpError(401, "UNAUTHORIZED", "Invalid access token audience");
   }
+  await assertSessionActive(payload.sessionId, payload.sub, audience);
   const user = await getCurrentAuthUser(payload.sub);
   assertRoleAllowedForAudience(user.role, audience);
 

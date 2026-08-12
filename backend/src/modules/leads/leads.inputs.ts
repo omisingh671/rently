@@ -14,4 +14,5 @@ export interface DashboardLeadListInput extends DashboardPaginationInput {
 
 export interface UpdateDashboardLeadInput {
   status: LeadStatus;
+  note?: string;
 }

@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { env } from "@/config/env.js";
+import { API_PREFIX } from "@/common/constants/application.constants.js";
 import { HttpError } from "@/common/errors/http-error.js";
 
 import * as service from "./auth.service.js";
@@ -27,7 +28,7 @@ const cookieOptions = {
   httpOnly: true,
   sameSite: "lax" as const,
   secure: env.NODE_ENV === "production",
-  path: `${env.API_PREFIX}/auth`,
+  path: `${API_PREFIX}/auth`,
 };
 
 /**

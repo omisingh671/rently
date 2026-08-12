@@ -1,4 +1,7 @@
-import type { BillingDocumentDTO, BillingSettingDTO } from "./billing.dto.js";
+import type {
+  BillingDocumentDTO,
+  BillingSettingSnapshotDTO,
+} from "./billing.dto.js";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -39,7 +42,7 @@ const asArray = (value: unknown): Record<string, unknown>[] =>
 
 export const buildBillingDocumentHtml = (
   document: BillingDocumentDTO,
-  setting: BillingSettingDTO,
+  setting: BillingSettingSnapshotDTO,
 ) => {
   const guest = asRecord(document.guestSnapshot);
   const booking = asRecord(document.bookingSnapshot);
@@ -89,12 +92,15 @@ export const buildBillingDocumentHtml = (
           <div class="muted">${escapeHtml(setting.billingAddress ?? property.address ?? "")}</div>
           <div class="muted">${escapeHtml(property.city ?? "")}${property.state ? `, ${escapeHtml(property.state)}` : ""}</div>
           ${setting.gstin ? `<div>GSTIN: ${escapeHtml(setting.gstin)}</div>` : ""}
+          ${document.supplierStateCode ? `<div>State code: ${escapeHtml(document.supplierStateCode)}</div>` : ""}
+          ${document.sacCode ? `<div>SAC: ${escapeHtml(document.sacCode)}</div>` : ""}
           ${setting.pan ? `<div>PAN: ${escapeHtml(setting.pan)}</div>` : ""}
         </div>
         <div class="title">
           <h1>${escapeHtml(title)}</h1>
           <div><strong>${escapeHtml(document.documentNumber)}</strong></div>
           <div class="muted">Issued: ${escapeHtml(formatDate(document.issuedAt))}</div>
+          ${document.fiscalYear ? `<div class="muted">Financial year: ${escapeHtml(document.fiscalYear)}</div>` : ""}
           <div class="muted">Status: ${escapeHtml(document.status)}</div>
         </div>
       </section>
@@ -102,9 +108,12 @@ export const buildBillingDocumentHtml = (
       <section class="grid">
         <div class="box">
           <h2>Guest</h2>
-          <div><strong>${escapeHtml(guest.name)}</strong></div>
+          <div><strong>${escapeHtml(guest.legalName ?? guest.name)}</strong></div>
           <div>${escapeHtml(guest.email)}</div>
           <div>${escapeHtml(guest.contactNumber)}</div>
+          ${guest.billingAddress ? `<div>${escapeHtml(guest.billingAddress)}</div>` : ""}
+          ${document.recipientGstin ? `<div>GSTIN: ${escapeHtml(document.recipientGstin)}</div>` : ""}
+          ${document.placeOfSupplyStateCode ? `<div>Place of supply: ${escapeHtml(document.placeOfSupplyStateCode)}</div>` : ""}
         </div>
         <div class="box">
           <h2>Booking</h2>

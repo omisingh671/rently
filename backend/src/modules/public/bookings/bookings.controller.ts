@@ -9,6 +9,7 @@ import * as service from "./bookings.service.js";
 import {
   createBookingSchema,
   createBookingQuoteSchema,
+  createCommercialQuoteRequestSchema,
   bookingCheckoutQuoteSchema,
   publicBookingAccessQuerySchema,
   updateBookingCheckoutSchema,
@@ -38,6 +39,9 @@ export const createBooking = async (req: AuthRequest, res: Response) => {
       couponCode: body.couponCode,
       ...(body.guestDetails !== undefined && {
         guestDetails: body.guestDetails,
+      }),
+      ...(body.billingDetails !== undefined && {
+        billingDetails: body.billingDetails,
       }),
     },
     resolveTenantInput(req),
@@ -73,6 +77,40 @@ export const getBookingQuote = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const createCommercialQuoteRequest = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const body = createCommercialQuoteRequestSchema.parse(req.body);
+  const data = await service.createCommercialQuoteRequest(
+    req.user?.userId,
+    {
+      bookingType: body.bookingType,
+      ...(body.bookingOptionId !== undefined && {
+        bookingOptionId: body.bookingOptionId,
+      }),
+      ...(body.propertyId !== undefined && { propertyId: body.propertyId }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      from: body.from,
+      to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+      couponCode: body.couponCode,
+      guestName: body.guestName,
+      guestEmail: body.guestEmail,
+      guestContactNumber: body.guestContactNumber,
+      ...(body.companyName !== undefined && { companyName: body.companyName }),
+      ...(body.notes !== undefined && { notes: body.notes }),
+    },
+    resolveTenantInput(req),
+  );
+  res.status(201).json({ success: true, data });
+};
+
 export const getBookingCheckoutQuote = async (
   req: AuthRequest,
   res: Response,
@@ -102,6 +140,9 @@ export const updateBookingCheckout = async (
     params.id,
     {
       guestDetails: body.guestDetails,
+      ...(body.billingDetails !== undefined && {
+        billingDetails: body.billingDetails,
+      }),
       ...(body.couponCode !== undefined && { couponCode: body.couponCode }),
       ...(body.editToken !== undefined && { editToken: body.editToken }),
     },

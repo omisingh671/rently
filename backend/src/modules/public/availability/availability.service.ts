@@ -84,6 +84,7 @@ interface StayScope {
 
 interface GenerateAvailabilityOptionsConfig {
   pricePrivateRoomsByCapacity?: boolean;
+  curateResults?: boolean;
 }
 
 type GallerySource = {
@@ -981,7 +982,9 @@ export const generateAvailabilityOptions = async (
     ]);
   }
 
-  return curatePublicOptions(options, input.guests);
+  return config.curateResults === false
+    ? options
+    : curatePublicOptions(options, input.guests);
 };
 
 export const getPublicAvailabilityOptions = async (

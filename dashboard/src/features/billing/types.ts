@@ -34,12 +34,19 @@ export type BillingDocument = {
   lineItems: unknown;
   notes: string | null;
   pdfUrl: string | null;
-  pdfStatus: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+  pdfStatus: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "DEAD_LETTER";
   pdfAttemptCount: number;
   pdfMaxAttempts: number;
   pdfLastError: string | null;
   pdfCorrelationId: string | null;
   pdfRenderedAt: string | null;
+  pdfNextAttemptAt: string | null;
+  pdfDeadLetteredAt: string | null;
+  fiscalYear: string | null;
+  recipientGstin: string | null;
+  placeOfSupplyStateCode: string | null;
+  supplierStateCode: string | null;
+  sacCode: string | null;
   issuedAt: string | null;
   voidedAt: string | null;
   voidReason: string | null;
@@ -73,6 +80,8 @@ export type BillingSetting = {
   creditNotePrefix: string;
   debitNotePrefix: string;
   footerNotes: string | null;
+  stateCode: string | null;
+  sacCode: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -88,6 +97,8 @@ export type UpdateBillingSettingPayload = {
   creditNotePrefix?: string;
   debitNotePrefix?: string;
   footerNotes?: string | null;
+  stateCode?: string | null;
+  sacCode?: string;
 };
 
 export type BillingSettingSnapshot = Omit<

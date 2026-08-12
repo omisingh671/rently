@@ -5,6 +5,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertPropertyBusinessDateOpen } from "@/common/services/daily-close-guard.js";
 import { billingService } from "@/modules/billing/index.js";
 import type {
   BookingRoomMovePreviewDTO,
@@ -46,6 +47,11 @@ export const ensureLateCheckoutExtensionCharge = async (
   if (input.preview === null) {
     return null;
   }
+
+  await assertPropertyBusinessDateOpen(input.booking.propertyId, {
+    tx,
+    operation: "Late-checkout charge posting",
+  });
 
   const existing = findMatchingLateCheckoutExtensionCharge(
     input.booking.folioCharges,
@@ -170,6 +176,11 @@ export const createRoomMoveAdjustmentCharge = async (
     return null;
   }
 
+  await assertPropertyBusinessDateOpen(input.booking.propertyId, {
+    tx,
+    operation: "Room-move adjustment posting",
+  });
+
   const charge = await tx.bookingFolioCharge.create({
     data: {
       bookingId: input.booking.id,
@@ -227,6 +238,10 @@ export const createBookingFolioChargeInTransaction = async (
   },
 ) => {
   const booking = await findTransactionBooking(tx, input.bookingId);
+  await assertPropertyBusinessDateOpen(booking.propertyId, {
+    tx,
+    operation: "Folio posting",
+  });
   assertExpectedBookingVersion(
     booking.version,
     input.charge.expectedVersion,
@@ -288,6 +303,10 @@ export const voidBookingFolioChargeInTransaction = async (
   },
 ) => {
   const booking = await findTransactionBooking(tx, input.bookingId);
+  await assertPropertyBusinessDateOpen(booking.propertyId, {
+    tx,
+    operation: "Folio reversal",
+  });
   assertExpectedBookingVersion(
     booking.version,
     input.voidCharge.expectedVersion,

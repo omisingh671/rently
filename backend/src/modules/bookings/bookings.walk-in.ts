@@ -27,6 +27,8 @@ type ManualAvailabilityOption = {
     pricePerNight: { toString(): string };
     target: {
       targetType: BookingTargetType;
+      roomId: string | null;
+      unitId: string | null;
     };
   }>;
 };
@@ -121,6 +123,14 @@ export const buildManualBookingAvailabilityDTO = (
         option.items.length === 1 && firstItem
           ? firstItem.target.targetType
           : BookingTargetType.ROOM,
+      roomId:
+        option.items.length === 1 && firstItem
+          ? firstItem.target.roomId
+          : null,
+      unitId:
+        option.items.length === 1 && firstItem
+          ? firstItem.target.unitId
+          : null,
       reason: null,
       guestCount: input.guests,
       pricePerNight: option.nightlyTotal.toString(),
@@ -147,6 +157,8 @@ export const buildManualBookingAvailabilityDTO = (
               available: false,
               capacity: 0,
               targetType: BookingTargetType.ROOM,
+              roomId: null,
+              unitId: null,
               reason: "Already booked for selected dates",
               guestCount: input.guests,
               pricePerNight: null,

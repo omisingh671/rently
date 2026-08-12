@@ -2,7 +2,8 @@ export type EmailDeliveryStatus =
   | "PENDING"
   | "PROCESSING"
   | "SUCCEEDED"
-  | "FAILED";
+  | "FAILED"
+  | "DEAD_LETTER";
 
 export type EmailDeliveryJob = {
   id: string;
@@ -14,6 +15,8 @@ export type EmailDeliveryJob = {
   maxAttempts: number;
   lastError: string | null;
   correlationId: string | null;
+  nextAttemptAt: string | null;
+  deadLetteredAt: string | null;
   sentAt: string | null;
   createdAt: string;
   updatedAt: string;

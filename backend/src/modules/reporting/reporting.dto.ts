@@ -89,7 +89,7 @@ export interface DailyRevenueDTO {
 }
 
 export interface BookingSourceDTO {
-  source: "PUBLIC" | "WALK_IN";
+  source: "PUBLIC" | "WALK_IN" | "CORPORATE" | "GROUP";
   count: number;
   revenue: number;
 }

@@ -139,6 +139,8 @@ export const createManualBookingSchema = contactFieldsRefine(
     .object({
       bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
       bookingOptionId: z.string().trim().min(1).max(128).optional(),
+      bookingGroupId: idSchema.optional(),
+      inventoryLockToken: z.string().uuid().optional(),
       spaceId: idSchema.optional(),
       spaceIds: z.array(idSchema).optional(),
       from: z.coerce.date(),
@@ -185,6 +187,7 @@ export const createManualBookingSchema = contactFieldsRefine(
 export const checkManualBookingAvailabilitySchema = z
   .object({
     spaceIds: z.array(idSchema).optional(),
+    inventoryLockToken: z.string().uuid().optional(),
     from: z.coerce.date(),
     to: z.coerce.date(),
     guests: z.coerce.number().int().min(1).max(20),

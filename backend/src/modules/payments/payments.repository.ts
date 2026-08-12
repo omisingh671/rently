@@ -105,6 +105,18 @@ export const findSucceededPaymentByBookingPurpose = (
     include: paymentInclude,
   });
 
+export const findClosedBusinessDate = (
+  propertyId: string,
+  businessDate: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).propertyDailyClose.findUnique({
+    where: {
+      propertyId_businessDate: { propertyId, businessDate },
+    },
+    select: { id: true },
+  });
+
 export const createManualPaymentRecord = (
   data: {
     bookingId: string;

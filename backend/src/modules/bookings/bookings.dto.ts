@@ -32,6 +32,8 @@ export interface DashboardManualBookingAvailabilityItemDTO {
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
+  roomId: string | null;
+  unitId: string | null;
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;

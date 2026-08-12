@@ -1,6 +1,7 @@
 import { prisma } from "@/db/prisma.js";
 import {
   BookingPaymentPolicy,
+  BookingSource,
   BookingStatus,
   BookingTargetType,
   UserRole,
@@ -213,8 +214,8 @@ export const checkManualBookingAvailability = async (
     nights,
     { propertyId },
     undefined,
-    undefined,
-    { pricePrivateRoomsByCapacity: false },
+    input.inventoryLockToken,
+    { pricePrivateRoomsByCapacity: false, curateResults: false },
   );
   return buildManualBookingAvailabilityDTO(propertyId, input, options);
 };
@@ -245,6 +246,34 @@ export const createManualBooking = async (
   const property = await ensurePropertyExists(propertyId);
   assertStayStartsOnOrAfterBusinessDate(input.from, property.tenant.timezone);
   const guest = await findOrCreateWalkInGuest(actor, input);
+  const group =
+    input.bookingGroupId === undefined
+      ? null
+      : await prisma.bookingGroup.findFirst({
+          where: {
+            id: input.bookingGroupId,
+            propertyId,
+            status: { notIn: ["CANCELLED", "COMPLETED"] },
+          },
+          include: { company: true },
+        });
+  if (input.bookingGroupId !== undefined && group === null) {
+    throw new HttpError(
+      404,
+      "BOOKING_GROUP_NOT_FOUND",
+      "Active booking group not found for property",
+    );
+  }
+  if (
+    group !== null &&
+    (input.from < group.checkIn || input.to > group.checkOut)
+  ) {
+    throw new HttpError(
+      422,
+      "BOOKING_OUTSIDE_GROUP_DATES",
+      "Booking stay must fall within group dates",
+    );
+  }
 
   const createdBooking = await createBookingForUser(
     guest.id,
@@ -256,6 +285,9 @@ export const createManualBooking = async (
       }),
       ...(input.spaceId !== undefined && { spaceId: input.spaceId }),
       ...(input.spaceIds !== undefined && { spaceIds: input.spaceIds }),
+      ...(input.inventoryLockToken !== undefined && {
+        inventoryLockToken: input.inventoryLockToken,
+      }),
       from: input.from,
       to: input.to,
       guests: input.guests,
@@ -273,6 +305,18 @@ export const createManualBooking = async (
       initialStatus: BookingStatus.CONFIRMED,
       statusHistoryNote: "Manual walk-in booking created from dashboard",
       internalNotes: input.internalNotes ?? null,
+      ...(group !== null && {
+        source:
+          group.company === null
+            ? BookingSource.GROUP
+            : BookingSource.CORPORATE,
+        bookingGroupId: group.id,
+        companyId: group.companyId,
+        recipientLegalName: group.company?.legalName ?? null,
+        recipientGstin: group.company?.gstin ?? null,
+        billingAddressSnapshot: group.company?.billingAddress ?? null,
+        placeOfSupplyStateCode: group.company?.stateCode ?? null,
+      }),
     },
   );
 

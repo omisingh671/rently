@@ -6,6 +6,7 @@ import {
   createDailyCloseSchema,
   getAnalyticsQuerySchema,
   listDailyClosesQuerySchema,
+  listPropertyAuditsQuerySchema,
   reportingPropertyParamsSchema,
 } from "./reporting.schema.js";
 
@@ -55,4 +56,21 @@ export const createDailyClose = async (req: AuthRequest, res: Response) => {
     body.note,
   );
   res.status(201).json({ success: true, data });
+};
+
+export const listPropertyAudits = async (req: AuthRequest, res: Response) => {
+  const params = reportingPropertyParamsSchema.parse(req.params);
+  const query = listPropertyAuditsQuerySchema.parse(req.query);
+  const data = await service.listAudits(
+    getUserId(req),
+    params.propertyId,
+    {
+      limit: query.limit,
+      ...(query.entityType !== undefined && {
+        entityType: query.entityType,
+      }),
+      ...(query.entityId !== undefined && { entityId: query.entityId }),
+    },
+  );
+  res.json({ success: true, data });
 };

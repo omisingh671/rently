@@ -85,6 +85,47 @@ export class UnitRepository {
     });
   }
 
+  async hasActiveInventoryCommitments(id: string, now = new Date()) {
+    const roomIds = (
+      await prisma.room.findMany({
+        where: { unitId: id },
+        select: { id: true },
+      })
+    ).map((room) => room.id);
+    const [bookingCount, lockCount] = await Promise.all([
+      prisma.booking.count({
+        where: {
+          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+          checkOut: { gt: now },
+          OR: [
+            {
+              roomAllocations: {
+                some: { roomId: { in: roomIds }, effectiveTo: null },
+              },
+            },
+            {
+              roomAllocations: { none: { effectiveTo: null } },
+              items: {
+                some: {
+                  OR: [{ unitId: id }, { roomId: { in: roomIds } }],
+                },
+              },
+            },
+          ],
+        },
+      }),
+      prisma.inventoryLock.count({
+        where: {
+          releasedAt: null,
+          expiresAt: { gt: now },
+          OR: [{ unitId: id }, { roomId: { in: roomIds } }],
+        },
+      }),
+    ]);
+
+    return bookingCount > 0 || lockCount > 0;
+  }
+
   async existsByPropertyAndUnitNumber(
     propertyId: string,
     unitNumber: string,

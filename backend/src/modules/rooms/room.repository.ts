@@ -108,6 +108,40 @@ export const softDeleteRoomById = (id: string): Promise<RoomRecord> =>
     include: roomInclude,
   });
 
+export const hasActiveInventoryCommitments = async (
+  roomId: string,
+  now = new Date(),
+) => {
+  const [bookingCount, lockCount] = await Promise.all([
+    prisma.booking.count({
+      where: {
+        status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+        checkOut: { gt: now },
+        OR: [
+          {
+            roomAllocations: {
+              some: { roomId, effectiveTo: null },
+            },
+          },
+          {
+            roomAllocations: { none: { effectiveTo: null } },
+            items: { some: { roomId } },
+          },
+        ],
+      },
+    }),
+    prisma.inventoryLock.count({
+      where: {
+        roomId,
+        releasedAt: null,
+        expiresAt: { gt: now },
+      },
+    }),
+  ]);
+
+  return bookingCount > 0 || lockCount > 0;
+};
+
 export const replaceRoomAmenities = async (roomId: string, amenityIds: string[]): Promise<RoomRecord | null> =>
   prisma.$transaction(async (tx) => {
     await tx.roomAmenity.deleteMany({

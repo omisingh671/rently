@@ -24,6 +24,12 @@ export interface DashboardQuoteDTO {
   userId: string | null;
   guestName: string | null;
   guestEmail: string | null;
+  guestContactNumber: string | null;
+  companyName: string | null;
+  guestCount: number;
+  quoteSnapshot: unknown;
+  expiresAt: Date | null;
+  convertedBookingId: string | null;
   productId: string | null;
   productName: string | null;
   targetType: BookingTargetType;

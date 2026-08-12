@@ -144,6 +144,8 @@ function BillingSettingsForm({
         creditNotePrefix: form.creditNotePrefix.trim(),
         debitNotePrefix: form.debitNotePrefix.trim(),
         footerNotes: normalizeNullable(form.footerNotes),
+        stateCode: normalizeNullable(form.stateCode),
+        sacCode: form.sacCode.trim(),
       });
       setReason("");
       setLocalError(null);
@@ -197,6 +199,18 @@ function BillingSettingsForm({
           value={form.creditNotePrefix}
           disabled={!canEdit}
           onChange={(value) => updateField("creditNotePrefix", value)}
+        />
+        <Field
+          label="Supplier state code"
+          value={form.stateCode}
+          disabled={!canEdit}
+          onChange={(value) => updateField("stateCode", value)}
+        />
+        <Field
+          label="Accommodation SAC code"
+          value={form.sacCode}
+          disabled={!canEdit}
+          onChange={(value) => updateField("sacCode", value)}
         />
         <Field
           label="Debit note prefix"

@@ -197,6 +197,16 @@ export const ADMIN_KEYS = {
       ] as const,
   },
 
+  commercial: {
+    all: () => [...ADMIN_KEYS.root, "commercial"] as const,
+    companies: (propertyId: string) =>
+      [...ADMIN_KEYS.commercial.all(), propertyId, "companies"] as const,
+    groups: (propertyId: string) =>
+      [...ADMIN_KEYS.commercial.all(), propertyId, "groups"] as const,
+    group: (groupId: string) =>
+      [...ADMIN_KEYS.commercial.all(), "group", groupId] as const,
+  },
+
   emailDeliveries: {
     all: () => [...ADMIN_KEYS.root, "email-deliveries"] as const,
   },

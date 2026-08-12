@@ -36,6 +36,7 @@ export const updateEnquiry = async (req: AuthRequest, res: Response) => {
   const body = updateLeadStatusSchema.parse(req.body);
   const data = await service.updateEnquiry(getUserId(req), params.id, {
     status: body.status,
+    ...(body.note !== undefined && { note: body.note }),
   });
   res.json({ success: true, data });
 };
@@ -58,6 +59,7 @@ export const updateQuote = async (req: AuthRequest, res: Response) => {
   const body = updateLeadStatusSchema.parse(req.body);
   const data = await service.updateQuote(getUserId(req), params.id, {
     status: body.status,
+    ...(body.note !== undefined && { note: body.note }),
   });
   res.json({ success: true, data });
 };

@@ -9,6 +9,7 @@ import {
   NotificationEventKey,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertPropertyBusinessDateOpen } from "@/common/services/daily-close-guard.js";
 import { parsePolicySnapshot } from "@/modules/booking-policy/booking-policy.policy.js";
 import { createManualPayment } from "@/modules/payments/payments.service.js";
 import type {
@@ -21,10 +22,8 @@ import {
   assertManualPaymentProof,
 } from "./bookings.helper.js";
 import {
-  assertBookingCanAcceptPayment,
   assertRefundProviderAvailable,
   getActiveRefundRequest,
-  getBookingBalanceAmount,
   getBookingRefundableAmount,
   getBookingRefundedAmount,
   getPaymentRefundableAmount,
@@ -38,27 +37,7 @@ export const recordBookingBalancePaymentForBooking = async (
   booking: repo.DashboardBookingRecord,
   input: RecordDashboardBookingPaymentInput,
 ) => {
-  assertBookingCanAcceptPayment(booking);
   assertManualPaymentProof(input);
-
-  const balanceAmount = getBookingBalanceAmount(booking);
-  const amount = new Prisma.Decimal(input.amount);
-
-  if (balanceAmount.lessThanOrEqualTo(0)) {
-    throw new HttpError(
-      409,
-      "BOOKING_ALREADY_PAID",
-      "Booking is already fully paid",
-    );
-  }
-
-  if (amount.greaterThan(balanceAmount)) {
-    throw new HttpError(
-      422,
-      "PAYMENT_OVERPAYMENT",
-      "Payment amount cannot exceed the booking balance",
-    );
-  }
 
   await createManualPayment({
     actorUserId: actor.id,
@@ -219,6 +198,10 @@ export const recordBookingRefundForBooking = async (
     });
     return booking;
   }
+
+  await assertPropertyBusinessDateOpen(booking.propertyId, {
+    operation: "Refund posting",
+  });
 
   const refundableAmount = getPaymentRefundableAmount(payment);
   if (amount.greaterThan(refundableAmount)) {

@@ -1,5 +1,10 @@
 import type { PaginatedResult } from "@/common/types/pagination.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 
 import {
   UnitRepository,
@@ -80,6 +85,15 @@ export const create = async (
     ...(input.status !== undefined && { status: input.status }),
   });
 
+  await recordPropertyAudit({
+    propertyId: input.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.UNIT,
+    entityId: unit.id,
+    action: PropertyAuditAction.CREATED,
+    nextData: { ...unit, amenityIds: input.amenityIds ?? [] },
+  });
+
   /**
    * Handle amenities
    */
@@ -122,6 +136,21 @@ export const update = async (
 
   await assertCanManageInventory(actor, existing.propertyId);
 
+  const makesInventoryUnavailable =
+    input.isActive === false ||
+    input.status === "INACTIVE" ||
+    input.status === "MAINTENANCE";
+  if (
+    makesInventoryUnavailable &&
+    await unitRepository.hasActiveInventoryCommitments(id)
+  ) {
+    throw new HttpError(
+      409,
+      "INVENTORY_HAS_ACTIVE_COMMITMENTS",
+      "Reassign or cancel active bookings and release inventory holds before disabling this unit",
+    );
+  }
+
   /**
    * Prevent duplicate unit numbers
    */
@@ -156,6 +185,16 @@ export const update = async (
     ...(input.isActive !== undefined && {
       isActive: input.isActive,
     }),
+  });
+
+  await recordPropertyAudit({
+    propertyId: existing.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.UNIT,
+    entityId: id,
+    action: PropertyAuditAction.UPDATED,
+    previousData: existing,
+    nextData: { ...updated, amenityIds: input.amenityIds },
   });
 
   /**
@@ -193,7 +232,23 @@ export const softDelete = async (userId: string, id: string): Promise<void> => {
 
   await assertCanManageInventory(actor, existing.propertyId);
 
+  if (await unitRepository.hasActiveInventoryCommitments(id)) {
+    throw new HttpError(
+      409,
+      "INVENTORY_HAS_ACTIVE_COMMITMENTS",
+      "Reassign or cancel active bookings and release inventory holds before disabling this unit",
+    );
+  }
+
   await unitRepository.softDelete(id);
+  await recordPropertyAudit({
+    propertyId: existing.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.UNIT,
+    entityId: id,
+    action: PropertyAuditAction.DELETED,
+    previousData: existing,
+  });
 };
 
 /**

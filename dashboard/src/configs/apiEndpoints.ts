@@ -209,6 +209,25 @@ export const API_ENDPOINTS = {
     quoteById: (quoteId: string) => `/quotes/${quoteId}`,
   },
 
+  commercial: {
+    companiesByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/companies`,
+    companyById: (companyId: string) => `/companies/${companyId}`,
+    groupsByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/booking-groups`,
+    groupById: (groupId: string) => `/booking-groups/${groupId}`,
+    groupStatus: (groupId: string) =>
+      `/booking-groups/${groupId}/status`,
+    groupRoomBlocks: (groupId: string) =>
+      `/booking-groups/${groupId}/room-blocks`,
+    releaseGroupRoomBlocks: (groupId: string) =>
+      `/booking-groups/${groupId}/room-blocks/release`,
+    groupFolioCharges: (groupId: string) =>
+      `/booking-groups/${groupId}/folio-charges`,
+    groupFolioCharge: (groupId: string, chargeId: string) =>
+      `/booking-groups/${groupId}/folio-charges/${chargeId}/void`,
+  },
+
   billing: {
     list: "/billing-documents",
     byId: (documentId: string) => `/billing-documents/${documentId}`,

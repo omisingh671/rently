@@ -122,6 +122,49 @@ enum BookingType {
 enum BookingSource {
   PUBLIC
   WALK_IN
+  CORPORATE
+  GROUP
+}
+
+enum PropertyAuditEntityType {
+  PROPERTY
+  UNIT
+  ROOM
+  PRICING
+  TAX
+  MAINTENANCE
+  ENQUIRY
+  QUOTE
+  COMPANY
+  BOOKING_GROUP
+  GROUP_FOLIO
+  BILLING_DOCUMENT
+  DAILY_CLOSE
+}
+
+enum PropertyAuditAction {
+  CREATED
+  UPDATED
+  DELETED
+  STATUS_CHANGED
+  VOIDED
+  CONVERTED
+  RETRIED
+  DEAD_LETTERED
+}
+
+enum BookingGroupStatus {
+  PROSPECT
+  TENTATIVE
+  CONFIRMED
+  IN_HOUSE
+  COMPLETED
+  CANCELLED
+}
+
+enum GroupFolioChargeStatus {
+  ACTIVE
+  VOID
 }
 
 enum BookingStatus {
@@ -214,6 +257,7 @@ enum SideEffectJobStatus {
   PROCESSING
   SUCCEEDED
   FAILED
+  DEAD_LETTER
 }
 
 enum EmailDeliveryType {
@@ -341,54 +385,60 @@ model User {
   passwordHash    String
   role            UserRole @default(GUEST)
 
-  createdBy                  User?                  @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  createdUsers               User[]                 @relation("UserCreator")
+  createdBy                  User?                      @relation("UserCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdUsers               User[]                     @relation("UserCreator")
   sessions                   Session[]
   resetTokens                PasswordResetToken[]
   emailDeliveryJobs          EmailDeliveryJob[]
   bookings                   Booking[]
   bookingRefundRequests      BookingRefundRequest[]
-  reviewedRefundRequests     BookingRefundRequest[] @relation("RefundRequestReviewedBy")
+  reviewedRefundRequests     BookingRefundRequest[]     @relation("RefundRequestReviewedBy")
   payments                   Payment[]
   refunds                    PaymentRefund[]
-  paymentsReceived           Payment[]              @relation("PaymentReceivedBy")
-  bookingStatusHistory       BookingStatusHistory[] @relation("BookingStatusActor")
+  paymentsReceived           Payment[]                  @relation("PaymentReceivedBy")
+  bookingStatusHistory       BookingStatusHistory[]     @relation("BookingStatusActor")
   quotes                     QuoteRequest[]
-  propertyAssignments        PropertyAssignment[]   @relation("AssignedUser")
-  createdPropertyAssignments PropertyAssignment[]   @relation("AssignmentCreatedBy")
-  createdProperties          Property[]             @relation("PropertyCreatedBy")
-  createdMaintenanceBlocks   MaintenanceBlock[]     @relation("MaintenanceCreatedBy")
-  assignedMaintenanceBlocks  MaintenanceBlock[]     @relation("MaintenanceAssignedTo")
-  createdPropertyClosures    PropertyClosure[]      @relation("PropertyClosureCreatedBy")
-  cancelledPropertyClosures  PropertyClosure[]      @relation("PropertyClosureCancelledBy")
+  propertyAssignments        PropertyAssignment[]       @relation("AssignedUser")
+  createdPropertyAssignments PropertyAssignment[]       @relation("AssignmentCreatedBy")
+  createdProperties          Property[]                 @relation("PropertyCreatedBy")
+  createdMaintenanceBlocks   MaintenanceBlock[]         @relation("MaintenanceCreatedBy")
+  assignedMaintenanceBlocks  MaintenanceBlock[]         @relation("MaintenanceAssignedTo")
+  createdPropertyClosures    PropertyClosure[]          @relation("PropertyClosureCreatedBy")
+  cancelledPropertyClosures  PropertyClosure[]          @relation("PropertyClosureCancelledBy")
   bookingOperationEvents     BookingOperationEvent[]
   housekeepingEvents         RoomHousekeepingEvent[]
-  createdFolioCharges        BookingFolioCharge[]    @relation("FolioChargeCreatedBy")
-  voidedFolioCharges         BookingFolioCharge[]    @relation("FolioChargeVoidedBy")
+  createdFolioCharges        BookingFolioCharge[]       @relation("FolioChargeCreatedBy")
+  voidedFolioCharges         BookingFolioCharge[]       @relation("FolioChargeVoidedBy")
   notificationSettingAudits  NotificationSettingAudit[]
-  bookingPolicyAudits       BookingPolicyAudit[]
-  billingSettingAudits      BillingSettingAudit[]
-  bookingRoomAllocations    BookingRoomAllocation[] @relation("BookingRoomAllocationActor")
-  propertyDailyCloses       PropertyDailyClose[]     @relation("PropertyDailyCloseActor")
+  bookingPolicyAudits        BookingPolicyAudit[]
+  billingSettingAudits       BillingSettingAudit[]
+  bookingRoomAllocations     BookingRoomAllocation[]    @relation("BookingRoomAllocationActor")
+  propertyDailyCloses        PropertyDailyClose[]       @relation("PropertyDailyCloseActor")
+  propertyAuditEvents        PropertyAuditEvent[]       @relation("PropertyAuditActor")
+  createdCompanies           CompanyAccount[]           @relation("CompanyCreatedBy")
+  createdBookingGroups       BookingGroup[]             @relation("BookingGroupCreatedBy")
+  groupFolioChargesCreated   GroupFolioCharge[]         @relation("GroupFolioCreatedBy")
+  groupFolioChargesVoided    GroupFolioCharge[]         @relation("GroupFolioVoidedBy")
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  leadStatusHistories LeadStatusHistory[]
 
   @@map("users")
 }
 
 model Session {
-  id           String   @id @default(uuid())
+  id           String          @id @default(uuid())
   userId       String
-  refreshToken String   @unique @db.VarChar(512)
+  refreshToken String          @unique @db.VarChar(512)
   audience     SessionAudience @default(DASHBOARD)
   ip           String?
   userAgent    String?
   expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  createdAt    DateTime        @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -426,6 +476,8 @@ model EmailDeliveryJob {
   lastError           String?             @db.Text
   correlationId       String?             @db.VarChar(128)
   processingStartedAt DateTime?
+  nextAttemptAt       DateTime?
+  deadLetteredAt      DateTime?
   sentAt              DateTime?
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
@@ -466,7 +518,7 @@ model PropertyNotificationOverride {
 }
 
 model NotificationSettingAudit {
-  id            String                   @id @default(uuid())
+  id            String                    @id @default(uuid())
   actorUserId   String
   scope         NotificationSettingScope
   propertyId    String?
@@ -474,8 +526,8 @@ model NotificationSettingAudit {
   channel       NotificationChannel
   previousState NotificationSettingState?
   nextState     NotificationSettingState
-  correlationId String?                  @db.VarChar(128)
-  createdAt     DateTime                 @default(now())
+  correlationId String?                   @db.VarChar(128)
+  createdAt     DateTime                  @default(now())
 
   actor    User      @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
@@ -487,23 +539,25 @@ model NotificationSettingAudit {
 }
 
 model NotificationDeliveryJob {
-  id                  String                  @id @default(uuid())
-  idempotencyKey      String                  @unique @db.VarChar(191)
+  id                  String               @id @default(uuid())
+  idempotencyKey      String               @unique @db.VarChar(191)
   eventKey            NotificationEventKey
   channel             NotificationChannel
   propertyId          String?
   recipient           String
   payload             Json
-  status              SideEffectJobStatus     @default(PENDING)
-  attemptCount        Int                     @default(0)
-  maxAttempts         Int                     @default(3)
-  lastError           String?                 @db.Text
+  status              SideEffectJobStatus  @default(PENDING)
+  attemptCount        Int                  @default(0)
+  maxAttempts         Int                  @default(3)
+  lastError           String?              @db.Text
   providerMessageId   String?
-  correlationId       String?                 @db.VarChar(128)
+  correlationId       String?              @db.VarChar(128)
   processingStartedAt DateTime?
+  nextAttemptAt       DateTime?
+  deadLetteredAt      DateTime?
   sentAt              DateTime?
-  createdAt           DateTime                @default(now())
-  updatedAt           DateTime                @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   property Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
 
@@ -520,31 +574,31 @@ model NotificationDeliveryJob {
  */
 
 model Tenant {
-  id                  String       @id @default(uuid())
-  name                String
-  slug                String       @unique
-  primaryDomain       String?      @unique
-  status              TenantStatus @default(ACTIVE)
-  brandName           String
-  logoUrl             String?
-  primaryColor        String       @default("#4f46e5")
-  secondaryColor      String       @default("#f59e0b")
-  supportEmail        String?
-  supportPhone        String?
-  defaultCurrency     String       @default("INR")
-  timezone            String       @default("Asia/Kolkata")
+  id              String       @id @default(uuid())
+  name            String
+  slug            String       @unique
+  primaryDomain   String?      @unique
+  status          TenantStatus @default(ACTIVE)
+  brandName       String
+  logoUrl         String?
+  primaryColor    String       @default("#4f46e5")
+  secondaryColor  String       @default("#f59e0b")
+  supportEmail    String?
+  supportPhone    String?
+  defaultCurrency String       @default("INR")
+  timezone        String       @default("Asia/Kolkata")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  properties Property[]
+  properties       Property[]
   billingDocuments BillingDocument[]
 
   @@map("tenants")
 }
 
 model Property {
-  id              String @id @default(uuid())
+  id              String   @id @default(uuid())
   tenantId        String
   slug            String
   name            String
@@ -563,38 +617,43 @@ model Property {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  createdBy         User                 @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  units             Unit[]
-  amenities         PropertyAmenity[]
-  roomProducts      RoomProduct[]
-  roomPricing       RoomPricing[]
-  bookings          Booking[]
-  bookingPolicy     PropertyBookingPolicy?
-  bookingRefundRequests BookingRefundRequest[]
-  inventoryLocks    InventoryLock[]
-  payments          Payment[]
-  refunds           PaymentRefund[]
-  quoteRequests     QuoteRequest[]
-  enquiries         Enquiry[]
-  assignments       PropertyAssignment[]
-  maintenanceBlocks MaintenanceBlock[]
-  propertyClosures  PropertyClosure[]
-  bookingOperationEvents BookingOperationEvent[]
-  folioCharges      BookingFolioCharge[]
-  housekeepingEvents RoomHousekeepingEvent[]
-  taxes             Tax[]
-  coupons           Coupon[]
-  galleries         Gallery[]
-  billingSetting    BillingSetting?
-  billingDocuments  BillingDocument[]
-  notificationOverrides PropertyNotificationOverride[]
+  tenant                    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy                 User                           @relation("PropertyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  units                     Unit[]
+  amenities                 PropertyAmenity[]
+  roomProducts              RoomProduct[]
+  roomPricing               RoomPricing[]
+  bookings                  Booking[]
+  bookingPolicy             PropertyBookingPolicy?
+  bookingRefundRequests     BookingRefundRequest[]
+  inventoryLocks            InventoryLock[]
+  payments                  Payment[]
+  refunds                   PaymentRefund[]
+  quoteRequests             QuoteRequest[]
+  enquiries                 Enquiry[]
+  assignments               PropertyAssignment[]
+  maintenanceBlocks         MaintenanceBlock[]
+  propertyClosures          PropertyClosure[]
+  bookingOperationEvents    BookingOperationEvent[]
+  folioCharges              BookingFolioCharge[]
+  housekeepingEvents        RoomHousekeepingEvent[]
+  taxes                     Tax[]
+  coupons                   Coupon[]
+  galleries                 Gallery[]
+  billingSetting            BillingSetting?
+  billingDocuments          BillingDocument[]
+  notificationOverrides     PropertyNotificationOverride[]
   notificationSettingAudits NotificationSettingAudit[]
-  notificationDeliveryJobs NotificationDeliveryJob[]
-  bookingPolicyAudits BookingPolicyAudit[]
-  billingSettingAudits BillingSettingAudit[]
-  bookingRoomAllocations BookingRoomAllocation[]
-  dailyCloses            PropertyDailyClose[]
+  notificationDeliveryJobs  NotificationDeliveryJob[]
+  bookingPolicyAudits       BookingPolicyAudit[]
+  billingSettingAudits      BillingSettingAudit[]
+  bookingRoomAllocations    BookingRoomAllocation[]
+  dailyCloses               PropertyDailyClose[]
+  auditEvents               PropertyAuditEvent[]
+  companies                 CompanyAccount[]
+  bookingGroups             BookingGroup[]
+  groupFolioCharges         GroupFolioCharge[]
+  billingSequences          BillingDocumentSequence[]
 
   @@unique([tenantId, name, city, state])
   @@unique([tenantId, slug])
@@ -603,21 +662,21 @@ model Property {
 }
 
 model PropertyDailyClose {
-  id               String   @id @default(uuid())
-  propertyId       String
-  businessDate     DateTime @db.Date
-  closedByUserId   String
-  paymentCount     Int
-  paymentTotal     Decimal  @db.Decimal(12, 2)
-  refundCount      Int
-  refundTotal      Decimal  @db.Decimal(12, 2)
-  netPaymentTotal  Decimal  @db.Decimal(12, 2)
-  bookingsCreated  Int
-  checkIns          Int
-  checkOuts         Int
-  noShows           Int
-  note              String? @db.VarChar(500)
-  closedAt          DateTime @default(now())
+  id              String   @id @default(uuid())
+  propertyId      String
+  businessDate    DateTime @db.Date
+  closedByUserId  String
+  paymentCount    Int
+  paymentTotal    Decimal  @db.Decimal(12, 2)
+  refundCount     Int
+  refundTotal     Decimal  @db.Decimal(12, 2)
+  netPaymentTotal Decimal  @db.Decimal(12, 2)
+  bookingsCreated Int
+  checkIns        Int
+  checkOuts       Int
+  noShows         Int
+  note            String?  @db.VarChar(500)
+  closedAt        DateTime @default(now())
 
   property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   closedBy User     @relation("PropertyDailyCloseActor", fields: [closedByUserId], references: [id], onDelete: Restrict)
@@ -627,42 +686,65 @@ model PropertyDailyClose {
   @@map("property_daily_closes")
 }
 
-model PropertyBookingPolicy {
-  id                  String             @id @default(uuid())
-  propertyId          String             @unique
-  advancePaymentType  AdvancePaymentType @default(FIXED_AMOUNT)
-  advancePaymentValue Decimal            @default(10)
-  tokenRefundable     Boolean            @default(false)
-  checkInTime         String             @default("12:00")
-  checkOutTime        String             @default("11:00")
-  pendingPaymentExpiryMinutes Int        @default(15)
-  cancellationRules   Json
-  refundRules         Json
-  earlyCheckInRules   Json?
-  earlyCheckoutRules  Json
-  lateCheckoutRules   Json?
-  downgradeRules      Json?
-  noShowRules         Json
-  guestPolicyText     String             @db.Text
-  version             Int                @default(1)
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+model PropertyAuditEvent {
+  id            String                  @id @default(uuid())
+  propertyId    String
+  actorUserId   String?
+  entityType    PropertyAuditEntityType
+  entityId      String
+  action        PropertyAuditAction
+  reason        String?                 @db.VarChar(500)
+  previousData  Json?
+  nextData      Json?
+  metadata      Json?
+  correlationId String?                 @db.VarChar(128)
+  createdAt     DateTime                @default(now())
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  actor    User?    @relation("PropertyAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([propertyId, createdAt])
+  @@index([propertyId, entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@map("property_audit_events")
+}
+
+model PropertyBookingPolicy {
+  id                          String             @id @default(uuid())
+  propertyId                  String             @unique
+  advancePaymentType          AdvancePaymentType @default(FIXED_AMOUNT)
+  advancePaymentValue         Decimal            @default(10)
+  tokenRefundable             Boolean            @default(false)
+  checkInTime                 String             @default("12:00")
+  checkOutTime                String             @default("11:00")
+  pendingPaymentExpiryMinutes Int                @default(15)
+  cancellationRules           Json
+  refundRules                 Json
+  earlyCheckInRules           Json?
+  earlyCheckoutRules          Json
+  lateCheckoutRules           Json?
+  downgradeRules              Json?
+  noShowRules                 Json
+  guestPolicyText             String             @db.Text
+  version                     Int                @default(1)
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+
+  property Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   audits   BookingPolicyAudit[]
 
   @@map("property_booking_policies")
 }
 
 model BookingPolicyAudit {
-  id          String   @id @default(uuid())
-  policyId    String
-  propertyId  String
-  actorUserId String
-  version     Int
+  id           String   @id @default(uuid())
+  policyId     String
+  propertyId   String
+  actorUserId  String
+  version      Int
   previousData Json
   nextData     Json
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   policy   PropertyBookingPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
   property Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -698,27 +780,27 @@ model Unit {
 }
 
 model Room {
-  id           String     @id @default(uuid())
-  unitId       String
-  name         String
-  number       String
-  hasAC        Boolean    @default(false)
-  maxOccupancy Int        @default(2)
-  status       RoomStatus @default(AVAILABLE)
+  id                 String                 @id @default(uuid())
+  unitId             String
+  name               String
+  number             String
+  hasAC              Boolean                @default(false)
+  maxOccupancy       Int                    @default(2)
+  status             RoomStatus             @default(AVAILABLE)
   housekeepingStatus RoomHousekeepingStatus @default(INSPECTED)
-  isActive     Boolean    @default(true)
+  isActive           Boolean                @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
-  amenities         RoomAmenity[]
-  pricing           RoomPricing[]
-  maintenanceBlocks MaintenanceBlock[]
-  housekeepingEvents RoomHousekeepingEvent[]
+  amenities              RoomAmenity[]
+  pricing                RoomPricing[]
+  maintenanceBlocks      MaintenanceBlock[]
+  housekeepingEvents     RoomHousekeepingEvent[]
   bookingRoomAllocations BookingRoomAllocation[]
-  galleries         Gallery[]
+  galleries              Gallery[]
 
   @@unique([unitId, number])
   @@index([unitId])
@@ -787,13 +869,22 @@ model RoomPricing {
  */
 
 model QuoteRequest {
-  id         String            @id @default(uuid())
-  propertyId String
-  userId     String?
-  productId  String?
-  targetType BookingTargetType
-  unitId     String?
-  roomId     String?
+  id                 String            @id @default(uuid())
+  propertyId         String
+  userId             String?
+  productId          String?
+  targetType         BookingTargetType
+  unitId             String?
+  roomId             String?
+  guestName          String?
+  guestEmail         String?
+  guestContactNumber String?
+  companyName        String?
+  guestCount         Int               @default(1)
+  comfortOption      ComfortOption?
+  quoteSnapshot      Json?
+  expiresAt          DateTime?
+  convertedBookingId String?           @unique
 
   checkIn  DateTime
   checkOut DateTime
@@ -803,12 +894,15 @@ model QuoteRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  property Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user     User?        @relation(fields: [userId], references: [id], map: "fk_quote_user")
-  product  RoomProduct? @relation(fields: [productId], references: [id], map: "fk_quote_product")
+  property         Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user             User?               @relation(fields: [userId], references: [id], map: "fk_quote_user")
+  product          RoomProduct?        @relation(fields: [productId], references: [id], map: "fk_quote_product")
+  convertedBooking Booking?            @relation("QuoteConvertedBooking", fields: [convertedBookingId], references: [id], onDelete: SetNull)
+  history          LeadStatusHistory[]
 
   @@index([propertyId])
   @@index([userId])
+  @@index([propertyId, status, expiresAt])
   @@map("quote_requests")
 }
 
@@ -833,48 +927,57 @@ model Booking {
   productName          String
   pricePerNight        Decimal
 
-  checkIn            DateTime
-  checkOut           DateTime
-  status             BookingStatus        @default(PENDING)
-  version            Int                  @default(1)
-  checkedInAt        DateTime?
-  checkedOutAt       DateTime?
-  noShowAt           DateTime?
-  identityVerifiedAt DateTime?
-  identityDocumentType String?             @db.VarChar(50)
-  identityDocumentReference String?        @db.VarChar(100)
-  subtotalAmount     Decimal              @default(0)
-  taxableAmount      Decimal              @default(0)
-  taxAmount          Decimal              @default(0)
-  taxBreakdown       Json?
-  totalAmount        Decimal
-  paymentStatus      BookingPaymentStatus @default(PENDING)
-  paymentPolicy      BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
-  upfrontAmount      Decimal              @default(10)
-  paymentExpiresAt   DateTime?
-  policySnapshot     Json?
-  couponId           String?
-  discountAmount     Decimal              @default(0)
-  internalNotes      String?              @db.Text
-  cancellationReason String?              @db.Text
-  cancelledAt        DateTime?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  checkIn                   DateTime
+  checkOut                  DateTime
+  status                    BookingStatus        @default(PENDING)
+  version                   Int                  @default(1)
+  checkedInAt               DateTime?
+  checkedOutAt              DateTime?
+  noShowAt                  DateTime?
+  identityVerifiedAt        DateTime?
+  identityDocumentType      String?              @db.VarChar(50)
+  identityDocumentReference String?              @db.VarChar(100)
+  subtotalAmount            Decimal              @default(0)
+  taxableAmount             Decimal              @default(0)
+  taxAmount                 Decimal              @default(0)
+  taxBreakdown              Json?
+  totalAmount               Decimal
+  paymentStatus             BookingPaymentStatus @default(PENDING)
+  paymentPolicy             BookingPaymentPolicy @default(TOKEN_AT_BOOKING)
+  upfrontAmount             Decimal              @default(10)
+  paymentExpiresAt          DateTime?
+  policySnapshot            Json?
+  couponId                  String?
+  discountAmount            Decimal              @default(0)
+  internalNotes             String?              @db.Text
+  cancellationReason        String?              @db.Text
+  companyId                 String?
+  bookingGroupId            String?
+  recipientLegalName        String?
+  recipientGstin            String?              @db.VarChar(32)
+  billingAddressSnapshot    String?              @db.Text
+  placeOfSupplyStateCode    String?              @db.VarChar(2)
+  cancelledAt               DateTime?
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
-  property       Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user           User                   @relation(fields: [userId], references: [id], map: "fk_booking_user")
-  coupon         Coupon?                @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  items          BookingItem[]
-  payments       Payment[]
-  refunds        PaymentRefund[]
-  refundRequests BookingRefundRequest[]
-  statusHistory  BookingStatusHistory[]
-  operationEvents BookingOperationEvent[]
-  folioCharges   BookingFolioCharge[]
+  property           Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user               User                    @relation(fields: [userId], references: [id], map: "fk_booking_user")
+  coupon             Coupon?                 @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items              BookingItem[]
+  payments           Payment[]
+  refunds            PaymentRefund[]
+  refundRequests     BookingRefundRequest[]
+  statusHistory      BookingStatusHistory[]
+  operationEvents    BookingOperationEvent[]
+  folioCharges       BookingFolioCharge[]
   housekeepingEvents RoomHousekeepingEvent[]
-  inventoryLocks InventoryLock[]
-  billingDocuments BillingDocument[]
-  roomAllocations BookingRoomAllocation[]
+  inventoryLocks     InventoryLock[]
+  billingDocuments   BillingDocument[]
+  roomAllocations    BookingRoomAllocation[]
+  company            CompanyAccount?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  bookingGroup       BookingGroup?           @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
+  convertedQuote     QuoteRequest?           @relation("QuoteConvertedBooking")
 
   @@index([propertyId])
   @@index([userId])
@@ -885,6 +988,8 @@ model Booking {
   @@index([status, paymentExpiresAt])
   @@index([propertyId, checkedInAt])
   @@index([propertyId, checkedOutAt])
+  @@index([companyId, createdAt])
+  @@index([bookingGroupId, checkIn, checkOut])
   @@map("bookings")
 }
 
@@ -900,14 +1005,18 @@ model InventoryLock {
   expiresAt       DateTime
   releasedAt      DateTime?
   bookingId       String?
+  bookingGroupId  String?
   createdByUserId String?
   createdAt       DateTime          @default(now())
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  booking  Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  property     Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  booking      Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  bookingGroup BookingGroup? @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
 
+  @@unique([bookingGroupId, roomId, checkIn, checkOut])
   @@index([lockToken])
   @@index([propertyId, expiresAt, releasedAt])
+  @@index([bookingGroupId, releasedAt, expiresAt])
   @@index([roomId, checkIn, checkOut])
   @@index([unitId, checkIn, checkOut])
   @@map("inventory_locks")
@@ -938,7 +1047,7 @@ model BookingItem {
 
   createdAt DateTime @default(now())
 
-  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking         Booking                 @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   roomAllocations BookingRoomAllocation[]
 
   @@index([bookingId])
@@ -959,11 +1068,11 @@ model BookingRoomAllocation {
   effectiveTo   DateTime?
   createdAt     DateTime                    @default(now())
 
-  booking     Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   bookingItem BookingItem? @relation(fields: [bookingItemId], references: [id], onDelete: SetNull)
-  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  room        Room        @relation(fields: [roomId], references: [id], onDelete: Restrict)
-  actor       User?       @relation("BookingRoomAllocationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room        Room         @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  actor       User?        @relation("BookingRoomAllocationActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([bookingId, effectiveFrom], map: "bra_booking_from_idx")
   @@index([bookingItemId, effectiveFrom], map: "bra_item_from_idx")
@@ -1026,10 +1135,10 @@ model BookingFolioCharge {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  createdBy User     @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  voidedBy  User?    @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  booking          Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property         Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy        User              @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  voidedBy         User?             @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   billingDocuments BillingDocument[]
 
   @@index([bookingId, status, createdAt])
@@ -1063,12 +1172,12 @@ model Payment {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  receivedBy User?    @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+  booking          Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  property         Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receivedBy       User?             @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
   billingDocuments BillingDocument[]
-  refunds PaymentRefund[]
+  refunds          PaymentRefund[]
 
   @@unique([provider, providerPaymentId])
   @@index([bookingId])
@@ -1100,10 +1209,10 @@ model PaymentRefund {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
-  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  payment  Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking       Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment       Payment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  property      Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   refundRequest BookingRefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
 
   @@unique([provider, providerRefundId])
@@ -1144,25 +1253,27 @@ model BookingRefundRequest {
 }
 
 model BillingSetting {
-  id                   String @id @default(uuid())
-  propertyId           String @unique
-  legalName            String?
-  gstin                String?
-  pan                  String?
-  billingAddress       String? @db.Text
-  invoicePrefix        String @default("INV-")
-  receiptPrefix        String @default("RCT-")
-  creditNotePrefix     String @default("CN-")
-  debitNotePrefix      String @default("DN-")
-  invoiceSequence      Int    @default(0)
-  receiptSequence      Int    @default(0)
-  creditNoteSequence   Int    @default(0)
-  debitNoteSequence    Int    @default(0)
-  footerNotes          String? @db.Text
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  propertyId         String   @unique
+  legalName          String?
+  gstin              String?
+  pan                String?
+  billingAddress     String?  @db.Text
+  invoicePrefix      String   @default("INV-")
+  receiptPrefix      String   @default("RCT-")
+  creditNotePrefix   String   @default("CN-")
+  debitNotePrefix    String   @default("DN-")
+  invoiceSequence    Int      @default(0)
+  receiptSequence    Int      @default(0)
+  creditNoteSequence Int      @default(0)
+  debitNoteSequence  Int      @default(0)
+  footerNotes        String?  @db.Text
+  stateCode          String?  @db.VarChar(2)
+  sacCode            String   @default("996311") @db.VarChar(16)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   audits   BillingSettingAudit[]
 
   @@map("billing_settings")
@@ -1188,51 +1299,59 @@ model BillingSettingAudit {
 }
 
 model BillingDocument {
-  id               String                @id @default(uuid())
-  documentKey      String                @unique
-  type             BillingDocumentType
-  status           BillingDocumentStatus @default(ISSUED)
-  documentNumber   String
-  bookingId        String
-  paymentId        String?
-  folioChargeId    String?
-  propertyId       String
-  tenantId         String?
-  subtotal         Decimal               @default(0)
-  discount         Decimal               @default(0)
-  taxable          Decimal               @default(0)
-  tax              Decimal               @default(0)
-  total            Decimal               @default(0)
-  paid             Decimal               @default(0)
-  balance          Decimal               @default(0)
-  guestSnapshot    Json
-  propertySnapshot Json
-  tenantSnapshot   Json?
-  bookingSnapshot  Json
-  priceSnapshot    Json
-  taxSnapshot      Json?
-  paymentSnapshot  Json?
-  lineItems        Json
-  notes            String?               @db.Text
-  pdfUrl           String?
-  pdfStatus        SideEffectJobStatus @default(PENDING)
-  pdfAttemptCount  Int                 @default(0)
-  pdfMaxAttempts   Int                 @default(3)
-  pdfLastError     String?             @db.Text
-  pdfCorrelationId String?             @db.VarChar(128)
+  id                     String                @id @default(uuid())
+  documentKey            String                @unique
+  type                   BillingDocumentType
+  status                 BillingDocumentStatus @default(ISSUED)
+  documentNumber         String
+  bookingId              String
+  paymentId              String?
+  folioChargeId          String?
+  propertyId             String
+  tenantId               String?
+  subtotal               Decimal               @default(0)
+  discount               Decimal               @default(0)
+  taxable                Decimal               @default(0)
+  tax                    Decimal               @default(0)
+  total                  Decimal               @default(0)
+  paid                   Decimal               @default(0)
+  balance                Decimal               @default(0)
+  guestSnapshot          Json
+  propertySnapshot       Json
+  supplierSnapshot       Json?
+  tenantSnapshot         Json?
+  bookingSnapshot        Json
+  priceSnapshot          Json
+  taxSnapshot            Json?
+  paymentSnapshot        Json?
+  lineItems              Json
+  notes                  String?               @db.Text
+  pdfUrl                 String?
+  pdfStatus              SideEffectJobStatus   @default(PENDING)
+  pdfAttemptCount        Int                   @default(0)
+  pdfMaxAttempts         Int                   @default(3)
+  pdfLastError           String?               @db.Text
+  pdfCorrelationId       String?               @db.VarChar(128)
   pdfProcessingStartedAt DateTime?
-  pdfRenderedAt    DateTime?
-  issuedAt         DateTime?
-  voidedAt         DateTime?
-  voidReason       String?               @db.Text
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  pdfNextAttemptAt       DateTime?
+  pdfDeadLetteredAt      DateTime?
+  pdfRenderedAt          DateTime?
+  issuedAt               DateTime?
+  voidedAt               DateTime?
+  voidReason             String?               @db.Text
+  fiscalYear             String?               @db.VarChar(9)
+  recipientGstin         String?               @db.VarChar(32)
+  placeOfSupplyStateCode String?               @db.VarChar(2)
+  supplierStateCode      String?               @db.VarChar(2)
+  sacCode                String?               @db.VarChar(16)
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
-  booking  Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  payment  Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  booking     Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment     Payment?            @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   folioCharge BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant   Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  property    Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant      Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   @@unique([propertyId, documentNumber])
   @@index([propertyId, type, status, issuedAt])
@@ -1241,6 +1360,21 @@ model BillingDocument {
   @@index([paymentId])
   @@index([folioChargeId])
   @@map("billing_documents")
+}
+
+model BillingDocumentSequence {
+  id         String              @id @default(uuid())
+  propertyId String
+  type       BillingDocumentType
+  fiscalYear String              @db.VarChar(9)
+  sequence   Int                 @default(0)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+
+  @@unique([propertyId, type, fiscalYear])
+  @@map("billing_document_sequences")
 }
 
 /**
@@ -1318,10 +1452,113 @@ model Enquiry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  history  LeadStatusHistory[]
 
   @@index([propertyId])
   @@map("enquiries")
+}
+
+model LeadStatusHistory {
+  id          String      @id @default(uuid())
+  enquiryId   String?
+  quoteId     String?
+  fromStatus  LeadStatus?
+  toStatus    LeadStatus
+  actorUserId String?
+  note        String?     @db.VarChar(500)
+  createdAt   DateTime    @default(now())
+
+  enquiry Enquiry?      @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  quote   QuoteRequest? @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  actor   User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([enquiryId, createdAt])
+  @@index([quoteId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("lead_status_history")
+}
+
+model CompanyAccount {
+  id               String   @id @default(uuid())
+  propertyId       String
+  legalName        String
+  tradeName        String?
+  gstin            String?  @db.VarChar(32)
+  billingAddress   String?  @db.Text
+  stateCode        String?  @db.VarChar(2)
+  contactName      String?
+  contactEmail     String?
+  contactNumber    String?
+  creditLimit      Decimal  @default(0) @db.Decimal(12, 2)
+  paymentTermsDays Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdByUserId  String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  property  Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy User           @relation("CompanyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  bookings  Booking[]
+  groups    BookingGroup[]
+
+  @@unique([propertyId, legalName])
+  @@index([propertyId, isActive])
+  @@map("company_accounts")
+}
+
+model BookingGroup {
+  id              String             @id @default(uuid())
+  groupRef        String             @unique
+  propertyId      String
+  companyId       String?
+  name            String
+  status          BookingGroupStatus @default(PROSPECT)
+  checkIn         DateTime
+  checkOut        DateTime
+  expectedRooms   Int
+  expectedGuests  Int
+  releaseDate     DateTime?
+  billingNotes    String?            @db.Text
+  createdByUserId String
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  property       Property           @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  company        CompanyAccount?    @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  createdBy      User               @relation("BookingGroupCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  bookings       Booking[]
+  folioCharges   GroupFolioCharge[]
+  inventoryLocks InventoryLock[]
+
+  @@index([propertyId, status, checkIn])
+  @@index([companyId, createdAt])
+  @@map("booking_groups")
+}
+
+model GroupFolioCharge {
+  id              String                 @id @default(uuid())
+  bookingGroupId  String
+  propertyId      String
+  description     String                 @db.VarChar(255)
+  amount          Decimal                @db.Decimal(12, 2)
+  status          GroupFolioChargeStatus @default(ACTIVE)
+  note            String?                @db.Text
+  createdByUserId String
+  voidedByUserId  String?
+  voidReason      String?                @db.Text
+  voidedAt        DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  bookingGroup BookingGroup @relation(fields: [bookingGroupId], references: [id], onDelete: Restrict)
+  property     Property     @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy    User         @relation("GroupFolioCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  voidedBy     User?        @relation("GroupFolioVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([bookingGroupId, status, createdAt])
+  @@index([propertyId, createdAt])
+  @@map("group_folio_charges")
 }
 
 model PropertyAssignment {
@@ -1344,29 +1581,29 @@ model PropertyAssignment {
 }
 
 model MaintenanceBlock {
-  id              String                @id @default(uuid())
-  propertyId      String
-  unitId          String?
-  roomId          String?
-  targetType      MaintenanceTargetType
-  reason          String?
-  status          MaintenanceStatus   @default(SCHEDULED)
-  priority        MaintenancePriority @default(MEDIUM)
-  assignedToUserId String?
-  resolutionNote  String?             @db.Text
-  resolvedAt      DateTime?
-  emergencyOverride Boolean           @default(false)
-  startDate       DateTime
-  endDate         DateTime
-  createdByUserId String
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id                String                @id @default(uuid())
+  propertyId        String
+  unitId            String?
+  roomId            String?
+  targetType        MaintenanceTargetType
+  reason            String?
+  status            MaintenanceStatus     @default(SCHEDULED)
+  priority          MaintenancePriority   @default(MEDIUM)
+  assignedToUserId  String?
+  resolutionNote    String?               @db.Text
+  resolvedAt        DateTime?
+  emergencyOverride Boolean               @default(false)
+  startDate         DateTime
+  endDate           DateTime
+  createdByUserId   String
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
-  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  unit      Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
-  room      Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  createdBy User     @relation("MaintenanceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  assignedTo User?   @relation("MaintenanceAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unit       Unit?    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  room       Room?    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy  User     @relation("MaintenanceCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  assignedTo User?    @relation("MaintenanceAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
 
   @@index([propertyId])
   @@index([propertyId, status, priority])
@@ -1376,19 +1613,19 @@ model MaintenanceBlock {
 }
 
 model PropertyClosure {
-  id                   String                @id @default(uuid())
-  propertyId           String
-  type                 PropertyClosureType
-  status               PropertyClosureStatus @default(ACTIVE)
-  reason               String                @db.VarChar(500)
-  startDate            DateTime
-  endDate              DateTime
-  createdByUserId      String
-  cancelledByUserId    String?
-  cancelledAt          DateTime?
-  cancellationReason   String?               @db.VarChar(500)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  id                 String                @id @default(uuid())
+  propertyId         String
+  type               PropertyClosureType
+  status             PropertyClosureStatus @default(ACTIVE)
+  reason             String                @db.VarChar(500)
+  startDate          DateTime
+  endDate            DateTime
+  createdByUserId    String
+  cancelledByUserId  String?
+  cancelledAt        DateTime?
+  cancellationReason String?               @db.VarChar(500)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
 
   property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy   User     @relation("PropertyClosureCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)

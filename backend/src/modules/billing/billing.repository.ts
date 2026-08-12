@@ -8,6 +8,10 @@ import {
   UserRole,
 } from "@/generated/prisma/client.js";
 import type { BillingDocumentListInput } from "./billing.inputs.js";
+import {
+  getSideEffectRetryAt,
+  SIDE_EFFECT_RETRY_POLICY,
+} from "@/common/constants/application.constants.js";
 
 type BillingDbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -89,6 +93,8 @@ export interface BillingSettingUpdateData {
   creditNotePrefix?: string;
   debitNotePrefix?: string;
   footerNotes?: string | null;
+  stateCode?: string | null;
+  sacCode?: string;
 }
 
 export const findUserById = (userId: string) =>
@@ -249,6 +255,8 @@ const toSettingAuditJson = (
   creditNotePrefix: setting.creditNotePrefix,
   debitNotePrefix: setting.debitNotePrefix,
   footerNotes: setting.footerNotes,
+  stateCode: setting.stateCode,
+  sacCode: setting.sacCode,
 });
 
 const hasSettingChanges = (
@@ -263,7 +271,9 @@ const hasSettingChanges = (
   (data.receiptPrefix !== undefined && data.receiptPrefix !== current.receiptPrefix) ||
   (data.creditNotePrefix !== undefined && data.creditNotePrefix !== current.creditNotePrefix) ||
   (data.debitNotePrefix !== undefined && data.debitNotePrefix !== current.debitNotePrefix) ||
-  (data.footerNotes !== undefined && data.footerNotes !== current.footerNotes);
+  (data.footerNotes !== undefined && data.footerNotes !== current.footerNotes) ||
+  (data.stateCode !== undefined && data.stateCode !== current.stateCode) ||
+  (data.sacCode !== undefined && data.sacCode !== current.sacCode);
 
 export const listSettingAudits = (
   propertyId: string,
@@ -314,35 +324,24 @@ export const updateSettingWithAudit = (
 export const nextDocumentNumber = async (
   propertyId: string,
   type: BillingDocumentType,
+  issuedAt: Date,
   tx: Prisma.TransactionClient,
 ) => {
   const setting = await tx.billingSetting.upsert({
     where: { propertyId },
-    update:
-      type === BillingDocumentType.INVOICE
-        ? { invoiceSequence: { increment: 1 } }
-        : type === BillingDocumentType.RECEIPT
-          ? { receiptSequence: { increment: 1 } }
-          : type === BillingDocumentType.DEBIT_NOTE
-            ? { debitNoteSequence: { increment: 1 } }
-            : { creditNoteSequence: { increment: 1 } },
-    create:
-      type === BillingDocumentType.INVOICE
-        ? { propertyId, invoiceSequence: 1 }
-        : type === BillingDocumentType.RECEIPT
-          ? { propertyId, receiptSequence: 1 }
-          : type === BillingDocumentType.DEBIT_NOTE
-            ? { propertyId, debitNoteSequence: 1 }
-            : { propertyId, creditNoteSequence: 1 },
+    update: {},
+    create: { propertyId },
   });
-  const sequence =
-    type === BillingDocumentType.INVOICE
-      ? setting.invoiceSequence
-      : type === BillingDocumentType.RECEIPT
-        ? setting.receiptSequence
-        : type === BillingDocumentType.DEBIT_NOTE
-          ? setting.debitNoteSequence
-          : setting.creditNoteSequence;
+  const year = issuedAt.getUTCFullYear();
+  const fiscalStartYear = issuedAt.getUTCMonth() >= 3 ? year : year - 1;
+  const fiscalYear = `${fiscalStartYear}-${String(fiscalStartYear + 1).slice(-2)}`;
+  const sequenceRecord = await tx.billingDocumentSequence.upsert({
+    where: {
+      propertyId_type_fiscalYear: { propertyId, type, fiscalYear },
+    },
+    update: { sequence: { increment: 1 } },
+    create: { propertyId, type, fiscalYear, sequence: 1 },
+  });
   const prefix =
     type === BillingDocumentType.INVOICE
       ? setting.invoicePrefix
@@ -352,7 +351,10 @@ export const nextDocumentNumber = async (
           ? setting.debitNotePrefix
           : setting.creditNotePrefix;
 
-  return `${prefix}${String(sequence).padStart(6, "0")}`;
+  return {
+    documentNumber: `${prefix}${fiscalYear}-${String(sequenceRecord.sequence).padStart(6, "0")}`,
+    fiscalYear,
+  };
 };
 
 export const createDocument = (
@@ -387,6 +389,10 @@ export const claimDocumentRender = (
         {
           pdfStatus: { in: ["PENDING", "FAILED"] },
           pdfAttemptCount: { lt: prisma.billingDocument.fields.pdfMaxAttempts },
+          OR: [
+            { pdfNextAttemptAt: null },
+            { pdfNextAttemptAt: { lte: new Date() } },
+          ],
         },
         {
           pdfStatus: "PROCESSING",
@@ -400,6 +406,8 @@ export const claimDocumentRender = (
       pdfLastError: null,
       pdfCorrelationId: correlationId,
       pdfProcessingStartedAt: new Date(),
+      pdfNextAttemptAt: null,
+      pdfDeadLetteredAt: null,
     },
   });
 
@@ -415,34 +423,77 @@ export const markDocumentRenderSucceeded = (
       pdfLastError: null,
       pdfProcessingStartedAt: null,
       pdfRenderedAt: new Date(),
+      pdfNextAttemptAt: null,
+      pdfDeadLetteredAt: null,
     },
     include: billingDocumentInclude,
   });
 
-export const markDocumentRenderFailed = (
+export const markDocumentRenderFailed = async (
   documentId: string,
   errorMessage: string,
-) =>
-  prisma.billingDocument.update({
+) => {
+  const current = await prisma.billingDocument.findUniqueOrThrow({
+    where: { id: documentId },
+    select: { pdfAttemptCount: true, pdfMaxAttempts: true },
+  });
+  const exhausted = current.pdfAttemptCount >= current.pdfMaxAttempts;
+  return prisma.billingDocument.update({
     where: { id: documentId },
     data: {
-      pdfStatus: "FAILED",
+      pdfStatus: exhausted ? "DEAD_LETTER" : "FAILED",
       pdfLastError: errorMessage.slice(0, 4000),
       pdfProcessingStartedAt: null,
+      pdfNextAttemptAt: exhausted
+        ? null
+        : getSideEffectRetryAt(current.pdfAttemptCount),
+      pdfDeadLetteredAt: exhausted ? new Date() : null,
     },
     include: billingDocumentInclude,
   });
+};
 
 export const resetDocumentRenderForRetry = (documentId: string) =>
   prisma.billingDocument.updateMany({
-    where: { id: documentId, pdfStatus: "FAILED" },
+    where: { id: documentId, pdfStatus: { in: ["FAILED", "DEAD_LETTER"] } },
     data: {
       pdfStatus: "PENDING",
       pdfAttemptCount: 0,
       pdfLastError: null,
       pdfProcessingStartedAt: null,
+      pdfNextAttemptAt: null,
+      pdfDeadLetteredAt: null,
     },
   });
+
+export const listPendingDocumentRenders = (take: number) => {
+  const now = new Date();
+  return prisma.billingDocument.findMany({
+    where: {
+      OR: [
+        {
+          pdfStatus: { in: ["PENDING", "FAILED"] },
+          pdfAttemptCount: { lt: prisma.billingDocument.fields.pdfMaxAttempts },
+          OR: [
+            { pdfNextAttemptAt: null },
+            { pdfNextAttemptAt: { lte: now } },
+          ],
+        },
+        {
+          pdfStatus: "PROCESSING",
+          pdfProcessingStartedAt: {
+            lt: new Date(
+              now.getTime() - SIDE_EFFECT_RETRY_POLICY.staleProcessingMs,
+            ),
+          },
+        },
+      ],
+    },
+    include: billingDocumentInclude,
+    orderBy: { createdAt: "asc" },
+    take,
+  });
+};
 
 export const sumSucceededPaymentsByBooking = async (
   bookingId: string,

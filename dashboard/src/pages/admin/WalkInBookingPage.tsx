@@ -1,6 +1,6 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ICON_REGISTRY } from "@/configs/iconRegistry";
 const { FiArrowLeft, FiCheckCircle } = ICON_REGISTRY;
 import Button from "@/components/ui/Button";
@@ -72,8 +72,17 @@ const mergeAvailabilityResults = (
 
 export default function WalkInBookingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<ManualBookingForm>(emptyForm);
+  const bookingGroupId = searchParams.get("bookingGroupId") ?? "";
+  const inventoryLockToken = searchParams.get("inventoryLockToken") ?? "";
+  const heldRoomId = searchParams.get("roomId") ?? "";
+  const linkedPropertyId = searchParams.get("propertyId") ?? "";
+  const [form, setForm] = useState<ManualBookingForm>(() => ({
+    ...emptyForm,
+    from: searchParams.get("from") ?? "",
+    to: searchParams.get("to") ?? "",
+  }));
   const [selectedSpaceIds, setSelectedSpaceIds] = useState<string[]>([]);
   const [availability, setAvailability] =
     useState<ManualBookingAvailabilityResponse | null>(null);
@@ -88,6 +97,16 @@ export default function WalkInBookingPage() {
     setSelectedPropertyId,
     isLoading: isLoadingProperties,
   } = useCurrentProperty();
+
+  useEffect(() => {
+    if (
+      linkedPropertyId &&
+      properties.some((property) => property.id === linkedPropertyId) &&
+      selectedPropertyId !== linkedPropertyId
+    ) {
+      setSelectedPropertyId(linkedPropertyId);
+    }
+  }, [linkedPropertyId, properties, selectedPropertyId, setSelectedPropertyId]);
 
   const availabilityByOptionId = useMemo(
     () =>
@@ -135,6 +154,7 @@ export default function WalkInBookingPage() {
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
+        ...(inventoryLockToken && { inventoryLockToken }),
       };
 
       if (form.comfortOption === "ALL") {
@@ -156,7 +176,16 @@ export default function WalkInBookingPage() {
       });
     },
     onSuccess: (result) => {
-      setAvailability(result);
+      const visibleItems = heldRoomId
+        ? result.items.filter((item) => item.roomId === heldRoomId)
+        : result.items;
+      setAvailability({
+        ...result,
+        items: visibleItems,
+        availableSpaceIds: visibleItems
+          .filter((item) => item.available)
+          .map((item) => item.bookingOptionId),
+      });
       setAvailabilityError("");
       setSelectedSpaceIds([]);
     },
@@ -177,6 +206,8 @@ export default function WalkInBookingPage() {
       return createManualBookingApi(selectedPropertyId, {
         bookingType: "SINGLE_TARGET",
         bookingOptionId: selectedSpaceIds[0],
+        ...(bookingGroupId && { bookingGroupId }),
+        ...(inventoryLockToken && { inventoryLockToken }),
         from: form.from,
         to: form.to,
         guests: Number(form.guests),
@@ -286,6 +317,12 @@ export default function WalkInBookingPage() {
 
   return (
     <div className="space-y-5">
+      {bookingGroupId && inventoryLockToken && (
+        <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
+          Group room pickup is active. The stay dates and held room are tied to
+          this allotment; enter the guest details below.
+        </div>
+      )}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <Button

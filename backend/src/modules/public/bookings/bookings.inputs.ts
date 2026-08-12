@@ -7,6 +7,13 @@ export interface PublicBookingGuestDetailsInput {
   contactNumber: string;
 }
 
+export interface PublicBookingBillingDetailsInput {
+  legalName?: string | undefined;
+  gstin?: string | undefined;
+  billingAddress?: string | undefined;
+  placeOfSupplyStateCode?: string | undefined;
+}
+
 export interface CreatePublicBookingInput {
   bookingType: PublicBookingType;
   bookingOptionId?: string;
@@ -20,12 +27,22 @@ export interface CreatePublicBookingInput {
   comfortOption: ComfortOption;
   couponCode?: string | undefined;
   guestDetails?: PublicBookingGuestDetailsInput;
+  billingDetails?: PublicBookingBillingDetailsInput;
 }
 
 export type PublicBookingQuoteInput = Omit<
   CreatePublicBookingInput,
-  "guestDetails"
+  "guestDetails" | "billingDetails"
 >;
+
+export interface CreateCommercialQuoteRequestInput
+  extends PublicBookingQuoteInput {
+  guestName: string;
+  guestEmail: string;
+  guestContactNumber: string;
+  companyName?: string | undefined;
+  notes?: string | undefined;
+}
 
 export interface PublicBookingCheckoutQuoteInput {
   couponCode?: string | null | undefined;
@@ -34,4 +51,5 @@ export interface PublicBookingCheckoutQuoteInput {
 
 export interface UpdatePublicBookingCheckoutInput extends PublicBookingCheckoutQuoteInput {
   guestDetails: PublicBookingGuestDetailsInput;
+  billingDetails?: PublicBookingBillingDetailsInput;
 }

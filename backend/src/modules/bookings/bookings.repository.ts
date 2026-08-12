@@ -208,6 +208,7 @@ export const listRoomBoardMaintenanceBlocks = (
   prisma.maintenanceBlock.findMany({
     where: {
       propertyId,
+      status: { notIn: ["RESOLVED", "CANCELLED"] },
       startDate: { lt: to },
       endDate: { gt: from },
     },

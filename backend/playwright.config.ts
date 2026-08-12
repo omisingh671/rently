@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { defineConfig } from "playwright/test";
+import { E2E_DEFAULTS } from "./src/common/constants/application.constants.js";
 
-const databaseName = process.env.E2E_DATABASE_NAME?.trim() || "rently_e2e";
+const databaseName =
+  process.env.E2E_DATABASE_NAME?.trim() || E2E_DEFAULTS.databaseName;
 if (!/^[A-Za-z0-9_]+_e2e$/.test(databaseName)) {
   throw new Error(
     "E2E_DATABASE_NAME must contain only letters, numbers, or underscores and end with _e2e",
@@ -14,13 +16,11 @@ if (configuredDatabaseUrl) {
   databaseUrl.pathname = `/${databaseName}`;
   process.env.DATABASE_URL = databaseUrl.toString();
 }
-const port = 4100;
+const port = E2E_DEFAULTS.port;
 
 process.env.NODE_ENV = "test";
 process.env.PORT = String(port);
-process.env.DATABASE_NAME = databaseName;
 process.env.E2E_DATABASE_NAME = databaseName;
-process.env.RATE_LIMIT_ENABLED = "false";
 process.env.STORAGE_PROVIDER = "local";
 
 export default defineConfig({

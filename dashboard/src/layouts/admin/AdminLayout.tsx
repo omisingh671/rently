@@ -84,6 +84,12 @@ function getAdminPageMeta(pathname: string) {
       subtitle: "Manage property booking and cancellation rules",
     };
 
+  if (pathname.includes(ADMIN_ROUTES.COMMERCIAL))
+    return {
+      title: "Corporate & Groups",
+      subtitle: "Company accounts, room blocks, and group folios",
+    };
+
   if (pathname.includes(ADMIN_ROUTES.BOOKINGS))
     return { title: "Bookings", subtitle: "Reservations overview" };
 

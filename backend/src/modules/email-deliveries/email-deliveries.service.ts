@@ -6,6 +6,10 @@ import { getCorrelationId } from "@/common/observability/request-context.js";
 import { logError } from "@/common/observability/logger.js";
 import { sendResetPasswordEmail } from "@/modules/auth/email/resetPassword.email.js";
 import { UserRole } from "@/generated/prisma/client.js";
+import {
+  getSideEffectRetryAt,
+  SIDE_EFFECT_RETRY_POLICY,
+} from "@/common/constants/application.constants.js";
 
 const mapJob = (job: Awaited<ReturnType<typeof prisma.emailDeliveryJob.findUniqueOrThrow>>) => ({
   id: job.id,
@@ -17,6 +21,8 @@ const mapJob = (job: Awaited<ReturnType<typeof prisma.emailDeliveryJob.findUniqu
   maxAttempts: job.maxAttempts,
   lastError: job.lastError ?? null,
   correlationId: job.correlationId ?? null,
+  nextAttemptAt: job.nextAttemptAt?.toISOString() ?? null,
+  deadLetteredAt: job.deadLetteredAt?.toISOString() ?? null,
   sentAt: job.sentAt?.toISOString() ?? null,
   createdAt: job.createdAt.toISOString(),
   updatedAt: job.updatedAt.toISOString(),
@@ -55,10 +61,18 @@ export const processPasswordResetEmailJob = async (
     where: {
       id: jobId,
       OR: [
-        { status: { in: ["PENDING", "FAILED"] }, attemptCount: { lt: 3 } },
+        {
+          status: { in: ["PENDING", "FAILED"] },
+          attemptCount: { lt: SIDE_EFFECT_RETRY_POLICY.maxAttempts },
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
+        },
         {
           status: "PROCESSING",
-          processingStartedAt: { lt: new Date(Date.now() - 5 * 60 * 1000) },
+          processingStartedAt: {
+            lt: new Date(
+              Date.now() - SIDE_EFFECT_RETRY_POLICY.staleProcessingMs,
+            ),
+          },
         },
       ],
     },
@@ -67,6 +81,8 @@ export const processPasswordResetEmailJob = async (
       attemptCount: { increment: 1 },
       lastError: null,
       processingStartedAt: new Date(),
+      nextAttemptAt: null,
+      deadLetteredAt: null,
     },
   });
   if (claim.count !== 1) {
@@ -124,12 +140,15 @@ export const processPasswordResetEmailJob = async (
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown email failure";
+    const exhausted = job.attemptCount >= job.maxAttempts;
     const failed = await prisma.emailDeliveryJob.update({
       where: { id: job.id },
       data: {
-        status: "FAILED",
+        status: exhausted ? "DEAD_LETTER" : "FAILED",
         lastError: message.slice(0, 4000),
         processingStartedAt: null,
+        nextAttemptAt: exhausted ? null : getSideEffectRetryAt(job.attemptCount),
+        deadLetteredAt: exhausted ? new Date() : null,
       },
     });
     logError("Password reset email delivery failed", error, {
@@ -164,15 +183,59 @@ export const listEmailDeliveryJobs = async (userId: string) => {
   return jobs.map(mapJob);
 };
 
+export const processPendingEmailDeliveries = async () => {
+  const now = new Date();
+  const jobs = await prisma.emailDeliveryJob.findMany({
+    where: {
+      OR: [
+        {
+          status: { in: ["PENDING", "FAILED"] },
+          attemptCount: { lt: SIDE_EFFECT_RETRY_POLICY.maxAttempts },
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+        },
+        {
+          status: "PROCESSING",
+          processingStartedAt: {
+            lt: new Date(
+              now.getTime() - SIDE_EFFECT_RETRY_POLICY.staleProcessingMs,
+            ),
+          },
+        },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    take: SIDE_EFFECT_RETRY_POLICY.batchSize,
+    select: { id: true },
+  });
+  await Promise.allSettled(
+    jobs.map((job) => processPasswordResetEmailJob(job.id)),
+  );
+};
+
+export const startEmailDeliveryProcessor = () => {
+  void processPendingEmailDeliveries().catch((error) =>
+    logError("Email delivery processor failed", error),
+  );
+  const timer = setInterval(() => {
+    void processPendingEmailDeliveries().catch((error) =>
+      logError("Email delivery processor failed", error),
+    );
+  }, SIDE_EFFECT_RETRY_POLICY.processorIntervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+};
+
 export const retryEmailDeliveryJob = async (userId: string, jobId: string) => {
   await assertSuperAdmin(userId);
   const reset = await prisma.emailDeliveryJob.updateMany({
-    where: { id: jobId, status: "FAILED" },
+    where: { id: jobId, status: { in: ["FAILED", "DEAD_LETTER"] } },
     data: {
       status: "PENDING",
       attemptCount: 0,
       lastError: null,
       processingStartedAt: null,
+      nextAttemptAt: null,
+      deadLetteredAt: null,
       correlationId: getCorrelationId(),
     },
   });

@@ -98,8 +98,8 @@ export function PaymentSuccessState({
           )}
 
           <p className="mt-8 text-xs font-medium text-slate-400">
-            We&apos;ve sent a digital copy of your receipts and check-in voucher
-            to <span className="font-bold text-slate-500">{guestEmail}</span>.
+            Your payment documents are available above and in the booking details
+            for <span className="font-bold text-slate-500">{guestEmail}</span>.
           </p>
 
           <div className="mt-8 flex flex-wrap justify-center gap-3 border-t border-slate-100 pt-6">

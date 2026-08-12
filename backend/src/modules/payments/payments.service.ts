@@ -10,6 +10,7 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertPropertyBusinessDateOpen } from "@/common/services/daily-close-guard.js";
 import { env } from "@/config/env.js";
 import { billingService } from "@/modules/billing/index.js";
 import type {
@@ -243,6 +244,12 @@ export const createManualPayment = async (
       );
     }
 
+    const paidAt = input.paidAt ?? new Date();
+    await assertPropertyBusinessDateOpen(
+      booking.propertyId,
+      { at: paidAt, tx, operation: "Financial posting" },
+    );
+
     if (
       booking.status === BookingStatus.CHECKED_OUT &&
       input.actorUserId === undefined
@@ -436,7 +443,7 @@ export const createManualPayment = async (
         purpose,
         method,
         ...(input.note !== undefined && { note: input.note }),
-        paidAt: input.paidAt ?? new Date(),
+        paidAt,
         metadataSource:
           purpose === PaymentPurpose.BALANCE && input.actorUserId !== undefined
             ? "DASHBOARD_BALANCE_PAYMENT"
