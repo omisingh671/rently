@@ -108,6 +108,7 @@ interface StayFieldsProps {
   form: ManualBookingForm;
   propertyId: string;
   disabled: boolean;
+  lockDates?: boolean;
   onChange: (patch: Partial<ManualBookingForm>) => void;
 }
 
@@ -115,6 +116,7 @@ export function StayFields({
   form,
   propertyId,
   disabled,
+  lockDates = false,
   onChange,
 }: StayFieldsProps) {
   return (
@@ -125,9 +127,14 @@ export function StayFields({
         to={form.to}
         guests={Number(form.guests) || 1}
         comfortOption={form.comfortOption}
-        disabled={disabled}
+        disabled={disabled || lockDates}
         onChange={(from, to) => onChange({ from, to })}
       />
+      {lockDates && (
+        <p className="rounded-md bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-700">
+          Stay dates are fixed by the group room hold.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">Guests</span>
