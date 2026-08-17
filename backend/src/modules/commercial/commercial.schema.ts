@@ -90,6 +90,30 @@ export const updateGroupSchema = z.object({
   reason: z.string().trim().min(5).max(500),
 });
 
+export const updateGroupDetailsSchema = z
+  .object({
+    name: z.string().trim().min(1).max(190).optional(),
+    checkIn: date.optional(),
+    checkOut: date.optional(),
+    expectedRooms: z.coerce.number().int().min(1).max(500).optional(),
+    expectedGuests: z.coerce.number().int().min(1).max(5000).optional(),
+    releaseDate: date.nullable().optional(),
+    reason: z.string().trim().min(5).max(500),
+  })
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.checkIn !== undefined ||
+      value.checkOut !== undefined ||
+      value.expectedRooms !== undefined ||
+      value.expectedGuests !== undefined ||
+      value.releaseDate !== undefined,
+    {
+      message: "Provide at least one group detail to update",
+      path: ["name"],
+    },
+  );
+
 export const createGroupBlocksSchema = z.object({
   roomIds: z.array(id).min(1).max(500).transform((values) => [...new Set(values)]),
   releaseDate: date,

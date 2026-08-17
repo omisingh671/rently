@@ -172,10 +172,35 @@ export const listGroups = async (userId: string, propertyId: string) => {
   await assertPropertyInScope(actor, propertyId);
   const groups = await prisma.bookingGroup.findMany({
     where: { propertyId },
-    include: groupInclude,
+    select: {
+      id: true,
+      propertyId: true,
+      companyId: true,
+      groupRef: true,
+      name: true,
+      status: true,
+      checkIn: true,
+      checkOut: true,
+      expectedRooms: true,
+      expectedGuests: true,
+      releaseDate: true,
+      company: {
+        select: { id: true, legalName: true, isActive: true },
+      },
+      _count: {
+        select: {
+          inventoryLocks: {
+            where: { releasedAt: null, expiresAt: { gt: new Date() } },
+          },
+        },
+      },
+    },
     orderBy: { checkIn: "asc" },
   });
-  return groups.map(mapGroup);
+  return groups.map(({ _count, ...group }) => ({
+    ...group,
+    heldRoomCount: _count.inventoryLocks,
+  }));
 };
 
 export const getGroup = async (userId: string, groupId: string) => {
@@ -204,6 +229,13 @@ export const createGroup = async (
       where: { id: input.companyId, propertyId, isActive: true },
     });
     if (!company) throw new HttpError(404, "COMPANY_NOT_FOUND", "Active company not found for property");
+  }
+  if (input.releaseDate !== undefined && input.releaseDate <= new Date()) {
+    throw new HttpError(
+      422,
+      "INVALID_GROUP_RELEASE_DATE",
+      "Group release cutoff must be in the future",
+    );
   }
   const created = await prisma.$transaction(async (tx) => {
     const group = await tx.bookingGroup.create({
@@ -290,6 +322,124 @@ export const updateGroupStatus = async (
   return getGroup(userId, groupId);
 };
 
+export const updateGroupDetails = async (
+  userId: string,
+  groupId: string,
+  input: {
+    name?: string | undefined;
+    checkIn?: Date | undefined;
+    checkOut?: Date | undefined;
+    expectedRooms?: number | undefined;
+    expectedGuests?: number | undefined;
+    releaseDate?: Date | null | undefined;
+    reason: string;
+  },
+) => {
+  const { actor, group } = await getScopedGroup(userId, groupId);
+  if (
+    group.status !== BookingGroupStatus.PROSPECT &&
+    group.status !== BookingGroupStatus.TENTATIVE
+  ) {
+    throw new HttpError(
+      409,
+      "GROUP_DETAILS_LOCKED",
+      "Group details can only be edited while the group is Prospect or Tentative",
+    );
+  }
+  const checkIn = input.checkIn ?? group.checkIn;
+  const checkOut = input.checkOut ?? group.checkOut;
+  const releaseDate =
+    input.releaseDate === undefined ? group.releaseDate : input.releaseDate;
+  if (checkOut <= checkIn) {
+    throw new HttpError(422, "INVALID_GROUP_DATES", "Check-out must be after check-in");
+  }
+  if (
+    input.releaseDate !== undefined &&
+    releaseDate !== null &&
+    releaseDate <= new Date()
+  ) {
+    throw new HttpError(
+      422,
+      "INVALID_GROUP_RELEASE_DATE",
+      "Group release cutoff must be in the future",
+    );
+  }
+  if (releaseDate !== null && releaseDate > checkIn) {
+    throw new HttpError(
+      422,
+      "INVALID_GROUP_RELEASE_DATE",
+      "Release date cannot be after check-in",
+    );
+  }
+
+  const details: Prisma.BookingGroupUpdateInput = {
+    ...(input.name !== undefined && { name: input.name }),
+    ...(input.checkIn !== undefined && { checkIn: input.checkIn }),
+    ...(input.checkOut !== undefined && { checkOut: input.checkOut }),
+    ...(input.expectedRooms !== undefined && { expectedRooms: input.expectedRooms }),
+    ...(input.expectedGuests !== undefined && { expectedGuests: input.expectedGuests }),
+    ...(input.releaseDate !== undefined && { releaseDate: input.releaseDate }),
+  };
+  await prisma.$transaction(async (tx) => {
+    const [currentGroup, roomHolds, bookings, folioCharges] = await Promise.all([
+      tx.bookingGroup.findUniqueOrThrow({
+        where: { id: groupId },
+        select: { status: true },
+      }),
+      tx.inventoryLock.count({ where: { bookingGroupId: groupId } }),
+      tx.booking.count({ where: { bookingGroupId: groupId } }),
+      tx.groupFolioCharge.count({ where: { bookingGroupId: groupId } }),
+    ]);
+    if (
+      currentGroup.status !== BookingGroupStatus.PROSPECT &&
+      currentGroup.status !== BookingGroupStatus.TENTATIVE
+    ) {
+      throw new HttpError(
+        409,
+        "GROUP_DETAILS_LOCKED",
+        "Group details can only be edited while the group is Prospect or Tentative",
+      );
+    }
+    if (roomHolds + bookings + folioCharges > 0) {
+      throw new HttpError(
+        409,
+        "GROUP_DETAILS_LOCKED",
+        "Group details cannot be edited after room holds, guest bookings, or folio charges have been created",
+      );
+    }
+    const updated = await tx.bookingGroup.update({
+      where: { id: groupId },
+      data: details,
+    });
+    await recordPropertyAudit({
+      propertyId: group.propertyId,
+      actorUserId: actor.id,
+      entityType: PropertyAuditEntityType.BOOKING_GROUP,
+      entityId: groupId,
+      action: PropertyAuditAction.UPDATED,
+      reason: input.reason,
+      previousData: {
+        name: group.name,
+        checkIn: group.checkIn,
+        checkOut: group.checkOut,
+        expectedRooms: group.expectedRooms,
+        expectedGuests: group.expectedGuests,
+        releaseDate: group.releaseDate,
+      },
+      nextData: {
+        name: updated.name,
+        checkIn: updated.checkIn,
+        checkOut: updated.checkOut,
+        expectedRooms: updated.expectedRooms,
+        expectedGuests: updated.expectedGuests,
+        releaseDate: updated.releaseDate,
+      },
+      metadata: { operation: "DETAILS_UPDATED" },
+    }, tx);
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  return getGroup(userId, groupId);
+};
+
 export const holdGroupRooms = async (
   userId: string,
   groupId: string,
@@ -304,7 +454,25 @@ export const holdGroupRooms = async (
   ) {
     throw new HttpError(409, "GROUP_CLOSED", "Closed groups cannot hold inventory");
   }
-  if (releaseDate <= new Date() || releaseDate > group.checkIn) {
+  const now = new Date();
+  if (group.releaseDate !== null && group.releaseDate <= now) {
+    throw new HttpError(
+      409,
+      "GROUP_RELEASE_CUTOFF_PASSED",
+      "The group room-release cutoff has passed. Update the group cutoff before holding more rooms",
+    );
+  }
+  if (releaseDate <= now) {
+    throw new HttpError(422, "INVALID_RELEASE_DATE", "Release date must be in the future and no later than check-in");
+  }
+  if (group.releaseDate !== null && releaseDate > group.releaseDate) {
+    throw new HttpError(
+      422,
+      "GROUP_RELEASE_CUTOFF_EXCEEDED",
+      "Room release time cannot be later than the group release cutoff",
+    );
+  }
+  if (releaseDate > group.checkIn) {
     throw new HttpError(422, "INVALID_RELEASE_DATE", "Release date must be in the future and no later than check-in");
   }
 

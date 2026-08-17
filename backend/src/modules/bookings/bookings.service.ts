@@ -317,6 +317,10 @@ export const createManualBooking = async (
         billingAddressSnapshot: group.company?.billingAddress ?? null,
         placeOfSupplyStateCode: group.company?.stateCode ?? null,
       }),
+      availabilityConfig: {
+        pricePrivateRoomsByCapacity: false,
+        curateResults: false,
+      },
     },
   );
 

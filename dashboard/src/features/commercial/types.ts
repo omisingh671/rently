@@ -69,6 +69,24 @@ export type BookingGroup = {
   heldRoomCount: number;
 };
 
+export type BookingGroupSummary = Pick<
+  BookingGroup,
+  | "id"
+  | "propertyId"
+  | "companyId"
+  | "groupRef"
+  | "name"
+  | "status"
+  | "checkIn"
+  | "checkOut"
+  | "expectedRooms"
+  | "expectedGuests"
+  | "releaseDate"
+  | "heldRoomCount"
+> & {
+  company: Pick<CompanyAccount, "id" | "legalName" | "isActive"> | null;
+};
+
 export type CreateCompanyPayload = {
   legalName: string;
   gstin?: string;
@@ -81,6 +99,21 @@ export type CreateCompanyPayload = {
   paymentTermsDays: number;
 };
 
+export type UpdateCompanyPayload = {
+  legalName?: string;
+  tradeName?: string | null;
+  gstin?: string | null;
+  billingAddress?: string | null;
+  stateCode?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactNumber?: string | null;
+  creditLimit?: number;
+  paymentTermsDays?: number;
+  isActive?: boolean;
+  reason: string;
+};
+
 export type CreateGroupPayload = {
   companyId?: string;
   name: string;
@@ -90,4 +123,14 @@ export type CreateGroupPayload = {
   expectedGuests: number;
   releaseDate?: string;
   billingNotes?: string;
+};
+
+export type UpdateGroupDetailsPayload = {
+  name?: string;
+  checkIn?: string;
+  checkOut?: string;
+  expectedRooms?: number;
+  expectedGuests?: number;
+  releaseDate?: string | null;
+  reason: string;
 };

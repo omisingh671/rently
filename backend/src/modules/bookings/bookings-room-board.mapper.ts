@@ -2,6 +2,7 @@ import {
   BookingStatus,
   BookingTargetType,
   MaintenanceTargetType,
+  RoomHousekeepingStatus,
   RoomStatus,
   UnitStatus,
 } from "@/generated/prisma/client.js";
@@ -13,6 +14,7 @@ import type * as repo from "./bookings.repository.js";
 
 const roomBoardStatuses: DashboardRoomBoardStatus[] = [
   "AVAILABLE",
+  "HOUSEKEEPING",
   "RESERVED",
   "OCCUPIED",
   "MAINTENANCE",
@@ -81,6 +83,13 @@ const getRoomBoardStatus = (
 
   if (room.status === RoomStatus.OCCUPIED) {
     return { status: "OCCUPIED", reason: "Marked occupied" };
+  }
+
+  if (room.housekeepingStatus !== RoomHousekeepingStatus.INSPECTED) {
+    return {
+      status: "HOUSEKEEPING",
+      reason: `Housekeeping ${room.housekeepingStatus} - not ready for sale`,
+    };
   }
 
   return { status: "AVAILABLE", reason: null };

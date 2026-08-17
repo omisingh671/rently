@@ -3,10 +3,13 @@ import { API_ENDPOINTS } from "@/configs/apiEndpoints";
 import axiosInstance from "@/api/axios";
 import type {
   BookingGroup,
+  BookingGroupSummary,
   BookingGroupStatus,
   CompanyAccount,
   CreateCompanyPayload,
   CreateGroupPayload,
+  UpdateCompanyPayload,
+  UpdateGroupDetailsPayload,
 } from "./types";
 
 const unwrap = <T>(response: { data: ApiSuccessResponse<T> }) =>
@@ -30,9 +33,20 @@ export const createCompanyApi = async (
     ),
   );
 
+export const updateCompanyApi = async (
+  companyId: string,
+  payload: UpdateCompanyPayload,
+) =>
+  unwrap(
+    await axiosInstance.patch<ApiSuccessResponse<CompanyAccount>>(
+      API_ENDPOINTS.commercial.companyById(companyId),
+      payload,
+    ),
+  );
+
 export const listGroupsApi = async (propertyId: string) =>
   unwrap(
-    await axiosInstance.get<ApiSuccessResponse<BookingGroup[]>>(
+    await axiosInstance.get<ApiSuccessResponse<BookingGroupSummary[]>>(
       API_ENDPOINTS.commercial.groupsByProperty(propertyId),
     ),
   );
@@ -64,6 +78,17 @@ export const updateGroupStatusApi = async (
     await axiosInstance.patch<ApiSuccessResponse<BookingGroup>>(
       API_ENDPOINTS.commercial.groupStatus(groupId),
       { status, reason },
+    ),
+  );
+
+export const updateGroupDetailsApi = async (
+  groupId: string,
+  payload: UpdateGroupDetailsPayload,
+) =>
+  unwrap(
+    await axiosInstance.patch<ApiSuccessResponse<BookingGroup>>(
+      API_ENDPOINTS.commercial.groupById(groupId),
+      payload,
     ),
   );
 

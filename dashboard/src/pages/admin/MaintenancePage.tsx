@@ -10,6 +10,7 @@ import MaintenanceFilters from "@/features/maintenance/components/MaintenanceFil
 import MaintenanceForm from "@/features/maintenance/components/MaintenanceForm/MaintenanceForm";
 import type { MaintenanceFormValues } from "@/features/maintenance/components/MaintenanceForm/maintenance.schema";
 import MaintenanceTable from "@/features/maintenance/components/MaintenanceTable";
+import { getMaintenanceErrorMessage } from "@/features/maintenance/errors";
 import { useAdminMaintenance } from "@/features/maintenance/hooks/useAdminMaintenance";
 import type {
   AdminMaintenanceBlock,
@@ -330,12 +331,8 @@ export default function MaintenancePage() {
 
             action
               .then(() => handleCloseModal())
-              .catch(() => {
-                setServerError(
-                  editingBlock
-                    ? "Failed to update maintenance block"
-                    : "Failed to create maintenance block",
-                );
+              .catch((error) => {
+                setServerError(getMaintenanceErrorMessage(error));
               });
           }}
           onCancel={handleCloseModal}

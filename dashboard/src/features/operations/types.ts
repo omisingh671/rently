@@ -510,6 +510,7 @@ export type ManualBookingCalendarAvailabilityResponse = {
 
 export type RoomBoardStatus =
   | "AVAILABLE"
+  | "HOUSEKEEPING"
   | "RESERVED"
   | "OCCUPIED"
   | "MAINTENANCE"

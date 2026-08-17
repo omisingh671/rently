@@ -37,6 +37,11 @@ export const updateGroupStatus = async (req: AuthRequest, res: Response) => {
   const body = schemas.updateGroupSchema.parse(req.body);
   res.json({ success: true, data: await service.updateGroupStatus(userId(req), groupId, body.status, body.reason) });
 };
+export const updateGroupDetails = async (req: AuthRequest, res: Response) => {
+  const { groupId } = schemas.groupParamsSchema.parse(req.params);
+  const body = schemas.updateGroupDetailsSchema.parse(req.body);
+  res.json({ success: true, data: await service.updateGroupDetails(userId(req), groupId, body) });
+};
 export const holdRooms = async (req: AuthRequest, res: Response) => {
   const { groupId } = schemas.groupParamsSchema.parse(req.params);
   const body = schemas.createGroupBlocksSchema.parse(req.body);

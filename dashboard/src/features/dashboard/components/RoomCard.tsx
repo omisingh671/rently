@@ -2,6 +2,7 @@ import {
   FiCalendar,
   FiCheckCircle,
   FiCloudSnow,
+  FiDroplet,
   FiTool,
   FiUsers,
   FiWind,
@@ -19,6 +20,7 @@ import { statusLabel } from "../dashboard.helpers";
 
 const statusIcons: Record<RoomBoardStatus, typeof FiCheckCircle> = {
   AVAILABLE: FiCheckCircle,
+  HOUSEKEEPING: FiDroplet,
   RESERVED: FiCalendar,
   OCCUPIED: FiUsers,
   MAINTENANCE: FiTool,

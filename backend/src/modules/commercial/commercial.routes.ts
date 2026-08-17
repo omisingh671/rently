@@ -19,6 +19,7 @@ router.patch("/companies/:companyId", manage, controller.updateCompany);
 router.get("/properties/:propertyId/booking-groups", read, controller.listGroups);
 router.post("/properties/:propertyId/booking-groups", manage, controller.createGroup);
 router.get("/booking-groups/:groupId", read, controller.getGroup);
+router.patch("/booking-groups/:groupId", manage, controller.updateGroupDetails);
 router.patch("/booking-groups/:groupId/status", manage, controller.updateGroupStatus);
 router.post("/booking-groups/:groupId/room-blocks", manage, controller.holdRooms);
 router.post("/booking-groups/:groupId/room-blocks/release", manage, controller.releaseRooms);

@@ -101,6 +101,7 @@ interface CreateBookingOptions {
   recipientGstin?: string | null;
   billingAddressSnapshot?: string | null;
   placeOfSupplyStateCode?: string | null;
+  availabilityConfig?: availabilityService.GenerateAvailabilityOptionsConfig;
 }
 
 export const createBookingForUser = async (
@@ -150,6 +151,7 @@ export const createBookingForUser = async (
             optionPropertyScope,
             tx,
             input.inventoryLockToken,
+            options.availabilityConfig,
           );
 
           if (!option) {

@@ -2,6 +2,7 @@ import { prisma } from "@/db/prisma.js";
 import {
   Prisma,
   PropertyStatus,
+  RoomHousekeepingStatus,
   RoomStatus,
   UnitStatus,
   ComfortOption,
@@ -108,6 +109,7 @@ export const activePricingWhere = (
               is: {
                 isActive: true,
                 status: RoomStatus.AVAILABLE,
+                housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
                 unit: {
                   is: {
                     isActive: true,
@@ -124,6 +126,20 @@ export const activePricingWhere = (
               is: {
                 isActive: true,
                 status: UnitStatus.ACTIVE,
+                rooms: {
+                  some: {
+                    isActive: true,
+                    status: RoomStatus.AVAILABLE,
+                    housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
+                  },
+                  none: {
+                    isActive: true,
+                    status: RoomStatus.AVAILABLE,
+                    housekeepingStatus: {
+                      not: RoomHousekeepingStatus.INSPECTED,
+                    },
+                  },
+                },
               },
             },
           },

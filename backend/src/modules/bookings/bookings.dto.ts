@@ -172,6 +172,7 @@ export interface BookingCheckOutPolicyPreviewDTO {
 
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
+  | "HOUSEKEEPING"
   | "RESERVED"
   | "OCCUPIED"
   | "MAINTENANCE"

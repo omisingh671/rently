@@ -6,6 +6,7 @@ import {
   ComfortOption,
   MaintenanceStatus,
   PropertyStatus,
+  RoomHousekeepingStatus,
   RoomStatus,
   UnitStatus,
 } from "@/generated/prisma/client.js";
@@ -96,6 +97,7 @@ const publicAvailabilityUnitInclude = {
     where: {
       isActive: true,
       status: RoomStatus.AVAILABLE,
+      housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
     },
     include: {
       amenities: {
@@ -139,6 +141,7 @@ export const listAvailabilityRooms = (
     where: {
       isActive: true,
       status: RoomStatus.AVAILABLE,
+      housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
       ...(comfortOption === ComfortOption.AC && { hasAC: true }),
       unit: {
         is: {
@@ -188,12 +191,19 @@ export const listAvailabilityUnits = (
         some: {
           isActive: true,
           status: RoomStatus.AVAILABLE,
+          housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
+        },
+        none: {
+          isActive: true,
+          status: RoomStatus.AVAILABLE,
+          housekeepingStatus: { not: RoomHousekeepingStatus.INSPECTED },
         },
         ...(comfortOption === ComfortOption.AC && {
           every: {
             OR: [
               { isActive: false },
               { status: { not: RoomStatus.AVAILABLE } },
+              { housekeepingStatus: { not: RoomHousekeepingStatus.INSPECTED } },
               { hasAC: true },
             ],
           },

@@ -356,7 +356,7 @@ export default function WalkInBookingPage() {
             variant="secondary"
             size="sm"
             icon={<FiArrowLeft />}
-            to={adminPath(isCorporatePickup ? ADMIN_ROUTES.COMMERCIAL : ADMIN_ROUTES.BOOKINGS)}
+            to={adminPath(isCorporatePickup ? ADMIN_ROUTES.COMMERCIAL_GROUP(bookingGroupId) : ADMIN_ROUTES.BOOKINGS)}
           >
             {isCorporatePickup ? "Back to Corporate & Groups" : "Back to Bookings"}
           </Button>
@@ -600,7 +600,7 @@ export default function WalkInBookingPage() {
               type="button"
               variant="secondary"
               disabled={createBooking.isPending}
-              to={adminPath(isCorporatePickup ? ADMIN_ROUTES.COMMERCIAL : ADMIN_ROUTES.BOOKINGS)}
+              to={adminPath(isCorporatePickup ? ADMIN_ROUTES.COMMERCIAL_GROUP(bookingGroupId) : ADMIN_ROUTES.BOOKINGS)}
             >
               Cancel
             </Button>

@@ -18,6 +18,7 @@ const { FiCalendar, FiCheckCircle, FiClock, FiTool, FiUsers } = ICON_REGISTRY;
 
 const unitHeaderColors: Record<RoomBoardStatus, string> = {
   AVAILABLE: "border-emerald-200 bg-emerald-50/70",
+  HOUSEKEEPING: "border-sky-200 bg-sky-50/70",
   RESERVED: "border-amber-200 bg-amber-50/70",
   OCCUPIED: "border-indigo-200 bg-indigo-50/70",
   MAINTENANCE: "border-rose-200 bg-rose-50/70",
@@ -26,6 +27,7 @@ const unitHeaderColors: Record<RoomBoardStatus, string> = {
 
 const roomBoardStatuses: RoomBoardStatus[] = [
   "AVAILABLE",
+  "HOUSEKEEPING",
   "RESERVED",
   "OCCUPIED",
   "MAINTENANCE",

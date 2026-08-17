@@ -82,7 +82,7 @@ interface StayScope {
   nights: number;
 }
 
-interface GenerateAvailabilityOptionsConfig {
+export interface GenerateAvailabilityOptionsConfig {
   pricePrivateRoomsByCapacity?: boolean;
   curateResults?: boolean;
 }
@@ -1013,6 +1013,7 @@ export const findAvailabilityOptionById = async (
   scope: spacesRepo.PublicPropertyScope = {},
   tx?: Prisma.TransactionClient,
   ignoreLockToken?: string,
+  config: GenerateAvailabilityOptionsConfig = {},
 ) => {
   const options = await generateAvailabilityOptions(
     input,
@@ -1021,6 +1022,7 @@ export const findAvailabilityOptionById = async (
     scope,
     tx,
     ignoreLockToken,
+    config,
   );
   return options.find((option) => option.optionId === optionId) ?? null;
 };

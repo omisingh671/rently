@@ -20,11 +20,15 @@ const initialForm = {
 
 type Props = {
   isSubmitting: boolean;
+  display?: "card" | "modal";
+  onCancel?: () => void;
   onSubmit: (payload: CreateCompanyPayload) => Promise<boolean>;
 };
 
 export default function CompanyAccountForm({
   isSubmitting,
+  display = "card",
+  onCancel,
   onSubmit,
 }: Props) {
   const [form, setForm] = useState(initialForm);
@@ -45,10 +49,10 @@ export default function CompanyAccountForm({
 
   return (
     <form
-      className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+      className={display === "card" ? "flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" : "space-y-4"}
       onSubmit={submit}
     >
-      <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-4">
+      {display === "card" && <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
@@ -67,9 +71,14 @@ export default function CompanyAccountForm({
             Step 1
           </span>
         </div>
-      </div>
+      </div>}
 
-      <div className="flex flex-1 flex-col gap-4 p-5">
+      <div className={display === "card" ? "flex flex-1 flex-col gap-4 p-5" : "space-y-4"}>
+        {display === "modal" && (
+          <p className="rounded-md border border-indigo-100 bg-indigo-50 p-3 text-sm leading-6 text-indigo-900">
+            Save an external company once, then reuse it in Bill To for future corporate and group stays.
+          </p>
+        )}
         <label className={labelClass}>
           Legal Name <span className="text-red-500">*</span>
           <input
@@ -184,9 +193,20 @@ export default function CompanyAccountForm({
           not active yet.
         </p>
 
-        <Button fullWidth type="submit" className="mt-auto h-11" disabled={isSubmitting}>
-          {isSubmitting ? "Creating..." : "Create Company Account"}
-        </Button>
+        {display === "card" ? (
+          <Button fullWidth type="submit" className="mt-auto h-11" disabled={isSubmitting}>
+            {isSubmitting ? "Creating..." : "Create Company Account"}
+          </Button>
+        ) : (
+          <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+            <Button type="button" variant="secondary" disabled={isSubmitting} onClick={onCancel}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Creating..." : "Create Company Account"}
+            </Button>
+          </div>
+        )}
       </div>
     </form>
   );

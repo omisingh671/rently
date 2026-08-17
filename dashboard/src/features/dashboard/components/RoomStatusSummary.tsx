@@ -16,6 +16,7 @@ import { DashboardWidgetCard } from "./DashboardWidgetCard";
 
 const statusOrder: RoomBoardStatus[] = [
   "AVAILABLE",
+  "HOUSEKEEPING",
   "RESERVED",
   "OCCUPIED",
   "MAINTENANCE",
@@ -50,7 +51,7 @@ export function RoomStatusSummary({
         ) : undefined
       }
     >
-      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 2xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 2xl:grid-cols-6">
         {statusOrder.map((status) => {
           const count = board.summary[status] ?? 0;
           const bgClass = STATUS_BG_COLORS[status] || "bg-slate-50";
