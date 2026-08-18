@@ -28,6 +28,23 @@ test("all dashboard staff roles can authenticate but a guest cannot", async ({
   });
 });
 
+test("logout revokes the current access token immediately", async ({ request }) => {
+  const admin = await loginDashboard(request, e2eFixture.users.admin);
+  const headers = bearerHeaders(admin.accessToken);
+
+  const before = await request.get(`${apiPrefix}/auth/me`, { headers });
+  expect(before.status()).toBe(200);
+
+  const logout = await request.post(`${apiPrefix}/auth/logout`, { headers });
+  expect(logout.status()).toBe(204);
+
+  const after = await request.get(`${apiPrefix}/auth/me`, { headers });
+  expect(after.status()).toBe(401);
+  await expect(after.json()).resolves.toMatchObject({
+    error: { code: "UNAUTHORIZED", message: "Session has been revoked" },
+  });
+});
+
 test("property assignments prevent cross-property data access", async ({
   request,
 }) => {
@@ -99,4 +116,23 @@ test("front desk and accountant permissions remain separated", async ({
     },
   );
   expect(accountantDailyCloses.status()).toBe(200);
+});
+
+test("property-closure authorization does not intercept downstream staff routes", async ({
+  request,
+}) => {
+  const manager = await loginDashboard(request, e2eFixture.users.manager);
+  const headers = bearerHeaders(manager.accessToken);
+
+  const bookings = await request.get(
+    `${apiPrefix}/properties/${e2eFixture.property.id}/bookings`,
+    { headers, params: { page: 1, limit: 10 } },
+  );
+  expect(bookings.status()).toBe(200);
+
+  const closures = await request.get(
+    `${apiPrefix}/properties/${e2eFixture.property.id}/property-closures`,
+    { headers },
+  );
+  expect(closures.status()).toBe(403);
 });

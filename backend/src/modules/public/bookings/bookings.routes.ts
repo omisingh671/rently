@@ -11,6 +11,11 @@ const router = Router();
 
 router.get("/bookings", authenticate, controller.listBookings);
 router.post("/bookings/quote", optionalAuthenticate, controller.getBookingQuote);
+router.post(
+  "/quote-requests",
+  optionalAuthenticate,
+  controller.createCommercialQuoteRequest,
+);
 router.post("/bookings", optionalAuthenticate, controller.createBooking);
 router.post(
   "/bookings/:id/checkout/quote",
@@ -26,6 +31,21 @@ router.post(
   "/bookings/:id/payments/manual",
   optionalAuthenticate,
   paymentsController.createManualPayment,
+);
+router.post(
+  "/bookings/:id/payments/intents",
+  optionalAuthenticate,
+  paymentsController.createGatewayPaymentIntent,
+);
+router.post(
+  "/payments/:id/verify",
+  optionalAuthenticate,
+  paymentsController.verifyGatewayPayment,
+);
+router.post(
+  "/payments/:id/mock-complete",
+  optionalAuthenticate,
+  paymentsController.completeMockGatewayPayment,
 );
 router.get(
   "/bookings/:id/billing-documents",

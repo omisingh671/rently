@@ -41,7 +41,7 @@ export default function MaintenanceFilters({
           }
           className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
         >
-          <option value="">Select property</option>
+          <option value="">Select Property</option>
           {properties.map((property) => (
             <option key={property.id} value={property.id}>
               {property.name}
@@ -79,7 +79,7 @@ export default function MaintenanceFilters({
           }
           className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
         >
-          <option value="">All targets</option>
+          <option value="">All Targets</option>
           <option value="PROPERTY">Property</option>
           <option value="UNIT">Unit</option>
           <option value="ROOM">Room</option>

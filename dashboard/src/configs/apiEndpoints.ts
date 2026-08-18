@@ -124,6 +124,13 @@ export const API_ENDPOINTS = {
       `/maintenance-blocks/${maintenanceId}`,
   },
 
+  propertyClosures: {
+    byProperty: (propertyId: string) =>
+      `/properties/${propertyId}/property-closures`,
+    cancelById: (closureId: string) =>
+      `/property-closures/${closureId}/cancel`,
+  },
+
   pricing: {
     productsByProperty: (propertyId: string) =>
       `/properties/${propertyId}/room-products`,
@@ -178,6 +185,8 @@ export const API_ENDPOINTS = {
       `/bookings/${bookingId}/lifecycle-reversal`,
     bookingFolioChargesById: (bookingId: string) =>
       `/bookings/${bookingId}/folio-charges`,
+    bookingFolioRefreshById: (bookingId: string) =>
+      `/bookings/${bookingId}/folio-charges/refresh`,
     bookingFolioChargeById: (bookingId: string, chargeId: string) =>
       `/bookings/${bookingId}/folio-charges/${chargeId}/void`,
     roomBoardByProperty: (propertyId: string) =>
@@ -190,12 +199,33 @@ export const API_ENDPOINTS = {
       `/properties/${propertyId}/operations/cashier-summary`,
     bookingAvailabilityByProperty: (propertyId: string) =>
       `/properties/${propertyId}/bookings/availability`,
+    bookingCalendarAvailabilityByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/bookings/availability/calendar`,
     enquiriesByProperty: (propertyId: string) =>
       `/properties/${propertyId}/enquiries`,
     enquiryById: (enquiryId: string) => `/enquiries/${enquiryId}`,
     quotesByProperty: (propertyId: string) =>
       `/properties/${propertyId}/quotes`,
     quoteById: (quoteId: string) => `/quotes/${quoteId}`,
+  },
+
+  commercial: {
+    companiesByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/companies`,
+    companyById: (companyId: string) => `/companies/${companyId}`,
+    groupsByProperty: (propertyId: string) =>
+      `/properties/${propertyId}/booking-groups`,
+    groupById: (groupId: string) => `/booking-groups/${groupId}`,
+    groupStatus: (groupId: string) =>
+      `/booking-groups/${groupId}/status`,
+    groupRoomBlocks: (groupId: string) =>
+      `/booking-groups/${groupId}/room-blocks`,
+    releaseGroupRoomBlocks: (groupId: string) =>
+      `/booking-groups/${groupId}/room-blocks/release`,
+    groupFolioCharges: (groupId: string) =>
+      `/booking-groups/${groupId}/folio-charges`,
+    groupFolioCharge: (groupId: string, chargeId: string) =>
+      `/booking-groups/${groupId}/folio-charges/${chargeId}/void`,
   },
 
   billing: {

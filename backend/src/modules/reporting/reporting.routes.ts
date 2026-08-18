@@ -29,6 +29,11 @@ router.get(
   authorize(reportingRoles),
   controller.listDailyCloses,
 );
+router.get(
+  "/properties/:propertyId/audits",
+  authorize(reportingRoles),
+  controller.listPropertyAudits,
+);
 router.post(
   "/properties/:propertyId/daily-closes",
   authorize(reportingRoles),

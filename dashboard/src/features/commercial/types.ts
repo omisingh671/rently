@@ -1,0 +1,147 @@
+export type CompanyAccount = {
+  id: string;
+  propertyId: string;
+  legalName: string;
+  tradeName: string | null;
+  gstin: string | null;
+  billingAddress: string | null;
+  stateCode: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactNumber: string | null;
+  creditLimit: string;
+  paymentTermsDays: number;
+  isActive: boolean;
+};
+
+export type BookingGroupStatus =
+  | "PROSPECT"
+  | "TENTATIVE"
+  | "CONFIRMED"
+  | "IN_HOUSE"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export type BookingGroup = {
+  id: string;
+  propertyId: string;
+  companyId: string | null;
+  groupRef: string;
+  name: string;
+  status: BookingGroupStatus;
+  checkIn: string;
+  checkOut: string;
+  expectedRooms: number;
+  expectedGuests: number;
+  releaseDate: string | null;
+  billingNotes: string | null;
+  company: CompanyAccount | null;
+  bookings: Array<{
+    id: string;
+    bookingRef: string;
+    guestNameSnapshot: string;
+    status: string;
+    totalAmount: string;
+    folioTotal: string;
+    grossAmount: string;
+    paidAmount: string;
+    refundedAmount: string;
+    netPaidAmount: string;
+    balanceAmount: string;
+  }>;
+  folioCharges: Array<{
+    id: string;
+    description: string;
+    amount: string;
+    status: "ACTIVE" | "VOID";
+    note: string | null;
+    voidReason: string | null;
+  }>;
+  inventoryLocks: Array<{
+    id: string;
+    lockToken: string;
+    roomId: string | null;
+    checkIn: string;
+    checkOut: string;
+    expiresAt: string;
+    releasedAt: string | null;
+    bookingId: string | null;
+  }>;
+  memberTotal: string;
+  memberFolioCharges: string;
+  memberValue: string;
+  groupCharges: string;
+  paid: string;
+  refunded: string;
+  netPaid: string;
+  memberBalance: string;
+  nonCollectibleAmount: string;
+  balance: string;
+  heldRoomCount: number;
+};
+
+export type BookingGroupSummary = Pick<
+  BookingGroup,
+  | "id"
+  | "propertyId"
+  | "companyId"
+  | "groupRef"
+  | "name"
+  | "status"
+  | "checkIn"
+  | "checkOut"
+  | "expectedRooms"
+  | "expectedGuests"
+  | "releaseDate"
+  | "heldRoomCount"
+> & {
+  company: Pick<CompanyAccount, "id" | "legalName" | "isActive"> | null;
+};
+
+export type CreateCompanyPayload = {
+  legalName: string;
+  gstin?: string;
+  billingAddress?: string;
+  stateCode?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactNumber?: string;
+  creditLimit: number;
+  paymentTermsDays: number;
+};
+
+export type UpdateCompanyPayload = {
+  legalName?: string;
+  tradeName?: string | null;
+  gstin?: string | null;
+  billingAddress?: string | null;
+  stateCode?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactNumber?: string | null;
+  creditLimit?: number;
+  paymentTermsDays?: number;
+  isActive?: boolean;
+  reason: string;
+};
+
+export type CreateGroupPayload = {
+  companyId?: string;
+  name: string;
+  checkIn: string;
+  checkOut: string;
+  expectedRooms: number;
+  expectedGuests: number;
+  releaseDate?: string;
+  billingNotes?: string;
+};
+
+export type UpdateGroupDetailsPayload = {
+  name?: string;
+  checkIn?: string;
+  checkOut?: string;
+  expectedRooms?: number;
+  expectedGuests?: number;
+  releaseDate?: string | null;
+  reason: string;
+};

@@ -86,7 +86,7 @@ export default function RoomForm({
         <div className="grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
           <div className="min-w-0 space-y-5">
             <SelectField name="propertyId" label="Property" disabled={isEditing}>
-              <option value="">Select property</option>
+              <option value="">Select Property</option>
               {properties.map((property) => (
                 <option key={property.id} value={property.id}>
                   {property.name}
@@ -95,7 +95,7 @@ export default function RoomForm({
             </SelectField>
 
             <SelectField name="unitId" label="Unit">
-              <option value="">Select unit</option>
+              <option value="">Select Unit</option>
               {units.map((unit) => (
                 <option key={unit.id} value={unit.id}>
                   {unit.unitNumber}

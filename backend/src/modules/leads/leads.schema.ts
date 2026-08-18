@@ -24,4 +24,5 @@ export const listLeadsQuerySchema = basePaginationQuerySchema.extend({
 
 export const updateLeadStatusSchema = z.object({
   status: z.nativeEnum(LeadStatus),
+  note: z.string().trim().min(3).max(500).optional(),
 });

@@ -6,11 +6,12 @@ import {
 } from "@/configs/theme";
 import type { RoomBoardStatus } from "@/features/operations/types";
 
-const { FiCheckCircle, FiClock, FiGrid, FiSlash, FiTool, FiUsers } =
+const { FiCheckCircle, FiClock, FiDroplet, FiGrid, FiSlash, FiTool, FiUsers } =
   ICON_REGISTRY;
 
 const summaryStatuses: Array<{ value: RoomBoardStatus; label: string }> = [
   { value: "AVAILABLE", label: "Available" },
+  { value: "HOUSEKEEPING", label: "Housekeeping" },
   { value: "RESERVED", label: "Reserved" },
   { value: "OCCUPIED", label: "Occupied" },
   { value: "MAINTENANCE", label: "Maintenance" },
@@ -19,6 +20,7 @@ const summaryStatuses: Array<{ value: RoomBoardStatus; label: string }> = [
 
 const statusActiveRingColors: Record<RoomBoardStatus, string> = {
   AVAILABLE: "ring-emerald-200/70",
+  HOUSEKEEPING: "ring-sky-200/70",
   RESERVED: "ring-amber-200/70",
   OCCUPIED: "ring-indigo-200/70",
   MAINTENANCE: "ring-rose-200/70",
@@ -27,6 +29,7 @@ const statusActiveRingColors: Record<RoomBoardStatus, string> = {
 
 const statusIconMutedColors: Record<RoomBoardStatus, string> = {
   AVAILABLE: "text-emerald-700/20",
+  HOUSEKEEPING: "text-sky-700/20",
   RESERVED: "text-amber-700/20",
   OCCUPIED: "text-indigo-700/20",
   MAINTENANCE: "text-rose-700/20",
@@ -36,6 +39,8 @@ const statusIconMutedColors: Record<RoomBoardStatus, string> = {
 const activeStyles: Record<RoomBoardStatus, string> = {
   AVAILABLE:
     "bg-emerald-600 border-emerald-600 text-white shadow-emerald-200/50",
+  HOUSEKEEPING:
+    "bg-sky-600 border-sky-600 text-white shadow-sky-200/50",
   RESERVED: "bg-amber-600 border-amber-600 text-white shadow-amber-200/50",
   OCCUPIED:
     "bg-indigo-600 border-indigo-600 text-white shadow-indigo-200/50",
@@ -45,6 +50,7 @@ const activeStyles: Record<RoomBoardStatus, string> = {
 
 const statusIconMap: Record<RoomBoardStatus, React.ReactNode> = {
   AVAILABLE: <FiCheckCircle size={32} />,
+  HOUSEKEEPING: <FiDroplet size={32} />,
   RESERVED: <FiClock size={32} />,
   OCCUPIED: <FiUsers size={32} />,
   MAINTENANCE: <FiTool size={32} />,
@@ -67,7 +73,7 @@ export default function RoomBoardSummaryCards({
   onToggleStatus,
 }: RoomBoardSummaryCardsProps) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
       <button
         type="button"
         onClick={onShowAll}

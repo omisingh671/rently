@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PropertyAuditEntityType } from "@/generated/prisma/enums.js";
 
 const reportDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -30,6 +31,12 @@ export const listDailyClosesQuerySchema = z
       path: ["endDate"],
     },
   );
+
+export const listPropertyAuditsQuerySchema = z.object({
+  entityType: z.nativeEnum(PropertyAuditEntityType).optional(),
+  entityId: z.string().trim().min(1).max(191).optional(),
+  limit: z.coerce.number().int().positive().max(200).default(100),
+});
 
 export const getAnalyticsQuerySchema = z.object({
   startDate: reportDateSchema.transform((value) =>

@@ -5,7 +5,11 @@ import {
   BookingStatus,
   BookingTargetType,
   BookingType,
+  BookingSource,
+  LeadStatus,
   Prisma,
+  PropertyAuditAction,
+  PropertyAuditEntityType,
 } from "@/generated/prisma/client.js";
 import { syncCurrentBookingRoomAllocations } from "@/modules/bookings/bookings.allocations.js";
 import { NotificationEventKey } from "@/generated/prisma/enums.js";
@@ -27,6 +31,7 @@ import type {
   PublicBookingQuoteInput,
   PublicBookingCheckoutQuoteInput,
   UpdatePublicBookingCheckoutInput,
+  CreateCommercialQuoteRequestInput,
 } from "./bookings.inputs.js";
 import type {
   PublicBookingDTO,
@@ -72,6 +77,8 @@ import {
 } from "./bookings.lifecycle.js";
 import { resolveBookingGuestSnapshot } from "./bookings.guests.js";
 import { calculateExistingBookingCheckoutQuote } from "./bookings.checkout-quote.js";
+import { COMMERCIAL_POLICY } from "@/common/constants/application.constants.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
 
 const now = () => new Date();
 const multiRoomTitle = "Multi-room stay";
@@ -87,6 +94,14 @@ interface CreateBookingOptions {
   initialStatus?: BookingStatus;
   statusHistoryNote?: string;
   internalNotes?: string | null;
+  source?: BookingSource;
+  bookingGroupId?: string;
+  companyId?: string | null;
+  recipientLegalName?: string | null;
+  recipientGstin?: string | null;
+  billingAddressSnapshot?: string | null;
+  placeOfSupplyStateCode?: string | null;
+  availabilityConfig?: availabilityService.GenerateAvailabilityOptionsConfig;
 }
 
 export const createBookingForUser = async (
@@ -136,6 +151,7 @@ export const createBookingForUser = async (
             optionPropertyScope,
             tx,
             input.inventoryLockToken,
+            options.availabilityConfig,
           );
 
           if (!option) {
@@ -217,7 +233,29 @@ export const createBookingForUser = async (
               bookingType: isMultiItem
                 ? BookingType.MULTI_ROOM
                 : BookingType.SINGLE_TARGET,
-              source: options.actorUserId === undefined ? "PUBLIC" : "WALK_IN",
+              source:
+                options.source ??
+                (options.actorUserId === undefined
+                  ? BookingSource.PUBLIC
+                  : BookingSource.WALK_IN),
+              ...(options.bookingGroupId !== undefined && {
+                bookingGroup: { connect: { id: options.bookingGroupId } },
+              }),
+              ...(options.companyId !== undefined && options.companyId !== null && {
+                company: { connect: { id: options.companyId } },
+              }),
+              ...(options.recipientLegalName !== undefined && {
+                recipientLegalName: options.recipientLegalName,
+              }),
+              ...(options.recipientGstin !== undefined && {
+                recipientGstin: options.recipientGstin,
+              }),
+              ...(options.billingAddressSnapshot !== undefined && {
+                billingAddressSnapshot: options.billingAddressSnapshot,
+              }),
+              ...(options.placeOfSupplyStateCode !== undefined && {
+                placeOfSupplyStateCode: options.placeOfSupplyStateCode,
+              }),
               targetType: firstItem.target.targetType,
               unitId: isMultiItem ? null : firstItem.target.unitId,
               roomId: isMultiItem ? null : firstItem.target.roomId,
@@ -227,6 +265,19 @@ export const createBookingForUser = async (
               guestEmailSnapshot: guestSnapshot.email,
               ...(guestSnapshot.contactNumber !== null && {
                 guestContactSnapshot: guestSnapshot.contactNumber,
+              }),
+              ...(input.billingDetails?.legalName !== undefined && {
+                recipientLegalName: input.billingDetails.legalName,
+              }),
+              ...(input.billingDetails?.gstin !== undefined && {
+                recipientGstin: input.billingDetails.gstin,
+              }),
+              ...(input.billingDetails?.billingAddress !== undefined && {
+                billingAddressSnapshot: input.billingDetails.billingAddress,
+              }),
+              ...(input.billingDetails?.placeOfSupplyStateCode !== undefined && {
+                placeOfSupplyStateCode:
+                  input.billingDetails.placeOfSupplyStateCode,
               }),
               targetLabel: option.title,
               productName: "Booking option",
@@ -530,7 +581,29 @@ export const createBookingForUser = async (
             bookingType: isMultiRoom
               ? BookingType.MULTI_ROOM
               : BookingType.SINGLE_TARGET,
-            source: options.actorUserId === undefined ? "PUBLIC" : "WALK_IN",
+            source:
+              options.source ??
+              (options.actorUserId === undefined
+                ? BookingSource.PUBLIC
+                : BookingSource.WALK_IN),
+            ...(options.bookingGroupId !== undefined && {
+              bookingGroup: { connect: { id: options.bookingGroupId } },
+            }),
+            ...(options.companyId !== undefined && options.companyId !== null && {
+              company: { connect: { id: options.companyId } },
+            }),
+            ...(options.recipientLegalName !== undefined && {
+              recipientLegalName: options.recipientLegalName,
+            }),
+            ...(options.recipientGstin !== undefined && {
+              recipientGstin: options.recipientGstin,
+            }),
+            ...(options.billingAddressSnapshot !== undefined && {
+              billingAddressSnapshot: options.billingAddressSnapshot,
+            }),
+            ...(options.placeOfSupplyStateCode !== undefined && {
+              placeOfSupplyStateCode: options.placeOfSupplyStateCode,
+            }),
             targetType: isMultiRoom
               ? BookingTargetType.ROOM
               : firstTarget.targetType,
@@ -542,6 +615,19 @@ export const createBookingForUser = async (
             guestEmailSnapshot: guestSnapshot.email,
             ...(guestSnapshot.contactNumber !== null && {
               guestContactSnapshot: guestSnapshot.contactNumber,
+            }),
+            ...(input.billingDetails?.legalName !== undefined && {
+              recipientLegalName: input.billingDetails.legalName,
+            }),
+            ...(input.billingDetails?.gstin !== undefined && {
+              recipientGstin: input.billingDetails.gstin,
+            }),
+            ...(input.billingDetails?.billingAddress !== undefined && {
+              billingAddressSnapshot: input.billingDetails.billingAddress,
+            }),
+            ...(input.billingDetails?.placeOfSupplyStateCode !== undefined && {
+              placeOfSupplyStateCode:
+                input.billingDetails.placeOfSupplyStateCode,
             }),
             targetLabel: isMultiRoom
               ? `${multiRoomTitle} (${pricedSpaces.length} rooms)`
@@ -898,6 +984,78 @@ export const getBookingQuote = async (
   });
 };
 
+export const createCommercialQuoteRequest = async (
+  userId: string | undefined,
+  input: CreateCommercialQuoteRequestInput,
+  tenantInput: TenantResolutionInput = {},
+) => {
+  const quote = await getBookingQuote(userId, input, tenantInput);
+  const firstItem = getArrayItem(quote.items, 0, "Quote has no inventory items");
+  const expiresAt = new Date(
+    Date.now() + COMMERCIAL_POLICY.quoteValidityDays * 86_400_000,
+  );
+
+  const created = await repo.runSerializableTransaction(async (tx) => {
+    const request = await tx.quoteRequest.create({
+      data: {
+        propertyId: quote.propertyId,
+        ...(userId !== undefined && { userId }),
+        productId: firstItem.productId,
+        targetType: firstItem.targetType,
+        unitId: firstItem.unitId,
+        roomId: firstItem.roomId,
+        guestName: input.guestName,
+        guestEmail: input.guestEmail,
+        guestContactNumber: input.guestContactNumber,
+        ...(input.companyName !== undefined && {
+          companyName: input.companyName,
+        }),
+        guestCount: input.guests,
+        comfortOption: input.comfortOption,
+        quoteSnapshot: JSON.parse(JSON.stringify(quote)) as Prisma.InputJsonValue,
+        expiresAt,
+        checkIn: input.from,
+        checkOut: input.to,
+        status: LeadStatus.NEW,
+        ...(input.notes !== undefined && { notes: input.notes }),
+        history: {
+          create: {
+            toStatus: LeadStatus.NEW,
+            ...(userId !== undefined && { actorUserId: userId }),
+            note: "Commercial quote requested from public frontend",
+          },
+        },
+      },
+    });
+    await recordPropertyAudit(
+      {
+        propertyId: quote.propertyId,
+        ...(userId !== undefined && { actorUserId: userId }),
+        entityType: PropertyAuditEntityType.QUOTE,
+        entityId: request.id,
+        action: PropertyAuditAction.CREATED,
+        nextData: {
+          status: request.status,
+          checkIn: request.checkIn,
+          checkOut: request.checkOut,
+          totalAmount: quote.totalAmount,
+          expiresAt,
+        },
+      },
+      tx,
+    );
+    return request;
+  });
+
+  return {
+    id: created.id,
+    status: created.status,
+    propertyId: created.propertyId,
+    expiresAt: created.expiresAt?.toISOString() ?? null,
+    quote,
+  };
+};
+
 export const createBooking = async (
   userId: string | undefined,
   input: CreatePublicBookingInput,
@@ -968,6 +1126,13 @@ export const updateBookingCheckout = async (
           guestNameSnapshot: input.guestDetails.name,
           guestEmailSnapshot: input.guestDetails.email,
           guestContactSnapshot: input.guestDetails.contactNumber,
+          recipientLegalName:
+            input.billingDetails?.legalName ?? input.guestDetails.name,
+          recipientGstin: input.billingDetails?.gstin ?? null,
+          billingAddressSnapshot:
+            input.billingDetails?.billingAddress ?? null,
+          placeOfSupplyStateCode:
+            input.billingDetails?.placeOfSupplyStateCode ?? null,
           subtotalAmount: quote.subtotalAmount,
           discountAmount: quote.discountAmount,
           taxableAmount: quote.taxableAmount,

@@ -8,6 +8,10 @@ export const buildGuestSnapshot = (booking: repo.BillingBookingRecord) => ({
   email: booking.guestEmailSnapshot,
   contactNumber: booking.guestContactSnapshot ?? null,
   userId: booking.userId,
+  legalName: booking.recipientLegalName ?? null,
+  gstin: booking.recipientGstin ?? null,
+  billingAddress: booking.billingAddressSnapshot ?? null,
+  placeOfSupplyStateCode: booking.placeOfSupplyStateCode ?? null,
 });
 
 export const buildPropertySnapshot = (booking: repo.BillingBookingRecord) => ({
@@ -16,6 +20,20 @@ export const buildPropertySnapshot = (booking: repo.BillingBookingRecord) => ({
   address: booking.property.address,
   city: booking.property.city,
   state: booking.property.state,
+});
+
+export const buildSupplierSnapshot = (setting: repo.BillingSettingRecord) => ({
+  legalName: setting.legalName,
+  gstin: setting.gstin,
+  pan: setting.pan,
+  billingAddress: setting.billingAddress,
+  invoicePrefix: setting.invoicePrefix,
+  receiptPrefix: setting.receiptPrefix,
+  creditNotePrefix: setting.creditNotePrefix,
+  debitNotePrefix: setting.debitNotePrefix,
+  footerNotes: setting.footerNotes,
+  stateCode: setting.stateCode,
+  sacCode: setting.sacCode,
 });
 
 export const buildTenantSnapshot = (booking: repo.BillingBookingRecord) => ({

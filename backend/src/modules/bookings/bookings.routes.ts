@@ -51,6 +51,11 @@ router.post(
   authorize(operationalRoles),
   controller.checkManualBookingAvailability,
 );
+router.post(
+  "/properties/:propertyId/bookings/availability/calendar",
+  authorize(operationalRoles),
+  controller.checkManualBookingCalendarAvailability,
+);
 router.post("/properties/:propertyId/bookings", authorize(operationalRoles), controller.createManualBooking);
 router.get("/bookings/:id", authorize(bookingReadRoles), controller.getBookingById);
 router.patch("/bookings/:id", authorize(operationalRoles), controller.updateBooking);
@@ -71,6 +76,11 @@ router.post(
   "/bookings/:id/lifecycle-reversal",
   authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]),
   controller.reverseBookingLifecycle,
+);
+router.post(
+  "/bookings/:id/folio-charges/refresh",
+  authorize(bookingReadRoles),
+  controller.refreshBookingFolio,
 );
 router.post("/bookings/:id/folio-charges", authorize(bookingReadRoles), controller.createBookingFolioCharge);
 router.post(

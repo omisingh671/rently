@@ -3,9 +3,29 @@ import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { resolveTenantInput } from "@/modules/public/tenant/tenant.controller.js";
 import * as service from "./availability.service.js";
 import {
+  calendarAvailabilitySchema,
   checkAvailabilitySchema,
   createInventoryLockSchema,
 } from "./availability.schema.js";
+
+export const getCalendarAvailability = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const body = calendarAvailabilitySchema.parse(req.body);
+  const data = await service.getCalendarAvailability(
+    {
+      startDate: body.startDate,
+      endDate: body.endDate,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+      ...(body.city !== undefined && { city: body.city }),
+    },
+    resolveTenantInput(req),
+  );
+
+  res.json({ success: true, data });
+};
 
 export const checkAvailability = async (req: AuthRequest, res: Response) => {
   const body = checkAvailabilitySchema.parse(req.body);

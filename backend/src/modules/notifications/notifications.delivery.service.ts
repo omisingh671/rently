@@ -12,6 +12,10 @@ import type { NotificationPayload, BusinessNotification } from "./notifications.
 import { getNotificationProvider } from "./providers/provider.registry.js";
 import { resolveEffectiveSetting } from "./notifications.settings.service.js";
 import * as repo from "./notifications.repository.js";
+import {
+  getSideEffectRetryAt,
+  SIDE_EFFECT_RETRY_POLICY,
+} from "@/common/constants/application.constants.js";
 
 const mapJob = (job: Awaited<ReturnType<typeof prisma.notificationDeliveryJob.findUniqueOrThrow>>) => ({
   id: job.id,
@@ -25,6 +29,8 @@ const mapJob = (job: Awaited<ReturnType<typeof prisma.notificationDeliveryJob.fi
   lastError: job.lastError ?? null,
   providerMessageId: job.providerMessageId ?? null,
   correlationId: job.correlationId ?? null,
+  nextAttemptAt: job.nextAttemptAt?.toISOString() ?? null,
+  deadLetteredAt: job.deadLetteredAt?.toISOString() ?? null,
   sentAt: job.sentAt?.toISOString() ?? null,
   createdAt: job.createdAt.toISOString(),
   updatedAt: job.updatedAt.toISOString(),
@@ -48,8 +54,17 @@ export const processNotificationJob = async (jobId: string) => {
     where: {
       id: jobId,
       OR: [
-        { status: { in: ["PENDING", "FAILED"] }, attemptCount: { lt: 3 } },
-        { status: "PROCESSING", processingStartedAt: { lt: new Date(Date.now() - 5 * 60 * 1000) } },
+        {
+          status: { in: ["PENDING", "FAILED"] },
+          attemptCount: { lt: SIDE_EFFECT_RETRY_POLICY.maxAttempts },
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
+        },
+        {
+          status: "PROCESSING",
+          processingStartedAt: {
+            lt: new Date(Date.now() - SIDE_EFFECT_RETRY_POLICY.staleProcessingMs),
+          },
+        },
       ],
     },
     data: {
@@ -57,12 +72,15 @@ export const processNotificationJob = async (jobId: string) => {
       attemptCount: { increment: 1 },
       lastError: null,
       processingStartedAt: new Date(),
+      nextAttemptAt: null,
+      deadLetteredAt: null,
     },
   });
   if (claim.count !== 1) return;
 
   const job = await prisma.notificationDeliveryJob.findUniqueOrThrow({ where: { id: jobId } });
   const provider = getNotificationProvider(job.channel);
+  const exhausted = job.attemptCount >= job.maxAttempts;
   try {
     if (!provider?.isAvailable()) {
       throw new Error(`Notification provider ${job.channel} is unavailable`);
@@ -89,7 +107,13 @@ export const processNotificationJob = async (jobId: string) => {
     const message = error instanceof Error ? error.message : "Unknown notification failure";
     await prisma.notificationDeliveryJob.update({
       where: { id: job.id },
-      data: { status: "FAILED", lastError: message.slice(0, 4000), processingStartedAt: null },
+      data: {
+        status: exhausted ? "DEAD_LETTER" : "FAILED",
+        lastError: message.slice(0, 4000),
+        processingStartedAt: null,
+        nextAttemptAt: exhausted ? null : getSideEffectRetryAt(job.attemptCount),
+        deadLetteredAt: exhausted ? new Date() : null,
+      },
     });
     logError("Business notification delivery failed", error, {
       operation: "notification.delivery",
@@ -134,12 +158,21 @@ export const processPendingNotifications = async () => {
   const jobs = await prisma.notificationDeliveryJob.findMany({
     where: {
       OR: [
-        { status: { in: ["PENDING", "FAILED"] }, attemptCount: { lt: 3 } },
-        { status: "PROCESSING", processingStartedAt: { lt: new Date(Date.now() - 5 * 60 * 1000) } },
+        {
+          status: { in: ["PENDING", "FAILED"] },
+          attemptCount: { lt: SIDE_EFFECT_RETRY_POLICY.maxAttempts },
+          OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }],
+        },
+        {
+          status: "PROCESSING",
+          processingStartedAt: {
+            lt: new Date(Date.now() - SIDE_EFFECT_RETRY_POLICY.staleProcessingMs),
+          },
+        },
       ],
     },
     orderBy: { createdAt: "asc" },
-    take: 20,
+    take: SIDE_EFFECT_RETRY_POLICY.batchSize,
     select: { id: true },
   });
   await Promise.all(jobs.map((job) => processNotificationJob(job.id)));
@@ -149,7 +182,7 @@ export const startNotificationProcessor = () => {
   void processPendingNotifications().catch((error) => logError("Notification processor failed", error));
   const timer = setInterval(() => {
     void processPendingNotifications().catch((error) => logError("Notification processor failed", error));
-  }, 30_000);
+  }, SIDE_EFFECT_RETRY_POLICY.processorIntervalMs);
   timer.unref();
   return () => clearInterval(timer);
 };
@@ -163,8 +196,15 @@ export const listDeliveryJobs = async (userId: string) => {
 export const retryDeliveryJob = async (userId: string, jobId: string) => {
   await assertSuperAdmin(userId);
   const reset = await prisma.notificationDeliveryJob.updateMany({
-    where: { id: jobId, status: "FAILED" },
-    data: { status: "PENDING", attemptCount: 0, lastError: null, processingStartedAt: null },
+    where: { id: jobId, status: { in: ["FAILED", "DEAD_LETTER"] } },
+    data: {
+      status: "PENDING",
+      attemptCount: 0,
+      lastError: null,
+      processingStartedAt: null,
+      nextAttemptAt: null,
+      deadLetteredAt: null,
+    },
   });
   if (reset.count !== 1) {
     const existing = await prisma.notificationDeliveryJob.findUnique({ where: { id: jobId } });

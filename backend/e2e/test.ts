@@ -1,11 +1,12 @@
 import type { Server } from "node:http";
 import { expect, test as base } from "playwright/test";
+import { E2E_DEFAULTS } from "../src/common/constants/application.constants.js";
 
 type WorkerFixtures = {
   apiServer: void;
 };
 
-const port = Number(process.env.E2E_PORT ?? 4100);
+const port = E2E_DEFAULTS.port;
 
 const listen = async (server: Server) =>
   new Promise<void>((resolve, reject) => {
@@ -26,7 +27,6 @@ export const test = base.extend<object, WorkerFixtures>({
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
       process.env.NODE_ENV = "test";
-      process.env.RATE_LIMIT_ENABLED = "false";
       process.env.STORAGE_PROVIDER = "local";
 
       const [{ app }, { prisma }] = await Promise.all([

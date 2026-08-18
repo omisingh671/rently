@@ -71,7 +71,7 @@ export const publicEnv: PublicEnv = {
   supportEmail: readEnv("VITE_SUPPORT_EMAIL") ?? null,
   supportPhone: readEnv("VITE_SUPPORT_PHONE") ?? null,
   mockPaymentsEnabled:
-    import.meta.env.DEV && readBooleanEnv("VITE_ENABLE_MOCK_PAYMENTS"),
+    import.meta.env.DEV && readBooleanEnv("VITE_ENABLE_MOCK_PAYMENTS", true),
   apiBaseUrl: normalizeApiBaseUrl(
     readEnv("VITE_API_BASE_URL") ??
       readEnv("VITE_API_BASE") ??

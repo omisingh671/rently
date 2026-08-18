@@ -6,6 +6,7 @@ import {
   PaymentProvider,
   PaymentPurpose,
   PaymentStatus,
+  PaymentWebhookEventStatus,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -61,6 +62,25 @@ export const findPaymentByIdempotencyKey = (
     include: paymentInclude,
   });
 
+export const findPaymentById = (
+  paymentId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.findUnique({
+    where: { id: paymentId },
+    include: paymentInclude,
+  });
+
+export const findPaymentByProviderOrderId = (
+  provider: PaymentProvider,
+  providerOrderId: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.findUnique({
+    where: { provider_providerOrderId: { provider, providerOrderId } },
+    include: paymentInclude,
+  });
+
 export const findReleasedInventoryLockByBookingToken = (
   bookingId: string,
   lockToken: string,
@@ -103,6 +123,18 @@ export const findSucceededPaymentByBookingPurpose = (
       status: PaymentStatus.SUCCEEDED,
     },
     include: paymentInclude,
+  });
+
+export const findClosedBusinessDate = (
+  propertyId: string,
+  businessDate: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).propertyDailyClose.findUnique({
+    where: {
+      propertyId_businessDate: { propertyId, businessDate },
+    },
+    select: { id: true },
   });
 
 export const createManualPaymentRecord = (
@@ -178,6 +210,206 @@ export const createManualSucceededPayment = (
     },
     tx,
   );
+
+export const createGatewayPaymentRecord = (
+  data: {
+    bookingId: string;
+    propertyId: string;
+    userId: string;
+    provider: PaymentProvider;
+    amount: Prisma.Decimal | number | string;
+    currency: string;
+    idempotencyKey: string;
+    purpose: PaymentPurpose;
+    metadata?: Prisma.InputJsonObject;
+  },
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.create({
+    data: {
+      bookingId: data.bookingId,
+      propertyId: data.propertyId,
+      userId: data.userId,
+      provider: data.provider,
+      status: PaymentStatus.PENDING,
+      purpose: data.purpose,
+      method: PaymentMethod.ONLINE_GATEWAY,
+      amount: data.amount,
+      currency: data.currency,
+      idempotencyKey: data.idempotencyKey,
+      metadata: {
+        source: "PUBLIC_GATEWAY_PAYMENT",
+        ...(data.metadata ?? {}),
+      },
+    },
+    include: paymentInclude,
+  });
+
+export const setGatewayOrder = (
+  paymentId: string,
+  providerOrderId: string,
+) =>
+  prisma.payment.update({
+    where: { id: paymentId },
+    data: { providerOrderId },
+    include: paymentInclude,
+  });
+
+export const markGatewayOrderCreationFailed = (
+  paymentId: string,
+  failureCode: string,
+  failureMessage: string,
+) =>
+  prisma.payment.updateMany({
+    where: { id: paymentId, status: PaymentStatus.PENDING },
+    data: {
+      status: PaymentStatus.FAILED,
+      failureCode,
+      failureMessage,
+    },
+  });
+
+export const markGatewayPaymentSucceeded = (
+  paymentId: string,
+  data: {
+    providerPaymentId: string;
+    providerSignature?: string;
+    paidAt: Date;
+  },
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.update({
+    where: { id: paymentId },
+    data: {
+      status: PaymentStatus.SUCCEEDED,
+      providerPaymentId: data.providerPaymentId,
+      ...(data.providerSignature !== undefined && {
+        providerSignature: data.providerSignature,
+      }),
+      failureCode: null,
+      failureMessage: null,
+      paidAt: data.paidAt,
+    },
+    include: paymentInclude,
+  });
+
+export const markGatewayPaymentFailed = (
+  paymentId: string,
+  failureCode: string,
+  failureMessage: string,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).payment.updateMany({
+    where: { id: paymentId, status: PaymentStatus.PENDING },
+    data: {
+      status: PaymentStatus.FAILED,
+      failureCode,
+      failureMessage,
+    },
+  });
+
+export const setGatewayCheckoutSignature = (
+  paymentId: string,
+  providerSignature: string,
+) =>
+  prisma.payment.update({
+    where: { id: paymentId },
+    data: { providerSignature },
+    include: paymentInclude,
+  });
+
+export const findRefundByProviderRefundId = (
+  provider: PaymentProvider,
+  providerRefundId: string,
+) =>
+  prisma.paymentRefund.findUnique({
+    where: { provider_providerRefundId: { provider, providerRefundId } },
+  });
+
+export const updateGatewayRefundStatus = (
+  refundId: string,
+  data: Prisma.PaymentRefundUpdateInput,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).paymentRefund.update({ where: { id: refundId }, data });
+
+export const updateRefundRequestStatus = (
+  refundRequestId: string,
+  data: Prisma.BookingRefundRequestUpdateInput,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).bookingRefundRequest.update({
+    where: { id: refundRequestId },
+    data,
+  });
+
+export const createWebhookEventIfMissing = async (data: {
+  provider: PaymentProvider;
+  providerEventId: string;
+  eventType: string;
+  payload: Prisma.InputJsonValue;
+  payloadHash: string;
+}) => {
+  const existing = await prisma.paymentWebhookEvent.findUnique({
+    where: {
+      provider_providerEventId: {
+        provider: data.provider,
+        providerEventId: data.providerEventId,
+      },
+    },
+  });
+  if (existing) return { event: existing, created: false };
+
+  try {
+    const event = await prisma.paymentWebhookEvent.create({ data });
+    return { event, created: true };
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const event = await prisma.paymentWebhookEvent.findUniqueOrThrow({
+        where: {
+          provider_providerEventId: {
+            provider: data.provider,
+            providerEventId: data.providerEventId,
+          },
+        },
+      });
+      return { event, created: false };
+    }
+    throw error;
+  }
+};
+
+export const markWebhookEventProcessing = (id: string) =>
+  prisma.paymentWebhookEvent.update({
+    where: { id },
+    data: {
+      status: PaymentWebhookEventStatus.PROCESSING,
+      attemptCount: { increment: 1 },
+      lastError: null,
+    },
+  });
+
+export const markWebhookEventProcessed = (id: string) =>
+  prisma.paymentWebhookEvent.update({
+    where: { id },
+    data: {
+      status: PaymentWebhookEventStatus.PROCESSED,
+      processedAt: new Date(),
+      lastError: null,
+    },
+  });
+
+export const markWebhookEventFailed = (id: string, lastError: string) =>
+  prisma.paymentWebhookEvent.update({
+    where: { id },
+    data: {
+      status: PaymentWebhookEventStatus.FAILED,
+      lastError: lastError.slice(0, 2_000),
+    },
+  });
 
 export const updateBookingPaymentState = (
   bookingId: string,

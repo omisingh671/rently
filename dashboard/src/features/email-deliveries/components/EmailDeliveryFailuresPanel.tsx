@@ -55,6 +55,16 @@ export default function EmailDeliveryFailuresPanel() {
                 {job.status} · attempt {job.attemptCount}/{job.maxAttempts}
               </p>
               {job.lastError && <p className="text-red-700">{job.lastError}</p>}
+              {job.nextAttemptAt && (
+                <p className="text-xs text-amber-700">
+                  Automatic retry: {new Date(job.nextAttemptAt).toLocaleString()}
+                </p>
+              )}
+              {job.deadLetteredAt && (
+                <p className="text-xs font-medium text-red-700">
+                  Automatic retries exhausted. Operator action required.
+                </p>
+              )}
               {job.correlationId && (
                 <p className="break-all text-xs text-slate-500">
                   Correlation: {job.correlationId}

@@ -27,6 +27,40 @@ type LateCheckoutFolioCharge = {
   metadata: Prisma.JsonValue;
 };
 
+type CheckoutReversalFolioCharge = {
+  id: string;
+  status: FolioChargeStatus;
+};
+
+export const getCheckoutReversalFinancialBlock = (input: {
+  extensionChargeId: unknown;
+  folioCharges: readonly CheckoutReversalFolioCharge[];
+  balanceDue: Prisma.Decimal;
+  refundAmount: Prisma.Decimal;
+}) => {
+  const extensionChargeId =
+    typeof input.extensionChargeId === "string"
+      ? input.extensionChargeId
+      : null;
+  const hasActiveCheckoutCharge =
+    extensionChargeId !== null &&
+    input.folioCharges.some(
+      (charge) =>
+        charge.id === extensionChargeId &&
+        charge.status === FolioChargeStatus.ACTIVE,
+    );
+
+  if (hasActiveCheckoutCharge && input.balanceDue.greaterThan(0)) {
+    return "UNSETTLED_CHECKOUT_CHARGE" as const;
+  }
+
+  if (input.refundAmount.greaterThan(0)) {
+    return "REFUND_REVIEW" as const;
+  }
+
+  return null;
+};
+
 export const findMatchingLateCheckoutExtensionCharge = <
   T extends LateCheckoutFolioCharge,
 >(

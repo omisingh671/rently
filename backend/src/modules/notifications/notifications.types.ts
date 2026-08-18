@@ -1,4 +1,5 @@
 import type {
+  BookingStatus,
   NotificationChannel,
   NotificationEventKey,
 } from "@/generated/prisma/enums.js";
@@ -11,6 +12,7 @@ export type NotificationPayload = {
   currency?: string;
   checkIn?: string;
   checkOut?: string;
+  bookingStatus?: BookingStatus;
 };
 
 export type BusinessNotification = {

@@ -41,10 +41,12 @@ export type NotificationDelivery = {
   eventKey: NotificationEventKey;
   channel: NotificationChannel;
   recipient: string;
-  status: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED";
+  status: "PENDING" | "PROCESSING" | "SUCCEEDED" | "FAILED" | "DEAD_LETTER";
   attemptCount: number;
   maxAttempts: number;
   lastError: string | null;
+  nextAttemptAt: string | null;
+  deadLetteredAt: string | null;
   sentAt: string | null;
   createdAt: string;
 };

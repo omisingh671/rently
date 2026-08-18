@@ -9,8 +9,10 @@ import {
   NotificationEventKey,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { assertPropertyBusinessDateOpen } from "@/common/services/daily-close-guard.js";
 import { parsePolicySnapshot } from "@/modules/booking-policy/booking-policy.policy.js";
 import { createManualPayment } from "@/modules/payments/payments.service.js";
+import { getPaymentGateway } from "@/modules/payments/providers/payment-gateway.factory.js";
 import type {
   RecordDashboardBookingPaymentInput,
   RecordDashboardBookingRefundInput,
@@ -21,14 +23,13 @@ import {
   assertManualPaymentProof,
 } from "./bookings.helper.js";
 import {
-  assertBookingCanAcceptPayment,
   assertRefundProviderAvailable,
   getActiveRefundRequest,
-  getBookingBalanceAmount,
   getBookingRefundableAmount,
   getBookingRefundedAmount,
   getPaymentRefundableAmount,
   getRefundPaymentStatus,
+  syncFulfilledRefundRequest,
 } from "./bookings.financials.js";
 import * as repo from "./bookings.repository.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
@@ -38,27 +39,7 @@ export const recordBookingBalancePaymentForBooking = async (
   booking: repo.DashboardBookingRecord,
   input: RecordDashboardBookingPaymentInput,
 ) => {
-  assertBookingCanAcceptPayment(booking);
   assertManualPaymentProof(input);
-
-  const balanceAmount = getBookingBalanceAmount(booking);
-  const amount = new Prisma.Decimal(input.amount);
-
-  if (balanceAmount.lessThanOrEqualTo(0)) {
-    throw new HttpError(
-      409,
-      "BOOKING_ALREADY_PAID",
-      "Booking is already fully paid",
-    );
-  }
-
-  if (amount.greaterThan(balanceAmount)) {
-    throw new HttpError(
-      422,
-      "PAYMENT_OVERPAYMENT",
-      "Payment amount cannot exceed the booking balance",
-    );
-  }
 
   await createManualPayment({
     actorUserId: actor.id,
@@ -210,15 +191,21 @@ export const recordBookingRefundForBooking = async (
       );
     }
 
-    await publishBookingNotification({
-      eventKey: NotificationEventKey.REFUND_SUCCEEDED,
-      businessEventId: existingRefund.id,
-      bookingId: booking.id,
-      amount: existingRefund.amount.toString(),
-      currency: existingRefund.currency,
-    });
+    if (existingRefund.status === PaymentRefundStatus.SUCCEEDED) {
+      await publishBookingNotification({
+        eventKey: NotificationEventKey.REFUND_SUCCEEDED,
+        businessEventId: existingRefund.id,
+        bookingId: booking.id,
+        amount: existingRefund.amount.toString(),
+        currency: existingRefund.currency,
+      });
+    }
     return booking;
   }
+
+  await assertPropertyBusinessDateOpen(booking.propertyId, {
+    operation: "Refund posting",
+  });
 
   const refundableAmount = getPaymentRefundableAmount(payment);
   if (amount.greaterThan(refundableAmount)) {
@@ -232,6 +219,108 @@ export const recordBookingRefundForBooking = async (
   const idempotencyKey =
     input.idempotencyKey ??
     `dashboard-refund-${booking.id}-${payment.id}-${randomUUID()}`;
+
+  if (payment.provider !== "MANUAL") {
+    if (!payment.providerPaymentId) {
+      throw new HttpError(
+        409,
+        "GATEWAY_REFUND_NOT_READY",
+        "Original gateway payment is missing provider settlement details",
+      );
+    }
+    const gateway = getPaymentGateway(payment.provider);
+    const requestUpdate =
+      refundRequest === null
+        ? undefined
+        : {
+            id: refundRequest.id,
+            data: {
+              status: BookingRefundRequestStatus.IN_REVIEW,
+              reviewedBy: { connect: { id: actor.id } },
+              reviewedAt: new Date(),
+            },
+          };
+    let pendingBooking = await repo.createPaymentRefundForBooking(
+      {
+        booking: { connect: { id: booking.id } },
+        payment: { connect: { id: payment.id } },
+        property: { connect: { id: booking.propertyId } },
+        user: { connect: { id: booking.userId } },
+        ...(refundRequest !== null && {
+          refundRequest: { connect: { id: refundRequest.id } },
+        }),
+        provider: payment.provider,
+        status: PaymentRefundStatus.PENDING,
+        method: input.method,
+        amount,
+        currency: payment.currency,
+        reason: input.reason,
+        idempotencyKey,
+        metadata: {
+          recordedByUserId: actor.id,
+          source: "DASHBOARD_GATEWAY_REFUND",
+        },
+      },
+      booking.paymentStatus,
+      requestUpdate,
+    );
+    const refund = await repo.findRefundByIdempotencyKey(idempotencyKey);
+    if (!refund) {
+      throw new HttpError(
+        409,
+        "GATEWAY_REFUND_NOT_READY",
+        "Original gateway payment is missing provider settlement details",
+      );
+    }
+
+    try {
+      const providerRefund = await gateway.createRefund({
+        providerPaymentId: payment.providerPaymentId,
+        amountMinor: amount.times(100).toNumber(),
+        receipt: refund.id,
+        notes: {
+          refundId: refund.id,
+          bookingId: booking.id,
+          paymentId: payment.id,
+        },
+      });
+      const succeeded = providerRefund.status === "processed";
+      pendingBooking = await repo.updateGatewayRefund(refund.id, {
+        providerRefundId: providerRefund.id,
+        providerRefundStatus: providerRefund.status,
+        ...(succeeded && {
+          status: PaymentRefundStatus.SUCCEEDED,
+          processedAt: new Date(),
+        }),
+      });
+      if (succeeded) {
+        pendingBooking = await repo.updateBookingById(
+          booking.id,
+          { paymentStatus: getRefundPaymentStatus(pendingBooking) },
+        );
+        pendingBooking = await syncFulfilledRefundRequest(pendingBooking);
+        await publishBookingNotification({
+          eventKey: NotificationEventKey.REFUND_SUCCEEDED,
+          businessEventId: providerRefund.id,
+          bookingId: booking.id,
+          amount: amount.toString(),
+          currency: payment.currency,
+        });
+      }
+      return pendingBooking;
+    } catch (error) {
+      await repo.updateGatewayRefund(refund.id, {
+        providerRefundStatus: "submission_unknown",
+        metadata: {
+          recordedByUserId: actor.id,
+          source: "DASHBOARD_GATEWAY_REFUND",
+          submissionError:
+            error instanceof Error ? error.message : "Gateway refund failed",
+        },
+      });
+      throw error;
+    }
+  }
 
   const projectedBooking = {
     ...booking,

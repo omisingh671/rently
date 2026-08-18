@@ -5,8 +5,8 @@ import { UserRole } from "@/generated/prisma/enums.js";
 import * as controller from "./email-deliveries.controller.js";
 
 const router = Router();
-router.use(authenticate, authorize([UserRole.SUPER_ADMIN]));
-router.get("/email-deliveries", controller.list);
-router.post("/email-deliveries/:id/retry", controller.retry);
+const superAdminOnly = [authenticate, authorize([UserRole.SUPER_ADMIN])] as const;
+router.get("/email-deliveries", ...superAdminOnly, controller.list);
+router.post("/email-deliveries/:id/retry", ...superAdminOnly, controller.retry);
 
 export default router;

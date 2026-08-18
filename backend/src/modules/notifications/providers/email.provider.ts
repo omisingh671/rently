@@ -18,8 +18,10 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
-const subjects: Record<NotificationEventKey, string> = {
-  BOOKING_CREATED: "Your booking is confirmed",
+const subjects: Record<
+  Exclude<NotificationEventKey, "BOOKING_CREATED">,
+  string
+> = {
   BOOKING_CANCELLED: "Your booking was cancelled",
   PAYMENT_SUCCEEDED: "Payment received",
   REFUND_SUCCEEDED: "Your refund was completed",
@@ -28,17 +30,39 @@ const subjects: Record<NotificationEventKey, string> = {
   BOOKING_CHECKED_OUT: "Check-out completed",
 };
 
-const renderEmail = (eventKey: NotificationEventKey, payload: NotificationPayload) => {
+export const getEmailSubject = (
+  eventKey: NotificationEventKey,
+  payload: NotificationPayload,
+) => {
+  if (eventKey === "BOOKING_CREATED") {
+    return payload.bookingStatus === "CONFIRMED"
+      ? "Your booking is confirmed"
+      : "Your booking request was received";
+  }
+
+  return subjects[eventKey];
+};
+
+export const renderEmail = (
+  eventKey: NotificationEventKey,
+  payload: NotificationPayload,
+) => {
   const name = escapeHtml(payload.recipientName ?? "Guest");
-  const property = payload.propertyName ? ` at ${escapeHtml(payload.propertyName)}` : "";
+  const property = payload.propertyName
+    ? ` at ${escapeHtml(payload.propertyName)}`
+    : "";
   const reference = payload.bookingReference
     ? `<p>Booking reference: <strong>${escapeHtml(payload.bookingReference)}</strong></p>`
     : "";
   const amount = payload.amount
     ? `<p>Amount: <strong>${escapeHtml(payload.currency ?? "INR")} ${escapeHtml(payload.amount)}</strong></p>`
     : "";
+  const bookingCreatedMessage =
+    payload.bookingStatus === "CONFIRMED"
+      ? `Your booking${property} is confirmed.`
+      : `We received your booking request${property}. Complete any required payment to confirm it.`;
   const messages: Record<NotificationEventKey, string> = {
-    BOOKING_CREATED: `Your booking${property} has been created successfully.`,
+    BOOKING_CREATED: bookingCreatedMessage,
     BOOKING_CANCELLED: `Your booking${property} has been cancelled.`,
     PAYMENT_SUCCEEDED: `We received your payment${property}.`,
     REFUND_SUCCEEDED: `Your refund${property} has been completed.`,
@@ -65,7 +89,7 @@ export class EmailProvider implements NotificationProvider {
     const result = await mailer.sendMail({
       from: env.MAIL_FROM,
       to: input.recipient,
-      subject: subjects[input.eventKey],
+      subject: getEmailSubject(input.eventKey, input.payload),
       html: renderEmail(input.eventKey, input.payload),
       messageId: `<notification-${input.jobId}@rently.local>`,
     });

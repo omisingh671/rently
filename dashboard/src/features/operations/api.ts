@@ -13,6 +13,8 @@ import type {
   CheckInPolicyPreview,
   CheckOutPolicyPreview,
   CheckManualBookingAvailabilityPayload,
+  ManualBookingCalendarAvailabilityPayload,
+  ManualBookingCalendarAvailabilityResponse,
   CreateManualBookingPayload,
   EnquiryListResponse,
   LeadStatus,
@@ -57,6 +59,16 @@ export const getBookingApi = async (
 ): Promise<AdminBooking> => {
   const { data } = await axiosInstance.get<ApiSuccessResponse<AdminBooking>>(
     API_ENDPOINTS.operations.bookingById(bookingId),
+  );
+
+  return data.data;
+};
+
+export const refreshBookingFolioApi = async (
+  bookingId: string,
+): Promise<AdminBooking> => {
+  const { data } = await axiosInstance.post<ApiSuccessResponse<AdminBooking>>(
+    API_ENDPOINTS.operations.bookingFolioRefreshById(bookingId),
   );
 
   return data.data;
@@ -154,6 +166,20 @@ export const checkInBookingApi = async (
     API_ENDPOINTS.operations.bookingCheckInById(bookingId),
     payload,
   );
+  return data.data;
+};
+
+export const getManualBookingCalendarAvailabilityApi = async (
+  propertyId: string,
+  payload: ManualBookingCalendarAvailabilityPayload,
+): Promise<ManualBookingCalendarAvailabilityResponse> => {
+  const { data } = await axiosInstance.post<
+    ApiSuccessResponse<ManualBookingCalendarAvailabilityResponse>
+  >(
+    API_ENDPOINTS.operations.bookingCalendarAvailabilityByProperty(propertyId),
+    payload,
+  );
+
   return data.data;
 };
 

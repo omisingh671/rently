@@ -49,8 +49,8 @@ function getAdminPageMeta(pathname: string) {
 
   if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.MAINTENANCE))
     return {
-      title: "Maintenance",
-      subtitle: "Control maintenance blocks",
+      title: "Maintenance & Closures",
+      subtitle: "Control operational blocks and property closure dates",
     };
 
   if (pathname.includes(ADMIN_ROUTES.INVENTORY_CHILDREN.GALLERY))
@@ -82,6 +82,12 @@ function getAdminPageMeta(pathname: string) {
     return {
       title: "Booking Policy",
       subtitle: "Manage property booking and cancellation rules",
+    };
+
+  if (pathname.includes(ADMIN_ROUTES.COMMERCIAL))
+    return {
+      title: "Corporate & Groups",
+      subtitle: "Company accounts, room blocks, and group folios",
     };
 
   if (pathname.includes(ADMIN_ROUTES.BOOKINGS))

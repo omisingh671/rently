@@ -140,7 +140,9 @@ export const getDashboardStats = (
     (booking) => dateOnly(booking.checkOut) === today,
   ).length;
   const healthIssues =
-    (board?.summary.MAINTENANCE ?? 0) + (board?.summary.INACTIVE ?? 0);
+    (board?.summary.HOUSEKEEPING ?? 0) +
+    (board?.summary.MAINTENANCE ?? 0) +
+    (board?.summary.INACTIVE ?? 0);
 
   return {
     occupancyRate,

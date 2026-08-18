@@ -92,6 +92,28 @@ export interface PublicAvailabilityDTO {
   options: PublicAvailabilityOptionDTO[];
 }
 
+export type CalendarAvailabilityStatus =
+  | "AVAILABLE"
+  | "SOLD_OUT"
+  | "CLOSED";
+
+export type CalendarClosureReason =
+  | "MAINTENANCE"
+  | "HOLIDAY_CLOSURE"
+  | "OWNER_BLOCK";
+
+export interface CalendarAvailabilityDayDTO {
+  date: string;
+  status: CalendarAvailabilityStatus;
+  reason: CalendarClosureReason | null;
+}
+
+export interface PublicCalendarAvailabilityDTO {
+  startDate: string;
+  endDate: string;
+  days: CalendarAvailabilityDayDTO[];
+}
+
 export interface PublicInventoryLockDTO {
   lockToken: string;
   expiresAt: string;

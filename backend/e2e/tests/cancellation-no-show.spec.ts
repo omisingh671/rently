@@ -369,6 +369,6 @@ test("forgotten arrival blocks daily close until no-show retains its token", asy
   });
   expect(completedClose.status()).toBe(201);
   await expect(completedClose.json()).resolves.toMatchObject({
-    data: { propertyId: e2eFixture.property.id },
+    data: { propertyId: e2eFixture.property.id, noShows: 1 },
   });
 });

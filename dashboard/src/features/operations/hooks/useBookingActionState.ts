@@ -45,6 +45,8 @@ export function useBookingActionState({
   const [actionError, setActionError] = useState("");
   const [hasInitializedRoomIds, setHasInitializedRoomIds] = useState(false);
   const [identityVerified, setIdentityVerified] = useState(false);
+  const [allowBalanceDueCheckout, setAllowBalanceDueCheckout] =
+    useState(false);
   const [roomMovePreview, setRoomMovePreview] =
     useState<RoomMovePreview | null>(null);
   const [roomMovePricingAction, setRoomMovePricingAction] =
@@ -102,6 +104,7 @@ export function useBookingActionState({
     setPendingAction(nextAction);
     setNote("");
     setIdentityVerified(false);
+    setAllowBalanceDueCheckout(false);
     setRoomMovePreview(null);
     setRoomMovePricingAction("CHARGE_DIFFERENCE");
     if (type === "assignRoom" && booking) {
@@ -140,6 +143,7 @@ export function useBookingActionState({
     setActionError("");
     setHasInitializedRoomIds(false);
     setIdentityVerified(false);
+    setAllowBalanceDueCheckout(false);
     setRoomMovePreview(null);
     setRoomMovePricingAction("CHARGE_DIFFERENCE");
   };
@@ -206,6 +210,7 @@ export function useBookingActionState({
     refundMethod,
     actionError,
     identityVerified,
+    allowBalanceDueCheckout,
     roomMovePreview,
     roomMovePricingAction,
     setNote,
@@ -218,6 +223,7 @@ export function useBookingActionState({
     setRefundMethod,
     setActionError,
     setIdentityVerified,
+    setAllowBalanceDueCheckout,
     setRoomMovePreview,
     setRoomMovePricingAction,
     openAction,

@@ -58,14 +58,14 @@ export function NotificationActivityPanels({
                 <span className={`rounded-full px-2 py-1 text-xs font-medium ${
                   delivery.status === "SUCCEEDED"
                     ? "bg-emerald-50 text-emerald-700"
-                    : delivery.status === "FAILED"
+                    : delivery.status === "FAILED" || delivery.status === "DEAD_LETTER"
                       ? "bg-rose-50 text-rose-700"
                       : "bg-amber-50 text-amber-700"
                 }`}>{delivery.status}</span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
                 <span>Attempts {delivery.attemptCount}/{delivery.maxAttempts} · {formatDateTime(delivery.createdAt)}</span>
-                {delivery.status === "FAILED" && (
+                {(delivery.status === "FAILED" || delivery.status === "DEAD_LETTER") && (
                   <button
                     type="button"
                     onClick={() => onRetry(delivery.id)}
@@ -77,6 +77,12 @@ export function NotificationActivityPanels({
                 )}
               </div>
               {delivery.lastError && <p className="mt-2 text-xs text-rose-600">{delivery.lastError}</p>}
+              {delivery.nextAttemptAt && (
+                <p className="mt-1 text-xs text-amber-700">Automatic retry {formatDateTime(delivery.nextAttemptAt)}</p>
+              )}
+              {delivery.deadLetteredAt && (
+                <p className="mt-1 text-xs font-medium text-rose-700">Retries exhausted; operator action required.</p>
+              )}
             </div>
           ))}
         </div>

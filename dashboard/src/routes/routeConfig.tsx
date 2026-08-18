@@ -45,6 +45,10 @@ const PricingPage = lazy(() => import("@/pages/admin/PricingPage"));
 const BookingsPage = lazy(() => import("@/pages/admin/BookingsPage"));
 const BookingPolicyPage = lazy(() => import("@/pages/admin/BookingPolicyPage"));
 const BillingPage = lazy(() => import("@/pages/admin/BillingPage"));
+const CommercialPage = lazy(() => import("@/pages/admin/CommercialPage"));
+const CommercialGroupPage = lazy(
+  () => import("@/pages/admin/CommercialGroupPage"),
+);
 const ReportsPage = lazy(() => import("@/pages/admin/ReportsPage"));
 const BookingDetailsPage = lazy(
   () => import("@/pages/admin/BookingDetailsPage"),
@@ -228,6 +232,14 @@ const routes: RouteObject[] = [
                   {
                     path: ADMIN_ROUTES.BILLING,
                     element: <BillingPage />,
+                  },
+                  {
+                    path: ADMIN_ROUTES.COMMERCIAL,
+                    element: <CommercialPage />,
+                  },
+                  {
+                    path: ADMIN_ROUTES.COMMERCIAL_GROUP(":groupId"),
+                    element: <CommercialGroupPage />,
                   },
                   {
                     path: ADMIN_ROUTES.BOOKING_DETAIL(":id"),

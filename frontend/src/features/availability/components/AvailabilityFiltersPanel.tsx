@@ -1,6 +1,7 @@
 import { FiSearch, FiUsers, FiWind } from "react-icons/fi";
 
 import type { ComfortFilter } from "../domain";
+import StayDateRangePicker from "./StayDateRangePicker";
 
 const comfortOptions: Array<{ value: ComfortFilter; label: string }> = [
   { value: "ALL", label: "All" },
@@ -28,6 +29,7 @@ type AvailabilityFiltersPanelProps = {
   canCheckAvailability: boolean;
   isChecking: boolean;
   onFilterChange: (key: AvailabilityFilterKey, value: string) => void;
+  onDateRangeChange: (from: string, to: string) => void;
   onClear: () => void;
   onCheck: () => void;
 };
@@ -45,6 +47,7 @@ export default function AvailabilityFiltersPanel({
   canCheckAvailability,
   isChecking,
   onFilterChange,
+  onDateRangeChange,
   onClear,
   onCheck,
 }: AvailabilityFiltersPanelProps) {
@@ -55,8 +58,8 @@ export default function AvailabilityFiltersPanel({
       <div
         className={`grid grid-cols-2 flex-1 items-end gap-4 ${
           showCityFilter
-            ? "lg:grid-cols-[1.2fr_1fr_1fr_0.8fr_1.2fr_auto]"
-            : "lg:grid-cols-[1fr_1fr_0.8fr_1.2fr_auto]"
+            ? "lg:grid-cols-[1.1fr_1.7fr_0.75fr_1.1fr_auto]"
+            : "lg:grid-cols-[1.7fr_0.75fr_1.1fr_auto]"
         }`}
       >
         {showCityFilter && (
@@ -81,33 +84,15 @@ export default function AvailabilityFiltersPanel({
           </label>
         )}
 
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-            From
-          </span>
-          <input
-            type="date"
-            value={from}
-            min={minimumCheckInDate}
-            onChange={(event) =>
-              onFilterChange("from", event.target.value)
-            }
-            className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-            To
-          </span>
-          <input
-            type="date"
-            value={to}
-            min={from || minimumCheckInDate}
-            onChange={(event) => onFilterChange("to", event.target.value)}
-            className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
+        <StayDateRangePicker
+          from={from}
+          to={to}
+          minimumCheckInDate={minimumCheckInDate}
+          guests={guests}
+          comfort={comfort}
+          city={showCityFilter ? city || undefined : undefined}
+          onChange={onDateRangeChange}
+        />
 
         <label className="block">
           <span className="mb-1 flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">

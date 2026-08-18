@@ -19,3 +19,21 @@ export interface CreateManualPaymentInput {
   metadata?: Prisma.InputJsonObject;
   status?: PaymentStatus;
 }
+
+export interface CreateGatewayPaymentIntentInput {
+  userId?: string;
+  bookingId: string;
+  checkoutToken?: string;
+  idempotencyKey: string;
+  amount?: number;
+  purpose?: PaymentPurpose;
+}
+
+export interface VerifyGatewayPaymentInput {
+  userId?: string;
+  paymentId: string;
+  checkoutToken?: string;
+  providerOrderId: string;
+  providerPaymentId?: string;
+  providerSignature?: string;
+}

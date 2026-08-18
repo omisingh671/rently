@@ -3,6 +3,7 @@ import {
   type BookingStatus,
   BookingStatus as BookingStatusValue,
   BookingRoomAllocationSource,
+  type PaymentProvider,
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
@@ -208,6 +209,7 @@ export const listRoomBoardMaintenanceBlocks = (
   prisma.maintenanceBlock.findMany({
     where: {
       propertyId,
+      status: { notIn: ["RESOLVED", "CANCELLED"] },
       startDate: { lt: to },
       endDate: { gt: from },
     },
@@ -294,6 +296,29 @@ export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =
 export const findRefundByIdempotencyKey = (idempotencyKey: string) =>
   prisma.paymentRefund.findUnique({
     where: { idempotencyKey },
+  });
+
+export const findRefundByProviderId = (
+  provider: PaymentProvider,
+  providerRefundId: string,
+) =>
+  prisma.paymentRefund.findUnique({
+    where: { provider_providerRefundId: { provider, providerRefundId } },
+  });
+
+export const updateGatewayRefund = (
+  refundId: string,
+  data: Prisma.PaymentRefundUpdateInput,
+) =>
+  prisma.$transaction(async (tx) => {
+    const refund = await tx.paymentRefund.update({
+      where: { id: refundId },
+      data,
+    });
+    return tx.booking.findUniqueOrThrow({
+      where: { id: refund.bookingId },
+      include: dashboardBookingInclude,
+    });
   });
 
 export const createPaymentRefundForBooking = (

@@ -26,4 +26,6 @@ export interface UpdateBillingSettingInput {
   creditNotePrefix?: string;
   debitNotePrefix?: string;
   footerNotes?: string | null;
+  stateCode?: string | null;
+  sacCode?: string;
 }

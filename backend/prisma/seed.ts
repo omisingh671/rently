@@ -1,5 +1,6 @@
 import { prisma } from "../src/db/prisma.js";
 import { hashPassword } from "../src/common/utils/password.js";
+import { SEED_SUPER_ADMIN_PROFILE } from "../src/common/constants/application.constants.js";
 import { UserRole } from "../src/generated/prisma/client.js";
 
 const requiredEnv = (key: string): string => {
@@ -14,11 +15,11 @@ const requiredEnv = (key: string): string => {
 
 const credentials = {
   superAdmin: {
-    fullName: requiredEnv("SEED_SUPER_ADMIN_FULL_NAME"),
+    fullName: SEED_SUPER_ADMIN_PROFILE.fullName,
     email: requiredEnv("SEED_SUPER_ADMIN_EMAIL"),
     password: requiredEnv("SEED_SUPER_ADMIN_PASSWORD"),
-    countryCode: requiredEnv("SEED_SUPER_ADMIN_COUNTRY_CODE"),
-    contactNumber: requiredEnv("SEED_SUPER_ADMIN_CONTACT_NUMBER"),
+    countryCode: SEED_SUPER_ADMIN_PROFILE.countryCode,
+    contactNumber: SEED_SUPER_ADMIN_PROFILE.contactNumber,
   },
 } as const;
 

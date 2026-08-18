@@ -143,6 +143,24 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
     balanceAmount: "0",
   });
 
+  const replayPayment = await request.post(
+    `${apiPrefix}/bookings/${booking.id}/payments`,
+    {
+      headers: managerHeaders,
+      data: {
+        amount: 1500,
+        method: "CASH",
+        note: "Booking settled before incidental charge",
+        idempotencyKey: `folio-settlement-${booking.id}`,
+      },
+    },
+  );
+  expect(replayPayment.status()).toBe(201);
+  const replayedBooking = (
+    (await replayPayment.json()) as { data: DashboardBooking }
+  ).data;
+  expect(replayedBooking.payments).toHaveLength(1);
+
   const chargeResponse = await request.post(
     `${apiPrefix}/bookings/${booking.id}/folio-charges`,
     {
@@ -198,6 +216,7 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
       total: true,
       folioChargeId: true,
       priceSnapshot: true,
+      supplierSnapshot: true,
     },
   });
   const invoice = documents.find((document) => document.type === "INVOICE");
@@ -210,7 +229,12 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
   );
   expect(invoice).toMatchObject({ status: "ISSUED" });
   expect(invoice?.total.toString()).toBe("1500");
+  expect(invoice?.supplierSnapshot).toMatchObject({
+    legalName: "E2E Hospitality Private Limited",
+    gstin: "29ABCDE1234F1Z5",
+  });
   expect(receipt).toMatchObject({ status: "ISSUED" });
+  expect(receipt?.total.toString()).toBe("1500");
   expect(debitNote).toMatchObject({
     status: "ISSUED",
     folioChargeId: charge!.id,
@@ -361,4 +385,29 @@ test("daily close reconciles split payments, refund, and net collection once", a
   expect(storedCloses[0]!.paymentTotal.toString()).toBe("1500");
   expect(storedCloses[0]!.refundTotal.toString()).toBe("300");
   expect(storedCloses[0]!.netPaymentTotal.toString()).toBe("1200");
+
+  const lateBooking = await createWalkIn(
+    request,
+    headers,
+    futureDate(18),
+    futureDate(19),
+    "Closed Date Posting Guest",
+  );
+  const closedDatePayment = await request.post(
+    `${apiPrefix}/bookings/${lateBooking.id}/payments`,
+    {
+      headers,
+      data: {
+        amount: 100,
+        method: "CASH",
+        paidAt: `${businessDate}T08:30:00.000Z`,
+        note: "Must not alter a closed reconciliation period",
+        idempotencyKey: `closed-date-payment-${lateBooking.id}`,
+      },
+    },
+  );
+  expect(closedDatePayment.status()).toBe(409);
+  await expect(closedDatePayment.json()).resolves.toMatchObject({
+    error: { code: "BUSINESS_DATE_CLOSED" },
+  });
 });

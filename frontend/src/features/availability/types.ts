@@ -1,6 +1,7 @@
 import type {
   AvailabilityCriteria,
   AvailabilityResult,
+  CalendarAvailabilityResult,
   ComfortOption,
 } from "./domain";
 
@@ -18,6 +19,16 @@ export interface CheckAvailabilityPayload {
 }
 
 export type CheckAvailabilityResponse = AvailabilityResult;
+
+export interface CalendarAvailabilityPayload {
+  startDate: string;
+  endDate: string;
+  guests: number;
+  comfortOption: ComfortOption;
+  city?: string;
+}
+
+export type CalendarAvailabilityResponse = CalendarAvailabilityResult;
 
 export interface AvailabilityNavigationState {
   criteria: AvailabilityCriteria;

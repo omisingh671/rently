@@ -52,7 +52,7 @@ export default function AmenitiesFilters({
           }
           className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
         >
-          <option value="">All statuses</option>
+          <option value="">All Statuses</option>
           <option value="true">Enabled</option>
           <option value="false">Disabled</option>
         </select>

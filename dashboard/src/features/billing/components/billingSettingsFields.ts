@@ -13,6 +13,8 @@ export type BillingSettingsFormState = {
   creditNotePrefix: string;
   debitNotePrefix: string;
   footerNotes: string;
+  stateCode: string;
+  sacCode: string;
 };
 
 export const BILLING_SETTING_FIELD_LABELS: Record<
@@ -28,6 +30,8 @@ export const BILLING_SETTING_FIELD_LABELS: Record<
   creditNotePrefix: "Credit note prefix",
   debitNotePrefix: "Debit note prefix",
   footerNotes: "Footer notes",
+  stateCode: "Supplier state code",
+  sacCode: "SAC code",
 };
 
 export const toBillingSettingsFormState = (
@@ -42,6 +46,8 @@ export const toBillingSettingsFormState = (
   creditNotePrefix: setting.creditNotePrefix,
   debitNotePrefix: setting.debitNotePrefix,
   footerNotes: setting.footerNotes ?? "",
+  stateCode: setting.stateCode ?? "",
+  sacCode: setting.sacCode,
 });
 
 export const getChangedBillingSettingFields = (

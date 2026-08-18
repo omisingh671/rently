@@ -137,7 +137,7 @@ export default function BillingPage() {
           >
             {documentTypes.map((type) => (
               <option key={type || "ALL"} value={type}>
-                {type ? formatEnumLabel(type) : "All types"}
+                {type ? formatEnumLabel(type) : "All Types"}
               </option>
             ))}
           </select>
@@ -153,7 +153,7 @@ export default function BillingPage() {
           >
             {documentStatuses.map((status) => (
               <option key={status || "ALL"} value={status}>
-                {status ? formatEnumLabel(status) : "All statuses"}
+                {status ? formatEnumLabel(status) : "All Statuses"}
               </option>
             ))}
           </select>
@@ -254,7 +254,7 @@ export default function BillingPage() {
                       </div>
                       <div
                         className={`mt-1 text-xs font-semibold ${
-                          document.pdfStatus === "FAILED"
+                          document.pdfStatus === "FAILED" || document.pdfStatus === "DEAD_LETTER"
                             ? "text-rose-700"
                             : document.pdfStatus === "SUCCEEDED"
                               ? "text-emerald-700"
@@ -262,11 +262,11 @@ export default function BillingPage() {
                         }`}
                       >
                         PDF: {formatEnumLabel(document.pdfStatus)}
-                        {document.pdfStatus === "FAILED" &&
+                        {(document.pdfStatus === "FAILED" || document.pdfStatus === "DEAD_LETTER") &&
                           document.pdfCorrelationId &&
                           ` / ${document.pdfCorrelationId}`}
                       </div>
-                      {document.pdfStatus === "FAILED" && document.pdfLastError && (
+                      {(document.pdfStatus === "FAILED" || document.pdfStatus === "DEAD_LETTER") && document.pdfLastError && (
                         <div className="mt-1 max-w-72 text-xs text-rose-600">
                           {document.pdfLastError}
                         </div>
@@ -302,7 +302,7 @@ export default function BillingPage() {
                         >
                           Download
                         </Button>
-                        {canVoid && document.pdfStatus === "FAILED" && (
+                        {canVoid && (document.pdfStatus === "FAILED" || document.pdfStatus === "DEAD_LETTER") && (
                           <Button
                             type="button"
                             size="sm"

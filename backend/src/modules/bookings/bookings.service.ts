@@ -1,6 +1,7 @@
 import { prisma } from "@/db/prisma.js";
 import {
   BookingPaymentPolicy,
+  BookingSource,
   BookingStatus,
   BookingTargetType,
   UserRole,
@@ -9,7 +10,10 @@ import {
 import { HttpError } from "@/common/errors/http-error.js";
 import { assertStayStartsOnOrAfterBusinessDate } from "@/common/utils/business-date.js";
 import { createBookingForUser } from "@/modules/public/bookings/bookings.service.js";
-import { generateAvailabilityOptions } from "@/modules/public/availability/availability.service.js";
+import {
+  generateAvailabilityOptions,
+  getPropertyCalendarAvailability,
+} from "@/modules/public/availability/availability.service.js";
 import * as repo from "./bookings.repository.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
 
@@ -79,6 +83,7 @@ import {
 
 import type {
   CheckDashboardManualBookingAvailabilityInput,
+  CheckDashboardManualBookingCalendarAvailabilityInput,
   CreateDashboardManualBookingInput,
   DashboardBookingListInput,
   DashboardRoomBoardInput,
@@ -102,6 +107,7 @@ import type {
 import type {
   DashboardBookingDTO,
   DashboardManualBookingAvailabilityDTO,
+  DashboardManualBookingCalendarAvailabilityDTO,
   DashboardRoomBoardDTO,
   BookingRoomMovePreviewDTO,
   BookingStayExtensionPreviewDTO,
@@ -174,6 +180,19 @@ export const getBookingById = async (
   return mapDashboardBooking(booking);
 };
 
+export const refreshBookingFolio = async (
+  userId: string,
+  bookingId: string,
+): Promise<DashboardBookingDTO> => {
+  const actor = await getActor(userId);
+  const initialBooking = await ensureBookingExists(bookingId);
+  await assertPropertyInScope(actor, initialBooking.propertyId);
+
+  await postLateCheckoutExtensionCharge(bookingId, actor, {});
+
+  return mapDashboardBooking(await ensureBookingExists(bookingId));
+};
+
 export const checkManualBookingAvailability = async (
   userId: string,
   propertyId: string,
@@ -195,10 +214,26 @@ export const checkManualBookingAvailability = async (
     nights,
     { propertyId },
     undefined,
-    undefined,
-    { pricePrivateRoomsByCapacity: false },
+    input.inventoryLockToken,
+    { pricePrivateRoomsByCapacity: false, curateResults: false },
   );
   return buildManualBookingAvailabilityDTO(propertyId, input, options);
+};
+
+export const checkManualBookingCalendarAvailability = async (
+  userId: string,
+  propertyId: string,
+  input: CheckDashboardManualBookingCalendarAvailabilityInput,
+): Promise<DashboardManualBookingCalendarAvailabilityDTO> => {
+  const actor = await getActor(userId);
+  await assertPropertyInScope(actor, propertyId);
+  const property = await ensurePropertyExists(propertyId);
+
+  return getPropertyCalendarAvailability(input, {
+    tenantId: property.tenantId,
+    propertyId,
+    timezone: property.tenant.timezone,
+  });
 };
 
 export const createManualBooking = async (
@@ -211,6 +246,34 @@ export const createManualBooking = async (
   const property = await ensurePropertyExists(propertyId);
   assertStayStartsOnOrAfterBusinessDate(input.from, property.tenant.timezone);
   const guest = await findOrCreateWalkInGuest(actor, input);
+  const group =
+    input.bookingGroupId === undefined
+      ? null
+      : await prisma.bookingGroup.findFirst({
+          where: {
+            id: input.bookingGroupId,
+            propertyId,
+            status: { notIn: ["CANCELLED", "COMPLETED"] },
+          },
+          include: { company: true },
+        });
+  if (input.bookingGroupId !== undefined && group === null) {
+    throw new HttpError(
+      404,
+      "BOOKING_GROUP_NOT_FOUND",
+      "Active booking group not found for property",
+    );
+  }
+  if (
+    group !== null &&
+    (input.from < group.checkIn || input.to > group.checkOut)
+  ) {
+    throw new HttpError(
+      422,
+      "BOOKING_OUTSIDE_GROUP_DATES",
+      "Booking stay must fall within group dates",
+    );
+  }
 
   const createdBooking = await createBookingForUser(
     guest.id,
@@ -222,6 +285,9 @@ export const createManualBooking = async (
       }),
       ...(input.spaceId !== undefined && { spaceId: input.spaceId }),
       ...(input.spaceIds !== undefined && { spaceIds: input.spaceIds }),
+      ...(input.inventoryLockToken !== undefined && {
+        inventoryLockToken: input.inventoryLockToken,
+      }),
       from: input.from,
       to: input.to,
       guests: input.guests,
@@ -239,6 +305,22 @@ export const createManualBooking = async (
       initialStatus: BookingStatus.CONFIRMED,
       statusHistoryNote: "Manual walk-in booking created from dashboard",
       internalNotes: input.internalNotes ?? null,
+      ...(group !== null && {
+        source:
+          group.company === null
+            ? BookingSource.GROUP
+            : BookingSource.CORPORATE,
+        bookingGroupId: group.id,
+        companyId: group.companyId,
+        recipientLegalName: group.company?.legalName ?? null,
+        recipientGstin: group.company?.gstin ?? null,
+        billingAddressSnapshot: group.company?.billingAddress ?? null,
+        placeOfSupplyStateCode: group.company?.stateCode ?? null,
+      }),
+      availabilityConfig: {
+        pricePrivateRoomsByCapacity: false,
+        curateResults: false,
+      },
     },
   );
 

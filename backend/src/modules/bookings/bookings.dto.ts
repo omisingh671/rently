@@ -32,6 +32,8 @@ export interface DashboardManualBookingAvailabilityItemDTO {
   available: boolean;
   capacity: number;
   targetType: BookingTargetType;
+  roomId: string | null;
+  unitId: string | null;
   reason: string | null;
   guestCount: number | null;
   pricePerNight: string | null;
@@ -44,6 +46,26 @@ export interface DashboardManualBookingAvailabilityDTO {
   guests: number;
   availableSpaceIds: string[];
   items: DashboardManualBookingAvailabilityItemDTO[];
+}
+
+export type DashboardCalendarAvailabilityStatus =
+  | "AVAILABLE"
+  | "SOLD_OUT"
+  | "CLOSED";
+
+export type DashboardCalendarClosureReason =
+  | "MAINTENANCE"
+  | "HOLIDAY_CLOSURE"
+  | "OWNER_BLOCK";
+
+export interface DashboardManualBookingCalendarAvailabilityDTO {
+  startDate: string;
+  endDate: string;
+  days: Array<{
+    date: string;
+    status: DashboardCalendarAvailabilityStatus;
+    reason: DashboardCalendarClosureReason | null;
+  }>;
 }
 
 export interface BookingRoomMovePreviewDTO {
@@ -114,7 +136,11 @@ export interface BookingStayExtensionPreviewDTO
   resultingBalance: string;
   pricingFingerprint: string;
   conflicts: Array<{
-    type: "BOOKING" | "MAINTENANCE" | "INVENTORY_LOCK";
+    type:
+      | "BOOKING"
+      | "MAINTENANCE"
+      | "PROPERTY_CLOSURE"
+      | "INVENTORY_LOCK";
     targetType: BookingTargetType;
     targetId: string;
     targetLabel: string;
@@ -146,6 +172,7 @@ export interface BookingCheckOutPolicyPreviewDTO {
 
 export type DashboardRoomBoardStatus =
   | "AVAILABLE"
+  | "HOUSEKEEPING"
   | "RESERVED"
   | "OCCUPIED"
   | "MAINTENANCE"

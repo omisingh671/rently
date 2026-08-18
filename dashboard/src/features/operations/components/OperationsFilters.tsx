@@ -70,7 +70,7 @@ export function OperationsFilters({
             onChange={(event) => onStatusChange(event.target.value)}
             className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
           >
-            <option value="">All statuses</option>
+            <option value="">All Statuses</option>
             {statuses.map((statusOption) => (
               <option key={statusOption} value={statusOption}>
                 {formatEnumLabel(statusOption)}
@@ -88,7 +88,7 @@ export function OperationsFilters({
               onChange={(event) => onSourceChange(event.target.value)}
               className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-10 pr-10 text-sm transition-colors focus:border-indigo-500 focus:outline-none lg:w-40"
             >
-              <option value="">All sources</option>
+              <option value="">All Sources</option>
               {enquirySources.map((sourceOption) => (
                 <option key={sourceOption.value} value={sourceOption.value}>
                   {sourceOption.label}

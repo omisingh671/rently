@@ -45,6 +45,13 @@ export const getPaymentRefundedAmount = (
   payment: repo.DashboardBookingRecord["payments"][number],
 ) =>
   payment.refunds
+    .filter((refund) => refund.status === PaymentRefundStatus.SUCCEEDED)
+    .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
+
+export const getPaymentReservedRefundAmount = (
+  payment: repo.DashboardBookingRecord["payments"][number],
+) =>
+  payment.refunds
     .filter((refund) => isRefundReserved(refund.status))
     .reduce((total, refund) => total.plus(refund.amount), new Prisma.Decimal(0));
 
@@ -63,7 +70,9 @@ export const getPaymentRefundableAmount = (
     return new Prisma.Decimal(0);
   }
 
-  const refundableAmount = payment.amount.minus(getPaymentRefundedAmount(payment));
+  const refundableAmount = payment.amount.minus(
+    getPaymentReservedRefundAmount(payment),
+  );
   return refundableAmount.lessThan(0) ? new Prisma.Decimal(0) : refundableAmount;
 };
 
@@ -197,13 +206,6 @@ export const assertBookingCanAcceptPayment = (
     );
   }
 
-  if (booking.status === BookingStatus.CHECKED_OUT) {
-    throw new HttpError(
-      409,
-      "BOOKING_PAYMENT_CLOSED",
-      "Checked-out bookings cannot accept payments",
-    );
-  }
 };
 
 export const getRefundRecordedByUserId = (metadata: Prisma.JsonValue) => {
@@ -263,9 +265,5 @@ export const assertRefundProviderAvailable = (
     );
   }
 
-  throw new HttpError(
-    501,
-    "REFUND_PROVIDER_NOT_CONFIGURED",
-    "Gateway refund adapter is not configured yet",
-  );
+  return;
 };

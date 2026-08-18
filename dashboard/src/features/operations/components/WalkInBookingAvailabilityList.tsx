@@ -14,6 +14,7 @@ interface WalkInBookingAvailabilityListProps {
   requestedGuests: number;
   isChecking: boolean;
   isSubmitting: boolean;
+  heldRoomLabel?: string;
   onToggleSpace: (spaceId: string) => void;
 }
 
@@ -24,6 +25,7 @@ export function WalkInBookingAvailabilityList({
   requestedGuests,
   isChecking,
   isSubmitting,
+  heldRoomLabel,
   onToggleSpace,
 }: WalkInBookingAvailabilityListProps) {
   if (isChecking) {
@@ -54,6 +56,7 @@ export function WalkInBookingAvailabilityList({
             availability={availabilityByOptionId.get(item.bookingOptionId) ?? null}
             hasAvailabilityResult={availability !== null}
             requestedGuests={requestedGuests}
+            heldRoomLabel={heldRoomLabel}
             onToggle={() => onToggleSpace(item.bookingOptionId)}
           />
         ))}
@@ -69,6 +72,7 @@ interface SpaceRowProps {
   availability: ManualBookingAvailabilityItem | null;
   hasAvailabilityResult: boolean;
   requestedGuests: number;
+  heldRoomLabel?: string;
   onToggle: () => void;
 }
 
@@ -79,6 +83,7 @@ function SpaceRow({
   availability,
   hasAvailabilityResult,
   requestedGuests,
+  heldRoomLabel,
   onToggle,
 }: SpaceRowProps) {
   const isAvailable = availability?.available === true;
@@ -133,6 +138,12 @@ function SpaceRow({
         </div>
 
         <div className="min-w-0 flex-1">
+          {heldRoomLabel && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+              <span className="font-semibold text-indigo-900">{heldRoomLabel}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-600">Exact Held Room</span>
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-base font-bold text-slate-900">
               {item.title}

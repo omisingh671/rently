@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { env } from "@/config/env.js";
+import { AUTH_TOKEN_TTL_SECONDS } from "@/common/constants/application.constants.js";
 import { Prisma } from "@/generated/prisma/client.js";
 import type { SessionAudience } from "@/generated/prisma/enums.js";
 
@@ -79,7 +79,7 @@ const createRefreshSession = async (
   userAgent?: string,
 ) => {
   try {
-    await repo.createSession(
+    return await repo.createSession(
       userId,
       refreshToken,
       audience,
@@ -93,7 +93,7 @@ const createRefreshSession = async (
       error.code === "P2002"
     ) {
       await repo.deleteSessionByToken(refreshToken);
-      await repo.createSession(
+      return await repo.createSession(
         userId,
         refreshToken,
         audience,
@@ -101,7 +101,6 @@ const createRefreshSession = async (
         ip,
         userAgent,
       );
-      return;
     }
 
     throw error;
@@ -147,22 +146,22 @@ export const loginUser = async (
   clearFailedLogin(email);
   assertRoleAllowedForAudience(user.role, audience);
 
+  const refreshToken = signRefreshToken({ sub: user.id, audience });
+
+  const session = await createRefreshSession(
+    user.id,
+    refreshToken,
+    audience,
+    new Date(Date.now() + AUTH_TOKEN_TTL_SECONDS.refresh * 1000),
+    ip,
+    userAgent,
+  );
   const accessToken = signAccessToken({
     sub: user.id,
     role: user.role,
     audience,
+    sessionId: session.id,
   });
-
-  const refreshToken = signRefreshToken({ sub: user.id, audience });
-
-  await createRefreshSession(
-    user.id,
-    refreshToken,
-    audience,
-    new Date(Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000),
-    ip,
-    userAgent,
-  );
 
   return {
     refreshToken,
@@ -249,10 +248,11 @@ export const refreshSession = async (
     sub: user.id,
     role: user.role,
     audience,
+    sessionId: session.id,
   });
   const nextRefreshToken = signRefreshToken({ sub: user.id, audience });
   const nextRefreshExpiresAt = new Date(
-    Date.now() + env.JWT_REFRESH_EXPIRES_IN * 1000,
+    Date.now() + AUTH_TOKEN_TTL_SECONDS.refresh * 1000,
   );
 
   try {

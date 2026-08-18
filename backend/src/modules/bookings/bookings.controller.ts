@@ -11,6 +11,7 @@ import {
   recordBookingPaymentSchema,
   recordBookingRefundSchema,
   refundRequestParamsSchema,
+  checkManualBookingCalendarAvailabilitySchema,
   checkManualBookingAvailabilitySchema,
   updateBookingStatusSchema,
   updateRefundRequestSchema,
@@ -68,6 +69,15 @@ export const getBookingById = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
+export const refreshBookingFolio = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = idParamsSchema.parse(req.params);
+  const data = await service.refreshBookingFolio(getUserId(req), params.id);
+  res.json({ success: true, data });
+};
+
 export const createManualBooking = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = createManualBookingSchema.parse(req.body);
@@ -75,6 +85,12 @@ export const createManualBooking = async (req: AuthRequest, res: Response) => {
     bookingType: body.bookingType,
     ...(body.bookingOptionId !== undefined && {
       bookingOptionId: body.bookingOptionId,
+    }),
+    ...(body.bookingGroupId !== undefined && {
+      bookingGroupId: body.bookingGroupId,
+    }),
+    ...(body.inventoryLockToken !== undefined && {
+      inventoryLockToken: body.inventoryLockToken,
     }),
     ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
     ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
@@ -107,8 +123,30 @@ export const checkManualBookingAvailability = async (
     params.propertyId,
     {
       ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
       from: body.from,
       to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+    },
+  );
+  res.json({ success: true, data });
+};
+
+export const checkManualBookingCalendarAvailability = async (
+  req: AuthRequest,
+  res: Response,
+) => {
+  const params = propertyIdParamsSchema.parse(req.params);
+  const body = checkManualBookingCalendarAvailabilitySchema.parse(req.body);
+  const data = await service.checkManualBookingCalendarAvailability(
+    getUserId(req),
+    params.propertyId,
+    {
+      startDate: body.startDate,
+      endDate: body.endDate,
       guests: body.guests,
       comfortOption: body.comfortOption,
     },

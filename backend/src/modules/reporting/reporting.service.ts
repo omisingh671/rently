@@ -1,7 +1,10 @@
 import {
+  BookingSource,
   BookingStatus,
   LeadStatus,
   PropertyAssignmentRole,
+  PropertyAuditAction,
+  PropertyAuditEntityType,
   Prisma,
   UserRole,
 } from "@/generated/prisma/client.js";
@@ -11,6 +14,10 @@ import {
   getPropertyScope,
   type DashboardActor,
 } from "@/common/services/scoping.service.js";
+import {
+  listPropertyAudits,
+  recordPropertyAudit,
+} from "@/common/services/property-audit.service.js";
 import { countAssignments } from "@/modules/property-assignments/property-assignments.repository.js";
 import { countUsersByRole } from "@/modules/users/users.repository.js";
 import * as repo from "./reporting.repository.js";
@@ -270,6 +277,28 @@ export const listPropertyDailyCloses = async (
   return closes.map(mapDailyClose);
 };
 
+export const listAudits = async (
+  userId: string,
+  propertyId: string,
+  query: {
+    entityType?: PropertyAuditEntityType;
+    entityId?: string;
+    limit: number;
+  },
+) => {
+  const actor = await getActor(userId);
+  const scope = await getPropertyScope(actor);
+  if (!scope.isGlobal && !scope.propertyIds.includes(propertyId)) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
+  return listPropertyAudits(propertyId, {
+    ...(query.entityType !== undefined && { entityType: query.entityType }),
+    ...(query.entityId !== undefined && { entityId: query.entityId }),
+    take: query.limit,
+  });
+};
+
 export const closePropertyBusinessDate = async (
   userId: string,
   propertyId: string,
@@ -325,11 +354,12 @@ export const closePropertyBusinessDate = async (
 
   const broadStart = new Date(businessDateValue.getTime() - 86_400_000);
   const broadEnd = new Date(businessDateEnd.getTime() + 86_400_000);
-  const [payments, refunds, bookings, statusHistory] = await Promise.all([
+  const [payments, refunds, bookings, statusHistory, noShowArrivals] = await Promise.all([
     repo.getPaymentsInRange(broadStart, broadEnd, [propertyId]),
     repo.getRefundsInRange(broadStart, broadEnd, [propertyId]),
     repo.getBookingsCreatedInRange(broadStart, broadEnd, [propertyId]),
     repo.getStatusHistoryInRange(broadStart, broadEnd, [propertyId]),
+    repo.listNoShowArrivalsInRange(propertyId, broadStart, broadEnd),
   ]);
   const isBusinessDate = (date: Date) =>
     getBusinessDateValue(date, property.tenant.timezone) === businessDate;
@@ -343,6 +373,9 @@ export const closePropertyBusinessDate = async (
   const dayStatusHistory = statusHistory.filter((history) =>
     isBusinessDate(history.createdAt),
   );
+  const dayNoShows = noShowArrivals.filter((booking) =>
+    isBusinessDate(booking.checkIn),
+  );
   const paymentTotal = dayPayments.reduce(
     (total, payment) => total + Number(payment.amount),
     0,
@@ -353,8 +386,7 @@ export const closePropertyBusinessDate = async (
   );
 
   try {
-    return mapDailyClose(
-      await repo.createDailyClose({
+    const created = await repo.createDailyClose({
         property: { connect: { id: propertyId } },
         closedBy: { connect: { id: actor.id } },
         businessDate: businessDateValue,
@@ -370,12 +402,19 @@ export const closePropertyBusinessDate = async (
         checkOuts: dayStatusHistory.filter(
           (history) => history.toStatus === "CHECKED_OUT",
         ).length,
-        noShows: dayStatusHistory.filter(
-          (history) => history.toStatus === "NO_SHOW",
-        ).length,
+        noShows: dayNoShows.length,
         ...(note !== undefined && { note }),
-      }),
-    );
+      });
+    await recordPropertyAudit({
+      propertyId,
+      actorUserId: actor.id,
+      entityType: PropertyAuditEntityType.DAILY_CLOSE,
+      entityId: created.id,
+      action: PropertyAuditAction.CREATED,
+      ...(note !== undefined && { reason: note }),
+      nextData: created,
+    });
+    return mapDailyClose(created);
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -667,9 +706,14 @@ export const getReportingAnalytics = async (
   }
 
   // 3. Booking Source
-  const sourceMap = {
+  const sourceMap: Record<
+    BookingSource,
+    { count: number; revenue: number }
+  > = {
     PUBLIC: { count: 0, revenue: 0 },
     WALK_IN: { count: 0, revenue: 0 },
+    CORPORATE: { count: 0, revenue: 0 },
+    GROUP: { count: 0, revenue: 0 },
   };
 
   for (const b of bookingsCreatedInBusinessRange) {
@@ -688,6 +732,16 @@ export const getReportingAnalytics = async (
       source: "WALK_IN",
       count: sourceMap.WALK_IN.count,
       revenue: Math.round(sourceMap.WALK_IN.revenue * 100) / 100,
+    },
+    {
+      source: "CORPORATE",
+      count: sourceMap.CORPORATE.count,
+      revenue: Math.round(sourceMap.CORPORATE.revenue * 100) / 100,
+    },
+    {
+      source: "GROUP",
+      count: sourceMap.GROUP.count,
+      revenue: Math.round(sourceMap.GROUP.revenue * 100) / 100,
     },
   ];
 

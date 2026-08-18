@@ -219,7 +219,7 @@ export default function PricingPage() {
             }}
             className="appearance-none h-8 w-full bg-transparent text-sm outline-none cursor-pointer px-2"
           >
-            <option value="">Select property</option>
+            <option value="">Select Property</option>
             {properties.map((property) => (
               <option key={property.id} value={property.id}>
                 {property.name}

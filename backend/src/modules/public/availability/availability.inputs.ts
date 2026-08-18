@@ -12,6 +12,14 @@ export interface CheckAvailabilityInput {
   city?: string;
 }
 
+export interface CalendarAvailabilityInput {
+  startDate: Date;
+  endDate: Date;
+  guests: number;
+  comfortOption: ComfortOption;
+  city?: string;
+}
+
 export interface CreateInventoryLockInput {
   bookingType: PublicBookingType;
   bookingOptionId?: string;

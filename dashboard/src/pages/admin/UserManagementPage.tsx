@@ -277,7 +277,7 @@ export default function UserManagementPage() {
               }
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
             >
-              <option value="">All roles</option>
+              <option value="">All Roles</option>
               {roleOptions.map((role) => (
                 <option key={role} value={role}>
                   {formatEnumLabel(role)}
@@ -295,7 +295,7 @@ export default function UserManagementPage() {
               }
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
             >
-              <option value="">All statuses</option>
+              <option value="">All Statuses</option>
               <option value="true">Active</option>
               <option value="false">Inactive</option>
             </select>
@@ -311,9 +311,9 @@ export default function UserManagementPage() {
               }
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
             >
-              <option value="">All password states</option>
-              <option value="true">Change required</option>
-              <option value="false">No change required</option>
+              <option value="">All Password States</option>
+              <option value="true">Change Required</option>
+              <option value="false">No Change Required</option>
             </select>
           </div>
 

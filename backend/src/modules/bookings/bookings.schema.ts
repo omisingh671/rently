@@ -139,6 +139,8 @@ export const createManualBookingSchema = contactFieldsRefine(
     .object({
       bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
       bookingOptionId: z.string().trim().min(1).max(128).optional(),
+      bookingGroupId: idSchema.optional(),
+      inventoryLockToken: z.string().uuid().optional(),
       spaceId: idSchema.optional(),
       spaceIds: z.array(idSchema).optional(),
       from: z.coerce.date(),
@@ -185,6 +187,7 @@ export const createManualBookingSchema = contactFieldsRefine(
 export const checkManualBookingAvailabilitySchema = z
   .object({
     spaceIds: z.array(idSchema).optional(),
+    inventoryLockToken: z.string().uuid().optional(),
     from: z.coerce.date(),
     to: z.coerce.date(),
     guests: z.coerce.number().int().min(1).max(20),
@@ -193,6 +196,33 @@ export const checkManualBookingAvailabilitySchema = z
   .refine((data) => data.to > data.from, {
     message: "Check-out must be after check-in",
     path: ["to"],
+  });
+
+export const checkManualBookingCalendarAvailabilitySchema = z
+  .object({
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date(),
+    guests: z.coerce.number().int().min(1).max(20),
+    comfortOption: z.nativeEnum(ComfortOption),
+  })
+  .superRefine((data, ctx) => {
+    const durationDays = Math.ceil(
+      (data.endDate.getTime() - data.startDate.getTime()) / 86_400_000,
+    );
+    if (durationDays < 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "endDate must be after startDate",
+        path: ["endDate"],
+      });
+    }
+    if (durationDays > 62) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Calendar range cannot exceed 62 days",
+        path: ["endDate"],
+      });
+    }
   });
 
 export const roomBoardQuerySchema = z

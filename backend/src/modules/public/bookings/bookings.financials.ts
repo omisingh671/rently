@@ -61,9 +61,7 @@ export const getRefundedAmount = (booking: repo.PublicBookingRecord) =>
       total +
       payment.refunds
         .filter(
-          (refund) =>
-            refund.status === PaymentRefundStatus.PENDING ||
-            refund.status === PaymentRefundStatus.SUCCEEDED,
+          (refund) => refund.status === PaymentRefundStatus.SUCCEEDED,
         )
         .reduce((refundTotal, refund) => refundTotal + Number(refund.amount), 0),
     0,

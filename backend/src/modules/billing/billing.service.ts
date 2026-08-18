@@ -24,6 +24,7 @@ import { buildBillingDocumentHtml } from "./billing.pdf-template.js";
 import { storageProvider } from "@/common/services/storage.js";
 import { getCorrelationId } from "@/common/observability/request-context.js";
 import { logError } from "@/common/observability/logger.js";
+import { SIDE_EFFECT_RETRY_POLICY } from "@/common/constants/application.constants.js";
 import {
   buildBookingSnapshot,
   buildGuestSnapshot,
@@ -31,6 +32,7 @@ import {
   buildPaymentSnapshot,
   buildPriceSnapshot,
   buildPropertySnapshot,
+  buildSupplierSnapshot,
   buildTenantSnapshot,
   getFolioTotal,
 } from "./billing.snapshots.js";
@@ -87,6 +89,7 @@ const mapDocument = (
   balance: document.balance.toString(),
   guestSnapshot: document.guestSnapshot,
   propertySnapshot: document.propertySnapshot,
+  supplierSnapshot: document.supplierSnapshot ?? null,
   tenantSnapshot: document.tenantSnapshot ?? null,
   bookingSnapshot: document.bookingSnapshot,
   priceSnapshot: document.priceSnapshot,
@@ -101,11 +104,18 @@ const mapDocument = (
   pdfLastError: document.pdfLastError ?? null,
   pdfCorrelationId: document.pdfCorrelationId ?? null,
   pdfRenderedAt: document.pdfRenderedAt?.toISOString() ?? null,
+  pdfNextAttemptAt: document.pdfNextAttemptAt?.toISOString() ?? null,
+  pdfDeadLetteredAt: document.pdfDeadLetteredAt?.toISOString() ?? null,
   issuedAt: document.issuedAt?.toISOString() ?? null,
   voidedAt: document.voidedAt?.toISOString() ?? null,
   voidReason: document.voidReason ?? null,
   createdAt: document.createdAt.toISOString(),
   updatedAt: document.updatedAt.toISOString(),
+  fiscalYear: document.fiscalYear ?? null,
+  recipientGstin: document.recipientGstin ?? null,
+  placeOfSupplyStateCode: document.placeOfSupplyStateCode ?? null,
+  supplierStateCode: document.supplierStateCode ?? null,
+  sacCode: document.sacCode ?? null,
 });
 
 const mapSetting = (setting: repo.BillingSettingRecord): BillingSettingDTO => ({
@@ -120,6 +130,8 @@ const mapSetting = (setting: repo.BillingSettingRecord): BillingSettingDTO => ({
   creditNotePrefix: setting.creditNotePrefix,
   debitNotePrefix: setting.debitNotePrefix,
   footerNotes: setting.footerNotes ?? null,
+  stateCode: setting.stateCode ?? null,
+  sacCode: setting.sacCode,
   createdAt: setting.createdAt.toISOString(),
   updatedAt: setting.updatedAt.toISOString(),
 });
@@ -148,6 +160,33 @@ const mapSettingSnapshot = (
     creditNotePrefix: asString(snapshot.creditNotePrefix),
     debitNotePrefix: asString(snapshot.debitNotePrefix),
     footerNotes: asNullableString(snapshot.footerNotes),
+    stateCode: asNullableString(snapshot.stateCode),
+    sacCode: asString(snapshot.sacCode) || "996311",
+  };
+};
+
+const getSupplierSnapshot = async (
+  propertyId: string,
+  tx: Prisma.TransactionClient,
+) => toJson(buildSupplierSnapshot(await repo.getOrCreateSetting(propertyId, tx)));
+
+const getDocumentTaxIdentity = async (
+  booking: repo.BillingBookingRecord,
+  tx: Prisma.TransactionClient,
+) => {
+  const setting = await repo.getOrCreateSetting(booking.propertyId, tx);
+  return {
+    ...(booking.recipientGstin !== null && {
+      recipientGstin: booking.recipientGstin,
+    }),
+    ...(booking.placeOfSupplyStateCode !== null || setting.stateCode !== null
+      ? {
+          placeOfSupplyStateCode:
+            booking.placeOfSupplyStateCode ?? setting.stateCode,
+        }
+      : {}),
+    ...(setting.stateCode !== null && { supplierStateCode: setting.stateCode }),
+    sacCode: setting.sacCode,
   };
 };
 
@@ -243,6 +282,7 @@ export const createInvoiceForBooking = async (
     }
 
     const paid = await repo.sumSucceededPaymentsByBooking(booking.id, client);
+    const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, client);
     const folioTotal = getFolioTotal(booking);
     const grandTotal = booking.totalAmount.plus(folioTotal);
     const balance = maxDecimal(zeroDecimal, grandTotal.minus(paid));
@@ -269,6 +309,10 @@ export const createInvoiceForBooking = async (
             balance,
             guestSnapshot: toJson(buildGuestSnapshot(booking)),
             propertySnapshot: toJson(buildPropertySnapshot(booking)),
+            supplierSnapshot:
+              existing.supplierSnapshot === null
+                ? supplierSnapshot
+                : toJson(existing.supplierSnapshot),
             tenantSnapshot: toJson(buildTenantSnapshot(booking)),
             bookingSnapshot: toJson(buildBookingSnapshot(booking)),
             priceSnapshot: toJson(buildPriceSnapshot(booking)),
@@ -283,11 +327,14 @@ export const createInvoiceForBooking = async (
       return existing;
     }
 
-    const documentNumber = await repo.nextDocumentNumber(
+    const issuedAt = new Date();
+    const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
       booking.propertyId,
       BillingDocumentType.INVOICE,
+      issuedAt,
       client,
     );
+    const taxIdentity = await getDocumentTaxIdentity(booking, client);
 
     return createDocumentSafely(
       () =>
@@ -297,6 +344,8 @@ export const createInvoiceForBooking = async (
             type: BillingDocumentType.INVOICE,
             status: BillingDocumentStatus.ISSUED,
             documentNumber,
+            fiscalYear,
+            ...taxIdentity,
             booking: { connect: { id: booking.id } },
             property: { connect: { id: booking.propertyId } },
             tenant: { connect: { id: booking.property.tenantId } },
@@ -309,12 +358,13 @@ export const createInvoiceForBooking = async (
             balance,
             guestSnapshot: toJson(buildGuestSnapshot(booking)),
             propertySnapshot: toJson(buildPropertySnapshot(booking)),
+            supplierSnapshot,
             tenantSnapshot: toJson(buildTenantSnapshot(booking)),
             bookingSnapshot: toJson(buildBookingSnapshot(booking)),
             priceSnapshot: toJson(buildPriceSnapshot(booking)),
             taxSnapshot: toJson(booking.taxBreakdown ?? []),
             lineItems: toJson(buildLineItems(booking)),
-            issuedAt: new Date(),
+            issuedAt,
           },
           client,
         ),
@@ -345,6 +395,7 @@ export const createReceiptForPayment = async (
     }
 
     const booking = payment.booking;
+    const supplierSnapshot = await getSupplierSnapshot(payment.propertyId, client);
     const cumulativePaid = await repo.sumSucceededPaymentsThroughPayment(
       payment,
       client,
@@ -354,11 +405,14 @@ export const createReceiptForPayment = async (
       booking.totalAmount.plus(getFolioTotal(booking)).minus(cumulativePaid),
     );
 
-    const documentNumber = await repo.nextDocumentNumber(
+    const issuedAt = payment.paidAt ?? new Date();
+    const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
       payment.propertyId,
       BillingDocumentType.RECEIPT,
+      issuedAt,
       client,
     );
+    const taxIdentity = await getDocumentTaxIdentity(booking, client);
 
     return createDocumentSafely(
       () =>
@@ -368,26 +422,40 @@ export const createReceiptForPayment = async (
             type: BillingDocumentType.RECEIPT,
             status: BillingDocumentStatus.ISSUED,
             documentNumber,
+            fiscalYear,
+            ...taxIdentity,
             booking: { connect: { id: booking.id } },
             payment: { connect: { id: payment.id } },
             property: { connect: { id: payment.propertyId } },
             tenant: { connect: { id: booking.property.tenantId } },
-            subtotal: booking.subtotalAmount,
-            discount: booking.discountAmount,
-            taxable: booking.taxableAmount,
-            tax: booking.taxAmount,
-            total: booking.totalAmount,
+            subtotal: payment.amount,
+            discount: zeroDecimal,
+            taxable: payment.amount,
+            tax: zeroDecimal,
+            total: payment.amount,
             paid: payment.amount,
             balance,
             guestSnapshot: toJson(buildGuestSnapshot(booking)),
             propertySnapshot: toJson(buildPropertySnapshot(booking)),
+            supplierSnapshot,
             tenantSnapshot: toJson(buildTenantSnapshot(booking)),
             bookingSnapshot: toJson(buildBookingSnapshot(booking)),
             priceSnapshot: toJson(buildPriceSnapshot(booking)),
-            taxSnapshot: toJson(booking.taxBreakdown ?? []),
+            taxSnapshot: toJson([]),
             paymentSnapshot: toJson(buildPaymentSnapshot(payment)),
-            lineItems: toJson(buildLineItems(booking)),
-            issuedAt: payment.paidAt ?? new Date(),
+            lineItems: toJson([
+              {
+                description: `Payment received for ${booking.bookingRef}`,
+                targetLabel: booking.targetLabel,
+                quantity: 1,
+                rate: payment.amount.toString(),
+                discount: "0",
+                taxable: payment.amount.toString(),
+                tax: "0",
+                total: payment.amount.toString(),
+              },
+            ]),
+            issuedAt,
           },
           client,
         ),
@@ -438,11 +506,15 @@ export const createDebitNoteForFolioCharge = async (
   const taxDifference = new Prisma.Decimal(
     typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
   );
-  const documentNumber = await repo.nextDocumentNumber(
+  const issuedAt = new Date();
+  const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
     booking.propertyId,
     BillingDocumentType.DEBIT_NOTE,
+    issuedAt,
     tx,
   );
+  const taxIdentity = await getDocumentTaxIdentity(booking, tx);
+  const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, tx);
   const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
@@ -456,6 +528,8 @@ export const createDebitNoteForFolioCharge = async (
           type: BillingDocumentType.DEBIT_NOTE,
           status: BillingDocumentStatus.ISSUED,
           documentNumber,
+          fiscalYear,
+          ...taxIdentity,
           booking: { connect: { id: booking.id } },
           folioCharge: { connect: { id: charge.id } },
           property: { connect: { id: booking.propertyId } },
@@ -469,6 +543,7 @@ export const createDebitNoteForFolioCharge = async (
           balance,
           guestSnapshot: toJson(buildGuestSnapshot(booking)),
           propertySnapshot: toJson(buildPropertySnapshot(booking)),
+          supplierSnapshot,
           tenantSnapshot: toJson(buildTenantSnapshot(booking)),
           bookingSnapshot: toJson(buildBookingSnapshot(booking)),
           priceSnapshot: toJson(metadata),
@@ -484,7 +559,7 @@ export const createDebitNoteForFolioCharge = async (
             },
           ]),
           notes: charge.note,
-          issuedAt: new Date(),
+          issuedAt,
         },
         tx,
       ),
@@ -539,11 +614,15 @@ export const createCreditNoteForFolioCredit = async (
     typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
   ).abs();
   const total = charge.amount.abs();
-  const documentNumber = await repo.nextDocumentNumber(
+  const issuedAt = new Date();
+  const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
     booking.propertyId,
     BillingDocumentType.CREDIT_NOTE,
+    issuedAt,
     tx,
   );
+  const taxIdentity = await getDocumentTaxIdentity(booking, tx);
+  const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, tx);
   const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
@@ -557,6 +636,8 @@ export const createCreditNoteForFolioCredit = async (
           type: BillingDocumentType.CREDIT_NOTE,
           status: BillingDocumentStatus.ISSUED,
           documentNumber,
+          fiscalYear,
+          ...taxIdentity,
           booking: { connect: { id: booking.id } },
           folioCharge: { connect: { id: charge.id } },
           property: { connect: { id: booking.propertyId } },
@@ -570,6 +651,7 @@ export const createCreditNoteForFolioCredit = async (
           balance,
           guestSnapshot: toJson(buildGuestSnapshot(booking)),
           propertySnapshot: toJson(buildPropertySnapshot(booking)),
+          supplierSnapshot,
           tenantSnapshot: toJson(buildTenantSnapshot(booking)),
           bookingSnapshot: toJson(buildBookingSnapshot(booking)),
           priceSnapshot: toJson(metadata),
@@ -585,7 +667,7 @@ export const createCreditNoteForFolioCredit = async (
             },
           ]),
           notes: charge.note,
-          issuedAt: new Date(),
+          issuedAt,
         },
         tx,
       ),
@@ -635,11 +717,18 @@ export const createReversalNoteForVoidedFolioCharge = async (
     throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
   }
 
-  const documentNumber = await repo.nextDocumentNumber(
+  const issuedAt = new Date();
+  const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
     booking.propertyId,
     reversalType,
+    issuedAt,
     tx,
   );
+  const taxIdentity = await getDocumentTaxIdentity(booking, tx);
+  const supplierSnapshot =
+    reversedDocument.supplierSnapshot === null
+      ? await getSupplierSnapshot(booking.propertyId, tx)
+      : toJson(reversedDocument.supplierSnapshot);
   const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
@@ -653,6 +742,8 @@ export const createReversalNoteForVoidedFolioCharge = async (
           type: reversalType,
           status: BillingDocumentStatus.ISSUED,
           documentNumber,
+          fiscalYear,
+          ...taxIdentity,
           booking: { connect: { id: booking.id } },
           folioCharge: { connect: { id: charge.id } },
           property: { connect: { id: booking.propertyId } },
@@ -666,6 +757,7 @@ export const createReversalNoteForVoidedFolioCharge = async (
           balance,
           guestSnapshot: toJson(reversedDocument.guestSnapshot),
           propertySnapshot: toJson(reversedDocument.propertySnapshot),
+          supplierSnapshot,
           tenantSnapshot: toJson(reversedDocument.tenantSnapshot),
           bookingSnapshot: toJson(reversedDocument.bookingSnapshot),
           priceSnapshot: toJson({
@@ -684,7 +776,7 @@ export const createReversalNoteForVoidedFolioCharge = async (
             },
           ]),
           notes: reason,
-          issuedAt: new Date(),
+          issuedAt,
         },
         tx,
       ),
@@ -832,6 +924,8 @@ export const updateDashboardSetting = async (
       ...(input.footerNotes !== undefined && {
         footerNotes: input.footerNotes,
       }),
+      ...(input.stateCode !== undefined && { stateCode: input.stateCode }),
+      ...(input.sacCode !== undefined && { sacCode: input.sacCode }),
     },
   );
 
@@ -890,8 +984,17 @@ export const getPublicDocument = async (
 };
 
 const renderDocumentPdfBuffer = async (document: BillingDocumentDTO) => {
-  const setting = mapSetting(await repo.getOrCreateSetting(document.propertyId));
-  const html = buildBillingDocumentHtml(document, setting);
+  if (document.supplierSnapshot === null) {
+    throw new HttpError(
+      409,
+      "BILLING_SUPPLIER_SNAPSHOT_MISSING",
+      "This legacy document cannot be regenerated safely because its issued supplier identity was not snapshotted",
+    );
+  }
+  const supplierSnapshot = mapSettingSnapshot(
+    document.supplierSnapshot as Prisma.JsonValue,
+  );
+  const html = buildBillingDocumentHtml(document, supplierSnapshot);
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
@@ -923,6 +1026,14 @@ export const renderDocumentPdf = async (
         documentId: document.id,
       });
     }
+  }
+
+  if (document.supplierSnapshot === null) {
+    throw new HttpError(
+      409,
+      "BILLING_SUPPLIER_SNAPSHOT_MISSING",
+      "This legacy document cannot be regenerated safely because its issued supplier identity was not snapshotted",
+    );
   }
 
   const correlationId = getCorrelationId();
@@ -989,4 +1100,28 @@ export const retryDashboardDocumentPdf = async (
   await repo.resetDocumentRenderForRetry(document.id);
   await renderDocumentPdf(document, dependencies);
   return getDashboardDocument(userId, documentId);
+};
+
+export const processPendingDocumentPdfs = async () => {
+  const documents = await repo.listPendingDocumentRenders(
+    SIDE_EFFECT_RETRY_POLICY.batchSize,
+  );
+  await Promise.allSettled(
+    documents
+      .filter((document) => document.supplierSnapshot !== null)
+      .map((document) => renderDocumentPdf(mapDocument(document))),
+  );
+};
+
+export const startBillingPdfProcessor = () => {
+  void processPendingDocumentPdfs().catch((error) =>
+    logError("Billing PDF processor failed", error),
+  );
+  const timer = setInterval(() => {
+    void processPendingDocumentPdfs().catch((error) =>
+      logError("Billing PDF processor failed", error),
+    );
+  }, SIDE_EFFECT_RETRY_POLICY.processorIntervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
 };

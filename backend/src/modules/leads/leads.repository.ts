@@ -1,5 +1,6 @@
 import { prisma } from "@/db/prisma.js";
 import { Prisma } from "@/generated/prisma/client.js";
+import type { LeadStatus } from "@/generated/prisma/enums.js";
 import type { DashboardLeadListInput } from "./leads.inputs.js";
 
 const dashboardEnquiryInclude = {
@@ -92,12 +93,29 @@ export const findEnquiryById = (id: string) =>
 
 export const updateEnquiryById = (
   id: string,
-  data: Prisma.EnquiryUpdateInput,
+  status: LeadStatus,
+  actorUserId: string,
+  note?: string,
 ) =>
-  prisma.enquiry.update({
-    where: { id },
-    data,
-    include: dashboardEnquiryInclude,
+  prisma.$transaction(async (tx) => {
+    const previous = await tx.enquiry.findUniqueOrThrow({ where: { id } });
+    const updated = await tx.enquiry.update({
+      where: { id },
+      data: { status },
+      include: dashboardEnquiryInclude,
+    });
+    if (previous.status !== status) {
+      await tx.leadStatusHistory.create({
+        data: {
+          enquiryId: id,
+          fromStatus: previous.status,
+          toStatus: status,
+          actorUserId,
+          ...(note !== undefined && { note }),
+        },
+      });
+    }
+    return { previous, updated };
   });
 
 export const listQuotesPaginated = async (filters: DashboardLeadListInput) => {
@@ -126,10 +144,27 @@ export const findQuoteById = (id: string) =>
 
 export const updateQuoteById = (
   id: string,
-  data: Prisma.QuoteRequestUpdateInput,
+  status: LeadStatus,
+  actorUserId: string,
+  note?: string,
 ) =>
-  prisma.quoteRequest.update({
-    where: { id },
-    data,
-    include: dashboardQuoteInclude,
+  prisma.$transaction(async (tx) => {
+    const previous = await tx.quoteRequest.findUniqueOrThrow({ where: { id } });
+    const updated = await tx.quoteRequest.update({
+      where: { id },
+      data: { status },
+      include: dashboardQuoteInclude,
+    });
+    if (previous.status !== status) {
+      await tx.leadStatusHistory.create({
+        data: {
+          quoteId: id,
+          fromStatus: previous.status,
+          toStatus: status,
+          actorUserId,
+          ...(note !== undefined && { note }),
+        },
+      });
+    }
+    return { previous, updated };
   });

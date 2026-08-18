@@ -2,17 +2,21 @@ import axiosInstance from "@/api/axios";
 import type {
   Booking,
   BookingGuestDetails,
+  BookingBillingDetails,
   BookingQuote,
   BookingPolicyPreview,
   ComfortOption,
   CreateOptionBookingPayload,
   InventoryLock,
   CreateManualPaymentResponse,
+  GatewayPaymentIntentResponse,
   PaymentPurpose,
 } from "./types";
+import { openGatewayCheckout } from "./payments/paymentCheckout";
 
 type GuestDetailsPayload = {
   guestDetails?: BookingGuestDetails;
+  billingDetails?: BookingBillingDetails;
   couponCode?: string;
 };
 
@@ -23,6 +27,7 @@ export interface BookingCheckoutQuotePayload {
 
 export interface UpdateBookingCheckoutPayload extends BookingCheckoutQuotePayload {
   guestDetails: BookingGuestDetails;
+  billingDetails?: BookingBillingDetails;
 }
 
 export type CreateBookingPayload =
@@ -44,7 +49,26 @@ export type CreateBookingPayload =
       to: string;
       guests: number;
       comfortOption: ComfortOption;
-    } & GuestDetailsPayload);
+  } & GuestDetailsPayload);
+
+export type CommercialQuoteRequestPayload = Omit<
+  CreateBookingPayload,
+  "guestDetails" | "billingDetails"
+> & {
+  guestName: string;
+  guestEmail: string;
+  guestContactNumber: string;
+  companyName?: string;
+  notes?: string;
+};
+
+export interface CommercialQuoteRequestResponse {
+  id: string;
+  status: string;
+  propertyId: string;
+  expiresAt: string | null;
+  quote: BookingQuote;
+}
 
 export const listBookings = async (): Promise<Booking[]> => {
   const res = await axiosInstance.get("/public/bookings");
@@ -63,6 +87,7 @@ export const getBookingQuote = async (
 ): Promise<BookingQuote> => {
   const quotePayload = { ...payload };
   delete quotePayload.guestDetails;
+  delete quotePayload.billingDetails;
   const res = await axiosInstance.post("/public/bookings/quote", quotePayload);
   return res.data?.data;
 };
@@ -108,6 +133,13 @@ export const getBooking = async (
       ...(checkoutToken !== undefined && { checkoutToken }),
     },
   });
+  return res.data?.data;
+};
+
+export const createCommercialQuoteRequest = async (
+  payload: CommercialQuoteRequestPayload,
+): Promise<CommercialQuoteRequestResponse> => {
+  const res = await axiosInstance.post("/public/quote-requests", payload);
   return res.data?.data;
 };
 
@@ -174,4 +206,52 @@ export const createManualPayment = async (
   );
 
   return res.data?.data;
+};
+
+export const processGatewayPayment = async (input: {
+  bookingId: string;
+  idempotencyKey: string;
+  amount: number;
+  purpose?: PaymentPurpose;
+  checkoutToken?: string;
+  mockOutcome?: "SUCCEEDED" | "FAILED";
+  guest?: { name?: string; email?: string; contact?: string };
+}): Promise<CreateManualPaymentResponse> => {
+  const intentResponse = await axiosInstance.post(
+    `/public/bookings/${input.bookingId}/payments/intents`,
+    {
+      amount: input.amount,
+      ...(input.checkoutToken !== undefined && {
+        checkoutToken: input.checkoutToken,
+      }),
+      ...(input.purpose !== undefined && { purpose: input.purpose }),
+    },
+    { headers: { "Idempotency-Key": input.idempotencyKey } },
+  );
+  const intent = intentResponse.data?.data as GatewayPaymentIntentResponse;
+
+  if (intent.checkout.strategy === "MOCK") {
+    const completed = await axiosInstance.post(
+      `/public/payments/${intent.payment.id}/mock-complete`,
+      {
+        ...(input.checkoutToken !== undefined && {
+          checkoutToken: input.checkoutToken,
+        }),
+        outcome: input.mockOutcome ?? "SUCCEEDED",
+      },
+    );
+    return completed.data?.data;
+  }
+
+  const providerResult = await openGatewayCheckout(intent.checkout, input.guest);
+  const verified = await axiosInstance.post(
+    `/public/payments/${intent.payment.id}/verify`,
+    {
+      ...(input.checkoutToken !== undefined && {
+        checkoutToken: input.checkoutToken,
+      }),
+      ...providerResult,
+    },
+  );
+  return verified.data?.data;
 };

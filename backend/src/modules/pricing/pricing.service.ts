@@ -1,5 +1,10 @@
 import { RateType, PricingTier } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 import { getActor, assertCanManageInventory } from "@/common/services/scoping.service.js";
 import * as repo from "./pricing.repository.js";
 import { mapRoomPricing, normalizePaginationResult } from "./pricing.mapper.js";
@@ -202,6 +207,7 @@ const assertNoOverlappingRoomPricing = async (
       roomId?: string | null | undefined;
     };
     rateType: RateType;
+    pricingTier: PricingTier;
     validFrom: Date;
     validTo?: Date | null | undefined;
     excludePricingId?: string;
@@ -213,6 +219,7 @@ const assertNoOverlappingRoomPricing = async (
     unitId: input.target.unitId ?? null,
     roomId: input.target.roomId ?? null,
     rateType: input.rateType,
+    pricingTier: input.pricingTier,
     validFrom: input.validFrom,
     ...(input.validTo !== undefined && { validTo: input.validTo }),
     ...(input.excludePricingId !== undefined && {
@@ -265,6 +272,7 @@ export const createRoomPricing = async (
     productId: input.productId,
     target,
     rateType: input.rateType ?? RateType.NIGHTLY,
+    pricingTier: input.pricingTier ?? PricingTier.STANDARD,
     validFrom: input.validFrom,
     validTo: input.validTo,
   });
@@ -302,6 +310,15 @@ export const createRoomPricing = async (
     price: input.price,
     validFrom: input.validFrom,
     ...(input.validTo !== undefined && { validTo: input.validTo }),
+  });
+
+  await recordPropertyAudit({
+    propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.PRICING,
+    entityId: pricing.id,
+    action: PropertyAuditAction.CREATED,
+    nextData: pricing,
   });
 
   return mapRoomPricing(pricing);
@@ -347,8 +364,9 @@ export const updateRoomPricing = async (
       {
         unitId: existingPricing.roomId ? undefined : existingPricing.unitId,
         roomId: existingPricing.roomId ?? undefined,
-      },
+    },
     rateType: input.rateType ?? existingPricing.rateType,
+    pricingTier: input.pricingTier ?? existingPricing.pricingTier,
     validFrom: nextValidFrom,
     validTo: nextValidTo,
     excludePricingId: pricingId,
@@ -406,6 +424,16 @@ export const updateRoomPricing = async (
     ...(input.validTo !== undefined && { validTo: input.validTo }),
   });
 
+  await recordPropertyAudit({
+    propertyId: existingPricing.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.PRICING,
+    entityId: pricingId,
+    action: PropertyAuditAction.UPDATED,
+    previousData: existingPricing,
+    nextData: pricing,
+  });
+
   return mapRoomPricing(pricing);
 };
 
@@ -417,4 +445,12 @@ export const deleteRoomPricing = async (
   const pricing = await ensureRoomPricingExists(pricingId);
   await assertCanManageInventory(actor, pricing.propertyId);
   await repo.deleteRoomPricingById(pricingId);
+  await recordPropertyAudit({
+    propertyId: pricing.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.PRICING,
+    entityId: pricingId,
+    action: PropertyAuditAction.DELETED,
+    previousData: pricing,
+  });
 };

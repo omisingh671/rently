@@ -1,7 +1,8 @@
 import { expect, type APIRequestContext } from "playwright/test";
+import { API_PREFIX } from "../src/common/constants/application.constants.js";
 import { e2eFixture } from "./fixtures.js";
 
-export const apiPrefix = "/api/v1";
+export const apiPrefix = API_PREFIX;
 
 export const futureDate = (daysFromToday: number) => {
   const date = new Date();

@@ -6,6 +6,7 @@ import {
   ComfortOption,
   MaintenanceStatus,
   PropertyStatus,
+  RoomHousekeepingStatus,
   RoomStatus,
   UnitStatus,
 } from "@/generated/prisma/client.js";
@@ -96,6 +97,7 @@ const publicAvailabilityUnitInclude = {
     where: {
       isActive: true,
       status: RoomStatus.AVAILABLE,
+      housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
     },
     include: {
       amenities: {
@@ -139,6 +141,7 @@ export const listAvailabilityRooms = (
     where: {
       isActive: true,
       status: RoomStatus.AVAILABLE,
+      housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
       ...(comfortOption === ComfortOption.AC && { hasAC: true }),
       unit: {
         is: {
@@ -188,12 +191,19 @@ export const listAvailabilityUnits = (
         some: {
           isActive: true,
           status: RoomStatus.AVAILABLE,
+          housekeepingStatus: RoomHousekeepingStatus.INSPECTED,
+        },
+        none: {
+          isActive: true,
+          status: RoomStatus.AVAILABLE,
+          housekeepingStatus: { not: RoomHousekeepingStatus.INSPECTED },
         },
         ...(comfortOption === ComfortOption.AC && {
           every: {
             OR: [
               { isActive: false },
               { status: { not: RoomStatus.AVAILABLE } },
+              { housekeepingStatus: { not: RoomHousekeepingStatus.INSPECTED } },
               { hasAC: true },
             ],
           },
@@ -251,6 +261,20 @@ export const listAvailabilityConflicts = (
         targetType: true,
         unitId: true,
         roomId: true,
+      },
+    }),
+    client(tx).propertyClosure.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        status: "ACTIVE",
+        startDate: { lt: checkOut },
+        endDate: { gt: checkIn },
+      },
+      select: {
+        propertyId: true,
+        type: true,
+        startDate: true,
+        endDate: true,
       },
     }),
     client(tx).inventoryLock.findMany({
@@ -358,6 +382,65 @@ export const hasOverlappingMaintenance = (
       },
     })
     .then((count) => count > 0);
+
+export const hasOverlappingPropertyClosure = (
+  propertyId: string,
+  checkIn: Date,
+  checkOut: Date,
+  tx?: Prisma.TransactionClient,
+) =>
+  client(tx).propertyClosure
+    .count({
+      where: {
+        propertyId,
+        status: "ACTIVE",
+        startDate: { lt: checkOut },
+        endDate: { gt: checkIn },
+      },
+    })
+    .then((count) => count > 0);
+
+export const listPublicCalendarProperties = (
+  tenantId: string,
+  scope: PublicPropertyScope,
+) =>
+  prisma.property.findMany({
+    where: {
+      tenantId,
+      isActive: true,
+      status: PropertyStatus.ACTIVE,
+      ...(scope.propertyId !== undefined && { id: scope.propertyId }),
+      ...(scope.city !== undefined && { city: scope.city }),
+    },
+    select: { id: true },
+  });
+
+export const listPropertyWideCalendarBlocks = (
+  propertyIds: string[],
+  startDate: Date,
+  endDate: Date,
+) =>
+  Promise.all([
+    prisma.maintenanceBlock.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        targetType: "PROPERTY",
+        status: { notIn: [MaintenanceStatus.RESOLVED, MaintenanceStatus.CANCELLED] },
+        startDate: { lt: endDate },
+        endDate: { gt: startDate },
+      },
+      select: { propertyId: true, startDate: true, endDate: true },
+    }),
+    prisma.propertyClosure.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        status: "ACTIVE",
+        startDate: { lt: endDate },
+        endDate: { gt: startDate },
+      },
+      select: { propertyId: true, type: true, startDate: true, endDate: true },
+    }),
+  ]);
 
 export const hasOverlappingInventoryLock = (
   target: PublicSpaceTarget,

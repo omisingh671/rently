@@ -1,3 +1,9 @@
+import WalkInStayDatePicker from "./WalkInStayDatePicker";
+import CountryDialCodeSelect from "./CountryDialCodeSelect";
+
+const editableFieldClass =
+  "mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500";
+
 export interface ManualBookingForm {
   guestName: string;
   guestEmail: string;
@@ -35,10 +41,11 @@ export function GuestFields({
         <span className="font-medium text-slate-700">Guest name</span>
         <input
           value={form.guestName}
+          placeholder="e.g. Priya Sharma"
           disabled={disabled}
           onChange={(event) => onChange({ guestName: event.target.value })}
           aria-invalid={errors.guestName ? "true" : "false"}
-          className={`mt-1 h-10 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 ${
+          className={`${editableFieldClass} focus:ring-2 ${
             errors.guestName
               ? "border-red-400 focus:border-red-500 focus:ring-red-100"
               : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
@@ -55,10 +62,11 @@ export function GuestFields({
         <input
           type="email"
           value={form.guestEmail}
+          placeholder="e.g. priya@example.com"
           disabled={disabled}
           onChange={(event) => onChange({ guestEmail: event.target.value })}
           aria-invalid={errors.guestEmail ? "true" : "false"}
-          className={`mt-1 h-10 w-full rounded-md border px-3 text-sm outline-none focus:ring-2 ${
+          className={`${editableFieldClass} focus:ring-2 ${
             errors.guestEmail
               ? "border-red-400 focus:border-red-500 focus:ring-red-100"
               : "border-slate-300 focus:border-indigo-500 focus:ring-indigo-100"
@@ -73,22 +81,22 @@ export function GuestFields({
       <div className="grid grid-cols-[96px_1fr] gap-2">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">Code</span>
-          <input
+          <CountryDialCodeSelect
             value={form.countryCode}
             disabled={disabled}
-            onChange={(event) => onChange({ countryCode: event.target.value })}
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            onChange={(countryCode) => onChange({ countryCode })}
           />
         </label>
         <label className="block text-sm">
           <span className="font-medium text-slate-700">Phone</span>
           <input
             value={form.contactNumber}
+            placeholder="e.g. 9876543210"
             disabled={disabled}
             onChange={(event) =>
               onChange({ contactNumber: event.target.value })
             }
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className={editableFieldClass}
           />
         </label>
       </div>
@@ -98,41 +106,35 @@ export function GuestFields({
 
 interface StayFieldsProps {
   form: ManualBookingForm;
+  propertyId: string;
   disabled: boolean;
+  lockDates?: boolean;
   onChange: (patch: Partial<ManualBookingForm>) => void;
 }
 
 export function StayFields({
   form,
+  propertyId,
   disabled,
+  lockDates = false,
   onChange,
 }: StayFieldsProps) {
   return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">From</span>
-          <input
-            type="date"
-            value={form.from}
-            required
-            disabled={disabled}
-            onChange={(event) => onChange({ from: event.target.value })}
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-        <label className="block text-sm">
-          <span className="font-medium text-slate-700">To</span>
-          <input
-            type="date"
-            value={form.to}
-            required
-            disabled={disabled}
-            onChange={(event) => onChange({ to: event.target.value })}
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-      </div>
+    <div className="space-y-4">
+      <WalkInStayDatePicker
+        propertyId={propertyId}
+        from={form.from}
+        to={form.to}
+        guests={Number(form.guests) || 1}
+        comfortOption={form.comfortOption}
+        disabled={disabled || lockDates}
+        onChange={(from, to) => onChange({ from, to })}
+      />
+      {lockDates && (
+        <p className="rounded-md bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-700">
+          Stay dates are fixed by the group room hold.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium text-slate-700">Guests</span>
@@ -141,10 +143,11 @@ export function StayFields({
             min={1}
             max={20}
             value={form.guests}
+            placeholder="e.g. 2"
             required
             disabled={disabled}
             onChange={(event) => onChange({ guests: event.target.value })}
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className={editableFieldClass}
           />
         </label>
         <label className="block text-sm">
@@ -158,7 +161,7 @@ export function StayFields({
                   .value as ManualBookingForm["comfortOption"],
               })
             }
-            className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className={editableFieldClass}
           >
             <option value="ALL">All</option>
             <option value="NON_AC">Non-AC</option>
@@ -176,7 +179,7 @@ export function StayFields({
           onChange={(event) =>
             onChange({ couponCode: event.target.value.toUpperCase() })
           }
-          className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-semibold uppercase tracking-wider outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-100"
+            className={`${editableFieldClass} font-semibold uppercase tracking-wider`}
         />
       </label>
     </div>

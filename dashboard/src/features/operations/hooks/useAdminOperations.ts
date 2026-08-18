@@ -20,6 +20,7 @@ import {
   commitStayExtensionApi,
   recordBalancePaymentApi,
   recordRefundApi,
+  refreshBookingFolioApi,
   updateRefundRequestApi,
   updateBookingStatusApi,
   updateEnquiryStatusApi,
@@ -229,7 +230,12 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       : ADMIN_KEYS.operations.all(),
     queryFn: async () => {
       if (!bookingId) throw new Error("BookingId required");
-      return getBookingApi(bookingId);
+      const booking = await getBookingApi(bookingId);
+      if (booking.status !== "CHECKED_IN") {
+        return booking;
+      }
+
+      return refreshBookingFolioApi(bookingId);
     },
     enabled: !!bookingId,
   });
@@ -274,6 +280,7 @@ export const useAdminBooking = (bookingId: string | undefined) => {
       return checkOutBookingApi(bookingId, payload);
     },
     onSuccess: syncBooking,
+    onError: refreshBookingDetail,
   });
 
   const markNoShow = useMutation({
@@ -402,6 +409,12 @@ export const useAdminBooking = (bookingId: string | undefined) => {
     isFetching: query.isFetching,
     isError: query.isError,
     error: query.error,
+    refreshBooking: async () => {
+      await query.refetch({ throwOnError: true });
+      await queryClient.invalidateQueries({
+        queryKey: ADMIN_KEYS.billing.all(),
+      });
+    },
     updateBooking: updateBooking.mutateAsync,
     checkInBooking: checkInBooking.mutateAsync,
     checkOutBooking: checkOutBooking.mutateAsync,

@@ -17,7 +17,7 @@ const leadStatuses: LeadStatus[] = ["NEW", "IN_PROGRESS", "CLOSED"];
 
 const enquirySources = [
   { value: "PUBLIC_WEBSITE", label: "Website" },
-  { value: "PUBLIC_QUOTE_REQUEST", label: "Quote requests" },
+  { value: "PUBLIC_QUOTE_REQUEST", label: "Quote Requests" },
 ] as const;
 
 type OperationsModule = "bookings" | "enquiries" | "quotes";

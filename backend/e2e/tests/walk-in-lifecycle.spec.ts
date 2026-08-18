@@ -50,7 +50,7 @@ const readBooking = async (response: APIResponse) => {
   return body.data;
 };
 
-test("front desk completes a walk-in stay with split payment and a folio charge", async ({
+test("operations can settle an explicitly overridden checkout and reverse it", async ({
   request,
 }) => {
   const frontDesk = await loginDashboard(request, e2eFixture.users.frontDesk);
@@ -102,11 +102,14 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   );
   expect(createResponse.status()).toBe(201);
   let booking = await readBooking(createResponse);
+  const baseTotal = Number(booking.totalAmount);
+  const partialPayment = 500;
+  const folioCharge = 250;
   expect(booking).toMatchObject({
     status: "CONFIRMED",
     paymentStatus: "PENDING",
     paidAmount: "0",
-    balanceAmount: "1500",
+    balanceAmount: String(baseTotal),
   });
 
   const partialPaymentResponse = await request.post(
@@ -114,7 +117,7 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
     {
       headers,
       data: {
-        amount: 500,
+        amount: partialPayment,
         method: "CASH",
         note: "Cash deposit received at front desk",
         idempotencyKey: `walk-in-partial-${booking.id}`,
@@ -126,8 +129,8 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   expect(booking).toMatchObject({
     status: "CONFIRMED",
     paymentStatus: "PARTIALLY_PAID",
-    paidAmount: "500",
-    balanceAmount: "1000",
+    paidAmount: String(partialPayment),
+    balanceAmount: String(baseTotal - partialPayment),
   });
 
   const checkInResponse = await request.post(
@@ -147,7 +150,7 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   expect(checkInResponse.status()).toBe(200);
   booking = await readBooking(checkInResponse);
   expect(booking.status).toBe("CHECKED_IN");
-  expect(booking.balanceAmount).toBe("1000");
+  expect(booking.balanceAmount).toBe(String(baseTotal - partialPayment));
 
   const folioResponse = await request.post(
     `${apiPrefix}/bookings/${booking.id}/folio-charges`,
@@ -157,7 +160,7 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
         expectedVersion: booking.version,
         type: "INCIDENTAL",
         description: "Airport pickup",
-        amount: 250,
+        amount: folioCharge,
         note: "Guest-approved transport charge",
       },
     },
@@ -165,38 +168,21 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   expect(folioResponse.status()).toBe(201);
   booking = await readBooking(folioResponse);
   expect(booking).toMatchObject({
-    folioTotal: "250",
-    balanceAmount: "1250",
+    folioTotal: String(folioCharge),
+    balanceAmount: String(baseTotal - partialPayment + folioCharge),
   });
 
-  const finalPaymentResponse = await request.post(
-    `${apiPrefix}/bookings/${booking.id}/payments`,
-    {
-      headers,
-      data: {
-        amount: Number(booking.balanceAmount),
-        method: "CARD_POS",
-        referenceId: `POS-${booking.id}`,
-        note: "Final balance settled at checkout",
-        idempotencyKey: `walk-in-final-${booking.id}`,
-      },
-    },
-  );
-  expect(finalPaymentResponse.status()).toBe(201);
-  booking = await readBooking(finalPaymentResponse);
-  expect(booking).toMatchObject({
-    paymentStatus: "PAID",
-    paidAmount: "1750",
-    balanceAmount: "0",
-  });
+  const admin = await loginDashboard(request, e2eFixture.users.admin);
+  const adminHeaders = bearerHeaders(admin.accessToken);
 
   const checkOutResponse = await request.post(
     `${apiPrefix}/bookings/${booking.id}/check-out`,
     {
-      headers,
+      headers: adminHeaders,
       data: {
         expectedVersion: booking.version,
-        note: "Guest departed and keys returned",
+        allowBalanceDueCheckout: true,
+        note: "Guest departed before the card terminal was available",
       },
     },
   );
@@ -204,8 +190,30 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   booking = await readBooking(checkOutResponse);
   expect(booking).toMatchObject({
     status: "CHECKED_OUT",
+    paymentStatus: "PARTIALLY_PAID",
+    paidAmount: String(partialPayment),
+    balanceAmount: String(baseTotal - partialPayment + folioCharge),
+  });
+
+  const finalPaymentResponse = await request.post(
+    `${apiPrefix}/bookings/${booking.id}/payments`,
+    {
+      headers: adminHeaders,
+      data: {
+        amount: Number(booking.balanceAmount),
+        method: "CARD_POS",
+        referenceId: `POS-${booking.id}`,
+        note: "Outstanding checked-out balance settled",
+        idempotencyKey: `walk-in-final-${booking.id}`,
+      },
+    },
+  );
+  expect(finalPaymentResponse.status()).toBe(201);
+  booking = await readBooking(finalPaymentResponse);
+  expect(booking).toMatchObject({
+    status: "CHECKED_OUT",
     paymentStatus: "PAID",
-    paidAmount: "1750",
+    paidAmount: String(baseTotal + folioCharge),
     balanceAmount: "0",
   });
   expect(booking.payments).toHaveLength(2);
@@ -215,7 +223,7 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   expect(booking.folioCharges).toHaveLength(1);
   expect(booking.folioCharges[0]).toMatchObject({
     status: "ACTIVE",
-    amount: "250",
+    amount: String(folioCharge),
   });
   expect(booking.statusHistory.map((item) => item.toStatus)).toEqual(
     expect.arrayContaining(["CONFIRMED", "CHECKED_IN", "CHECKED_OUT"]),
@@ -241,11 +249,34 @@ test("front desk completes a walk-in stay with split payment and a folio charge"
   expect(invoice).toMatchObject({
     status: "ISSUED",
   });
-  expect(invoice?.total.toString()).toBe("1750");
+  expect(invoice?.total.toString()).toBe(String(baseTotal + folioCharge));
   expect(
     documents.filter((document) => document.type === "RECEIPT"),
   ).toHaveLength(2);
   expect(documents.some((document) => document.type === "DEBIT_NOTE")).toBe(
     false,
   );
+
+  const reversalResponse = await request.post(
+    `${apiPrefix}/bookings/${booking.id}/lifecycle-reversal`,
+    {
+      headers: adminHeaders,
+      data: {
+        expectedVersion: booking.version,
+        note: "Checkout was recorded against the wrong departure event",
+      },
+    },
+  );
+  expect(reversalResponse.status()).toBe(200);
+  booking = await readBooking(reversalResponse);
+  expect(booking).toMatchObject({
+    status: "CHECKED_IN",
+    paymentStatus: "PAID",
+    balanceAmount: "0",
+  });
+  expect(
+    booking.roomAllocationHistory.some(
+      (allocation) => allocation.effectiveTo === null,
+    ),
+  ).toBe(true);
 });

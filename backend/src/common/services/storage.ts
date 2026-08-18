@@ -9,6 +9,7 @@ import {
 } from "@aws-sdk/client-s3";
 
 import { env } from "@/config/env.js";
+import { STORAGE_PATHS } from "@/common/constants/application.constants.js";
 
 export interface StorageProvider {
   /**
@@ -37,7 +38,10 @@ export class LocalStorageProvider implements StorageProvider {
   private baseDir: string;
   private baseUrl: string;
 
-  constructor(baseDir = "uploads", baseUrl = "/uploads") {
+  constructor(
+    baseDir = STORAGE_PATHS.localDirectory,
+    baseUrl = STORAGE_PATHS.localPublicPath,
+  ) {
     this.baseDir = path.resolve(baseDir);
     this.baseUrl = baseUrl;
   }
@@ -205,6 +209,6 @@ export const storageProvider: StorageProvider =
         region: env.AWS_REGION,
         bucket: env.S3_UPLOAD_BUCKET,
         publicBaseUrl: env.S3_UPLOAD_PUBLIC_BASE_URL,
-        keyPrefix: env.S3_UPLOAD_PREFIX,
+        keyPrefix: STORAGE_PATHS.s3KeyPrefix,
       })
     : new LocalStorageProvider();

@@ -11,6 +11,11 @@ import type {
   UpdateDashboardLeadInput,
 } from "./leads.inputs.js";
 import type { DashboardEnquiryDTO, DashboardQuoteDTO } from "./leads.dto.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 
 const ensureEnquiryExists = async (enquiryId: string) => {
   const enquiry = await repo.findEnquiryById(enquiryId);
@@ -54,11 +59,26 @@ export const updateEnquiry = async (
   const enquiry = await ensureEnquiryExists(enquiryId);
   await assertPropertyInScope(actor, enquiry.propertyId);
 
-  const updatedEnquiry = await repo.updateEnquiryById(enquiryId, {
-    status: input.status,
-  });
+  const { previous, updated } = await repo.updateEnquiryById(
+    enquiryId,
+    input.status,
+    actor.id,
+    input.note,
+  );
+  if (previous.status !== updated.status) {
+    await recordPropertyAudit({
+      propertyId: enquiry.propertyId,
+      actorUserId: actor.id,
+      entityType: PropertyAuditEntityType.ENQUIRY,
+      entityId: enquiryId,
+      action: PropertyAuditAction.STATUS_CHANGED,
+      ...(input.note !== undefined && { reason: input.note }),
+      previousData: { status: previous.status },
+      nextData: { status: updated.status },
+    });
+  }
 
-  return mapEnquiry(updatedEnquiry);
+  return mapEnquiry(updated);
 };
 
 export const listQuotes = async (
@@ -87,9 +107,24 @@ export const updateQuote = async (
   const quote = await ensureQuoteExists(quoteId);
   await assertPropertyInScope(actor, quote.propertyId);
 
-  const updatedQuote = await repo.updateQuoteById(quoteId, {
-    status: input.status,
-  });
+  const { previous, updated } = await repo.updateQuoteById(
+    quoteId,
+    input.status,
+    actor.id,
+    input.note,
+  );
+  if (previous.status !== updated.status) {
+    await recordPropertyAudit({
+      propertyId: quote.propertyId,
+      actorUserId: actor.id,
+      entityType: PropertyAuditEntityType.QUOTE,
+      entityId: quoteId,
+      action: PropertyAuditAction.STATUS_CHANGED,
+      ...(input.note !== undefined && { reason: input.note }),
+      previousData: { status: previous.status },
+      nextData: { status: updated.status },
+    });
+  }
 
-  return mapQuote(updatedQuote);
+  return mapQuote(updated);
 };

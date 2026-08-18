@@ -12,18 +12,19 @@ export const publishBookingNotification = async (input: {
 }) => {
   try {
     const booking = await prisma.booking.findUnique({
-    where: { id: input.bookingId },
-    select: {
-      id: true,
-      bookingRef: true,
-      propertyId: true,
-      guestNameSnapshot: true,
-      guestEmailSnapshot: true,
-      checkIn: true,
-      checkOut: true,
-      property: { select: { name: true } },
-    },
-  });
+      where: { id: input.bookingId },
+      select: {
+        id: true,
+        bookingRef: true,
+        status: true,
+        propertyId: true,
+        guestNameSnapshot: true,
+        guestEmailSnapshot: true,
+        checkIn: true,
+        checkOut: true,
+        property: { select: { name: true } },
+      },
+    });
     if (!booking?.guestEmailSnapshot) return;
 
     await publishBusinessNotification({
@@ -35,6 +36,7 @@ export const publishBookingNotification = async (input: {
         recipientName: booking.guestNameSnapshot,
         propertyName: booking.property.name,
         bookingReference: booking.bookingRef,
+        bookingStatus: booking.status,
         checkIn: booking.checkIn.toISOString(),
         checkOut: booking.checkOut.toISOString(),
         ...(input.amount !== undefined && { amount: input.amount }),

@@ -1,5 +1,6 @@
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { env } from "@/config/env.js";
+import { AUTH_TOKEN_TTL_SECONDS } from "@/common/constants/application.constants.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import type { SessionAudience } from "@/generated/prisma/enums.js";
 
@@ -7,6 +8,7 @@ export interface AccessTokenPayload {
   sub: string;
   role: string;
   audience: SessionAudience;
+  sessionId: string;
 }
 
 export interface RefreshTokenPayload {
@@ -16,7 +18,7 @@ export interface RefreshTokenPayload {
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+    expiresIn: AUTH_TOKEN_TTL_SECONDS.access,
   });
 }
 
@@ -29,7 +31,8 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
       decoded === null ||
       !("sub" in decoded) ||
       !("role" in decoded) ||
-      !("audience" in decoded)
+      !("audience" in decoded) ||
+      !("sessionId" in decoded)
     ) {
       throw new HttpError(401, "UNAUTHORIZED", "Invalid access token");
     }
@@ -40,6 +43,7 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
       sub: payload.sub,
       role: payload.role,
       audience: payload.audience,
+      sessionId: payload.sessionId,
     };
   } catch (err) {
     if (
@@ -59,7 +63,7 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
 
 export function signRefreshToken(payload: RefreshTokenPayload): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
-    expiresIn: env.JWT_REFRESH_EXPIRES_IN,
+    expiresIn: AUTH_TOKEN_TTL_SECONDS.refresh,
   });
 }
 

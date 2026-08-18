@@ -1,4 +1,9 @@
 import { HttpError } from "@/common/errors/http-error.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 import type { Prisma } from "@/generated/prisma/client.js";
 import {
   BookingOperationEventType,
@@ -343,6 +348,16 @@ export const createMaintenanceBlock = async (
     return createdBlock;
   });
 
+  await recordPropertyAudit({
+    propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.MAINTENANCE,
+    entityId: block.id,
+    action: PropertyAuditAction.CREATED,
+    ...(input.reason !== undefined && { reason: input.reason }),
+    nextData: block,
+  });
+
   return toMaintenanceBlockResponseDto(block);
 };
 
@@ -469,6 +484,22 @@ export const updateMaintenanceBlock = async (
     return updatedBlock;
   });
 
+  await recordPropertyAudit({
+    propertyId: existingBlock.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.MAINTENANCE,
+    entityId: maintenanceBlockId,
+    action:
+      input.status !== undefined && input.status !== existingBlock.status
+        ? PropertyAuditAction.STATUS_CHANGED
+        : PropertyAuditAction.UPDATED,
+    ...((input.resolutionNote ?? input.reason) !== undefined && {
+      reason: input.resolutionNote ?? input.reason,
+    }),
+    previousData: existingBlock,
+    nextData: block,
+  });
+
   return toMaintenanceBlockResponseDto(block);
 };
 
@@ -480,4 +511,12 @@ export const deleteMaintenanceBlock = async (
   const block = await ensureMaintenanceBlockExists(maintenanceBlockId);
   await assertCanManageInventory(actor, block.propertyId);
   await repo.deleteMaintenanceBlockById(maintenanceBlockId);
+  await recordPropertyAudit({
+    propertyId: block.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.MAINTENANCE,
+    entityId: maintenanceBlockId,
+    action: PropertyAuditAction.DELETED,
+    previousData: block,
+  });
 };

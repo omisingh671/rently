@@ -22,18 +22,12 @@ import {
   parsePaymentIntent,
   type PaymentIntent,
 } from "@/features/bookings/paymentAttempt";
-import { CardPaymentForm } from "@/features/bookings/components/payment/CardPaymentForm";
-import {
-  PaymentMethodTabs,
-} from "@/features/bookings/components/payment/PaymentMethodTabs";
-import { UpiPaymentForm } from "@/features/bookings/components/payment/UpiPaymentForm";
 import { PaymentSummaryPanel } from "@/features/bookings/components/payment/PaymentSummaryPanel";
 import { PaymentFailureState } from "@/features/bookings/components/payment/PaymentFailureState";
 import { PaymentProcessingState } from "@/features/bookings/components/payment/PaymentProcessingState";
 import { PaymentProcessState } from "@/features/bookings/components/payment/PaymentProcessState";
 import { PaymentSuccessState } from "@/features/bookings/components/payment/PaymentSuccessState";
-import { useBooking, useCreateManualPayment } from "@/features/bookings/hooks";
-import { usePaymentProcessState } from "@/features/bookings/usePaymentProcessState";
+import { useBooking, useProcessGatewayPayment } from "@/features/bookings/hooks";
 import type { Booking, PaymentPurpose } from "@/features/bookings/types";
 import { useAuthStore } from "@/stores/authStore";
 import {
@@ -112,28 +106,10 @@ export default function BookingPaymentProcessPage() {
   const checkoutToken =
     id !== undefined ? getBookingBillingCheckoutToken(id, checkoutDraft) : undefined;
   const bookingQuery = useBooking(id, true, checkoutToken);
-  const paymentMutation = useCreateManualPayment();
+  const paymentMutation = useProcessGatewayPayment();
   const isAuthenticated = useAuthStore(
     (state) => state.status === "authenticated" && !!state.user,
   );
-
-  const {
-    activeTab,
-    cardName,
-    cardNumber,
-    expiry,
-    cvv,
-    upiId,
-    formErrors,
-    setActiveTab,
-    setCardName,
-    setUpiId,
-    handleCardNumberChange,
-    handleExpiryChange,
-    handleCvvChange,
-    validatePaymentForm,
-    resetPaymentForm,
-  } = usePaymentProcessState();
 
   const completedFromBooking =
     bookingQuery.data !== undefined &&
@@ -227,10 +203,7 @@ export default function BookingPaymentProcessPage() {
     ? normalizeApiError(paymentMutation.error).message
     : null;
 
-  // Triggers the mock payment transaction
-  const handleSimulatePayment = (status: "SUCCEEDED" | "FAILED") => {
-    if (!validatePaymentForm()) return;
-
+  const handlePayment = (status: "SUCCEEDED" | "FAILED") => {
     const attemptKey = getPaymentAttemptKey(booking.id, intent);
 
     paymentMutation.mutate(
@@ -241,6 +214,13 @@ export default function BookingPaymentProcessPage() {
         purpose: purposeByIntent[intent],
         status,
         checkoutToken,
+        guest: {
+          name: booking.guestName,
+          email: booking.guestEmail,
+          ...(booking.guestContactNumber && {
+            contact: booking.guestContactNumber,
+          }),
+        },
       },
       {
         onSuccess: (data) => {
@@ -261,7 +241,6 @@ export default function BookingPaymentProcessPage() {
   const handleTryAgain = () => {
     clearPaymentAttemptKey(booking.id, intent);
     paymentMutation.reset();
-    resetPaymentForm();
   };
 
   // Render check for simulated failure
@@ -334,17 +313,6 @@ export default function BookingPaymentProcessPage() {
     );
   }
 
-  if (!publicEnv.mockPaymentsEnabled) {
-    return (
-      <PaymentProcessState
-        tone="info"
-        title="Online payment unavailable"
-        message="Online payment is not configured. Return to your booking and contact the property for payment assistance."
-        bookingId={booking.id}
-      />
-    );
-  }
-
   // Render processing screen
   if (paymentMutation.isPending) {
     return (
@@ -382,7 +350,6 @@ export default function BookingPaymentProcessPage() {
     );
   }
 
-  // Render the Mock Payment Gateway UI
   return (
     <section className="section bg-surface min-h-screen">
       <div className="container max-w-5xl">
@@ -395,72 +362,51 @@ export default function BookingPaymentProcessPage() {
         </Link>
 
         <div className="grid gap-8 lg:grid-cols-12 items-start">
-          {/* Form and Simulator Column */}
+          {/* Hosted payment entry point */}
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Secure Payment Simulation</h2>
-                  <p className="text-xs text-slate-500 font-medium">Gateway Sandbox Environment</p>
+                  <h2 className="text-xl font-black text-slate-900">Secure Online Payment</h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {publicEnv.mockPaymentsEnabled
+                      ? "Local mock gateway environment"
+                      : "Secure hosted checkout"}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-full px-3 py-1 text-indigo-700 text-[10px] font-bold uppercase tracking-wider">
-                  <FiLock className="h-3.5 w-3.5" /> Sandbox
+                  <FiLock className="h-3.5 w-3.5" /> Secure
                 </div>
               </div>
-
-              <PaymentMethodTabs
-                activeTab={activeTab}
-                onChange={setActiveTab}
-              />
-
               <div className="p-6 space-y-6">
-                {activeTab === "card" ? (
-                  <CardPaymentForm
-                    cardName={cardName}
-                    cardNumber={cardNumber}
-                    expiry={expiry}
-                    cvv={cvv}
-                    errors={formErrors}
-                    onCardNameChange={setCardName}
-                    onCardNumberChange={handleCardNumberChange}
-                    onExpiryChange={handleExpiryChange}
-                    onCvvChange={handleCvvChange}
-                  />
-                ) : (
-                  <UpiPaymentForm
-                    upiId={upiId}
-                    error={formErrors.upiId}
-                    onChange={setUpiId}
-                  />
-                )}
-
-                {/* Secure Disclaimer */}
                 <div className="flex items-center gap-2.5 rounded-2xl bg-indigo-50/50 border border-indigo-100/50 p-4 mt-4 text-xs font-semibold text-slate-600 leading-normal">
                   <FiShield className="h-5 w-5 text-indigo-600 shrink-0" />
                   <p>
-                    This is a secure sandbox gateway. None of your real payment cards or details will be billed or stored. Choose your simulated outcome below.
+                    {publicEnv.mockPaymentsEnabled
+                      ? "Mock mode exercises the complete order, signed webhook, booking confirmation, and receipt flow without charging money."
+                      : "Payment details are collected by the configured payment provider. Rently does not receive or store card numbers, CVV, or UPI credentials."}
                   </p>
                 </div>
-
-                {/* Action Buttons */}
-                <div className="grid gap-3 sm:grid-cols-2 pt-4 border-t border-slate-100">
+                <div className={`grid gap-3 pt-4 border-t border-slate-100 ${publicEnv.mockPaymentsEnabled ? "sm:grid-cols-2" : ""}`}>
+                  {publicEnv.mockPaymentsEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => handlePayment("FAILED")}
+                      disabled={paymentMutation.isPending}
+                      className="h-12 w-full inline-flex items-center justify-center font-bold px-6 rounded-xl border border-red-200 text-red-700 bg-red-50/50 hover:bg-red-50 hover:border-red-300 transition duration-150 text-sm"
+                    >
+                      <FiAlertTriangle className="mr-2 h-4 w-4" />
+                      Simulate Failure
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => handleSimulatePayment("FAILED")}
-                    disabled={paymentMutation.isPending}
-                    className="h-12 w-full inline-flex items-center justify-center font-bold px-6 rounded-xl border border-red-200 text-red-700 bg-red-50/50 hover:bg-red-50 hover:border-red-300 transition duration-150 text-sm"
-                  >
-                    <FiAlertTriangle className="mr-2 h-4 w-4" />
-                    Simulate Failure
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSimulatePayment("SUCCEEDED")}
+                    onClick={() => handlePayment("SUCCEEDED")}
                     disabled={paymentMutation.isPending}
                     className="h-12 w-full inline-flex items-center justify-center font-bold px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition duration-150 text-sm"
                   >
                     <FiCheckCircle className="mr-2 h-4 w-4" />
-                    Simulate Success
+                    {publicEnv.mockPaymentsEnabled ? "Simulate Success" : "Pay Securely"}
                   </button>
                 </div>
               </div>

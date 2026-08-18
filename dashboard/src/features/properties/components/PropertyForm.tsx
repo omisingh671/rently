@@ -164,7 +164,7 @@ export default function PropertyForm({
                 }
               : {})}
           >
-            <option value="">Select tenant</option>
+            <option value="">Select Tenant</option>
             {tenantOptions.map((tenant) => (
               <option key={tenant.id} value={tenant.id}>
                 {tenant.name}

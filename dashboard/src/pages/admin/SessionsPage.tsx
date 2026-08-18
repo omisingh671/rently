@@ -130,7 +130,7 @@ export default function SessionsPage() {
               }
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
             >
-              <option value="">All roles</option>
+              <option value="">All Roles</option>
               {roleOptions.map((role) => (
                 <option key={role} value={role}>
                   {formatEnumLabel(role)}
@@ -148,7 +148,7 @@ export default function SessionsPage() {
               }
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
             >
-              <option value="">All sessions</option>
+              <option value="">All Sessions</option>
               <option value="active">Active</option>
               <option value="expired">Expired</option>
             </select>

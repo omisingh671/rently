@@ -4,6 +4,8 @@ import { app } from "./app.js";
 import { prisma } from "@/db/prisma.js";
 import { startNotificationProcessor } from "@/modules/notifications/notifications.delivery.service.js";
 import { startPendingBookingExpiryProcessor } from "@/modules/bookings/bookings.expiry.js";
+import { startEmailDeliveryProcessor } from "@/modules/email-deliveries/email-deliveries.service.js";
+import { startBillingPdfProcessor } from "@/modules/billing/billing.service.js";
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -12,6 +14,8 @@ const server = app.listen(PORT, () => {
 });
 const stopNotificationProcessor = startNotificationProcessor();
 const stopPendingBookingExpiryProcessor = startPendingBookingExpiryProcessor();
+const stopEmailDeliveryProcessor = startEmailDeliveryProcessor();
+const stopBillingPdfProcessor = startBillingPdfProcessor();
 
 /**
  * --------------------------------------------------
@@ -27,6 +31,8 @@ const shutdown = async (signal: string) => {
   console.log(`Received ${signal}. Shutting down...`);
   stopNotificationProcessor();
   stopPendingBookingExpiryProcessor();
+  stopEmailDeliveryProcessor();
+  stopBillingPdfProcessor();
 
   const serverClosed = new Promise<void>((resolve) => {
     server.close(() => resolve());

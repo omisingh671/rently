@@ -7,6 +7,11 @@ import {
   TaxType,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { recordPropertyAudit } from "@/common/services/property-audit.service.js";
+import {
+  PropertyAuditAction,
+  PropertyAuditEntityType,
+} from "@/generated/prisma/enums.js";
 import {
   getActor,
   assertCanManageInventory,
@@ -315,6 +320,15 @@ export const createTax = async (
     ...(input.isActive !== undefined && { isActive: input.isActive }),
   });
 
+  await recordPropertyAudit({
+    propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.TAX,
+    entityId: tax.id,
+    action: PropertyAuditAction.CREATED,
+    nextData: tax,
+  });
+
   return mapTax(tax);
 };
 
@@ -350,6 +364,16 @@ export const updateTax = async (
     ...(input.appliesTo !== undefined && { appliesTo: input.appliesTo }),
     ...(input.isRefundable !== undefined && { isRefundable: input.isRefundable }),
     ...(input.isActive !== undefined && { isActive: input.isActive }),
+  });
+
+  await recordPropertyAudit({
+    propertyId: existingTax.propertyId,
+    actorUserId: actor.id,
+    entityType: PropertyAuditEntityType.TAX,
+    entityId: taxId,
+    action: PropertyAuditAction.UPDATED,
+    previousData: existingTax,
+    nextData: tax,
   });
 
   return mapTax(tax);

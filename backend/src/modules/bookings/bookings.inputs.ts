@@ -53,6 +53,8 @@ export interface UpdateDashboardRefundRequestInput {
 export interface CreateDashboardManualBookingInput {
   bookingType: "SINGLE_TARGET" | "MULTI_ROOM";
   bookingOptionId?: string;
+  bookingGroupId?: string;
+  inventoryLockToken?: string;
   spaceId?: string;
   spaceIds?: string[];
   from: Date;
@@ -69,8 +71,16 @@ export interface CreateDashboardManualBookingInput {
 
 export interface CheckDashboardManualBookingAvailabilityInput {
   spaceIds?: string[];
+  inventoryLockToken?: string;
   from: Date;
   to: Date;
+  guests: number;
+  comfortOption: ComfortOption;
+}
+
+export interface CheckDashboardManualBookingCalendarAvailabilityInput {
+  startDate: Date;
+  endDate: Date;
   guests: number;
   comfortOption: ComfortOption;
 }

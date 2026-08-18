@@ -11,6 +11,11 @@ import path from "path";
 import multer from "multer";
 
 import { env } from "@/config/env.js";
+import {
+  API_PREFIX,
+  RATE_LIMIT_POLICY,
+  STORAGE_PATHS,
+} from "@/common/constants/application.constants.js";
 
 import { ZodError } from "zod";
 import { Prisma } from "@/generated/prisma/client.js";
@@ -32,6 +37,7 @@ import { propertiesRouter } from "@/modules/properties/index.js";
 import { unitRouter } from "@/modules/units/index.js";
 import { roomRouter } from "@/modules/rooms/index.js";
 import { maintenanceRouter } from "@/modules/maintenance/index.js";
+import { propertyClosuresRouter } from "@/modules/property-closures/index.js";
 import { roomProductRouter } from "@/modules/room-products/index.js";
 import { bookingPolicyRouter } from "@/modules/booking-policy/index.js";
 import { billingRouter } from "@/modules/billing/index.js";
@@ -42,9 +48,10 @@ import { leadsRouter } from "@/modules/leads/index.js";
 import bookingsRouter from "@/modules/bookings/index.js";
 import emailDeliveriesRouter from "@/modules/email-deliveries/email-deliveries.routes.js";
 import { notificationsRouter } from "@/modules/notifications/index.js";
+import { commercialRouter } from "@/modules/commercial/index.js";
+import { paymentsController } from "@/modules/payments/index.js";
 
 
-const API_PREFIX = env.API_PREFIX;
 const allowedOrigins = Array.from(
   new Set(
     [
@@ -83,9 +90,9 @@ const localRateLimitIps = new Set([
 ]);
 
 const shouldSkipRateLimit = (req: Request) =>
-  !env.RATE_LIMIT_ENABLED ||
-  (env.NODE_ENV === "development" &&
-    env.RATE_LIMIT_DEV_LOCALHOST_BYPASS &&
+  env.NODE_ENV === "test" ||
+  (RATE_LIMIT_POLICY.bypassLocalhostInDevelopment &&
+    env.NODE_ENV === "development" &&
     localRateLimitIps.has(req.ip ?? ""));
 
 const buildRateLimit = (windowMs: number, max: number, code: string) =>
@@ -104,22 +111,25 @@ const buildRateLimit = (windowMs: number, max: number, code: string) =>
   });
 
 const authRateLimit = buildRateLimit(
-  15 * 60 * 1000,
-  env.AUTH_RATE_LIMIT_MAX,
+  RATE_LIMIT_POLICY.auth.windowMs,
+  RATE_LIMIT_POLICY.auth.max,
   "AUTH_RATE_LIMITED",
 );
 const publicEnquiryRateLimit = buildRateLimit(
-  15 * 60 * 1000,
-  env.PUBLIC_ENQUIRY_RATE_LIMIT_MAX,
+  RATE_LIMIT_POLICY.publicEnquiry.windowMs,
+  RATE_LIMIT_POLICY.publicEnquiry.max,
   "ENQUIRY_RATE_LIMITED",
 );
 const publicBookingRateLimit = buildRateLimit(
-  10 * 60 * 1000,
-  env.PUBLIC_BOOKING_RATE_LIMIT_MAX,
+  RATE_LIMIT_POLICY.publicBooking.windowMs,
+  RATE_LIMIT_POLICY.publicBooking.max,
   "BOOKING_RATE_LIMITED",
 );
 
 export const app = express();
+if (env.TRUST_PROXY_HOPS > 0) {
+  app.set("trust proxy", env.TRUST_PROXY_HOPS);
+}
 app.use(requestContextMiddleware);
 
 /**
@@ -157,7 +167,16 @@ app.use(
  * --------------------------------------------------
  */
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use("/uploads", express.static(path.resolve("uploads")));
+app.use(
+  STORAGE_PATHS.localPublicPath,
+  express.static(path.resolve(STORAGE_PATHS.localDirectory)),
+);
+// Gateway signatures are calculated over the exact raw request bytes.
+app.post(
+  `${API_PREFIX}/payments/webhooks/:provider`,
+  express.raw({ type: "application/json", limit: "256kb" }),
+  paymentsController.handleGatewayWebhook,
+);
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(cookieParser());
@@ -195,6 +214,7 @@ app.use(`${API_PREFIX}/properties`, propertiesRouter);
 app.use(`${API_PREFIX}`, unitRouter);
 app.use(`${API_PREFIX}`, roomRouter);
 app.use(`${API_PREFIX}`, maintenanceRouter);
+app.use(`${API_PREFIX}`, propertyClosuresRouter);
 app.use(`${API_PREFIX}`, roomProductRouter);
 app.use(`${API_PREFIX}`, bookingPolicyRouter);
 app.use(`${API_PREFIX}`, billingRouter);
@@ -205,6 +225,7 @@ app.use(`${API_PREFIX}`, leadsRouter);
 app.use(`${API_PREFIX}`, bookingsRouter);
 app.use(`${API_PREFIX}`, emailDeliveriesRouter);
 app.use(`${API_PREFIX}`, notificationsRouter);
+app.use(`${API_PREFIX}`, commercialRouter);
 
 
 /**
@@ -237,6 +258,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
         message: err.message,
         correlationId,
         ...(err.details !== undefined && { details: err.details }),
+      },
+    });
+  }
+
+  if (
+    err instanceof Error &&
+    "type" in err &&
+    err.type === "entity.too.large"
+  ) {
+    return res.status(413).json({
+      error: {
+        code: "PAYLOAD_TOO_LARGE",
+        message: "Request payload is too large",
+        correlationId,
       },
     });
   }

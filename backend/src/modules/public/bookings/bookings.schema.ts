@@ -34,8 +34,33 @@ const bookingGuestDetailsSchema = z.object({
   contactNumber: z.string().trim().min(5).max(40),
 });
 
-export const createBookingSchema = z
+const gstinSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(
+    /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/,
+    "Invalid GSTIN",
+  );
+
+const bookingBillingDetailsSchema = z
   .object({
+    legalName: z.string().trim().min(1).max(190).optional(),
+    gstin: gstinSchema.optional(),
+    billingAddress: z.string().trim().min(1).max(1000).optional(),
+    placeOfSupplyStateCode: z.string().trim().regex(/^\d{2}$/).optional(),
+  })
+  .refine(
+    (value) =>
+      value.gstin === undefined ||
+      value.placeOfSupplyStateCode !== undefined,
+    {
+      message: "Place of supply state code is required when GSTIN is provided",
+      path: ["placeOfSupplyStateCode"],
+    },
+  );
+
+const bookingSelectionSchema = z.object({
     bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
     bookingOptionId: z.string().min(16).optional(),
     propertyId: z.string().uuid().optional(),
@@ -47,38 +72,62 @@ export const createBookingSchema = z
     guests: z.coerce.number().int().min(1).max(20),
     comfortOption: z.nativeEnum(ComfortOption),
     couponCode: z.string().trim().min(1).max(20).optional(),
-    guestDetails: bookingGuestDetailsSchema.optional(),
-  })
-  .refine((data) => data.to > data.from, {
-    message: "Check-out must be after check-in",
-    path: ["to"],
-  })
-  .superRefine((data, ctx) => {
-    if (data.bookingOptionId) {
-      return;
-    }
+});
 
-    if (data.bookingType === "MULTI_ROOM") {
-      if (!data.spaceIds || data.spaceIds.length < 2) {
-        ctx.addIssue({
-          code: "custom",
-          message: "At least two spaces are required for a multi-room booking",
-          path: ["spaceIds"],
-        });
-      }
-      return;
-    }
+type BookingSelection = z.infer<typeof bookingSelectionSchema>;
 
-    if (!data.spaceId) {
+const addBookingSelectionIssues = (
+  data: BookingSelection,
+  ctx: z.RefinementCtx,
+) => {
+  if (data.bookingOptionId) return;
+  if (data.bookingType === "MULTI_ROOM") {
+    if (!data.spaceIds || data.spaceIds.length < 2) {
       ctx.addIssue({
         code: "custom",
-        message: "spaceId is required",
-        path: ["spaceId"],
+        message: "At least two spaces are required for a multi-room booking",
+        path: ["spaceIds"],
       });
     }
-  });
+    return;
+  }
+  if (!data.spaceId) {
+    ctx.addIssue({
+      code: "custom",
+      message: "spaceId is required",
+      path: ["spaceId"],
+    });
+  }
+};
 
-export const createBookingQuoteSchema = createBookingSchema;
+const validStayDates = (data: BookingSelection) => data.to > data.from;
+const stayDateError = {
+  message: "Check-out must be after check-in",
+  path: ["to"],
+};
+
+export const createBookingSchema = bookingSelectionSchema
+  .extend({
+    guestDetails: bookingGuestDetailsSchema.optional(),
+    billingDetails: bookingBillingDetailsSchema.optional(),
+  })
+  .refine(validStayDates, stayDateError)
+  .superRefine(addBookingSelectionIssues);
+
+export const createBookingQuoteSchema = bookingSelectionSchema
+  .refine(validStayDates, stayDateError)
+  .superRefine(addBookingSelectionIssues);
+
+export const createCommercialQuoteRequestSchema = bookingSelectionSchema
+  .extend({
+    guestName: z.string().trim().min(1).max(120),
+    guestEmail: z.string().trim().email().max(190).toLowerCase(),
+    guestContactNumber: z.string().trim().min(5).max(40),
+    companyName: z.string().trim().min(1).max(190).optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .refine(validStayDates, stayDateError)
+  .superRefine(addBookingSelectionIssues);
 
 export const bookingCheckoutQuoteSchema = z.object({
   couponCode: z.string().trim().min(1).max(20).nullable().optional(),
@@ -91,6 +140,7 @@ export const publicBookingAccessQuerySchema = z.object({
 
 export const updateBookingCheckoutSchema = bookingCheckoutQuoteSchema.extend({
   guestDetails: bookingGuestDetailsSchema,
+  billingDetails: bookingBillingDetailsSchema.optional(),
 });
 
 export const cancelBookingSchema = z.object({

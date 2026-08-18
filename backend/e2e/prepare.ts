@@ -4,6 +4,8 @@ import { hash } from "bcrypt";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import mysql from "mysql2/promise";
 import { PrismaClient } from "../src/generated/prisma/client.js";
+import { E2E_DEFAULTS } from "../src/common/constants/application.constants.js";
+import { parseDatabaseUrl } from "../src/config/database-url.js";
 import { e2eFixture } from "./fixtures.js";
 
 const requiredEnv = (key: string) => {
@@ -13,7 +15,8 @@ const requiredEnv = (key: string) => {
   return value;
 };
 
-const databaseName = process.env.E2E_DATABASE_NAME?.trim() || "rently_e2e";
+const databaseName =
+  process.env.E2E_DATABASE_NAME?.trim() || E2E_DEFAULTS.databaseName;
 if (!/^[A-Za-z0-9_]+_e2e$/.test(databaseName)) {
   throw new Error(
     "Refusing E2E reset: E2E_DATABASE_NAME must contain only letters, numbers, or underscores and end with _e2e",
@@ -23,17 +26,16 @@ if (!/^[A-Za-z0-9_]+_e2e$/.test(databaseName)) {
 const databaseUrl = new URL(requiredEnv("DATABASE_URL"));
 databaseUrl.pathname = `/${databaseName}`;
 process.env.E2E_DATABASE_NAME = databaseName;
-process.env.DATABASE_NAME = databaseName;
 process.env.DATABASE_URL = databaseUrl.toString();
 
-const connection = {
-  host: requiredEnv("DATABASE_HOST"),
-  port: Number(requiredEnv("DATABASE_PORT")),
-  user: requiredEnv("DATABASE_USER"),
-  password: requiredEnv("DATABASE_PASSWORD"),
-};
+const connection = parseDatabaseUrl(databaseUrl.toString());
 
-const adminConnection = await mysql.createConnection(connection);
+const adminConnection = await mysql.createConnection({
+  host: connection.host,
+  port: connection.port,
+  user: connection.user,
+  password: connection.password,
+});
 try {
   await adminConnection.query(`DROP DATABASE IF EXISTS \`${databaseName}\``);
   await adminConnection.query(
@@ -60,10 +62,6 @@ if (migration.status !== 0) {
 
 const adapter = new PrismaMariaDb({
   ...connection,
-  database: databaseName,
-  connectionLimit: 5,
-  allowPublicKeyRetrieval: true,
-  ssl: false,
 });
 const prisma = new PrismaClient({ adapter });
 
@@ -153,6 +151,15 @@ try {
         createdByUserId: e2eFixture.users.superAdmin.id,
       },
     ],
+  });
+  await prisma.billingSetting.create({
+    data: {
+      propertyId: e2eFixture.property.id,
+      legalName: "E2E Hospitality Private Limited",
+      gstin: "29ABCDE1234F1Z5",
+      pan: "ABCDE1234F",
+      billingAddress: "1 Test Avenue, Bengaluru, Karnataka",
+    },
   });
   await prisma.propertyAssignment.createMany({
     data: [
