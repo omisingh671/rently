@@ -42,6 +42,12 @@ export type BookingGroup = {
     guestNameSnapshot: string;
     status: string;
     totalAmount: string;
+    folioTotal: string;
+    grossAmount: string;
+    paidAmount: string;
+    refundedAmount: string;
+    netPaidAmount: string;
+    balanceAmount: string;
   }>;
   folioCharges: Array<{
     id: string;
@@ -62,9 +68,14 @@ export type BookingGroup = {
     bookingId: string | null;
   }>;
   memberTotal: string;
+  memberFolioCharges: string;
+  memberValue: string;
   groupCharges: string;
   paid: string;
   refunded: string;
+  netPaid: string;
+  memberBalance: string;
+  nonCollectibleAmount: string;
   balance: string;
   heldRoomCount: number;
 };

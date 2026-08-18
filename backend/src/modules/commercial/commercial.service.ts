@@ -17,11 +17,19 @@ import {
   PropertyClosureStatus,
   RoomStatus,
 } from "@/generated/prisma/client.js";
+import {
+  calculateGroupMemberFinancials,
+  calculateGroupMemberSummary,
+} from "./commercial.financials.js";
 
 const groupInclude = {
   company: true,
   bookings: {
-    include: { items: true, payments: { include: { refunds: true } } },
+    include: {
+      items: true,
+      payments: { include: { refunds: true } },
+      folioCharges: true,
+    },
     orderBy: { checkIn: "asc" },
   },
   folioCharges: { orderBy: { createdAt: "asc" } },
@@ -40,52 +48,40 @@ const groupRef = () =>
   `GRP-${new Date().getUTCFullYear()}-${randomUUID().slice(0, 8).toUpperCase()}`;
 
 const mapGroup = (group: Prisma.BookingGroupGetPayload<{ include: typeof groupInclude }>) => {
-  const memberTotal = group.bookings.reduce(
-    (sum, booking) => sum.plus(booking.totalAmount),
-    new Prisma.Decimal(0),
-  );
-  const paid = group.bookings.reduce(
-    (sum, booking) =>
-      sum.plus(
-        booking.payments
-          .filter((payment) => payment.status === "SUCCEEDED")
-          .reduce(
-            (paymentSum, payment) => paymentSum.plus(payment.amount),
-            new Prisma.Decimal(0),
-          ),
-      ),
-    new Prisma.Decimal(0),
-  );
-  const refunded = group.bookings.reduce(
-    (sum, booking) =>
-      sum.plus(
-        booking.payments.reduce(
-          (paymentSum, payment) =>
-            paymentSum.plus(
-              payment.refunds
-                .filter((refund) => refund.status === "SUCCEEDED")
-                .reduce(
-                  (refundSum, refund) => refundSum.plus(refund.amount),
-                  new Prisma.Decimal(0),
-                ),
-            ),
-          new Prisma.Decimal(0),
-        ),
-      ),
-    new Prisma.Decimal(0),
-  );
+  const memberSummary = calculateGroupMemberSummary(group.bookings);
   const groupCharges = group.folioCharges
     .filter((charge) => charge.status === GroupFolioChargeStatus.ACTIVE)
     .reduce((sum, charge) => sum.plus(charge.amount), new Prisma.Decimal(0));
-  const balance = memberTotal.plus(groupCharges).minus(paid).plus(refunded);
+  const balance = memberSummary.memberBalance.plus(groupCharges);
 
   return {
     ...group,
-    memberTotal: memberTotal.toString(),
+    bookings: group.bookings.map((booking) => {
+      const financials = calculateGroupMemberFinancials(booking);
+      return {
+        id: booking.id,
+        bookingRef: booking.bookingRef,
+        guestNameSnapshot: booking.guestNameSnapshot,
+        status: booking.status,
+        totalAmount: booking.totalAmount.toString(),
+        folioTotal: financials.folioTotal.toString(),
+        grossAmount: financials.grossAmount.toString(),
+        paidAmount: financials.paidAmount.toString(),
+        refundedAmount: financials.refundedAmount.toString(),
+        netPaidAmount: financials.netPaidAmount.toString(),
+        balanceAmount: financials.balanceAmount.toString(),
+      };
+    }),
+    memberTotal: memberSummary.memberTotal.toString(),
+    memberFolioCharges: memberSummary.memberFolioCharges.toString(),
+    memberValue: memberSummary.memberValue.toString(),
     groupCharges: groupCharges.toString(),
-    paid: paid.toString(),
-    refunded: refunded.toString(),
-    balance: Prisma.Decimal.max(0, balance).toString(),
+    paid: memberSummary.paid.toString(),
+    refunded: memberSummary.refunded.toString(),
+    netPaid: memberSummary.netPaid.toString(),
+    memberBalance: memberSummary.memberBalance.toString(),
+    nonCollectibleAmount: memberSummary.nonCollectibleAmount.toString(),
+    balance: balance.toString(),
     heldRoomCount: group.inventoryLocks.filter(
       (lock) => lock.releasedAt === null && lock.expiresAt > new Date(),
     ).length,

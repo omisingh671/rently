@@ -121,6 +121,12 @@ export default function CommercialGroupPage() {
       (group.status === "PROSPECT" || group.status === "TENTATIVE") &&
       !canEditGroupDetails,
   );
+  const noShowMemberCount = group?.bookings.filter((booking) => booking.status === "NO_SHOW").length ?? 0;
+  const cancelledMemberCount = group?.bookings.filter((booking) => booking.status === "CANCELLED").length ?? 0;
+  const nonCollectibleMemberLabels = [
+    ...(noShowMemberCount > 0 ? [`${noShowMemberCount} no-show ${noShowMemberCount === 1 ? "stay" : "stays"}`] : []),
+    ...(cancelledMemberCount > 0 ? [`${cancelledMemberCount} cancelled ${cancelledMemberCount === 1 ? "stay" : "stays"}`] : []),
+  ];
   const activeLocks = useMemo(
     () =>
       group?.inventoryLocks.filter(
@@ -299,12 +305,14 @@ export default function CommercialGroupPage() {
         </section>
 
         <section className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Folio & Rooming List</p><h2 className="mt-1 font-semibold text-slate-900">Group Financial Summary</h2></div>
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            <div className="rounded-lg bg-slate-50 p-3"><span className="block text-xs text-slate-500">Member stays</span><strong className="mt-1 block text-slate-800">{money(group.memberTotal)}</strong></div>
-            <div className="rounded-lg bg-slate-50 p-3"><span className="block text-xs text-slate-500">Group charges</span><strong className="mt-1 block text-slate-800">{money(group.groupCharges)}</strong></div>
-            <div className="rounded-lg bg-indigo-50 p-3"><span className="block text-xs text-indigo-600">Outstanding balance</span><strong className="mt-1 block text-indigo-900">{money(group.balance)}</strong></div>
+          <div><p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Folio & Rooming List</p><h2 className="mt-1 font-semibold text-slate-900">Group Financial Summary</h2><p className="mt-1 text-xs leading-5 text-slate-500">Gross value is retained for history; collectible balance follows each guest folio&apos;s current lifecycle status.</p></div>
+          <div className="grid grid-cols-2 gap-3 text-sm 2xl:grid-cols-4">
+            <div className="rounded-lg bg-slate-50 p-3"><span className="block text-xs text-slate-500">Gross member value</span><strong className="mt-1 block text-slate-800">{money(group.memberValue)}</strong><span className="mt-1 block text-[11px] text-slate-500">Stay and active guest-folio charges</span></div>
+            <div className="rounded-lg bg-slate-50 p-3"><span className="block text-xs text-slate-500">Net payments retained</span><strong className="mt-1 block text-slate-800">{money(group.netPaid)}</strong><span className="mt-1 block text-[11px] text-slate-500">Paid {money(group.paid)} · Refunded {money(group.refunded)}</span></div>
+            <div className="rounded-lg bg-slate-50 p-3"><span className="block text-xs text-slate-500">Group-level charges</span><strong className="mt-1 block text-slate-800">{money(group.groupCharges)}</strong><span className="mt-1 block text-[11px] text-slate-500">Shared charges outside guest folios</span></div>
+            <div className={`${Number(group.balance) > 0 ? "bg-amber-50" : "bg-emerald-50"} rounded-lg p-3`}><span className={`block text-xs ${Number(group.balance) > 0 ? "text-amber-700" : "text-emerald-700"}`}>Collectible balance</span><strong className={`mt-1 block ${Number(group.balance) > 0 ? "text-amber-900" : "text-emerald-900"}`}>{money(group.balance)}</strong><span className="mt-1 block text-[11px] text-slate-500">Amount currently due</span></div>
           </div>
+          {Number(group.nonCollectibleAmount) > 0 && <div role="status" className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm leading-5 text-sky-900"><strong>{money(group.nonCollectibleAmount)} is excluded from the collectible balance.</strong>{" "}{nonCollectibleMemberLabels.join(" and ")} {noShowMemberCount + cancelledMemberCount === 1 ? "has" : "have"} ₹0 due and remains below for operational and audit history.</div>}
           {canPostCharges && (
             <div className="space-y-3 border-t border-slate-100 pt-4">
               <h3 className="text-sm font-semibold text-slate-800">Post Group Folio Charge</h3>
@@ -322,8 +330,8 @@ export default function CommercialGroupPage() {
             {group.folioCharges.length === 0 && <p className="text-sm text-slate-500">No group-level folio charges.</p>}
           </div>
           <div className="border-t border-slate-100 pt-4">
-            <h3 className="text-sm font-semibold text-slate-800">Rooming List ({group.bookings.length})</h3>
-            {group.bookings.map((booking) => <Link key={booking.id} className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm text-indigo-700 transition hover:bg-indigo-50" to={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}><span><strong>{booking.bookingRef}</strong><span className="ml-2 text-slate-600">{booking.guestNameSnapshot}</span></span><span className="shrink-0 text-xs text-slate-500">{formatEnumLabel(booking.status)}</span></Link>)}
+            <h3 className="text-sm font-semibold text-slate-800">Rooming List & Stay History ({group.bookings.length})</h3>
+            {group.bookings.map((booking) => <Link key={booking.id} className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm text-indigo-700 transition hover:bg-indigo-50" to={adminPath(ADMIN_ROUTES.BOOKING_DETAIL(booking.id))}><span className="min-w-0"><strong>{booking.bookingRef}</strong><span className="ml-2 text-slate-600">{booking.guestNameSnapshot}</span><span className="mt-1 block text-xs text-slate-500">{money(booking.balanceAmount)} due{Number(booking.refundedAmount) > 0 ? ` · ${money(booking.refundedAmount)} refunded` : ""}</span></span><span className="shrink-0 rounded-full bg-white px-2 py-1 text-xs text-slate-600">{formatEnumLabel(booking.status)}</span></Link>)}
             {group.bookings.length === 0 && <p className="mt-2 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">No guest bookings have been picked up from this group yet.</p>}
           </div>
         </section>
