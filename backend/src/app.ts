@@ -21,6 +21,7 @@ import { ZodError } from "zod";
 import { Prisma } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { requestContextMiddleware, getCorrelationId } from "@/common/observability/request-context.js";
+import { requestCompletionMiddleware } from "@/common/observability/request-completion.js";
 import { logError } from "@/common/observability/logger.js";
 
 // Routers
@@ -131,6 +132,7 @@ if (env.TRUST_PROXY_HOPS > 0) {
   app.set("trust proxy", env.TRUST_PROXY_HOPS);
 }
 app.use(requestContextMiddleware);
+app.use(requestCompletionMiddleware);
 
 /**
  * --------------------------------------------------
