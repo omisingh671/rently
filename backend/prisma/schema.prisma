@@ -259,6 +259,44 @@ enum BillingDocumentStatus {
   VOID
 }
 
+enum LedgerAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+  CLEARING
+}
+
+enum LedgerNormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum LedgerSystemKey {
+  CASH
+  BANK_CLEARING
+  CARD_CLEARING
+  UPI_CLEARING
+  ONLINE_GATEWAY_CLEARING
+  MANUAL_SETTLEMENT_CLEARING
+  GUEST_DEPOSIT_LIABILITY
+  GUEST_RECEIVABLE
+  COMPANY_RECEIVABLE
+  ROOM_REVENUE
+  FOLIO_REVENUE
+  OTHER_REVENUE
+  GST_OUTPUT
+  OTHER_TAX_PAYABLE
+  REFUND_CLEARING
+  CASH_VARIANCE
+}
+
+enum JournalEntryStatus {
+  POSTED
+  REVERSED
+}
+
 enum SideEffectJobStatus {
   PENDING
   PROCESSING
@@ -426,6 +464,8 @@ model User {
   createdBookingGroups       BookingGroup[]             @relation("BookingGroupCreatedBy")
   groupFolioChargesCreated   GroupFolioCharge[]         @relation("GroupFolioCreatedBy")
   groupFolioChargesVoided    GroupFolioCharge[]         @relation("GroupFolioVoidedBy")
+  accountingEntries          JournalEntry[]             @relation("JournalEntryActor")
+  voidedBillingDocuments     BillingDocument[]          @relation("BillingDocumentVoidedBy")
 
   isActive           Boolean @default(true)
   mustChangePassword Boolean @default(false)
@@ -600,6 +640,8 @@ model Tenant {
 
   properties       Property[]
   billingDocuments BillingDocument[]
+  ledgerAccounts   LedgerAccount[]
+  journalEntries   JournalEntry[]
 
   @@map("tenants")
 }
@@ -661,6 +703,7 @@ model Property {
   bookingGroups             BookingGroup[]
   groupFolioCharges         GroupFolioCharge[]
   billingSequences          BillingDocumentSequence[]
+  journalEntries            JournalEntry[]
 
   @@unique([tenantId, name, city, state])
   @@unique([tenantId, slug])
@@ -982,6 +1025,7 @@ model Booking {
   inventoryLocks     InventoryLock[]
   billingDocuments   BillingDocument[]
   roomAllocations    BookingRoomAllocation[]
+  journalLines       JournalLine[]
   company            CompanyAccount?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
   bookingGroup       BookingGroup?           @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
   convertedQuote     QuoteRequest?           @relation("QuoteConvertedBooking")
@@ -1147,6 +1191,7 @@ model BookingFolioCharge {
   createdBy        User              @relation("FolioChargeCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   voidedBy         User?             @relation("FolioChargeVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   billingDocuments BillingDocument[]
+  journalLines     JournalLine[]
 
   @@index([bookingId, status, createdAt])
   @@index([propertyId, createdAt])
@@ -1185,6 +1230,7 @@ model Payment {
   receivedBy       User?             @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
   billingDocuments BillingDocument[]
   refunds          PaymentRefund[]
+  journalLines     JournalLine[]
 
   @@unique([provider, providerPaymentId])
   @@unique([provider, providerOrderId])
@@ -1237,11 +1283,13 @@ model PaymentRefund {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
-  booking       Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  payment       Payment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  property      Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  refundRequest BookingRefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
+  booking          Booking               @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment          Payment               @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  property         Property              @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  user             User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refundRequest    BookingRefundRequest? @relation(fields: [refundRequestId], references: [id], onDelete: SetNull)
+  billingDocuments BillingDocument[]
+  journalLines     JournalLine[]
 
   @@unique([provider, providerRefundId])
   @@index([bookingId])
@@ -1334,6 +1382,7 @@ model BillingDocument {
   documentNumber         String
   bookingId              String
   paymentId              String?
+  paymentRefundId        String?
   folioChargeId          String?
   propertyId             String
   tenantId               String?
@@ -1366,6 +1415,7 @@ model BillingDocument {
   pdfRenderedAt          DateTime?
   issuedAt               DateTime?
   voidedAt               DateTime?
+  voidedByUserId         String?
   voidReason             String?               @db.Text
   fiscalYear             String?               @db.VarChar(9)
   recipientGstin         String?               @db.VarChar(32)
@@ -1375,18 +1425,23 @@ model BillingDocument {
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
-  booking     Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  payment     Payment?            @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  folioCharge BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
-  property    Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant      Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  booking       Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  payment       Payment?            @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  paymentRefund PaymentRefund?      @relation(fields: [paymentRefundId], references: [id], onDelete: SetNull)
+  folioCharge   BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
+  property      Property            @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant        Tenant?             @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  voidedBy      User?               @relation("BillingDocumentVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  journalLines  JournalLine[]
 
   @@unique([propertyId, documentNumber])
   @@index([propertyId, type, status, issuedAt])
   @@index([tenantId])
   @@index([bookingId])
   @@index([paymentId])
+  @@index([paymentRefundId])
   @@index([folioChargeId])
+  @@index([voidedByUserId])
   @@map("billing_documents")
 }
 
@@ -1403,6 +1458,102 @@ model BillingDocumentSequence {
 
   @@unique([propertyId, type, fiscalYear])
   @@map("billing_document_sequences")
+}
+
+model LedgerAccount {
+  id            String              @id @default(uuid())
+  tenantId      String
+  code          String              @db.VarChar(32)
+  name          String              @db.VarChar(120)
+  systemKey     LedgerSystemKey
+  accountType   LedgerAccountType
+  normalBalance LedgerNormalBalance
+  isSystem      Boolean             @default(true)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  lines  JournalLine[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, systemKey])
+  @@index([tenantId, accountType, isActive])
+  @@map("ledger_accounts")
+}
+
+model JournalEntry {
+  id                String             @id @default(uuid())
+  tenantId          String
+  propertyId        String
+  businessDate      DateTime           @db.Date
+  sourceType        String             @db.VarChar(64)
+  sourceId          String             @db.VarChar(191)
+  sourceSubId       String?            @db.VarChar(191)
+  idempotencyKey    String             @unique @db.VarChar(255)
+  description       String             @db.VarChar(500)
+  status            JournalEntryStatus @default(POSTED)
+  currency          String             @default("INR") @db.VarChar(3)
+  totalDebit        Decimal            @db.Decimal(14, 2)
+  totalCredit       Decimal            @db.Decimal(14, 2)
+  actorUserId       String?
+  correlationId     String?            @db.VarChar(128)
+  reversalReason    String?            @db.VarChar(500)
+  reversalOfEntryId String?            @unique
+  postedAt          DateTime           @default(now())
+  createdAt         DateTime           @default(now())
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  property        Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  actor           User?         @relation("JournalEntryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  reversalOfEntry JournalEntry? @relation("JournalEntryReversal", fields: [reversalOfEntryId], references: [id], onDelete: Restrict)
+  reversedByEntry JournalEntry? @relation("JournalEntryReversal")
+  lines           JournalLine[]
+
+  @@unique([sourceType, sourceId, sourceSubId])
+  @@index([tenantId, businessDate])
+  @@index([propertyId, businessDate])
+  @@index([status, postedAt])
+  @@index([actorUserId, postedAt])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id                String   @id @default(uuid())
+  journalEntryId    String
+  ledgerAccountId   String
+  debitAmount       Decimal  @default(0) @db.Decimal(14, 2)
+  creditAmount      Decimal  @default(0) @db.Decimal(14, 2)
+  bookingId         String?
+  bookingGroupId    String?
+  companyAccountId  String?
+  paymentId         String?
+  paymentRefundId   String?
+  folioChargeId     String?
+  billingDocumentId String?
+  description       String?  @db.VarChar(500)
+  createdAt         DateTime @default(now())
+
+  journalEntry    JournalEntry        @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  ledgerAccount   LedgerAccount       @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  booking         Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  bookingGroup    BookingGroup?       @relation(fields: [bookingGroupId], references: [id], onDelete: SetNull)
+  companyAccount  CompanyAccount?     @relation(fields: [companyAccountId], references: [id], onDelete: SetNull)
+  payment         Payment?            @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  paymentRefund   PaymentRefund?      @relation(fields: [paymentRefundId], references: [id], onDelete: SetNull)
+  folioCharge     BookingFolioCharge? @relation(fields: [folioChargeId], references: [id], onDelete: SetNull)
+  billingDocument BillingDocument?    @relation(fields: [billingDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([journalEntryId])
+  @@index([ledgerAccountId])
+  @@index([bookingId])
+  @@index([bookingGroupId])
+  @@index([companyAccountId])
+  @@index([paymentId])
+  @@index([paymentRefundId])
+  @@index([folioChargeId])
+  @@index([billingDocumentId])
+  @@map("journal_lines")
 }
 
 /**
@@ -1525,10 +1676,11 @@ model CompanyAccount {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  property  Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  createdBy User           @relation("CompanyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  bookings  Booking[]
-  groups    BookingGroup[]
+  property     Property       @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  createdBy    User           @relation("CompanyCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  bookings     Booking[]
+  groups       BookingGroup[]
+  journalLines JournalLine[]
 
   @@unique([propertyId, legalName])
   @@index([propertyId, isActive])
@@ -1558,6 +1710,7 @@ model BookingGroup {
   bookings       Booking[]
   folioCharges   GroupFolioCharge[]
   inventoryLocks InventoryLock[]
+  journalLines   JournalLine[]
 
   @@index([propertyId, status, checkIn])
   @@index([companyId, createdAt])

@@ -11,9 +11,12 @@ const assertRole = (actor: { role: UserRole }, roles: readonly UserRole[]) => {
   }
 };
 
-const mapSession = (session: repo.SessionRecord, currentRefreshToken?: string): DashboardSessionDTO => {
+const mapSession = (
+  session: repo.SessionRecord,
+  currentSessionId?: string,
+): DashboardSessionDTO => {
   const isExpired = session.expiresAt <= new Date();
-  const isCurrent = currentRefreshToken !== undefined && session.refreshToken === currentRefreshToken;
+  const isCurrent = session.id === currentSessionId;
   return {
     id: session.id,
     userId: session.userId,
@@ -52,7 +55,7 @@ const normalizePaginationResult = <T>(
 export const listSessions = async (
   userId: string,
   filters: SessionListFilters,
-  currentRefreshToken?: string,
+  currentSessionId?: string,
 ) => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN]);
@@ -63,14 +66,14 @@ export const listSessions = async (
     filters.page,
     filters.limit,
     total,
-    items.map((session) => mapSession(session, currentRefreshToken)),
+    items.map((session) => mapSession(session, currentSessionId)),
   );
 };
 
 export const revokeSession = async (
   userId: string,
   sessionId: string,
-  currentRefreshToken?: string,
+  currentSessionId?: string,
 ): Promise<void> => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN]);
@@ -80,10 +83,7 @@ export const revokeSession = async (
     throw new HttpError(404, "SESSION_NOT_FOUND", "Session not found");
   }
 
-  if (
-    currentRefreshToken !== undefined &&
-    session.refreshToken === currentRefreshToken
-  ) {
+  if (session.id === currentSessionId) {
     throw new HttpError(
       400,
       "CURRENT_SESSION_REVOKE_NOT_ALLOWED",

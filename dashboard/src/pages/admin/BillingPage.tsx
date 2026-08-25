@@ -11,6 +11,7 @@ import { normalizeApiError } from "@/utils/errors";
 import { formatEnumLabel } from "@/utils/formatEnumLabel";
 import BillingSettingsSection from "@/features/billing/components/BillingSettingsSection";
 import PropertySearchSelect from "@/features/properties/components/PropertySearchSelect";
+import AccountingJournalSection from "@/features/accounting/AccountingJournalSection";
 
 const documentTypes: Array<"" | BillingDocumentType> = [
   "",
@@ -59,6 +60,9 @@ export default function BillingPage() {
   );
   const canEditSettings = useAuthStore((state) =>
     state.hasAnyRole(["SUPER_ADMIN", "ADMIN"]),
+  );
+  const canReadAccounting = useAuthStore((state) =>
+    state.hasAnyRole(["SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTANT"]),
   );
   const [page] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -345,6 +349,9 @@ export default function BillingPage() {
           </tbody>
         </table>
       </section>
+      {canReadAccounting && (
+        <AccountingJournalSection propertyId={activePropertyId || undefined} />
+      )}
       {canEditSettings && (
         <BillingSettingsSection
           propertyId={activePropertyId || undefined}

@@ -205,6 +205,9 @@ export const createRoomMoveAdjustmentCharge = async (
         baseDifference: input.pricingPreview.baseDifference,
         taxDifference: input.pricingPreview.taxDifference,
         totalAdjustment: input.pricingPreview.totalAdjustment,
+        baseAmount: input.pricingPreview.baseDifference,
+        taxAmount: input.pricingPreview.taxDifference,
+        totalAmount: input.pricingPreview.totalAdjustment,
         taxBreakdown: input.pricingPreview.taxBreakdown,
         pricingFingerprint: input.pricingPreview.pricingFingerprint,
         oldRoomIds: input.oldRoomIds,
@@ -265,6 +268,13 @@ export const createBookingFolioChargeInTransaction = async (
       description: input.charge.description,
       amount: input.charge.amount,
       ...(input.charge.note !== undefined && { note: input.charge.note }),
+      metadata: {
+        source: "MANUAL_FOLIO_CHARGE",
+        baseAmount: input.charge.amount.toString(),
+        taxAmount: "0",
+        totalAmount: input.charge.amount.toString(),
+        taxBreakdown: [],
+      },
     },
   });
   await billingService.createDebitNoteForFolioCharge(

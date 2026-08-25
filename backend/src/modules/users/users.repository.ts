@@ -130,12 +130,12 @@ export const deleteSessionsForUser = (userId: string) =>
 
 export const deleteSessionsForUserExcept = (
   userId: string,
-  currentRefreshToken: string,
+  currentSessionId: string,
 ) =>
   prisma.session.deleteMany({
     where: {
       userId,
-      refreshToken: { not: currentRefreshToken },
+      id: { not: currentSessionId },
     },
   });
 
@@ -152,5 +152,4 @@ export const createPasswordResetToken = (data: {
   prisma.passwordResetToken.create({
     data,
   });
-
 

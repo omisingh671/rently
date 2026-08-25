@@ -15,7 +15,6 @@ import type {
 } from "./users.dto.js";
 
 import type {
-  CreateUserInput,
   UpdateUserInput,
   CreateDashboardUserInput,
   CreateDashboardTeamUserInput,
@@ -132,24 +131,6 @@ export const listUsers = async ({
   };
 };
 
-export const createUser = async (data: CreateUserInput): Promise<UserDTO> => {
-  const passwordHash = await hashPassword(data.password);
-
-  const user = await repo.createUser({
-    fullName: data.fullName,
-    email: data.email,
-    passwordHash,
-    role: data.role,
-    ...(data.countryCode !== undefined &&
-      data.contactNumber !== undefined && {
-        countryCode: data.countryCode,
-        contactNumber: data.contactNumber,
-      }),
-  });
-
-  return mapUser(user as UserEntity);
-};
-
 export const updateUser = async (
   id: string,
   data: UpdateUserInput,
@@ -161,8 +142,6 @@ export const updateUser = async (
 
   const normalized: UpdateUserDTO = {
     ...(data.fullName !== undefined && { fullName: data.fullName }),
-    ...(data.role !== undefined && { role: data.role }),
-    ...(data.isActive !== undefined && { isActive: data.isActive }),
     ...(data.countryCode !== undefined &&
       data.contactNumber !== undefined && {
         countryCode: data.countryCode,
@@ -180,14 +159,6 @@ export const updateUser = async (
 
   const user = await repo.updateUserById(id, normalized);
   return mapUser(user as UserEntity);
-};
-
-export const deleteUser = async (id: string): Promise<void> => {
-  const existing = await repo.findUserById(id);
-  if (!existing) {
-    throw new HttpError(404, "USER_NOT_FOUND", "User not found");
-  }
-  await repo.updateUserById(id, { isActive: false });
 };
 
 /**
@@ -498,7 +469,7 @@ export const updateForcePasswordChange = async (
 export const revokeUserSessions = async (
   userId: string,
   targetUserId: string,
-  currentRefreshToken?: string,
+  currentSessionId?: string,
 ): Promise<void> => {
   const actor = await getActor(userId);
   assertRole(actor, [UserRole.SUPER_ADMIN]);
@@ -507,8 +478,8 @@ export const revokeUserSessions = async (
   if (!target) {
     throw new HttpError(404, "USER_NOT_FOUND", "User not found");
   }
-  if (target.id === actor.id && currentRefreshToken !== undefined) {
-    await repo.deleteSessionsForUserExcept(target.id, currentRefreshToken);
+  if (target.id === actor.id && currentSessionId !== undefined) {
+    await repo.deleteSessionsForUserExcept(target.id, currentSessionId);
     return;
   }
 

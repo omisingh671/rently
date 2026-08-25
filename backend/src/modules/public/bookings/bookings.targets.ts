@@ -14,6 +14,14 @@ export const getOptionPropertyScope = (
   baseScope: spacesRepo.PublicPropertyScope,
   requestedPropertyId?: string,
 ): spacesRepo.PublicPropertyScope => {
+  if (
+    baseScope.propertyId !== undefined &&
+    requestedPropertyId !== undefined &&
+    baseScope.propertyId !== requestedPropertyId
+  ) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
   const propertyId = baseScope.propertyId ?? requestedPropertyId;
   return propertyId === undefined ? baseScope : { ...baseScope, propertyId };
 };
@@ -21,7 +29,7 @@ export const getOptionPropertyScope = (
 export const getRequiredPropertyId = (
   baseScope: spacesRepo.PublicPropertyScope,
   requestedPropertyId?: string,
-) => baseScope.propertyId ?? requestedPropertyId;
+) => getOptionPropertyScope(baseScope, requestedPropertyId).propertyId;
 
 export const getTargetKey = (target: spacesRepo.PublicSpaceTarget) =>
   target.targetType === BookingTargetType.ROOM

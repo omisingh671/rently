@@ -3,11 +3,10 @@ import type { AuthRequest } from "@/common/middleware/auth.middleware.js";
 import { HttpError } from "@/common/errors/http-error.js";
 import { UserRole } from "@/generated/prisma/enums.js";
 import type { IdParams } from "@/common/types/params.js";
-import { getRefreshCookieName } from "@/modules/auth/auth-client.js";
 
 import * as service from "./users.service.js";
 import {
-  createUserSchema,
+  createLegacyAdminSchema,
   updateUserSchema,
   updateProfileSchema,
   createDashboardUserSchema,
@@ -59,9 +58,15 @@ export const list = async (req: Request, res: Response) => {
   res.json({ success: true, data: result });
 };
 
-export const create = async (req: Request, res: Response) => {
-  const body = createUserSchema.parse(req.body);
-  const user = await service.createUser(body);
+export const create = async (req: AuthRequest, res: Response) => {
+  const body = createLegacyAdminSchema.parse(req.body);
+  const user = await service.createAdmin(getUserId(req), {
+    fullName: body.fullName,
+    email: body.email,
+    password: body.password,
+    ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
+    ...(body.contactNumber !== undefined && { contactNumber: body.contactNumber }),
+  });
   res.status(201).json({ success: true, data: user });
 };
 
@@ -71,8 +76,11 @@ export const update = async (req: Request<IdParams>, res: Response) => {
   res.json({ success: true, data: user });
 };
 
-export const remove = async (req: Request<IdParams>, res: Response) => {
-  await service.deleteUser(req.params.id);
+export const remove = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
+  await service.updateUserStatus(getUserId(req), params.id, {
+    isActive: false,
+  });
   res.status(204).send();
 };
 
@@ -120,7 +128,9 @@ export const updateAdmin = async (req: AuthRequest, res: Response) => {
     ...(body.fullName !== undefined && { fullName: body.fullName }),
     ...(body.isActive !== undefined && { isActive: body.isActive }),
     ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
-    ...(body.contactNumber !== undefined && { contactNumber: body.contactNumber }),
+    ...(body.contactNumber !== undefined && {
+      contactNumber: body.contactNumber,
+    }),
   });
   res.json({ success: true, data });
 };
@@ -216,13 +226,10 @@ export const updateForcePasswordChange = async (req: AuthRequest, res: Response)
 
 export const revokeUserSessions = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
-  const audience = req.user?.audience;
   await service.revokeUserSessions(
     getUserId(req),
     params.id,
-    audience
-      ? req.cookies?.[getRefreshCookieName(audience)]
-      : undefined,
+    req.user?.sessionId,
   );
   res.status(204).send();
 };

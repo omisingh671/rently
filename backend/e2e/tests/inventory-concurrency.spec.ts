@@ -54,6 +54,31 @@ test("dirty rooms remain off sale until housekeeping inspection", async ({
     };
     return body.data.options;
   };
+  const readyOptions = await readAvailability();
+  const selectedOption = readyOptions.find(
+    (option) => option.optionType === "ROOM" && option.nightlyTotal === 1500,
+  );
+  expect(
+    selectedOption,
+    "Expected the inspected room to be sellable",
+  ).toBeTruthy();
+  if (!selectedOption) throw new Error("Expected a sellable room");
+  const standardRoomPricing = await prisma.roomPricing.findMany({
+    where: {
+      propertyId: e2eFixture.property.id,
+      price: 1500,
+      roomId: { not: null },
+    },
+    select: { roomId: true },
+  });
+  const standardRoomIds = [
+    ...new Set(
+      standardRoomPricing.flatMap((pricing) =>
+        pricing.roomId ? [pricing.roomId] : [],
+      ),
+    ),
+  ];
+  expect(standardRoomIds.length).toBeGreaterThan(0);
   const includesStandardRoomRate = (
     options: Awaited<ReturnType<typeof readAvailability>>,
   ) =>
@@ -61,14 +86,8 @@ test("dirty rooms remain off sale until housekeeping inspection", async ({
       (option) => option.optionType === "ROOM" && option.nightlyTotal === 1500,
     );
 
-  const readyOptions = await readAvailability();
-  const selectedOption = readyOptions.find(
-    (option) => option.optionType === "ROOM" && option.nightlyTotal === 1500,
-  );
-  expect(selectedOption, "Expected the inspected room to be sellable").toBeTruthy();
-
-  await prisma.room.update({
-    where: { id: e2eFixture.roomId },
+  await prisma.room.updateMany({
+    where: { id: { in: standardRoomIds } },
     data: { housekeepingStatus: "DIRTY" },
   });
 
@@ -80,8 +99,8 @@ test("dirty rooms remain off sale until housekeeping inspection", async ({
       {
         headers: publicHeaders,
         data: {
-          bookingOptionId: selectedOption!.optionId,
-          propertyId: selectedOption!.propertyId,
+          bookingOptionId: selectedOption.optionId,
+          propertyId: selectedOption.propertyId,
           from: checkIn,
           to: checkOut,
           guests: 1,
@@ -103,25 +122,34 @@ test("dirty rooms remain off sale until housekeeping inspection", async ({
       },
     );
     expect(roomBoard.status()).toBe(200);
-    await expect(roomBoard.json()).resolves.toMatchObject({
+    const roomBoardBody = (await roomBoard.json()) as {
       data: {
-        summary: { HOUSEKEEPING: 1 },
-        units: expect.arrayContaining([
-          expect.objectContaining({
-            rooms: expect.arrayContaining([
-              expect.objectContaining({
-                roomId: e2eFixture.roomId,
-                boardStatus: "HOUSEKEEPING",
-                housekeepingStatus: "DIRTY",
-              }),
-            ]),
-          }),
-        ]),
-      },
-    });
+        summary: { HOUSEKEEPING: number };
+        units: Array<{
+          rooms: Array<{
+            roomId: string;
+            boardStatus: string;
+            housekeepingStatus: string;
+          }>;
+        }>;
+      };
+    };
+    expect(roomBoardBody.data.summary.HOUSEKEEPING).toBeGreaterThanOrEqual(
+      standardRoomIds.length,
+    );
+    const boardRooms = roomBoardBody.data.units.flatMap((unit) => unit.rooms);
+    for (const roomId of standardRoomIds) {
+      expect(boardRooms).toContainEqual(
+        expect.objectContaining({
+          roomId,
+          boardStatus: "HOUSEKEEPING",
+          housekeepingStatus: "DIRTY",
+        }),
+      );
+    }
   } finally {
-    await prisma.room.update({
-      where: { id: e2eFixture.roomId },
+    await prisma.room.updateMany({
+      where: { id: { in: standardRoomIds } },
       data: { housekeepingStatus: "INSPECTED" },
     });
   }

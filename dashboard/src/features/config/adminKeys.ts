@@ -376,4 +376,9 @@ export const ADMIN_KEYS = {
     settingAudits: (propertyId: string) =>
       [...ADMIN_KEYS.billing.setting(propertyId), "audits"] as const,
   },
+  accounting: {
+    all: () => [...ADMIN_KEYS.root, "accounting"] as const,
+    journal: (params: object) => [...ADMIN_KEYS.accounting.all(), "journal", params] as const,
+    reconciliation: (params: object) => [...ADMIN_KEYS.accounting.all(), "reconciliation", params] as const,
+  },
 } as const;

@@ -2,6 +2,7 @@ import { prisma } from "@/db/prisma.js";
 import {
   BillingDocumentStatus,
   BillingDocumentType,
+  PaymentRefundStatus,
   PaymentStatus,
   Prisma,
   PropertyAssignmentRole,
@@ -75,7 +76,9 @@ export type BillingBookingRecord = Prisma.BookingGetPayload<{
 export type BillingPaymentRecord = Prisma.PaymentGetPayload<{
   include: typeof billingPaymentInclude;
 }>;
-export type BillingSettingRecord = Prisma.BillingSettingGetPayload<Record<string, never>>;
+export type BillingSettingRecord = Prisma.BillingSettingGetPayload<
+  Record<string, never>
+>;
 export type BillingSettingAuditRecord = Prisma.BillingSettingAuditGetPayload<{
   include: {
     actor: { select: { id: true; fullName: true; email: true } };
@@ -266,12 +269,18 @@ const hasSettingChanges = (
   (data.legalName !== undefined && data.legalName !== current.legalName) ||
   (data.gstin !== undefined && data.gstin !== current.gstin) ||
   (data.pan !== undefined && data.pan !== current.pan) ||
-  (data.billingAddress !== undefined && data.billingAddress !== current.billingAddress) ||
-  (data.invoicePrefix !== undefined && data.invoicePrefix !== current.invoicePrefix) ||
-  (data.receiptPrefix !== undefined && data.receiptPrefix !== current.receiptPrefix) ||
-  (data.creditNotePrefix !== undefined && data.creditNotePrefix !== current.creditNotePrefix) ||
-  (data.debitNotePrefix !== undefined && data.debitNotePrefix !== current.debitNotePrefix) ||
-  (data.footerNotes !== undefined && data.footerNotes !== current.footerNotes) ||
+  (data.billingAddress !== undefined &&
+    data.billingAddress !== current.billingAddress) ||
+  (data.invoicePrefix !== undefined &&
+    data.invoicePrefix !== current.invoicePrefix) ||
+  (data.receiptPrefix !== undefined &&
+    data.receiptPrefix !== current.receiptPrefix) ||
+  (data.creditNotePrefix !== undefined &&
+    data.creditNotePrefix !== current.creditNotePrefix) ||
+  (data.debitNotePrefix !== undefined &&
+    data.debitNotePrefix !== current.debitNotePrefix) ||
+  (data.footerNotes !== undefined &&
+    data.footerNotes !== current.footerNotes) ||
   (data.stateCode !== undefined && data.stateCode !== current.stateCode) ||
   (data.sacCode !== undefined && data.sacCode !== current.sacCode);
 
@@ -474,10 +483,7 @@ export const listPendingDocumentRenders = (take: number) => {
         {
           pdfStatus: { in: ["PENDING", "FAILED"] },
           pdfAttemptCount: { lt: prisma.billingDocument.fields.pdfMaxAttempts },
-          OR: [
-            { pdfNextAttemptAt: null },
-            { pdfNextAttemptAt: { lte: now } },
-          ],
+          OR: [{ pdfNextAttemptAt: null }, { pdfNextAttemptAt: { lte: now } }],
         },
         {
           pdfStatus: "PROCESSING",
@@ -495,16 +501,25 @@ export const listPendingDocumentRenders = (take: number) => {
   });
 };
 
-export const sumSucceededPaymentsByBooking = async (
+export const sumNetSucceededPaymentsByBooking = async (
   bookingId: string,
   tx?: Prisma.TransactionClient,
 ) => {
-  const result = await client(tx).payment.aggregate({
-    where: { bookingId, status: PaymentStatus.SUCCEEDED },
-    _sum: { amount: true },
-  });
+  const db = client(tx);
+  const [payments, refunds] = await Promise.all([
+    db.payment.aggregate({
+      where: { bookingId, status: PaymentStatus.SUCCEEDED },
+      _sum: { amount: true },
+    }),
+    db.paymentRefund.aggregate({
+      where: { bookingId, status: PaymentRefundStatus.SUCCEEDED },
+      _sum: { amount: true },
+    }),
+  ]);
 
-  return result._sum.amount ?? new Prisma.Decimal(0);
+  return (payments._sum.amount ?? new Prisma.Decimal(0)).minus(
+    refunds._sum.amount ?? new Prisma.Decimal(0),
+  );
 };
 
 export const sumSucceededPaymentsThroughPayment = async (
@@ -525,14 +540,17 @@ export const sumSucceededPaymentsThroughPayment = async (
 
 export const voidDocument = (
   documentId: string,
-  reason: string | undefined,
+  reason: string,
+  actorUserId: string,
+  tx: Prisma.TransactionClient,
 ) =>
-  prisma.billingDocument.update({
+  tx.billingDocument.update({
     where: { id: documentId },
     data: {
       status: BillingDocumentStatus.VOID,
       voidedAt: new Date(),
-      ...(reason !== undefined && { voidReason: reason }),
+      voidedByUserId: actorUserId,
+      voidReason: reason,
     },
     include: billingDocumentInclude,
   });

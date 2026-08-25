@@ -1,7 +1,8 @@
-import { Prisma } from "@/generated/prisma/client.js";
 import type * as repo from "./billing.repository.js";
-
-const zeroDecimal = new Prisma.Decimal(0);
+import {
+  getFolioChargeFinancialBreakdown,
+  getFolioFinancialTotals,
+} from "./billing.financials.js";
 
 export const buildGuestSnapshot = (booking: repo.BillingBookingRecord) => ({
   name: booking.guestNameSnapshot,
@@ -73,37 +74,52 @@ export const buildLineItems = (booking: repo.BillingBookingRecord) => [
     total: item.finalAmount.toString(),
     taxBreakdown: item.taxBreakdown,
   })),
-  ...booking.folioCharges.map((charge) => ({
-    id: charge.id,
-    description: charge.description,
-    targetLabel: booking.targetLabel,
-    quantity: 1,
-    rate: charge.amount.toString(),
-    discount: "0",
-    taxable: charge.amount.toString(),
-    tax: "0",
-    total: charge.amount.toString(),
-    taxBreakdown: charge.metadata,
-  })),
+  ...booking.folioCharges.map((charge) => {
+    const breakdown = getFolioChargeFinancialBreakdown(charge);
+    return {
+      id: charge.id,
+      description: charge.description,
+      targetLabel: booking.targetLabel,
+      quantity: 1,
+      rate: breakdown.baseAmount.toString(),
+      discount: "0",
+      taxable: breakdown.baseAmount.toString(),
+      tax: breakdown.taxAmount.toString(),
+      total: breakdown.totalAmount.toString(),
+      taxBreakdown: breakdown.taxBreakdown,
+    };
+  }),
 ];
 
 export const getFolioTotal = (booking: repo.BillingBookingRecord) =>
-  booking.folioCharges.reduce(
-    (total, charge) => total.plus(charge.amount),
-    zeroDecimal,
-  );
+  getFolioFinancialTotals(booking.folioCharges).totalAmount;
 
-export const buildPriceSnapshot = (booking: repo.BillingBookingRecord) => ({
-  pricePerNight: booking.pricePerNight.toString(),
-  subtotalAmount: booking.subtotalAmount.toString(),
-  discountAmount: booking.discountAmount.toString(),
-  taxableAmount: booking.taxableAmount.toString(),
-  taxAmount: booking.taxAmount.toString(),
-  totalAmount: booking.totalAmount.toString(),
-  folioTotal: getFolioTotal(booking).toString(),
-  grandTotal: booking.totalAmount.plus(getFolioTotal(booking)).toString(),
-  upfrontAmount: booking.upfrontAmount.toString(),
-});
+export const getFolioTotals = (booking: repo.BillingBookingRecord) =>
+  getFolioFinancialTotals(booking.folioCharges);
+
+export const buildTaxSnapshot = (booking: repo.BillingBookingRecord) => [
+  ...(Array.isArray(booking.taxBreakdown) ? booking.taxBreakdown : []),
+  ...booking.folioCharges.flatMap(
+    (charge) => getFolioChargeFinancialBreakdown(charge).taxBreakdown,
+  ),
+];
+
+export const buildPriceSnapshot = (booking: repo.BillingBookingRecord) => {
+  const folio = getFolioTotals(booking);
+  return {
+    pricePerNight: booking.pricePerNight.toString(),
+    subtotalAmount: booking.subtotalAmount.toString(),
+    discountAmount: booking.discountAmount.toString(),
+    taxableAmount: booking.taxableAmount.toString(),
+    taxAmount: booking.taxAmount.toString(),
+    totalAmount: booking.totalAmount.toString(),
+    folioBaseAmount: folio.baseAmount.toString(),
+    folioTaxAmount: folio.taxAmount.toString(),
+    folioTotal: folio.totalAmount.toString(),
+    grandTotal: booking.totalAmount.plus(folio.totalAmount).toString(),
+    upfrontAmount: booking.upfrontAmount.toString(),
+  };
+};
 
 export const buildPaymentSnapshot = (payment: repo.BillingPaymentRecord) => ({
   id: payment.id,

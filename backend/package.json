@@ -21,8 +21,13 @@
     "test:e2e": "playwright test -c playwright.config.ts",
     "pretest:e2e:headed": "npm run prepare:e2e",
     "test:e2e:headed": "playwright test -c playwright.config.ts --headed",
-    "test:unit": "tsx --test src/common/utils/business-date.test.ts src/config/database-url.test.ts src/modules/billing/billing.schema.test.ts src/modules/booking-policy/booking-policy.validation.test.ts src/modules/bookings/bookings.lifecycle.test.ts src/modules/commercial/commercial.financials.test.ts src/modules/notifications/providers/email.provider.test.ts src/modules/payments/providers/payment-gateway.adapter.test.ts src/modules/reporting/reporting.schema.test.ts src/modules/users/users.schema.test.ts",
-    "build:scripts": "tsc -p tsconfig.scripts.json"
+    "pretest:browser": "tsx e2e/prepare-browser.ts",
+    "test:browser": "playwright test -c playwright.browser.config.ts",
+    "pretest:browser:headed": "tsx e2e/prepare-browser.ts",
+    "test:browser:headed": "playwright test -c playwright.browser.config.ts --headed",
+    "test:unit": "tsx --test src/common/middleware/browser-origin.middleware.test.ts src/common/middleware/rate-limit.middleware.test.ts src/common/utils/business-date.test.ts src/config/database-url.test.ts src/modules/accounting/accounting.accounts.test.ts src/modules/billing/billing.financials.test.ts src/modules/billing/billing.schema.test.ts src/modules/booking-policy/booking-policy.validation.test.ts src/modules/bookings/bookings.lifecycle.test.ts src/modules/commercial/commercial.financials.test.ts src/modules/notifications/providers/email.provider.test.ts src/modules/payments/providers/payment-gateway.adapter.test.ts src/modules/reporting/reporting.schema.test.ts src/modules/users/users.schema.test.ts",
+    "build:scripts": "tsc -p tsconfig.scripts.json",
+    "backfill:accounting": "tsx scripts/backfill-accounting-ledger.ts"
   },
   "keywords": [],
   "author": "",

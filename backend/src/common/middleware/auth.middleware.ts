@@ -12,6 +12,7 @@ export interface AuthRequest extends Request {
   user?: {
     userId: string;
     role: string;
+    sessionId: string;
     audience?: SessionAudience;
   };
 }
@@ -80,6 +81,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   (req as AuthRequest).user = {
     userId: user.id,
     role: user.role,
+    sessionId: payload.sessionId,
     audience,
   };
 
@@ -115,6 +117,7 @@ export const optionalAuthenticate: RequestHandler = async (req, _res, next) => {
   (req as AuthRequest).user = {
     userId: user.id,
     role: user.role,
+    sessionId: payload.sessionId,
     audience,
   };
 

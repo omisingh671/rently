@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import { HttpError } from "@/common/errors/http-error.js";
-import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
+import {
+  isTransientDatabaseError,
+  runWithBoundedRetry,
+} from "@/common/retry/retry-policy.js";
 import {
   BillingDocumentStatus,
   BillingDocumentType,
@@ -33,9 +36,16 @@ import {
   buildPriceSnapshot,
   buildPropertySnapshot,
   buildSupplierSnapshot,
+  buildTaxSnapshot,
   buildTenantSnapshot,
   getFolioTotal,
+  getFolioTotals,
 } from "./billing.snapshots.js";
+import { getFolioChargeFinancialBreakdown } from "./billing.financials.js";
+import {
+  postIssuedBillingDocument,
+  reverseBillingDocumentPosting,
+} from "@/modules/accounting/accounting.posting.js";
 
 const zeroDecimal = new Prisma.Decimal(0);
 
@@ -51,6 +61,8 @@ const documentKeyForDebitNote = (folioChargeId: string) =>
   `DEBIT_NOTE:${folioChargeId}`;
 const documentKeyForCreditNote = (folioChargeId: string) =>
   `CREDIT_NOTE:${folioChargeId}`;
+const documentKeyForRefundCreditNote = (refundId: string) =>
+  `REFUND_CREDIT_NOTE:${refundId}`;
 const maxBillingTransactionAttempts = 3;
 
 const runBillingTransactionWithRetry = async <T>(
@@ -168,7 +180,8 @@ const mapSettingSnapshot = (
 const getSupplierSnapshot = async (
   propertyId: string,
   tx: Prisma.TransactionClient,
-) => toJson(buildSupplierSnapshot(await repo.getOrCreateSetting(propertyId, tx)));
+) =>
+  toJson(buildSupplierSnapshot(await repo.getOrCreateSetting(propertyId, tx)));
 
 const getDocumentTaxIdentity = async (
   booking: repo.BillingBookingRecord,
@@ -240,7 +253,11 @@ const assertDashboardPropertyScope = async (
   const scopedIds = await getScopedPropertyIds(actor);
   if (scopedIds === undefined) return;
   if (!scopedIds.includes(propertyId)) {
-    throw new HttpError(404, "BILLING_DOCUMENT_NOT_FOUND", "Billing document not found");
+    throw new HttpError(
+      404,
+      "BILLING_DOCUMENT_NOT_FOUND",
+      "Billing document not found",
+    );
   }
 };
 
@@ -281,10 +298,19 @@ export const createInvoiceForBooking = async (
       throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
     }
 
-    const paid = await repo.sumSucceededPaymentsByBooking(booking.id, client);
-    const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, client);
-    const folioTotal = getFolioTotal(booking);
-    const grandTotal = booking.totalAmount.plus(folioTotal);
+    const existing = await repo.findDocumentByKey(documentKey, client);
+    if (existing) return existing;
+
+    const paid = await repo.sumNetSucceededPaymentsByBooking(
+      booking.id,
+      client,
+    );
+    const supplierSnapshot = await getSupplierSnapshot(
+      booking.propertyId,
+      client,
+    );
+    const folio = getFolioTotals(booking);
+    const grandTotal = booking.totalAmount.plus(folio.totalAmount);
     const balance = maxDecimal(zeroDecimal, grandTotal.minus(paid));
     if (balance.greaterThan(0)) {
       throw new HttpError(
@@ -292,39 +318,6 @@ export const createInvoiceForBooking = async (
         "BOOKING_BALANCE_DUE",
         "Invoice can be generated after full payment",
       );
-    }
-
-    const existing = await repo.findDocumentByKey(documentKey, client);
-    if (existing) {
-      if (existing.balance.greaterThan(0)) {
-        return repo.updateDocument(
-          existing.id,
-          {
-            subtotal: booking.subtotalAmount.plus(folioTotal),
-            discount: booking.discountAmount,
-            taxable: booking.taxableAmount.plus(folioTotal),
-            tax: booking.taxAmount,
-            total: grandTotal,
-            paid,
-            balance,
-            guestSnapshot: toJson(buildGuestSnapshot(booking)),
-            propertySnapshot: toJson(buildPropertySnapshot(booking)),
-            supplierSnapshot:
-              existing.supplierSnapshot === null
-                ? supplierSnapshot
-                : toJson(existing.supplierSnapshot),
-            tenantSnapshot: toJson(buildTenantSnapshot(booking)),
-            bookingSnapshot: toJson(buildBookingSnapshot(booking)),
-            priceSnapshot: toJson(buildPriceSnapshot(booking)),
-            taxSnapshot: toJson(booking.taxBreakdown ?? []),
-            lineItems: toJson(buildLineItems(booking)),
-            issuedAt: new Date(),
-          },
-          client,
-        );
-      }
-
-      return existing;
     }
 
     const issuedAt = new Date();
@@ -336,7 +329,7 @@ export const createInvoiceForBooking = async (
     );
     const taxIdentity = await getDocumentTaxIdentity(booking, client);
 
-    return createDocumentSafely(
+    const document = await createDocumentSafely(
       () =>
         repo.createDocument(
           {
@@ -349,10 +342,10 @@ export const createInvoiceForBooking = async (
             booking: { connect: { id: booking.id } },
             property: { connect: { id: booking.propertyId } },
             tenant: { connect: { id: booking.property.tenantId } },
-            subtotal: booking.subtotalAmount.plus(folioTotal),
+            subtotal: booking.subtotalAmount.plus(folio.baseAmount),
             discount: booking.discountAmount,
-            taxable: booking.taxableAmount.plus(folioTotal),
-            tax: booking.taxAmount,
+            taxable: booking.taxableAmount.plus(folio.baseAmount),
+            tax: booking.taxAmount.plus(folio.taxAmount),
             total: grandTotal,
             paid,
             balance,
@@ -362,7 +355,7 @@ export const createInvoiceForBooking = async (
             tenantSnapshot: toJson(buildTenantSnapshot(booking)),
             bookingSnapshot: toJson(buildBookingSnapshot(booking)),
             priceSnapshot: toJson(buildPriceSnapshot(booking)),
-            taxSnapshot: toJson(booking.taxBreakdown ?? []),
+            taxSnapshot: toJson(buildTaxSnapshot(booking)),
             lineItems: toJson(buildLineItems(booking)),
             issuedAt,
           },
@@ -371,6 +364,8 @@ export const createInvoiceForBooking = async (
       documentKey,
       client,
     );
+    await postIssuedBillingDocument(client, document.id);
+    return document;
   };
 
   const document = tx
@@ -391,11 +386,18 @@ export const createReceiptForPayment = async (
 
     const payment = await repo.findPaymentById(paymentId, client);
     if (!payment || payment.status !== PaymentStatus.SUCCEEDED) {
-      throw new HttpError(404, "PAYMENT_NOT_FOUND", "Successful payment not found");
+      throw new HttpError(
+        404,
+        "PAYMENT_NOT_FOUND",
+        "Successful payment not found",
+      );
     }
 
     const booking = payment.booking;
-    const supplierSnapshot = await getSupplierSnapshot(payment.propertyId, client);
+    const supplierSnapshot = await getSupplierSnapshot(
+      payment.propertyId,
+      client,
+    );
     const cumulativePaid = await repo.sumSucceededPaymentsThroughPayment(
       payment,
       client,
@@ -476,7 +478,10 @@ export const createDebitNoteForFolioCharge = async (
   folioChargeId: string,
   tx: Prisma.TransactionClient,
 ): Promise<BillingDocumentDTO | null> => {
-  const invoice = await repo.findDocumentByKey(documentKeyForInvoice(bookingId), tx);
+  const invoice = await repo.findDocumentByKey(
+    documentKeyForInvoice(bookingId),
+    tx,
+  );
   if (!invoice) return null;
 
   const documentKey = documentKeyForDebitNote(folioChargeId);
@@ -491,7 +496,11 @@ export const createDebitNoteForFolioCharge = async (
     where: { id: folioChargeId },
   });
   if (!charge) {
-    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+    throw new HttpError(
+      404,
+      "FOLIO_CHARGE_NOT_FOUND",
+      "Folio charge not found",
+    );
   }
 
   const metadata =
@@ -500,12 +509,7 @@ export const createDebitNoteForFolioCharge = async (
     !Array.isArray(charge.metadata)
       ? charge.metadata
       : {};
-  const baseDifference = new Prisma.Decimal(
-    typeof metadata.baseDifference === "string" ? metadata.baseDifference : charge.amount,
-  );
-  const taxDifference = new Prisma.Decimal(
-    typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
-  );
+  const breakdown = getFolioChargeFinancialBreakdown(charge);
   const issuedAt = new Date();
   const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
     booking.propertyId,
@@ -515,7 +519,7 @@ export const createDebitNoteForFolioCharge = async (
   );
   const taxIdentity = await getDocumentTaxIdentity(booking, tx);
   const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, tx);
-  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const paid = await repo.sumNetSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
     booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
@@ -534,11 +538,11 @@ export const createDebitNoteForFolioCharge = async (
           folioCharge: { connect: { id: charge.id } },
           property: { connect: { id: booking.propertyId } },
           tenant: { connect: { id: booking.property.tenantId } },
-          subtotal: baseDifference,
+          subtotal: breakdown.baseAmount,
           discount: zeroDecimal,
-          taxable: baseDifference,
-          tax: taxDifference,
-          total: charge.amount,
+          taxable: breakdown.baseAmount,
+          tax: breakdown.taxAmount,
+          total: breakdown.totalAmount,
           paid: zeroDecimal,
           balance,
           guestSnapshot: toJson(buildGuestSnapshot(booking)),
@@ -547,15 +551,15 @@ export const createDebitNoteForFolioCharge = async (
           tenantSnapshot: toJson(buildTenantSnapshot(booking)),
           bookingSnapshot: toJson(buildBookingSnapshot(booking)),
           priceSnapshot: toJson(metadata),
-          taxSnapshot: toJson(metadata.taxBreakdown ?? []),
+          taxSnapshot: toJson(breakdown.taxBreakdown),
           lineItems: toJson([
             {
               description: charge.description,
               targetLabel: booking.targetLabel,
               quantity: 1,
-              rate: baseDifference.toString(),
-              tax: taxDifference.toString(),
-              total: charge.amount.toString(),
+              rate: breakdown.baseAmount.toString(),
+              tax: breakdown.taxAmount.toString(),
+              total: breakdown.totalAmount.toString(),
             },
           ]),
           notes: charge.note,
@@ -566,6 +570,7 @@ export const createDebitNoteForFolioCharge = async (
     documentKey,
     tx,
   );
+  await postIssuedBillingDocument(tx, document.id);
   return mapDocument(document);
 };
 
@@ -574,7 +579,10 @@ export const createCreditNoteForFolioCredit = async (
   folioChargeId: string,
   tx: Prisma.TransactionClient,
 ): Promise<BillingDocumentDTO | null> => {
-  const invoice = await repo.findDocumentByKey(documentKeyForInvoice(bookingId), tx);
+  const invoice = await repo.findDocumentByKey(
+    documentKeyForInvoice(bookingId),
+    tx,
+  );
   if (!invoice) return null;
 
   const documentKey = documentKeyForCreditNote(folioChargeId);
@@ -589,7 +597,11 @@ export const createCreditNoteForFolioCredit = async (
     where: { id: folioChargeId },
   });
   if (!charge) {
-    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+    throw new HttpError(
+      404,
+      "FOLIO_CHARGE_NOT_FOUND",
+      "Folio charge not found",
+    );
   }
   if (!charge.amount.lessThan(0)) {
     throw new HttpError(
@@ -605,15 +617,10 @@ export const createCreditNoteForFolioCredit = async (
     !Array.isArray(charge.metadata)
       ? charge.metadata
       : {};
-  const subtotal = new Prisma.Decimal(
-    typeof metadata.baseDifference === "string"
-      ? metadata.baseDifference
-      : charge.amount,
-  ).abs();
-  const tax = new Prisma.Decimal(
-    typeof metadata.taxDifference === "string" ? metadata.taxDifference : 0,
-  ).abs();
-  const total = charge.amount.abs();
+  const breakdown = getFolioChargeFinancialBreakdown(charge);
+  const subtotal = breakdown.baseAmount.abs();
+  const tax = breakdown.taxAmount.abs();
+  const total = breakdown.totalAmount.abs();
   const issuedAt = new Date();
   const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
     booking.propertyId,
@@ -623,7 +630,7 @@ export const createCreditNoteForFolioCredit = async (
   );
   const taxIdentity = await getDocumentTaxIdentity(booking, tx);
   const supplierSnapshot = await getSupplierSnapshot(booking.propertyId, tx);
-  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const paid = await repo.sumNetSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
     booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
@@ -655,7 +662,7 @@ export const createCreditNoteForFolioCredit = async (
           tenantSnapshot: toJson(buildTenantSnapshot(booking)),
           bookingSnapshot: toJson(buildBookingSnapshot(booking)),
           priceSnapshot: toJson(metadata),
-          taxSnapshot: toJson(metadata.taxBreakdown ?? []),
+          taxSnapshot: toJson(breakdown.taxBreakdown),
           lineItems: toJson([
             {
               description: charge.description,
@@ -674,6 +681,105 @@ export const createCreditNoteForFolioCredit = async (
     documentKey,
     tx,
   );
+  await postIssuedBillingDocument(tx, document.id);
+  return mapDocument(document);
+};
+
+export const createCreditNoteForRefund = async (
+  refundId: string,
+  tx: Prisma.TransactionClient,
+): Promise<BillingDocumentDTO | null> => {
+  const refund = await tx.paymentRefund.findUnique({
+    where: { id: refundId },
+    include: {
+      booking: { include: { property: { include: { tenant: true } } } },
+    },
+  });
+  if (!refund || refund.status !== "SUCCEEDED") return null;
+  const invoice = await repo.findDocumentByKey(
+    documentKeyForInvoice(refund.bookingId),
+    tx,
+  );
+  if (!invoice || invoice.status !== BillingDocumentStatus.ISSUED) return null;
+
+  const documentKey = documentKeyForRefundCreditNote(refund.id);
+  const existing = await repo.findDocumentByKey(documentKey, tx);
+  if (existing) {
+    await postIssuedBillingDocument(tx, existing.id);
+    return mapDocument(existing);
+  }
+  const issuedAt = refund.processedAt ?? new Date();
+  const { documentNumber, fiscalYear } = await repo.nextDocumentNumber(
+    refund.propertyId,
+    BillingDocumentType.CREDIT_NOTE,
+    issuedAt,
+    tx,
+  );
+  const tax = invoice.total.greaterThan(0)
+    ? refund.amount
+        .times(invoice.tax)
+        .dividedBy(invoice.total)
+        .toDecimalPlaces(2)
+    : zeroDecimal;
+  const subtotal = refund.amount.minus(tax);
+  const document = await createDocumentSafely(
+    () =>
+      repo.createDocument(
+        {
+          documentKey,
+          type: BillingDocumentType.CREDIT_NOTE,
+          status: BillingDocumentStatus.ISSUED,
+          documentNumber,
+          fiscalYear,
+          recipientGstin: invoice.recipientGstin,
+          placeOfSupplyStateCode: invoice.placeOfSupplyStateCode,
+          supplierStateCode: invoice.supplierStateCode,
+          sacCode: invoice.sacCode,
+          booking: { connect: { id: refund.bookingId } },
+          payment: { connect: { id: refund.paymentId } },
+          paymentRefund: { connect: { id: refund.id } },
+          property: { connect: { id: refund.propertyId } },
+          tenant: { connect: { id: refund.booking.property.tenantId } },
+          subtotal,
+          discount: zeroDecimal,
+          taxable: subtotal,
+          tax,
+          total: refund.amount,
+          paid: zeroDecimal,
+          balance: zeroDecimal,
+          guestSnapshot: toJson(invoice.guestSnapshot),
+          propertySnapshot: toJson(invoice.propertySnapshot),
+          ...(invoice.supplierSnapshot !== null && {
+            supplierSnapshot: toJson(invoice.supplierSnapshot),
+          }),
+          ...(invoice.tenantSnapshot !== null && {
+            tenantSnapshot: toJson(invoice.tenantSnapshot),
+          }),
+          bookingSnapshot: toJson(invoice.bookingSnapshot),
+          priceSnapshot: toJson({
+            refundId: refund.id,
+            paymentId: refund.paymentId,
+            originalInvoiceId: invoice.id,
+          }),
+          taxSnapshot: toJson(invoice.taxSnapshot ?? []),
+          lineItems: toJson([
+            {
+              description: `Refund against ${invoice.documentNumber}`,
+              quantity: 1,
+              rate: subtotal.toString(),
+              tax: tax.toString(),
+              total: refund.amount.toString(),
+            },
+          ]),
+          notes: refund.reason,
+          issuedAt,
+        },
+        tx,
+      ),
+    documentKey,
+    tx,
+  );
+  await postIssuedBillingDocument(tx, document.id);
   return mapDocument(document);
 };
 
@@ -704,7 +810,8 @@ export const createReversalNoteForVoidedFolioCharge = async (
       ? documentKeyForCreditNote(folioChargeId)
       : documentKeyForDebitNote(folioChargeId);
   const existing = await repo.findDocumentByKey(documentKey, tx);
-  if (existing && existing.id !== reversedDocument.id) return mapDocument(existing);
+  if (existing && existing.id !== reversedDocument.id)
+    return mapDocument(existing);
 
   const booking = await repo.findBookingById(bookingId, tx);
   if (!booking) {
@@ -714,7 +821,11 @@ export const createReversalNoteForVoidedFolioCharge = async (
     where: { id: folioChargeId },
   });
   if (!charge) {
-    throw new HttpError(404, "FOLIO_CHARGE_NOT_FOUND", "Folio charge not found");
+    throw new HttpError(
+      404,
+      "FOLIO_CHARGE_NOT_FOUND",
+      "Folio charge not found",
+    );
   }
 
   const issuedAt = new Date();
@@ -729,7 +840,7 @@ export const createReversalNoteForVoidedFolioCharge = async (
     reversedDocument.supplierSnapshot === null
       ? await getSupplierSnapshot(booking.propertyId, tx)
       : toJson(reversedDocument.supplierSnapshot);
-  const paid = await repo.sumSucceededPaymentsByBooking(booking.id, tx);
+  const paid = await repo.sumNetSucceededPaymentsByBooking(booking.id, tx);
   const balance = maxDecimal(
     zeroDecimal,
     booking.totalAmount.plus(getFolioTotal(booking)).minus(paid),
@@ -783,6 +894,7 @@ export const createReversalNoteForVoidedFolioCharge = async (
     documentKey,
     tx,
   );
+  await postIssuedBillingDocument(tx, document.id);
   return mapDocument(document);
 };
 
@@ -801,7 +913,10 @@ export const listDashboardDocuments = async (
     return normalizePaginationResult(filters.page, filters.limit, 0, []);
   }
 
-  const { items, total } = await repo.listDocumentsPaginated(filters, scopedIds);
+  const { items, total } = await repo.listDocumentsPaginated(
+    filters,
+    scopedIds,
+  );
   return normalizePaginationResult(
     filters.page,
     filters.limit,
@@ -817,7 +932,11 @@ export const getDashboardDocument = async (
   const actor = await ensureActor(userId);
   const document = await repo.findDocumentById(documentId);
   if (!document) {
-    throw new HttpError(404, "BILLING_DOCUMENT_NOT_FOUND", "Billing document not found");
+    throw new HttpError(
+      404,
+      "BILLING_DOCUMENT_NOT_FOUND",
+      "Billing document not found",
+    );
   }
 
   await assertDashboardPropertyScope(actor, document.propertyId);
@@ -830,7 +949,8 @@ export const generateDashboardInvoice = async (
 ) => {
   const actor = await ensureActor(userId);
   const booking = await repo.findBookingById(bookingId);
-  if (!booking) throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  if (!booking)
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   await assertDashboardPropertyScope(actor, booking.propertyId);
   return createInvoiceForBooking(bookingId);
 };
@@ -841,7 +961,8 @@ export const generateDashboardReceipt = async (
 ) => {
   const actor = await ensureActor(userId);
   const payment = await repo.findPaymentById(paymentId);
-  if (!payment) throw new HttpError(404, "PAYMENT_NOT_FOUND", "Payment not found");
+  if (!payment)
+    throw new HttpError(404, "PAYMENT_NOT_FOUND", "Payment not found");
   await assertDashboardPropertyScope(actor, payment.propertyId);
   return createReceiptForPayment(paymentId);
 };
@@ -862,11 +983,35 @@ export const voidDashboardDocument = async (
 
   const document = await repo.findDocumentById(documentId);
   if (!document) {
-    throw new HttpError(404, "BILLING_DOCUMENT_NOT_FOUND", "Billing document not found");
+    throw new HttpError(
+      404,
+      "BILLING_DOCUMENT_NOT_FOUND",
+      "Billing document not found",
+    );
   }
 
   await assertDashboardPropertyScope(actor, document.propertyId);
-  return mapDocument(await repo.voidDocument(documentId, reason));
+  return runBillingTransactionWithRetry(async (tx) => {
+    const current = await repo.findDocumentById(documentId, tx);
+    if (!current) {
+      throw new HttpError(
+        404,
+        "BILLING_DOCUMENT_NOT_FOUND",
+        "Billing document not found",
+      );
+    }
+    if (current.status === BillingDocumentStatus.VOID)
+      return mapDocument(current);
+    const voidReason = reason?.trim() || "Voided by accounting user";
+    const voided = await repo.voidDocument(
+      documentId,
+      voidReason,
+      actor.id,
+      tx,
+    );
+    await reverseBillingDocumentPosting(tx, documentId, actor.id, voidReason);
+    return mapDocument(voided);
+  });
 };
 
 export const getDashboardSetting = async (
@@ -946,7 +1091,8 @@ const assertPublicBookingAccess = async (
   checkoutToken: string | undefined,
 ) => {
   const booking = await repo.findBookingById(bookingId);
-  if (!booking) throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+  if (!booking)
+    throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
   if (userId !== undefined && booking.userId === userId) return booking;
   if (checkoutToken !== undefined) {
     const lock = await repo.findReleasedInventoryLockByBookingToken(
@@ -976,7 +1122,11 @@ export const getPublicDocument = async (
 ) => {
   const document = await repo.findDocumentById(documentId);
   if (!document) {
-    throw new HttpError(404, "BILLING_DOCUMENT_NOT_FOUND", "Billing document not found");
+    throw new HttpError(
+      404,
+      "BILLING_DOCUMENT_NOT_FOUND",
+      "Billing document not found",
+    );
   }
 
   await assertPublicBookingAccess(document.bookingId, userId, checkoutToken);
@@ -1020,7 +1170,10 @@ export const renderDocumentPdf = async (
     try {
       return await storageProvider.downloadFile(document.pdfUrl);
     } catch (error) {
-      await repo.markDocumentRenderFailed(document.id, "Stored PDF is unavailable");
+      await repo.markDocumentRenderFailed(
+        document.id,
+        "Stored PDF is unavailable",
+      );
       logError("Stored billing PDF could not be read", error, {
         operation: "billing.pdf.read",
         documentId: document.id,
@@ -1060,7 +1213,9 @@ export const renderDocumentPdf = async (
   }
 
   try {
-    const pdf = await (dependencies.render ?? renderDocumentPdfBuffer)(document);
+    const pdf = await (dependencies.render ?? renderDocumentPdfBuffer)(
+      document,
+    );
     const pdfUrl = await (
       dependencies.upload ??
       ((buffer, item) =>
@@ -1074,7 +1229,8 @@ export const renderDocumentPdf = async (
     await repo.markDocumentRenderSucceeded(document.id, pdfUrl);
     return pdf;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown PDF failure";
+    const message =
+      error instanceof Error ? error.message : "Unknown PDF failure";
     await repo.markDocumentRenderFailed(document.id, message);
     logError("Billing PDF render failed", error, {
       operation: "billing.pdf.render",

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDashboardTeamUserSchema,
+  createLegacyAdminSchema,
   listTeamUsersQuerySchema,
+  updateUserSchema,
 } from "./users.schema.js";
 
 const baseUser = {
@@ -27,6 +29,28 @@ test("rejects roles that an admin cannot create", () => {
       false,
     );
   }
+});
+
+test("legacy creation accepts only the Admin role", () => {
+  assert.equal(
+    createLegacyAdminSchema.safeParse({ ...baseUser, role: "ADMIN" }).success,
+    true,
+  );
+  assert.equal(
+    createLegacyAdminSchema.safeParse({ ...baseUser, role: "SUPER_ADMIN" })
+      .success,
+    false,
+  );
+});
+
+test("generic detail updates do not expose role or status fields", () => {
+  const result = updateUserSchema.parse({
+    fullName: "Updated User",
+    role: "SUPER_ADMIN",
+    isActive: false,
+  });
+
+  assert.deepEqual(result, { fullName: "Updated User" });
 });
 
 test("allows an optional supported role filter and rejects other roles", () => {

@@ -10,6 +10,18 @@ export const RATE_LIMIT_POLICY = {
     windowMs: 15 * 60 * 1000,
     max: 20,
   },
+  authRefresh: {
+    windowMs: 15 * 60 * 1000,
+    max: 60,
+  },
+  passwordResetRequest: {
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+  },
+  passwordResetAttempt: {
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+  },
   publicEnquiry: {
     windowMs: 15 * 60 * 1000,
     max: 8,
@@ -17,6 +29,14 @@ export const RATE_LIMIT_POLICY = {
   publicBooking: {
     windowMs: 10 * 60 * 1000,
     max: 12,
+  },
+  publicAvailability: {
+    windowMs: 60 * 1000,
+    max: 60,
+  },
+  publicQuote: {
+    windowMs: 5 * 60 * 1000,
+    max: 30,
   },
   bypassLocalhostInDevelopment: true,
 } as const;

@@ -103,7 +103,7 @@ export const recordBookingRefundSchema = z.object({
   method: z.nativeEnum(PaymentMethod),
   reason: z.string().trim().min(1).max(1000),
   refundRequestId: idSchema.optional(),
-  idempotencyKey: z.string().trim().min(8).max(128).optional(),
+  idempotencyKey: z.string().trim().min(8).max(128),
 });
 
 export const refundRequestParamsSchema = z.object({
@@ -137,7 +137,9 @@ export const updateRefundRequestSchema = z
 export const createManualBookingSchema = contactFieldsRefine(
   z
     .object({
-      bookingType: z.enum(["SINGLE_TARGET", "MULTI_ROOM"]).default("SINGLE_TARGET"),
+      bookingType: z
+        .enum(["SINGLE_TARGET", "MULTI_ROOM"])
+        .default("SINGLE_TARGET"),
       bookingOptionId: z.string().trim().min(1).max(128).optional(),
       bookingGroupId: idSchema.optional(),
       inventoryLockToken: z.string().uuid().optional(),
@@ -167,7 +169,8 @@ export const createManualBookingSchema = contactFieldsRefine(
         if (!data.spaceIds || data.spaceIds.length < 2) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "At least two spaces are required for a multi-room booking",
+            message:
+              "At least two spaces are required for a multi-room booking",
             path: ["spaceIds"],
           });
         }
@@ -297,14 +300,16 @@ export const moveBookingRoomSchema = previewBookingRoomMoveSchema.extend({
 
 export const previewStayExtensionSchema = z.object({
   expectedVersion: expectedVersionSchema,
-  newCheckOut: z.coerce.date().refine(
-    (date) =>
-      date.getUTCHours() === 0 &&
-      date.getUTCMinutes() === 0 &&
-      date.getUTCSeconds() === 0 &&
-      date.getUTCMilliseconds() === 0,
-    "New check-out must be a date-only UTC value",
-  ),
+  newCheckOut: z.coerce
+    .date()
+    .refine(
+      (date) =>
+        date.getUTCHours() === 0 &&
+        date.getUTCMinutes() === 0 &&
+        date.getUTCSeconds() === 0 &&
+        date.getUTCMilliseconds() === 0,
+      "New check-out must be a date-only UTC value",
+    ),
 });
 
 export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
@@ -314,10 +319,12 @@ export const commitStayExtensionSchema = previewStayExtensionSchema.extend({
   overrideReason: z.string().trim().min(1).max(1000).optional(),
 });
 
-export const reverseBookingLifecycleSchema = z.object({
-  expectedVersion: expectedVersionSchema,
-  note: z.string().trim().min(1).max(1000),
-}).strict();
+export const reverseBookingLifecycleSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    note: z.string().trim().min(1).max(1000),
+  })
+  .strict();
 
 export const updateRoomHousekeepingSchema = z.object({
   expectedStatus: z.enum(["DIRTY", "CLEANING", "CLEAN", "INSPECTED"]),

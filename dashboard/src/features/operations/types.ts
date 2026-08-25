@@ -415,7 +415,7 @@ export type RecordRefundPayload = {
   method: PaymentMethod;
   reason: string;
   refundRequestId?: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 };
 
 export type UpdateRefundRequestPayload = {

@@ -20,11 +20,9 @@ export const requestContextMiddleware = (
   const correlationId =
     supplied && validCorrelationId.test(supplied) ? supplied : randomUUID();
   res.setHeader("x-correlation-id", correlationId);
-  storage.run(
-    { correlationId, method: req.method, path: req.originalUrl },
-    next,
-  );
+  storage.run({ correlationId, method: req.method, path: req.path }, next);
 };
 
 export const getRequestContext = () => storage.getStore();
-export const getCorrelationId = () => storage.getStore()?.correlationId ?? randomUUID();
+export const getCorrelationId = () =>
+  storage.getStore()?.correlationId ?? randomUUID();

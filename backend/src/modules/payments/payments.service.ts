@@ -14,6 +14,10 @@ import { HttpError } from "@/common/errors/http-error.js";
 import { assertPropertyBusinessDateOpen } from "@/common/services/daily-close-guard.js";
 import { env } from "@/config/env.js";
 import { billingService } from "@/modules/billing/index.js";
+import {
+  postSucceededPayment,
+  postSucceededRefund,
+} from "@/modules/accounting/accounting.posting.js";
 import type {
   CreateGatewayPaymentIntentDTO,
   CreateManualPaymentDTO,
@@ -127,8 +131,25 @@ const assertPublicPaymentAccess = async (
   input: { userId?: string; actorUserId?: string; checkoutToken?: string },
   tx: Prisma.TransactionClient,
 ) => {
-  if (input.actorUserId !== undefined || input.userId !== undefined) {
+  if (input.actorUserId !== undefined) {
     return;
+  }
+
+  if (input.userId !== undefined) {
+    const ownedBooking = await repo.findBookingForPayment(
+      bookingId,
+      input.userId,
+      tx,
+    );
+    if (ownedBooking) {
+      return;
+    }
+
+    throw new HttpError(
+      403,
+      "PAYMENT_ACCESS_FORBIDDEN",
+      "You cannot access this booking payment",
+    );
   }
 
   if (input.checkoutToken === undefined) {
@@ -176,9 +197,7 @@ const getGatewayAmount = (
     : minDecimal(booking.upfrontAmount, balanceAmount);
 };
 
-const getBookingBalanceInfo = (
-  booking: repo.BookingForPaymentRecord,
-) => {
+const getBookingBalanceInfo = (booking: repo.BookingForPaymentRecord) => {
   const folioTotal = booking.folioCharges
     .filter((charge) => charge.status === "ACTIVE")
     .reduce((sum, charge) => sum.plus(charge.amount), zeroDecimal);
@@ -191,15 +210,16 @@ const getBookingBalanceInfo = (
     (sum, payment) =>
       sum.plus(
         payment.refunds
-          .filter(
-            (refund) => refund.status === PaymentRefundStatus.SUCCEEDED,
-          )
+          .filter((refund) => refund.status === PaymentRefundStatus.SUCCEEDED)
           .reduce((total, refund) => total.plus(refund.amount), zeroDecimal),
       ),
     zeroDecimal,
   );
 
-  const netPaidAmount = maxDecimal(zeroDecimal, paidAmount.minus(refundedAmount));
+  const netPaidAmount = maxDecimal(
+    zeroDecimal,
+    paidAmount.minus(refundedAmount),
+  );
   const balanceAmount = maxDecimal(
     zeroDecimal,
     booking.totalAmount.plus(folioTotal).minus(netPaidAmount),
@@ -244,10 +264,15 @@ export const createManualPayment = async (
       if (!bookingForExisting) {
         throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
       }
-      const { paidAmount, balanceAmount } = getBookingBalanceInfo(bookingForExisting);
+      const { paidAmount, balanceAmount } =
+        getBookingBalanceInfo(bookingForExisting);
       if (existingPayment.status === PaymentStatus.SUCCEEDED) {
+        await postSucceededPayment(tx, existingPayment.id);
         if (balanceAmount.equals(zeroDecimal)) {
-          await billingService.createInvoiceForBooking(existingPayment.bookingId, tx);
+          await billingService.createInvoiceForBooking(
+            existingPayment.bookingId,
+            tx,
+          );
         }
         await billingService.createReceiptForPayment(existingPayment.id, tx);
       }
@@ -283,10 +308,11 @@ export const createManualPayment = async (
     }
 
     const paidAt = input.paidAt ?? new Date();
-    await assertPropertyBusinessDateOpen(
-      booking.propertyId,
-      { at: paidAt, tx, operation: "Financial posting" },
-    );
+    await assertPropertyBusinessDateOpen(booking.propertyId, {
+      at: paidAt,
+      tx,
+      operation: "Financial posting",
+    });
 
     if (
       booking.status === BookingStatus.CHECKED_OUT &&
@@ -347,9 +373,10 @@ export const createManualPayment = async (
       purpose === PaymentPurpose.FULL_PAYMENT
         ? balanceBefore
         : minDecimal(booking.upfrontAmount, balanceBefore);
-    const amount = input.amount !== undefined
-      ? new Prisma.Decimal(input.amount)
-      : fallbackAmount;
+    const amount =
+      input.amount !== undefined
+        ? new Prisma.Decimal(input.amount)
+        : fallbackAmount;
 
     if (
       input.actorUserId === undefined &&
@@ -433,7 +460,10 @@ export const createManualPayment = async (
 
     const confirmationAmount =
       booking.paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING
-        ? minDecimal(booking.upfrontAmount, booking.totalAmount.plus(folioTotal))
+        ? minDecimal(
+            booking.upfrontAmount,
+            booking.totalAmount.plus(folioTotal),
+          )
         : zeroDecimal;
     const canConfirmPendingBooking =
       booking.paymentPolicy === BookingPaymentPolicy.NO_UPFRONT_PAYMENT ||
@@ -490,6 +520,8 @@ export const createManualPayment = async (
       },
       tx,
     );
+
+    await postSucceededPayment(tx, payment.id);
 
     if (balanceAfter.equals(zeroDecimal)) {
       await billingService.createInvoiceForBooking(booking.id, tx);
@@ -609,7 +641,13 @@ export const createGatewayPaymentIntent = async (
       tx,
     );
     if (existing) {
-      assertGatewayIntentMatches(existing, input, amount, purpose, gateway.provider);
+      assertGatewayIntentMatches(
+        existing,
+        input,
+        amount,
+        purpose,
+        gateway.provider,
+      );
       return { payment: existing, booking, created: false };
     }
 
@@ -667,7 +705,9 @@ export const createGatewayPaymentIntent = async (
       await repo.markGatewayOrderCreationFailed(
         payment.id,
         "ORDER_CREATION_FAILED",
-        error instanceof Error ? error.message : "Gateway order creation failed",
+        error instanceof Error
+          ? error.message
+          : "Gateway order creation failed",
       );
       throw error;
     }
@@ -679,7 +719,10 @@ export const createGatewayPaymentIntent = async (
     );
   }
 
-  if (payment.status !== PaymentStatus.PENDING || payment.providerOrderId === null) {
+  if (
+    payment.status !== PaymentStatus.PENDING ||
+    payment.providerOrderId === null
+  ) {
     throw new HttpError(
       409,
       "PAYMENT_INTENT_NOT_AVAILABLE",
@@ -733,7 +776,11 @@ const finalizeGatewayPayment = async (input: {
   const result = await repo.runPaymentTransaction(async (tx) => {
     const current = await repo.findPaymentById(input.paymentId, tx);
     if (!current || current.provider !== input.provider) {
-      throw new HttpError(404, "PAYMENT_NOT_FOUND", "Gateway payment not found");
+      throw new HttpError(
+        404,
+        "PAYMENT_NOT_FOUND",
+        "Gateway payment not found",
+      );
     }
     if (current.providerOrderId !== input.providerOrderId) {
       throw new HttpError(
@@ -767,20 +814,30 @@ const finalizeGatewayPayment = async (input: {
       );
     }
 
-    const booking = await repo.findBookingForPayment(current.bookingId, undefined, tx);
+    await postSucceededPayment(tx, current.id);
+
+    const booking = await repo.findBookingForPayment(
+      current.bookingId,
+      undefined,
+      tx,
+    );
     if (!booking) {
       throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
     }
     const { folioTotal, paidAmount, netPaidAmount, balanceAmount } =
       getBookingBalanceInfo(booking);
     const totalDue = booking.totalAmount.plus(folioTotal);
-    const nextPaymentStatus = resolveBookingPaymentStatus(totalDue, netPaidAmount);
+    const nextPaymentStatus = resolveBookingPaymentStatus(
+      totalDue,
+      netPaidAmount,
+    );
     const confirmationAmount =
       booking.paymentPolicy === BookingPaymentPolicy.TOKEN_AT_BOOKING
         ? minDecimal(booking.upfrontAmount, totalDue)
         : zeroDecimal;
     const paymentDeadlineOpen =
-      booking.paymentExpiresAt === null || booking.paymentExpiresAt > new Date();
+      booking.paymentExpiresAt === null ||
+      booking.paymentExpiresAt > new Date();
     const canConfirm =
       booking.status === BookingStatus.PENDING &&
       paymentDeadlineOpen &&
@@ -819,7 +876,9 @@ const finalizeGatewayPayment = async (input: {
   return getPaymentResult(input.paymentId);
 };
 
-export const verifyGatewayPayment = async (input: VerifyGatewayPaymentInput) => {
+export const verifyGatewayPayment = async (
+  input: VerifyGatewayPaymentInput,
+) => {
   const payment = await repo.findPaymentById(input.paymentId);
   if (!payment || payment.provider === PaymentProvider.MANUAL) {
     throw new HttpError(404, "PAYMENT_NOT_FOUND", "Gateway payment not found");
@@ -914,15 +973,22 @@ const finalizeGatewayRefund = async (
       },
       tx,
     );
-    const booking = await repo.findBookingForPayment(refund.bookingId, undefined, tx);
+    const booking = await repo.findBookingForPayment(
+      refund.bookingId,
+      undefined,
+      tx,
+    );
     if (!booking) {
       throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
     }
     if (succeeded) {
+      await billingService.createCreditNoteForRefund(refund.id, tx);
+      await postSucceededRefund(tx, refund.id);
       const { folioTotal, paidAmount, refundedAmount, netPaidAmount } =
         getBookingBalanceInfo(booking);
       const paymentStatus =
-        paidAmount.greaterThan(0) && refundedAmount.greaterThanOrEqualTo(paidAmount)
+        paidAmount.greaterThan(0) &&
+        refundedAmount.greaterThanOrEqualTo(paidAmount)
           ? BookingPaymentStatus.REFUNDED
           : resolveBookingPaymentStatus(
               booking.totalAmount.plus(folioTotal),
@@ -986,7 +1052,11 @@ export const processGatewayWebhook = async (input: {
         parsed.event.providerOrderId,
       );
       if (!payment) {
-        throw new HttpError(404, "PAYMENT_NOT_FOUND", "Gateway order not found");
+        throw new HttpError(
+          404,
+          "PAYMENT_NOT_FOUND",
+          "Gateway order not found",
+        );
       }
       if (
         parsed.event.amountMinor !== toMinorUnits(payment.amount) ||
@@ -1013,7 +1083,8 @@ export const processGatewayWebhook = async (input: {
         await repo.markGatewayPaymentFailed(
           payment.id,
           parsed.event.failureCode ?? "PAYMENT_FAILED",
-          parsed.event.failureMessage ?? "The payment provider reported failure",
+          parsed.event.failureMessage ??
+            "The payment provider reported failure",
         );
       }
     } else if (
@@ -1040,7 +1111,11 @@ export const completeMockGatewayPayment = async (input: {
   outcome: "SUCCEEDED" | "FAILED";
 }) => {
   if (env.PAYMENT_GATEWAY_MODE !== "mock") {
-    throw new HttpError(404, "MOCK_PAYMENT_DISABLED", "Mock payments are disabled");
+    throw new HttpError(
+      404,
+      "MOCK_PAYMENT_DISABLED",
+      "Mock payments are disabled",
+    );
   }
   const payment = await repo.findPaymentById(input.paymentId);
   if (!payment || payment.providerOrderId === null) {
@@ -1058,7 +1133,9 @@ export const completeMockGatewayPayment = async (input: {
 
   const providerPaymentId = `pay_mock_${randomUUID()}`;
   const eventType =
-    input.outcome === "SUCCEEDED" ? "mock.payment.succeeded" : "mock.payment.failed";
+    input.outcome === "SUCCEEDED"
+      ? "mock.payment.succeeded"
+      : "mock.payment.failed";
   const body = {
     providerEventId: `mock:${providerPaymentId}:${eventType}`,
     eventType,

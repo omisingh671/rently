@@ -58,12 +58,12 @@ export const listAllUsersQuerySchema = basePaginationQuerySchema.extend({
 /**
  * Admin Action Schemas
  */
-export const createUserSchema = z
+export const createLegacyAdminSchema = z
   .object({
     fullName: z.string().min(1),
     email: z.string().email(),
     password: z.string().min(8),
-    role: z.nativeEnum(UserRole),
+    role: z.literal(UserRole.ADMIN),
     countryCode: countryCodeSchema.optional(),
     contactNumber: contactNumberSchema.optional(),
   })
@@ -77,8 +77,6 @@ export const createUserSchema = z
 export const updateUserSchema = z
   .object({
     fullName: z.string().min(1).optional(),
-    role: z.nativeEnum(UserRole).optional(),
-    isActive: z.boolean().optional(),
     countryCode: countryCodeSchema.optional(),
     contactNumber: contactNumberSchema.optional(),
   })

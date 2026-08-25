@@ -6,6 +6,7 @@ declare global {
       user?: {
         userId: string;
         role: string;
+        sessionId: string;
         audience?: SessionAudience;
       };
     }

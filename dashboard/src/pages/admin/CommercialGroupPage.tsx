@@ -215,7 +215,7 @@ export default function CommercialGroupPage() {
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <Link className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-700 hover:text-indigo-800" to={adminPath(ADMIN_ROUTES.COMMERCIAL)}><FiArrowLeft aria-hidden="true" />Back to Corporate & Groups</Link>
+        <Link className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white hover:text-slate-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2" to={adminPath(ADMIN_ROUTES.COMMERCIAL)}><FiArrowLeft className="text-slate-500" aria-hidden="true" />Back to Corporate & Groups</Link>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Group Operations</p>

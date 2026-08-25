@@ -7,6 +7,7 @@ import {
   UserRole,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
+import { billingService } from "@/modules/billing/index.js";
 import type {
   CheckInBookingInput,
   CheckOutBookingInput,
@@ -272,8 +273,9 @@ export const checkInBookingInTransaction = async (
     }
     requireAuditNote(input.checkIn.overrideReason, "Policy override reason is required");
   }
+  let earlyCheckInChargeId: string | null = null;
   if (policyPreview.isEarly && policyPreview.feeAmount !== "0" && !policyOverride) {
-    await tx.bookingFolioCharge.create({
+    const earlyCheckInCharge = await tx.bookingFolioCharge.create({
       data: {
         bookingId: booking.id,
         propertyId: booking.propertyId,
@@ -283,11 +285,21 @@ export const checkInBookingInTransaction = async (
         amount: policyPreview.feeAmount,
         metadata: {
           source: "EARLY_CHECK_IN_POLICY",
+          baseAmount: policyPreview.feeAmount,
+          taxAmount: "0",
+          totalAmount: policyPreview.feeAmount,
+          taxBreakdown: [],
           policyFingerprint: policyPreview.policyFingerprint,
           policySnapshot: policyPreview.policySnapshot,
         },
       },
     });
+    earlyCheckInChargeId = earlyCheckInCharge.id;
+    await billingService.createDebitNoteForFolioCharge(
+      booking.id,
+      earlyCheckInCharge.id,
+      tx,
+    );
     booking = await findTransactionBooking(tx, input.bookingId);
   }
 
@@ -355,6 +367,7 @@ export const checkInBookingInTransaction = async (
       lateArrival: today > arrivalDate,
       earlyCheckIn: policyPreview.isEarly,
       earlyCheckInFee: policyOverride ? "0" : policyPreview.feeAmount,
+      earlyCheckInChargeId,
       policyOverride,
       policyFingerprint: policyPreview.policyFingerprint,
       policySnapshot: policyPreview.policySnapshot,

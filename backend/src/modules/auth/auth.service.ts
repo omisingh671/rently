@@ -71,6 +71,7 @@ const clearFailedLogin = (email: string) => {
 };
 
 const createRefreshSession = async (
+  sessionId: string,
   userId: string,
   refreshToken: string,
   audience: SessionAudience,
@@ -80,6 +81,7 @@ const createRefreshSession = async (
 ) => {
   try {
     return await repo.createSession(
+      sessionId,
       userId,
       refreshToken,
       audience,
@@ -94,6 +96,7 @@ const createRefreshSession = async (
     ) {
       await repo.deleteSessionByToken(refreshToken);
       return await repo.createSession(
+        sessionId,
         userId,
         refreshToken,
         audience,
@@ -146,9 +149,15 @@ export const loginUser = async (
   clearFailedLogin(email);
   assertRoleAllowedForAudience(user.role, audience);
 
-  const refreshToken = signRefreshToken({ sub: user.id, audience });
+  const sessionId = crypto.randomUUID();
+  const refreshToken = signRefreshToken({
+    sub: user.id,
+    audience,
+    sessionId,
+  });
 
   const session = await createRefreshSession(
+    sessionId,
     user.id,
     refreshToken,
     audience,
@@ -225,6 +234,17 @@ export const refreshSession = async (
 
   const session = await repo.findSessionByToken(refreshToken, audience);
   if (!session || session.userId !== payload.sub) {
+    if (payload.sessionId !== undefined) {
+      await repo.deleteSessionByIdentity(
+        payload.sessionId,
+        payload.sub,
+        audience,
+      );
+    }
+    throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
+  }
+  if (payload.sessionId !== undefined && payload.sessionId !== session.id) {
+    await repo.deleteSessionByIdentity(session.id, payload.sub, audience);
     throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
   }
 
@@ -244,19 +264,17 @@ export const refreshSession = async (
   }
   assertRoleAllowedForAudience(user.role, audience);
 
-  const accessToken = signAccessToken({
+  const nextRefreshToken = signRefreshToken({
     sub: user.id,
-    role: user.role,
     audience,
     sessionId: session.id,
   });
-  const nextRefreshToken = signRefreshToken({ sub: user.id, audience });
   const nextRefreshExpiresAt = new Date(
     Date.now() + AUTH_TOKEN_TTL_SECONDS.refresh * 1000,
   );
 
   try {
-    await repo.rotateSessionToken(
+    const rotated = await repo.rotateSessionToken(
       refreshToken,
       audience,
       nextRefreshToken,
@@ -264,13 +282,17 @@ export const refreshSession = async (
       ip,
       userAgent,
     );
+    if (rotated.count !== 1) {
+      await repo.deleteSessionByIdentity(session.id, user.id, audience);
+      throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
+    }
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
       await repo.deleteSessionByToken(nextRefreshToken);
-      await repo.rotateSessionToken(
+      const rotated = await repo.rotateSessionToken(
         refreshToken,
         audience,
         nextRefreshToken,
@@ -278,10 +300,21 @@ export const refreshSession = async (
         ip,
         userAgent,
       );
+      if (rotated.count !== 1) {
+        await repo.deleteSessionByIdentity(session.id, user.id, audience);
+        throw new HttpError(401, "UNAUTHORIZED", "Invalid refresh token");
+      }
     } else {
       throw error;
     }
   }
+
+  const accessToken = signAccessToken({
+    sub: user.id,
+    role: user.role,
+    audience,
+    sessionId: session.id,
+  });
 
   return {
     refreshToken: nextRefreshToken,
@@ -360,10 +393,17 @@ export const resetPassword = async (
   }
 
   const passwordHash = await hashPassword(input.password);
-
-  await repo.updateUserPassword(record.userId, passwordHash);
-  await repo.deletePasswordResetTokensForUser(record.userId);
-  await repo.deleteSessionsForUser(record.userId);
+  const consumed = await repo.consumePasswordResetToken(
+    tokenHash,
+    passwordHash,
+  );
+  if (!consumed) {
+    throw new HttpError(
+      400,
+      "INVALID_OR_EXPIRED_TOKEN",
+      "Reset token is invalid or expired",
+    );
+  }
 };
 
 export const changePassword = async (
