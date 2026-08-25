@@ -370,6 +370,7 @@ export default function BookingDetailsPage() {
         }
 
         await recordRefund({
+          idempotencyKey: crypto.randomUUID(),
           paymentId: refundPaymentId,
           amount,
           method: refundMethod,

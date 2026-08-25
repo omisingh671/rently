@@ -69,10 +69,7 @@ export const getBookingById = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
-export const refreshBookingFolio = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const refreshBookingFolio = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const data = await service.refreshBookingFolio(getUserId(req), params.id);
   res.json({ success: true, data });
@@ -81,34 +78,38 @@ export const refreshBookingFolio = async (
 export const createManualBooking = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const body = createManualBookingSchema.parse(req.body);
-  const data = await service.createManualBooking(getUserId(req), params.propertyId, {
-    bookingType: body.bookingType,
-    ...(body.bookingOptionId !== undefined && {
-      bookingOptionId: body.bookingOptionId,
-    }),
-    ...(body.bookingGroupId !== undefined && {
-      bookingGroupId: body.bookingGroupId,
-    }),
-    ...(body.inventoryLockToken !== undefined && {
-      inventoryLockToken: body.inventoryLockToken,
-    }),
-    ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
-    ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
-    from: body.from,
-    to: body.to,
-    guests: body.guests,
-    comfortOption: body.comfortOption,
-    couponCode: body.couponCode,
-    guestName: body.guestName,
-    guestEmail: body.guestEmail,
-    ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
-    ...(body.contactNumber !== undefined && {
-      contactNumber: body.contactNumber,
-    }),
-    ...(body.internalNotes !== undefined && {
-      internalNotes: body.internalNotes,
-    }),
-  });
+  const data = await service.createManualBooking(
+    getUserId(req),
+    params.propertyId,
+    {
+      bookingType: body.bookingType,
+      ...(body.bookingOptionId !== undefined && {
+        bookingOptionId: body.bookingOptionId,
+      }),
+      ...(body.bookingGroupId !== undefined && {
+        bookingGroupId: body.bookingGroupId,
+      }),
+      ...(body.inventoryLockToken !== undefined && {
+        inventoryLockToken: body.inventoryLockToken,
+      }),
+      ...(body.spaceId !== undefined && { spaceId: body.spaceId }),
+      ...(body.spaceIds !== undefined && { spaceIds: body.spaceIds }),
+      from: body.from,
+      to: body.to,
+      guests: body.guests,
+      comfortOption: body.comfortOption,
+      couponCode: body.couponCode,
+      guestName: body.guestName,
+      guestEmail: body.guestEmail,
+      ...(body.countryCode !== undefined && { countryCode: body.countryCode }),
+      ...(body.contactNumber !== undefined && {
+        contactNumber: body.contactNumber,
+      }),
+      ...(body.internalNotes !== undefined && {
+        internalNotes: body.internalNotes,
+      }),
+    },
+  );
   res.status(201).json({ success: true, data });
 };
 
@@ -226,7 +227,10 @@ export const checkOutBooking = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
-export const previewCheckOutPolicy = async (req: AuthRequest, res: Response) => {
+export const previewCheckOutPolicy = async (
+  req: AuthRequest,
+  res: Response,
+) => {
   const params = idParamsSchema.parse(req.params);
   const body = previewBookingLifecyclePolicySchema.parse(req.body);
   const data = await service.previewCheckOutPolicy(
@@ -251,20 +255,28 @@ export const moveBookingRooms = async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data });
 };
 
-export const previewBookingRoomMove = async (req: AuthRequest, res: Response) => {
-  const params = idParamsSchema.parse(req.params);
-  const body = previewBookingRoomMoveSchema.parse(req.body);
-  const data = await service.previewBookingRoomMove(getUserId(req), params.id, body);
-  res.json({ success: true, data });
-};
-
-export const previewStayExtension = async (
+export const previewBookingRoomMove = async (
   req: AuthRequest,
   res: Response,
 ) => {
   const params = idParamsSchema.parse(req.params);
+  const body = previewBookingRoomMoveSchema.parse(req.body);
+  const data = await service.previewBookingRoomMove(
+    getUserId(req),
+    params.id,
+    body,
+  );
+  res.json({ success: true, data });
+};
+
+export const previewStayExtension = async (req: AuthRequest, res: Response) => {
+  const params = idParamsSchema.parse(req.params);
   const body = previewStayExtensionSchema.parse(req.body);
-  const data = await service.previewStayExtension(getUserId(req), params.id, body);
+  const data = await service.previewStayExtension(
+    getUserId(req),
+    params.id,
+    body,
+  );
   res.json({ success: true, data });
 };
 
@@ -357,10 +369,7 @@ export const voidBookingFolioCharge = async (
   res.json({ success: true, data });
 };
 
-export const getOperationsBoard = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const getOperationsBoard = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const query = operationsBoardQuerySchema.parse(req.query);
   const data = await service.getOperationsBoard(
@@ -371,10 +380,7 @@ export const getOperationsBoard = async (
   res.json({ success: true, data });
 };
 
-export const getCashierSummary = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const getCashierSummary = async (req: AuthRequest, res: Response) => {
   const params = propertyIdParamsSchema.parse(req.params);
   const query = cashierSummaryQuerySchema.parse(req.query);
   const data = await service.getCashierSummary(
@@ -386,10 +392,7 @@ export const getCashierSummary = async (
   res.json({ success: true, data });
 };
 
-export const recordBookingPayment = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const recordBookingPayment = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const body = recordBookingPaymentSchema.parse(req.body);
   const data = await service.recordBookingBalancePayment(
@@ -410,10 +413,7 @@ export const recordBookingPayment = async (
   res.status(201).json({ success: true, data });
 };
 
-export const recordBookingRefund = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const recordBookingRefund = async (req: AuthRequest, res: Response) => {
   const params = idParamsSchema.parse(req.params);
   const body = recordBookingRefundSchema.parse(req.body);
   const data = await service.recordBookingRefund(getUserId(req), params.id, {
@@ -421,20 +421,15 @@ export const recordBookingRefund = async (
     amount: body.amount,
     method: body.method,
     reason: body.reason,
+    idempotencyKey: body.idempotencyKey,
     ...(body.refundRequestId !== undefined && {
       refundRequestId: body.refundRequestId,
-    }),
-    ...(body.idempotencyKey !== undefined && {
-      idempotencyKey: body.idempotencyKey,
     }),
   });
   res.status(201).json({ success: true, data });
 };
 
-export const updateRefundRequest = async (
-  req: AuthRequest,
-  res: Response,
-) => {
+export const updateRefundRequest = async (req: AuthRequest, res: Response) => {
   const params = refundRequestParamsSchema.parse(req.params);
   const body = updateRefundRequestSchema.parse(req.body);
   const data = await service.updateRefundRequest(

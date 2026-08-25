@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import jwt, { type JwtPayload } from "jsonwebtoken";
 import { env } from "@/config/env.js";
 import { AUTH_TOKEN_TTL_SECONDS } from "@/common/constants/application.constants.js";
@@ -14,7 +15,10 @@ export interface AccessTokenPayload {
 export interface RefreshTokenPayload {
   sub: string;
   audience: SessionAudience;
+  sessionId?: string;
 }
+
+type RefreshTokenSigningPayload = RefreshTokenPayload & { sessionId: string };
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
@@ -61,9 +65,10 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   }
 }
 
-export function signRefreshToken(payload: RefreshTokenPayload): string {
+export function signRefreshToken(payload: RefreshTokenSigningPayload): string {
   return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
     expiresIn: AUTH_TOKEN_TTL_SECONDS.refresh,
+    jwtid: crypto.randomUUID(),
   });
 }
 
@@ -82,7 +87,13 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload {
 
     const payload = decoded as JwtPayload & RefreshTokenPayload;
 
-    return { sub: payload.sub, audience: payload.audience };
+    return {
+      sub: payload.sub,
+      audience: payload.audience,
+      ...(typeof payload.sessionId === "string" && {
+        sessionId: payload.sessionId,
+      }),
+    };
   } catch (err) {
     if (
       err instanceof jwt.TokenExpiredError ||

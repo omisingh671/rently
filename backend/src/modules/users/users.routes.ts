@@ -35,6 +35,8 @@ router.patch("/team/:id", authorize([UserRole.SUPER_ADMIN, UserRole.ADMIN]), con
 router.use(authorize([UserRole.SUPER_ADMIN]));
 
 router.get("/", controller.listUsersForDashboard);
+// Backward-compatible creation route. Its schema and service only permit
+// SUPER_ADMIN -> ADMIN; new dashboard callers use POST /admins.
 router.post("/", controller.create);
 router.patch("/:id", controller.update);
 router.delete("/:id", controller.remove);

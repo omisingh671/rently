@@ -42,7 +42,7 @@ export interface RecordDashboardBookingRefundInput {
   method: PaymentMethod;
   reason: string;
   refundRequestId?: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
 }
 
 export interface UpdateDashboardRefundRequestInput {

@@ -115,3 +115,10 @@ test("booking list and details load for an API-created booking", async ({
     page.getByRole("heading", { name: booking.bookingRef }),
   ).toBeVisible();
 });
+
+test("Accountant can open the read-only accounting journal", async ({ page }) => {
+  await loginDashboardPage(page, e2eFixture.users.accountant);
+  await page.goto("/billing");
+  await expect(page.getByRole("heading", { name: "Accounting journal" })).toBeVisible();
+  await expect(page.getByText(/Reconciled|Needs review/)).toBeVisible();
+});

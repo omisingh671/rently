@@ -377,12 +377,12 @@ export const closePropertyBusinessDate = async (
     isBusinessDate(booking.checkIn),
   );
   const paymentTotal = dayPayments.reduce(
-    (total, payment) => total + Number(payment.amount),
-    0,
+    (total, payment) => total.plus(payment.amount),
+    new Prisma.Decimal(0),
   );
   const refundTotal = dayRefunds.reduce(
-    (total, refund) => total + Number(refund.amount),
-    0,
+    (total, refund) => total.plus(refund.amount),
+    new Prisma.Decimal(0),
   );
 
   try {
@@ -394,7 +394,7 @@ export const closePropertyBusinessDate = async (
         paymentTotal,
         refundCount: dayRefunds.length,
         refundTotal,
-        netPaymentTotal: paymentTotal - refundTotal,
+        netPaymentTotal: paymentTotal.minus(refundTotal),
         bookingsCreated: dayBookings.length,
         checkIns: dayStatusHistory.filter(
           (history) => history.toStatus === "CHECKED_IN",

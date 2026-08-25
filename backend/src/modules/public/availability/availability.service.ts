@@ -67,14 +67,17 @@ const getOptionPropertyScope = (
   baseScope: spacesRepo.PublicPropertyScope,
   requestedPropertyId?: string,
 ): spacesRepo.PublicPropertyScope => {
+  if (
+    baseScope.propertyId !== undefined &&
+    requestedPropertyId !== undefined &&
+    baseScope.propertyId !== requestedPropertyId
+  ) {
+    throw new HttpError(404, "PROPERTY_NOT_FOUND", "Property not found");
+  }
+
   const propertyId = baseScope.propertyId ?? requestedPropertyId;
   return propertyId === undefined ? baseScope : { ...baseScope, propertyId };
 };
-
-const getRequiredPropertyId = (
-  baseScope: spacesRepo.PublicPropertyScope,
-  requestedPropertyId?: string,
-) => baseScope.propertyId ?? requestedPropertyId;
 
 interface StayScope {
   checkIn: Date;
@@ -1048,15 +1051,13 @@ const resolveInventoryLockTargets = async (
   propertyScope: spacesRepo.PublicPropertyScope,
   tx: Prisma.TransactionClient,
 ) => {
+  const requestPropertyScope = getOptionPropertyScope(
+    propertyScope,
+    input.propertyId,
+  );
+
   if (input.bookingOptionId !== undefined) {
-    const optionPropertyScope = getOptionPropertyScope(
-      propertyScope,
-      input.propertyId,
-    );
-    const requiredPropertyId = getRequiredPropertyId(
-      propertyScope,
-      input.propertyId,
-    );
+    const requiredPropertyId = requestPropertyScope.propertyId;
     const option = await findAvailabilityOptionById(
       input.bookingOptionId,
       {
@@ -1067,7 +1068,7 @@ const resolveInventoryLockTargets = async (
       },
       tenantId,
       nights,
-      optionPropertyScope,
+      requestPropertyScope,
       tx,
     );
 
@@ -1110,7 +1111,7 @@ const resolveInventoryLockTargets = async (
                 checkOut: input.to,
                 nights,
               },
-              propertyScope,
+              requestPropertyScope,
             ),
           ),
         )
@@ -1125,7 +1126,7 @@ const resolveInventoryLockTargets = async (
               checkOut: input.to,
               nights,
             },
-            propertyScope,
+            requestPropertyScope,
           ),
         ];
 

@@ -181,6 +181,17 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
   );
   expect(charge).toBeTruthy();
   expect(booking).toMatchObject({ folioTotal: "250", balanceAmount: "250" });
+  const storedCharge = await prisma.bookingFolioCharge.findUniqueOrThrow({
+    where: { id: charge!.id },
+    select: { metadata: true },
+  });
+  expect(storedCharge.metadata).toMatchObject({
+    source: "MANUAL_FOLIO_CHARGE",
+    baseAmount: "250",
+    taxAmount: "0",
+    totalAmount: "250",
+    taxBreakdown: [],
+  });
 
   const voidResponse = await request.post(
     `${apiPrefix}/bookings/${booking.id}/folio-charges/${charge!.id}/void`,
@@ -213,9 +224,13 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
       id: true,
       type: true,
       status: true,
+      subtotal: true,
+      tax: true,
       total: true,
       folioChargeId: true,
       priceSnapshot: true,
+      taxSnapshot: true,
+      lineItems: true,
       supplierSnapshot: true,
     },
   });
@@ -240,6 +255,12 @@ test("a post-invoice folio charge issues a debit note and void issues its credit
     folioChargeId: charge!.id,
   });
   expect(debitNote?.total.toString()).toBe("250");
+  expect(debitNote?.subtotal.toString()).toBe("250");
+  expect(debitNote?.tax.toString()).toBe("0");
+  expect(debitNote?.taxSnapshot).toEqual([]);
+  expect(debitNote?.lineItems).toEqual([
+    expect.objectContaining({ rate: "250", tax: "0", total: "250" }),
+  ]);
   expect(creditNote).toMatchObject({
     status: "ISSUED",
     folioChargeId: charge!.id,
@@ -329,6 +350,21 @@ test("daily close reconciles split payments, refund, and net collection once", a
     .flatMap((payment) => payment.refunds)
     .find((item) => item.amount === "300");
   expect(refund).toMatchObject({ status: "SUCCEEDED" });
+
+  await prisma.billingDocument.deleteMany({
+    where: { bookingId: booking.id, type: "INVOICE" },
+  });
+  const regeneratedInvoice = await request.post(
+    `${apiPrefix}/billing-documents/invoices`,
+    {
+      headers,
+      data: { bookingId: booking.id },
+    },
+  );
+  expect(regeneratedInvoice.status()).toBe(409);
+  await expect(regeneratedInvoice.json()).resolves.toMatchObject({
+    error: { code: "BOOKING_BALANCE_DUE" },
+  });
 
   const businessDate = addDays(localDate(), -2);
   await Promise.all([

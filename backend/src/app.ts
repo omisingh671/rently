@@ -6,7 +6,6 @@ import express, {
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import path from "path";
 import multer from "multer";
 
@@ -20,9 +19,14 @@ import {
 import { ZodError } from "zod";
 import { Prisma } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
-import { requestContextMiddleware, getCorrelationId } from "@/common/observability/request-context.js";
+import {
+  requestContextMiddleware,
+  getCorrelationId,
+} from "@/common/observability/request-context.js";
 import { requestCompletionMiddleware } from "@/common/observability/request-completion.js";
 import { logError } from "@/common/observability/logger.js";
+import { buildRateLimit } from "@/common/middleware/rate-limit.middleware.js";
+import { buildBrowserOriginGuard } from "@/common/middleware/browser-origin.middleware.js";
 
 // Routers
 import authRouter from "@/modules/auth/auth.routes.js";
@@ -51,7 +55,7 @@ import emailDeliveriesRouter from "@/modules/email-deliveries/email-deliveries.r
 import { notificationsRouter } from "@/modules/notifications/index.js";
 import { commercialRouter } from "@/modules/commercial/index.js";
 import { paymentsController } from "@/modules/payments/index.js";
-
+import { accountingRouter } from "@/modules/accounting/index.js";
 
 const allowedOrigins = Array.from(
   new Set(
@@ -84,11 +88,7 @@ const validateAllowedOrigins = (origins: string[]) => {
 
 validateAllowedOrigins(allowedOrigins);
 
-const localRateLimitIps = new Set([
-  "127.0.0.1",
-  "::1",
-  "::ffff:127.0.0.1",
-]);
+const localRateLimitIps = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 const shouldSkipRateLimit = (req: Request) =>
   env.NODE_ENV === "test" ||
@@ -96,35 +96,59 @@ const shouldSkipRateLimit = (req: Request) =>
     env.NODE_ENV === "development" &&
     localRateLimitIps.has(req.ip ?? ""));
 
-const buildRateLimit = (windowMs: number, max: number, code: string) =>
-  rateLimit({
-    windowMs,
-    max,
-    skip: shouldSkipRateLimit,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-      error: {
-        code,
-        message: "Too many requests. Please try again later.",
-      },
-    },
-  });
-
 const authRateLimit = buildRateLimit(
   RATE_LIMIT_POLICY.auth.windowMs,
   RATE_LIMIT_POLICY.auth.max,
   "AUTH_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const authRefreshRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.authRefresh.windowMs,
+  RATE_LIMIT_POLICY.authRefresh.max,
+  "AUTH_REFRESH_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const passwordResetRequestRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.passwordResetRequest.windowMs,
+  RATE_LIMIT_POLICY.passwordResetRequest.max,
+  "PASSWORD_RESET_REQUEST_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const passwordResetAttemptRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.passwordResetAttempt.windowMs,
+  RATE_LIMIT_POLICY.passwordResetAttempt.max,
+  "PASSWORD_RESET_ATTEMPT_RATE_LIMITED",
+  shouldSkipRateLimit,
 );
 const publicEnquiryRateLimit = buildRateLimit(
   RATE_LIMIT_POLICY.publicEnquiry.windowMs,
   RATE_LIMIT_POLICY.publicEnquiry.max,
   "ENQUIRY_RATE_LIMITED",
+  shouldSkipRateLimit,
 );
 const publicBookingRateLimit = buildRateLimit(
   RATE_LIMIT_POLICY.publicBooking.windowMs,
   RATE_LIMIT_POLICY.publicBooking.max,
   "BOOKING_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const publicInventoryLockRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.publicBooking.windowMs,
+  RATE_LIMIT_POLICY.publicBooking.max,
+  "INVENTORY_LOCK_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const publicAvailabilityRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.publicAvailability.windowMs,
+  RATE_LIMIT_POLICY.publicAvailability.max,
+  "AVAILABILITY_RATE_LIMITED",
+  shouldSkipRateLimit,
+);
+const publicQuoteRateLimit = buildRateLimit(
+  RATE_LIMIT_POLICY.publicQuote.windowMs,
+  RATE_LIMIT_POLICY.publicQuote.max,
+  "QUOTE_RATE_LIMITED",
+  shouldSkipRateLimit,
 );
 
 export const app = express();
@@ -183,11 +207,25 @@ app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: false, limit: "50kb" }));
 app.use(cookieParser());
 
-app.use(`${API_PREFIX}/auth/login`, authRateLimit);
-app.use(`${API_PREFIX}/auth/register`, authRateLimit);
-app.use(`${API_PREFIX}/auth/forgot-password`, authRateLimit);
-app.use(`${API_PREFIX}/public/enquiries`, publicEnquiryRateLimit);
-app.use(`${API_PREFIX}/public/bookings`, publicBookingRateLimit);
+app.use(`${API_PREFIX}/auth`, buildBrowserOriginGuard(allowedOrigins));
+app.post(`${API_PREFIX}/auth/login`, authRateLimit);
+app.post(`${API_PREFIX}/auth/register`, authRateLimit);
+app.post(`${API_PREFIX}/auth/refresh`, authRefreshRateLimit);
+app.post(`${API_PREFIX}/auth/forgot-password`, passwordResetRequestRateLimit);
+app.post(`${API_PREFIX}/auth/reset-password`, passwordResetAttemptRateLimit);
+app.post(`${API_PREFIX}/public/enquiries`, publicEnquiryRateLimit);
+app.post(`${API_PREFIX}/public/quote-requests`, publicEnquiryRateLimit);
+app.post(
+  `${API_PREFIX}/public/availability/check`,
+  publicAvailabilityRateLimit,
+);
+app.post(
+  `${API_PREFIX}/public/availability/calendar`,
+  publicAvailabilityRateLimit,
+);
+app.post(`${API_PREFIX}/public/bookings/quote`, publicQuoteRateLimit);
+app.post(`${API_PREFIX}/public/inventory-locks`, publicInventoryLockRateLimit);
+app.post(`${API_PREFIX}/public/bookings`, publicBookingRateLimit);
 
 /**
  * --------------------------------------------------
@@ -220,6 +258,7 @@ app.use(`${API_PREFIX}`, propertyClosuresRouter);
 app.use(`${API_PREFIX}`, roomProductRouter);
 app.use(`${API_PREFIX}`, bookingPolicyRouter);
 app.use(`${API_PREFIX}`, billingRouter);
+app.use(`${API_PREFIX}/accounting`, accountingRouter);
 app.use(`${API_PREFIX}`, pricingRouter);
 app.use(`${API_PREFIX}`, taxesRouter);
 app.use(`${API_PREFIX}`, couponsRouter);
@@ -228,7 +267,6 @@ app.use(`${API_PREFIX}`, bookingsRouter);
 app.use(`${API_PREFIX}`, emailDeliveriesRouter);
 app.use(`${API_PREFIX}`, notificationsRouter);
 app.use(`${API_PREFIX}`, commercialRouter);
-
 
 /**
  * --------------------------------------------------

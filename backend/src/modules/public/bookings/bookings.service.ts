@@ -725,18 +725,15 @@ export const getBookingQuote = async (
   tenantInput: TenantResolutionInput = {},
 ): Promise<PublicBookingQuoteDTO> => {
   const scope = await tenantService.resolvePublicScope(tenantInput);
+  const requestPropertyScope = getOptionPropertyScope(
+    scope.propertyScope,
+    input.propertyId,
+  );
   const nights = getNights(input.from, input.to);
 
   return repo.runSerializableTransaction(async (tx) => {
     if (input.bookingOptionId !== undefined) {
-      const optionPropertyScope = getOptionPropertyScope(
-        scope.propertyScope,
-        input.propertyId,
-      );
-      const requiredPropertyId = getRequiredPropertyId(
-        scope.propertyScope,
-        input.propertyId,
-      );
+      const requiredPropertyId = requestPropertyScope.propertyId;
       const option = await availabilityService.findAvailabilityOptionById(
         input.bookingOptionId,
         {
@@ -747,7 +744,7 @@ export const getBookingQuote = async (
         },
         scope.tenant.id,
         nights,
-        optionPropertyScope,
+        requestPropertyScope,
         tx,
         input.inventoryLockToken,
       );
@@ -822,7 +819,7 @@ export const getBookingQuote = async (
                   checkOut: input.to,
                   nights,
                 },
-                scope.propertyScope,
+                requestPropertyScope,
               ),
             ),
           )
@@ -837,7 +834,7 @@ export const getBookingQuote = async (
                 checkOut: input.to,
                 nights,
               },
-              scope.propertyScope,
+              requestPropertyScope,
             ),
           ];
 
@@ -936,7 +933,7 @@ export const getBookingQuote = async (
           input.to,
           nights,
           tx,
-          scope.propertyScope,
+          requestPropertyScope,
         ),
       ),
     );

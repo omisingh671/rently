@@ -115,18 +115,35 @@ try {
         passwordHash,
         role: "GUEST",
       },
+      {
+        id: e2eFixture.users.guestTwo.id,
+        fullName: "E2E Guest Two",
+        email: e2eFixture.users.guestTwo.email,
+        passwordHash,
+        role: "GUEST",
+      },
     ],
   });
 
-  await prisma.tenant.create({
-    data: {
-      id: e2eFixture.tenant.id,
-      name: "E2E Tenant",
-      slug: e2eFixture.tenant.slug,
-      brandName: "E2E Rently",
-      supportEmail: "support@e2e.rently.test",
-      timezone: "Asia/Kolkata",
-    },
+  await prisma.tenant.createMany({
+    data: [
+      {
+        id: e2eFixture.tenant.id,
+        name: "E2E Tenant",
+        slug: e2eFixture.tenant.slug,
+        brandName: "E2E Rently",
+        supportEmail: "support@e2e.rently.test",
+        timezone: "Asia/Kolkata",
+      },
+      {
+        id: e2eFixture.foreignTenant.id,
+        name: "E2E Foreign Tenant",
+        slug: e2eFixture.foreignTenant.slug,
+        brandName: "E2E Foreign Rently",
+        supportEmail: "support@foreign-e2e.rently.test",
+        timezone: "Asia/Kolkata",
+      },
+    ],
   });
   await prisma.property.createMany({
     data: [
@@ -150,6 +167,16 @@ try {
         state: "Karnataka",
         createdByUserId: e2eFixture.users.superAdmin.id,
       },
+      {
+        id: e2eFixture.foreignProperty.id,
+        tenantId: e2eFixture.foreignTenant.id,
+        slug: e2eFixture.foreignProperty.slug,
+        name: "E2E Foreign Tenant Property",
+        address: "3 Test Avenue",
+        city: "Bengaluru",
+        state: "Karnataka",
+        createdByUserId: e2eFixture.users.superAdmin.id,
+      },
     ],
   });
   await prisma.billingSetting.create({
@@ -159,6 +186,13 @@ try {
       gstin: "29ABCDE1234F1Z5",
       pan: "ABCDE1234F",
       billingAddress: "1 Test Avenue, Bengaluru, Karnataka",
+    },
+  });
+  await prisma.billingSetting.create({
+    data: {
+      propertyId: e2eFixture.foreignProperty.id,
+      legalName: "E2E Foreign Hospitality Private Limited",
+      billingAddress: "3 Test Avenue, Bengaluru, Karnataka",
     },
   });
   await prisma.propertyAssignment.createMany({
@@ -199,6 +233,14 @@ try {
       floor: 1,
     },
   });
+  await prisma.unit.create({
+    data: {
+      id: e2eFixture.foreignUnitId,
+      propertyId: e2eFixture.foreignProperty.id,
+      unitNumber: "E2E-F-U1",
+      floor: 1,
+    },
+  });
   await prisma.room.createMany({
     data: [
       {
@@ -227,11 +269,31 @@ try {
       },
     ],
   });
+  await prisma.room.create({
+    data: {
+      id: e2eFixture.foreignRoomId,
+      unitId: e2eFixture.foreignUnitId,
+      name: "E2E Foreign Room",
+      number: "E2E-F-R1",
+      hasAC: false,
+      maxOccupancy: 1,
+    },
+  });
   await prisma.roomProduct.create({
     data: {
       id: e2eFixture.productId,
       propertyId: e2eFixture.property.id,
       name: "E2E Single Occupancy",
+      occupancy: 1,
+      hasAC: false,
+      category: "NIGHTLY",
+    },
+  });
+  await prisma.roomProduct.create({
+    data: {
+      id: e2eFixture.foreignProductId,
+      propertyId: e2eFixture.foreignProperty.id,
+      name: "E2E Foreign Single Occupancy",
       occupancy: 1,
       hasAC: false,
       category: "NIGHTLY",
@@ -265,6 +327,16 @@ try {
       },
     ],
   });
+  await prisma.roomPricing.create({
+    data: {
+      id: e2eFixture.foreignPricingId,
+      propertyId: e2eFixture.foreignProperty.id,
+      roomId: e2eFixture.foreignRoomId,
+      productId: e2eFixture.foreignProductId,
+      price: 9999,
+      validFrom: new Date("2020-01-01T00:00:00.000Z"),
+    },
+  });
   await prisma.propertyBookingPolicy.create({
     data: {
       propertyId: e2eFixture.property.id,
@@ -297,6 +369,40 @@ try {
       },
       noShowRules: { noShowAfterTime: "20:00" },
       guestPolicyText: "E2E booking policy",
+    },
+  });
+  await prisma.propertyBookingPolicy.create({
+    data: {
+      propertyId: e2eFixture.foreignProperty.id,
+      advancePaymentType: "FIXED_AMOUNT",
+      advancePaymentValue: 10,
+      pendingPaymentExpiryMinutes: 15,
+      cancellationRules: { guestCancellationAllowed: true },
+      refundRules: { manualReviewRequired: true },
+      earlyCheckInRules: {
+        enabled: true,
+        feeType: "NONE",
+        feeValue: 0,
+        overrideRole: "ADMIN",
+      },
+      earlyCheckoutRules: {
+        refundUnusedNights: false,
+        refundPercentage: 100,
+        manualReviewRequired: true,
+        overrideRole: "ADMIN",
+      },
+      lateCheckoutRules: {
+        feeType: "NIGHTLY_RATE_MULTIPLIER",
+        feeValue: 1,
+        graceMinutes: 0,
+        overrideRole: "ADMIN",
+      },
+      downgradeRules: {
+        financialTreatment: "NO_CREDIT",
+        overrideRole: "ADMIN",
+      },
+      noShowRules: { noShowAfterTime: "20:00" },
+      guestPolicyText: "E2E foreign booking policy",
     },
   });
 } finally {

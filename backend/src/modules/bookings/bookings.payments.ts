@@ -19,9 +19,7 @@ import type {
   UpdateDashboardRefundRequestInput,
 } from "./bookings.inputs.js";
 import type { DashboardActor } from "./bookings.access.js";
-import {
-  assertManualPaymentProof,
-} from "./bookings.helper.js";
+import { assertManualPaymentProof } from "./bookings.helper.js";
 import {
   assertRefundProviderAvailable,
   getActiveRefundRequest,
@@ -33,6 +31,16 @@ import {
 } from "./bookings.financials.js";
 import * as repo from "./bookings.repository.js";
 import { publishBookingNotification } from "@/modules/notifications/notifications.events.js";
+import { billingService } from "@/modules/billing/index.js";
+import { postSucceededRefund } from "@/modules/accounting/accounting.posting.js";
+
+const finalizeRefundAccounting = async (
+  tx: Prisma.TransactionClient,
+  refundId: string,
+) => {
+  await billingService.createCreditNoteForRefund(refundId, tx);
+  await postSucceededRefund(tx, refundId);
+};
 
 export const recordBookingBalancePaymentForBooking = async (
   actor: DashboardActor,
@@ -105,7 +113,10 @@ export const recordBookingRefundForBooking = async (
       0,
       approvedAmount.minus(getBookingRefundedAmount(booking)),
     );
-    if (approvedAmount.lessThanOrEqualTo(0) || amount.greaterThan(remainingApproved)) {
+    if (
+      approvedAmount.lessThanOrEqualTo(0) ||
+      amount.greaterThan(remainingApproved)
+    ) {
       throw new HttpError(
         422,
         "EARLY_CHECKOUT_REFUND_LIMIT",
@@ -147,9 +158,9 @@ export const recordBookingRefundForBooking = async (
 
   const refundRequest =
     input.refundRequestId !== undefined
-      ? booking.refundRequests.find(
+      ? (booking.refundRequests.find(
           (request) => request.id === input.refundRequestId,
-        ) ?? null
+        ) ?? null)
       : getActiveRefundRequest(booking);
 
   if (input.refundRequestId !== undefined && refundRequest === null) {
@@ -173,10 +184,9 @@ export const recordBookingRefundForBooking = async (
     );
   }
 
-  const existingRefund =
-    input.idempotencyKey !== undefined
-      ? await repo.findRefundByIdempotencyKey(input.idempotencyKey)
-      : null;
+  const existingRefund = await repo.findRefundByIdempotencyKey(
+    input.idempotencyKey,
+  );
 
   if (existingRefund) {
     if (
@@ -216,9 +226,7 @@ export const recordBookingRefundForBooking = async (
     );
   }
 
-  const idempotencyKey =
-    input.idempotencyKey ??
-    `dashboard-refund-${booking.id}-${payment.id}-${randomUUID()}`;
+  const idempotencyKey = input.idempotencyKey;
 
   if (payment.provider !== "MANUAL") {
     if (!payment.providerPaymentId) {
@@ -285,19 +293,22 @@ export const recordBookingRefundForBooking = async (
         },
       });
       const succeeded = providerRefund.status === "processed";
-      pendingBooking = await repo.updateGatewayRefund(refund.id, {
-        providerRefundId: providerRefund.id,
-        providerRefundStatus: providerRefund.status,
-        ...(succeeded && {
-          status: PaymentRefundStatus.SUCCEEDED,
-          processedAt: new Date(),
-        }),
-      });
+      pendingBooking = await repo.updateGatewayRefund(
+        refund.id,
+        {
+          providerRefundId: providerRefund.id,
+          providerRefundStatus: providerRefund.status,
+          ...(succeeded && {
+            status: PaymentRefundStatus.SUCCEEDED,
+            processedAt: new Date(),
+          }),
+        },
+        succeeded ? finalizeRefundAccounting : undefined,
+      );
       if (succeeded) {
-        pendingBooking = await repo.updateBookingById(
-          booking.id,
-          { paymentStatus: getRefundPaymentStatus(pendingBooking) },
-        );
+        pendingBooking = await repo.updateBookingById(booking.id, {
+          paymentStatus: getRefundPaymentStatus(pendingBooking),
+        });
         pendingBooking = await syncFulfilledRefundRequest(pendingBooking);
         await publishBookingNotification({
           eventKey: NotificationEventKey.REFUND_SUCCEEDED,
@@ -357,7 +368,8 @@ export const recordBookingRefundForBooking = async (
     ),
   };
 
-  const projectedRefundableAmount = getBookingRefundableAmount(projectedBooking);
+  const projectedRefundableAmount =
+    getBookingRefundableAmount(projectedBooking);
   const refundRequestUpdate =
     refundRequest === null
       ? undefined
@@ -423,6 +435,7 @@ export const recordBookingRefundForBooking = async (
     },
     getRefundPaymentStatus(projectedBooking),
     refundRequestUpdate,
+    finalizeRefundAccounting,
   );
   await publishBookingNotification({
     eventKey: NotificationEventKey.REFUND_SUCCEEDED,

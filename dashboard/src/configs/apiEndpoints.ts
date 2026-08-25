@@ -245,6 +245,11 @@ export const API_ENDPOINTS = {
       `/properties/${propertyId}/billing-settings/audits`,
   },
 
+  accounting: {
+    journal: "/accounting/journal",
+    reconciliation: "/accounting/reconciliation",
+  },
+
   galleries: {
     list: "/galleries",
     upload: "/galleries/upload",

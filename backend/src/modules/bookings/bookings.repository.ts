@@ -7,7 +7,10 @@ import {
   Prisma,
 } from "@/generated/prisma/client.js";
 import { HttpError } from "@/common/errors/http-error.js";
-import { isTransientDatabaseError, runWithBoundedRetry } from "@/common/retry/retry-policy.js";
+import {
+  isTransientDatabaseError,
+  runWithBoundedRetry,
+} from "@/common/retry/retry-policy.js";
 import {
   closeActiveBookingRoomAllocations,
   syncCurrentBookingRoomAllocations,
@@ -107,12 +110,11 @@ export type DashboardRoomBoardRoomRecord = Prisma.RoomGetPayload<{
   };
 }>;
 
-export type DashboardRoomBoardBookingItemRecord =
-  Prisma.BookingItemGetPayload<{
-    include: {
-      booking: true;
-    };
-  }>;
+export type DashboardRoomBoardBookingItemRecord = Prisma.BookingItemGetPayload<{
+  include: {
+    booking: true;
+  };
+}>;
 
 export type DashboardRoomBoardMaintenanceRecord =
   Prisma.MaintenanceBlockGetPayload<Record<string, never>>;
@@ -286,7 +288,10 @@ export const runBookingTransaction = async <T>(
       ),
   });
 
-export const updateBookingById = (id: string, data: Prisma.BookingUpdateInput) =>
+export const updateBookingById = (
+  id: string,
+  data: Prisma.BookingUpdateInput,
+) =>
   prisma.booking.update({
     where: { id },
     data,
@@ -309,12 +314,17 @@ export const findRefundByProviderId = (
 export const updateGatewayRefund = (
   refundId: string,
   data: Prisma.PaymentRefundUpdateInput,
+  afterUpdate?: (
+    tx: Prisma.TransactionClient,
+    refundId: string,
+  ) => Promise<void>,
 ) =>
   prisma.$transaction(async (tx) => {
     const refund = await tx.paymentRefund.update({
       where: { id: refundId },
       data,
     });
+    await afterUpdate?.(tx, refund.id);
     return tx.booking.findUniqueOrThrow({
       where: { id: refund.bookingId },
       include: dashboardBookingInclude,
@@ -328,9 +338,14 @@ export const createPaymentRefundForBooking = (
     id: string;
     data: Prisma.BookingRefundRequestUpdateInput;
   },
+  afterCreate?: (
+    tx: Prisma.TransactionClient,
+    refundId: string,
+  ) => Promise<void>,
 ) =>
   prisma.$transaction(async (tx) => {
     const refund = await tx.paymentRefund.create({ data });
+    await afterCreate?.(tx, refund.id);
 
     if (refundRequestUpdate !== undefined) {
       await tx.bookingRefundRequest.update({

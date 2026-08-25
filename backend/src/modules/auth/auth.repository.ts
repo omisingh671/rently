@@ -1,5 +1,6 @@
 import { prisma } from "@/db/prisma.js";
 import type { SessionAudience } from "@/generated/prisma/enums.js";
+import { hashRefreshToken } from "./refresh-token.js";
 
 /**
  * Users
@@ -36,6 +37,7 @@ export const createUser = (data: {
  * Sessions
  */
 export const createSession = (
+  id: string,
   userId: string,
   refreshToken: string,
   audience: SessionAudience,
@@ -45,8 +47,9 @@ export const createSession = (
 ) =>
   prisma.session.create({
     data: {
+      id,
       userId,
-      refreshToken,
+      refreshToken: hashRefreshToken(refreshToken),
       audience,
       expiresAt,
       ip: ip ?? null,
@@ -58,12 +61,25 @@ export const findSessionByToken = (
   refreshToken: string,
   audience: SessionAudience,
 ) =>
-  prisma.session.findFirst({ where: { refreshToken, audience } });
+  prisma.session.findFirst({
+    where: {
+      audience,
+      refreshToken: { in: [refreshToken, hashRefreshToken(refreshToken)] },
+    },
+  });
 
 export const deleteSessionByToken = (refreshToken: string) =>
   prisma.session.deleteMany({
-    where: { refreshToken },
+    where: {
+      refreshToken: { in: [refreshToken, hashRefreshToken(refreshToken)] },
+    },
   });
+
+export const deleteSessionByIdentity = (
+  id: string,
+  userId: string,
+  audience: SessionAudience,
+) => prisma.session.deleteMany({ where: { id, userId, audience } });
 
 export const deleteSessionsForUser = (userId: string) =>
   prisma.session.deleteMany({ where: { userId } });
@@ -75,7 +91,9 @@ export const deleteOtherSessionsForUser = (
   prisma.session.deleteMany({
     where: {
       userId,
-      refreshToken: { not: currentRefreshToken },
+      refreshToken: {
+        notIn: [currentRefreshToken, hashRefreshToken(currentRefreshToken)],
+      },
     },
   });
 
@@ -88,9 +106,14 @@ export const rotateSessionToken = (
   userAgent?: string,
 ) =>
   prisma.session.updateMany({
-    where: { refreshToken: currentRefreshToken, audience },
+    where: {
+      audience,
+      refreshToken: {
+        in: [currentRefreshToken, hashRefreshToken(currentRefreshToken)],
+      },
+    },
     data: {
-      refreshToken: nextRefreshToken,
+      refreshToken: hashRefreshToken(nextRefreshToken),
       expiresAt,
       ip: ip ?? null,
       userAgent: userAgent ?? null,
@@ -100,15 +123,6 @@ export const rotateSessionToken = (
 /**
  * Password reset
  */
-export const createPasswordResetToken = (data: {
-  userId: string;
-  tokenHash: string;
-  expiresAt: Date;
-}) =>
-  prisma.passwordResetToken.create({
-    data,
-  });
-
 export const findPasswordResetTokenByHash = (tokenHash: string) =>
   prisma.passwordResetToken.findFirst({
     where: {
@@ -117,13 +131,39 @@ export const findPasswordResetTokenByHash = (tokenHash: string) =>
     },
   });
 
-export const deletePasswordResetTokensForUser = (userId: string) =>
-  prisma.passwordResetToken.deleteMany({
-    where: { userId },
-  });
-
 export const updateUserPassword = (userId: string, passwordHash: string) =>
   prisma.user.update({
     where: { id: userId },
     data: { passwordHash, mustChangePassword: false },
   });
+
+export const consumePasswordResetToken = async (
+  tokenHash: string,
+  passwordHash: string,
+) => {
+  const record = await prisma.passwordResetToken.findFirst({
+    where: { tokenHash, expiresAt: { gt: new Date() } },
+  });
+  if (!record) return false;
+
+  return prisma.$transaction(async (tx) => {
+    const consumed = await tx.passwordResetToken.deleteMany({
+        where: {
+          id: record.id,
+          tokenHash,
+          expiresAt: { gt: new Date() },
+        },
+      });
+    if (consumed.count !== 1) return false;
+
+    await tx.user.update({
+      where: { id: record.userId },
+      data: { passwordHash, mustChangePassword: false },
+    });
+    await tx.passwordResetToken.deleteMany({
+      where: { userId: record.userId },
+    });
+    await tx.session.deleteMany({ where: { userId: record.userId } });
+    return true;
+  });
+};
